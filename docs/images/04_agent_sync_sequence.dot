@@ -1,0 +1,28 @@
+digraph AgentSyncSeq {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.4;
+    ranksep=0.3;
+    
+    label="时序图: Agent 同步模式 (立即执行)";
+    labelloc=t;
+    fontsize=16;
+    
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10];
+    
+    // Flow steps
+    step1 [label="1. User POST /tasks\n{mode: sync}" fillcolor="#E3F2FD"];
+    step2 [label="2. Gateway: JWT + RBAC + Security Filter" fillcolor="#BBDEFB"];
+    step3 [label="3. AgentService.CreateAndExecuteSync()\n创建 Session, 调用 Agent Engine" fillcolor="#1B5E20" fontcolor="white"];
+    step4 [label="4. Agent Engine: LLM 推理\n自主选择 Tools/Skills" fillcolor="#FFF3E0"];
+    step5 [label="5. 调用 Skills\nSQL Executor / Stats / KB Search" fillcolor="#FFEBEE"];
+    step6 [label="6. Skills Query/Store\nMongoDB + SeaweedFS" fillcolor="#F3E5F5"];
+    step7 [label="7. 推理结果\nSecurity Output Filter + Audit\n同步返回 Response" fillcolor="#C8E6C9"];
+    
+    step1 -> step2 -> step3 -> step4 -> step5 -> step6 -> step7;
+    
+    note [label="特点: 请求-响应模式, 用户等待结果返回\n耗时: 秒级~分钟级, 受 HTTP 超时限制" shape=note fillcolor="#FFF9C4" fontsize=9];
+    step7 -> note [style=dashed color="#F9A825"];
+}

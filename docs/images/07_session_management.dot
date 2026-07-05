@@ -1,0 +1,112 @@
+digraph SessionManagement {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.5;
+    ranksep=0.5;
+    compound=true;
+    
+    // User sessions
+    subgraph cluster_userA {
+        label="User A (分析师)";
+        style="rounded,filled";
+        fillcolor="#E3F2FD";
+        color="#1976D2";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        sa1 [label="Session A1\n(Chat Mode)\nWorkspace: ws_a1" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=10];
+        sa2 [label="Session A2\n(Agent Mode)\nWorkspace: ws_a2" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=10];
+        
+        subgraph cluster_sub_a2 {
+            label="Sub-Agents (A2A)";
+            style="rounded,filled";
+            fillcolor="#BBDEFB";
+            color="#42A5F5";
+            fontname="Helvetica";
+            fontsize=10;
+            
+            sub1 [label="Sub-Agent 1\nws_a2/sub_1" shape=box style="rounded,filled" fillcolor="#64B5F6" fontname="Helvetica" fontsize=9];
+            sub2 [label="Sub-Agent 2\nws_a2/sub_2" shape=box style="rounded,filled" fillcolor="#64B5F6" fontname="Helvetica" fontsize=9];
+        }
+        
+        sa2 -> sub1 [color="#42A5F5" penwidth=1.5 label="A2A" fontsize=8];
+        sa2 -> sub2 [color="#42A5F5" penwidth=1.5 label="A2A" fontsize=8];
+    }
+    
+    // User B sessions
+    subgraph cluster_userB {
+        label="User B (普通员工)";
+        style="rounded,filled";
+        fillcolor="#E8F5E9";
+        color="#388E3C";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        sb1 [label="Session B1\n(Chat Mode)\nWorkspace: ws_b1" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=10];
+    }
+    
+    // Shared Resources
+    subgraph cluster_shared {
+        label="Shared Resources (权限隔离)";
+        style="rounded,filled";
+        fillcolor="#FFF3E0";
+        color="#F57C00";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        kb [label="Knowledge Base\n(RBAC per doc)" shape=cylinder style=filled fillcolor="#FFCC80" fontname="Helvetica" fontsize=10];
+        db [label="Analysis Results\n(RBAC per result)" shape=cylinder style=filled fillcolor="#FFCC80" fontname="Helvetica" fontsize=10];
+        cache [label="Redis Cache\n(Session scoped)" shape=cylinder style=filled fillcolor="#FFCC80" fontname="Helvetica" fontsize=10];
+    }
+    
+    // Session Lifecycle
+    subgraph cluster_lifecycle {
+        label="Session Lifecycle";
+        style="rounded,filled";
+        fillcolor="#F3E5F5";
+        color="#7B1FA2";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        active [label="Active\n(30min idle → expired)" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=10];
+        expired [label="Grace Period\n(24h, 可恢复)" shape=box style="rounded,filled" fillcolor="#BA68C8" fontname="Helvetica" fontsize=10];
+        cleanup [label="Cleanup\n· SeaweedFS workspace\n· Redis state\n· Mem0 memory\n· Sub-sessions cascade" shape=box style="rounded,filled" fillcolor="#AB47BC" fontname="Helvetica" fontsize=10];
+        
+        active -> expired [label=" Timeout" color="#7B1FA2" penwidth=1.5 fontsize=9];
+        expired -> active [label=" User Resume" color="#7B1FA2" penwidth=1.5 style=dashed fontsize=9];
+        expired -> cleanup [label=" 24h Expired" color="#7B1FA2" penwidth=1.5 fontsize=9];
+    }
+    
+    // Storage
+    seaweedfs_ws [label="SeaweedFS\nSession Workspaces\n┌─────────────┐\n│ ws_a1/       │\n│ ws_a2/       │\n│   sub_1/     │\n│   sub_2/     │\n│ ws_b1/       │\n└─────────────┘" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+    mongo_sess [label="MongoDB\nSession Records\n+ Messages" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=10];
+    mem0_store [label="Mem0\nSession Memory\n(User Context)" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=10];
+    
+    // Connections to storage
+    sa1 -> seaweedfs_ws [color="#7B1FA2" penwidth=1 style=dashed];
+    sa2 -> seaweedfs_ws [color="#7B1FA2" penwidth=1 style=dashed];
+    sb1 -> seaweedfs_ws [color="#7B1FA2" penwidth=1 style=dashed];
+    sub1 -> seaweedfs_ws [color="#7B1FA2" penwidth=0.8 style=dashed];
+    sub2 -> seaweedfs_ws [color="#7B1FA2" penwidth=0.8 style=dashed];
+    
+    sa1 -> mongo_sess [color="#7B1FA2" penwidth=1 style=dotted];
+    sa2 -> mongo_sess [color="#7B1FA2" penwidth=1 style=dotted];
+    
+    sa1 -> mem0_store [color="#7B1FA2" penwidth=1 style=dotted];
+    sb1 -> mem0_store [color="#7B1FA2" penwidth=1 style=dotted];
+    
+    // Shared access
+    sa1 -> kb [color="#F57C00" penwidth=1.5];
+    sb1 -> kb [color="#F57C00" penwidth=1.5];
+    sa2 -> db [color="#F57C00" penwidth=1.5];
+    
+    // Cleanup connections
+    cleanup -> seaweedfs_ws [color="#7B1FA2" penwidth=2 style=dashed label="DELETE" fontsize=8];
+    cleanup -> mem0_store [color="#7B1FA2" penwidth=2 style=dashed label="DELETE" fontsize=8];
+}

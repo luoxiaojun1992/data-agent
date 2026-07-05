@@ -1,0 +1,187 @@
+digraph DataFlow {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.6;
+    ranksep=0.6;
+    compound=true;
+    
+    // ====================
+    // Chat Mode Flow
+    // ====================
+    subgraph cluster_chat {
+        label="Chat 模式 (同步即时交互)";
+        style="rounded,filled";
+        fillcolor="#E8F5E9";
+        fontname="Helvetica";
+        fontsize=14;
+        color="#2E7D32";
+        penwidth=2;
+        
+        user_chat [label="User\nInput" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=11 width=1.2];
+        gw_chat [label="API\nGateway" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10 width=1.2];
+        auth_chat [label="Auth+\nRBAC" shape=diamond style=filled fillcolor="#66BB6A" fontname="Helvetica" fontsize=9 width=1.2];
+        sec_chat [label="Security\nFilter" shape=diamond style=filled fillcolor="#FFCC80" fontname="Helvetica" fontsize=9 width=1.2];
+        
+        agent_svc_chat [label="Agent Service\n· Session Manager\n· Agent Engine (ADK)\n· LLM Router\n· Tool/Skill Calls" shape=box style="rounded,filled" fillcolor="#4CAF50" fontname="Helvetica" fontsize=10 width=2.2 color="#2E7D32" penwidth=2.5];
+        
+        data_chat [label="MongoDB\n+ Milvus\n+ SeaweedFS\n+ Redis" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9 width=1.2];
+        
+        sec_out_chat [label="Security\nOutput Filter" shape=diamond style=filled fillcolor="#FFCC80" fontname="Helvetica" fontsize=9 width=1.2];
+        audit_chat [label="Audit\nLog" shape=box style="rounded,filled" fillcolor="#B39DDB" fontname="Helvetica" fontsize=9 width=1];
+        resp_chat [label="Response\n(SSE Stream)" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=10 width=1.2];
+        
+        user_chat -> gw_chat [color="#2E7D32" penwidth=2];
+        gw_chat -> auth_chat [color="#2E7D32" penwidth=1.5];
+        auth_chat -> sec_chat [color="#2E7D32" penwidth=1.5 label="PASS" fontsize=8];
+        sec_chat -> agent_svc_chat [color="#2E7D32" penwidth=2 label="PASS" fontsize=8];
+        agent_svc_chat -> data_chat [color="#7B1FA2" penwidth=1.5 label="Query/Store" fontsize=8 style=dashed];
+        agent_svc_chat -> sec_out_chat [color="#2E7D32" penwidth=1.5];
+        sec_out_chat -> resp_chat [color="#2E7D32" penwidth=1.5 label="PASS" fontsize=8];
+        
+        agent_svc_chat -> audit_chat [color="#5E35B1" penwidth=1 style=dashed];
+        sec_chat -> audit_chat [color="#D32F2F" penwidth=1 style=dashed label="BLOCK" fontsize=7];
+        sec_out_chat -> audit_chat [color="#D32F2F" penwidth=1 style=dashed label="BLOCK" fontsize=7];
+        
+        { rank=same; user_chat; gw_chat; auth_chat; sec_chat; agent_svc_chat; sec_out_chat; resp_chat; audit_chat; }
+    }
+    
+    // ====================
+    // Agent Mode Flow (Sync + Async)
+    // ====================
+    subgraph cluster_agent {
+        label="Agent 模式 (批量任务 — 同步/异步)";
+        style="rounded,filled";
+        fillcolor="#FFF3E0";
+        fontname="Helvetica";
+        fontsize=14;
+        color="#E65100";
+        penwidth=2;
+        
+        user_agent [label="User\nTask" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=11 width=1.2];
+        gw_agent [label="API\nGateway" shape=box style="rounded,filled" fillcolor="#FFCC80" fontname="Helvetica" fontsize=10 width=1.2];
+        auth_agent [label="Auth+\nRBAC" shape=diamond style=filled fillcolor="#FFB74D" fontname="Helvetica" fontsize=9 width=1.2];
+        sec_agent [label="Security\nFilter" shape=diamond style=filled fillcolor="#FFCC80" fontname="Helvetica" fontsize=9 width=1.2];
+        
+        agent_svc [label="Agent Service\n(中央协调器)\n· Session Manager\n· Agent Engine (ADK)\n· LLM Router\n· Tool/Skill Calls" shape=box style="rounded,filled" fillcolor="#EF6C00" fontname="Helvetica" fontsize=10 width=2.2 color="#BF360C" penwidth=2.5 fontcolor="white"];
+        
+        // Sync path
+        sync_label [label="同步模式\n立即执行" shape=none fontname="Helvetica" fontsize=9 color="#E65100"];
+        
+        // Async path
+        queue [label="Redis Stream\n(Task Queue)" shape=cylinder style=filled fillcolor="#F44336" fontname="Helvetica" fontsize=9 width=1.4 color="#D32F2F" fontcolor="white"];
+        
+        worker [label="Worker Pool\n★ 异步统一入口\n━━━━━━━━━━━━━\n· Scheduler 定时任务\n· Agent 异步任务\n━━━━━━━━━━━━━\n· Scripts Pure Go\n· → 调用 Agent Service" shape=box style="rounded,filled" fillcolor="#BF360C" fontname="Helvetica" fontsize=9 width=2.2 color="#3E2723" penwidth=3 fontcolor="white"];
+        
+        result [label="Result\nStorage\n(MongoDB\n+ SeaweedFS)" shape=cylinder style=filled fillcolor="#7B1FA2" fontname="Helvetica" fontsize=9 width=1.2 color="#6A1B9A" fontcolor="white"];
+        
+        notify [label="Notify\n(Email +\nWebSocket)" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=9 width=1.2];
+        
+        sync_resp [label="Sync\nResponse" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=10 width=1];
+        
+        // Edges — common path
+        user_agent -> gw_agent [color="#E65100" penwidth=2];
+        gw_agent -> auth_agent [color="#E65100" penwidth=1.5];
+        auth_agent -> sec_agent [color="#E65100" penwidth=1.5 label="PASS" fontsize=8];
+        sec_agent -> agent_svc [color="#E65100" penwidth=2 label="PASS" fontsize=8];
+        
+        // Sync path
+        agent_svc -> sync_resp [color="#E65100" penwidth=2 label="执行\n返回" fontsize=9];
+        
+        // Async path — enqueue
+        agent_svc -> queue [color="#D32F2F" penwidth=2 label="Enqueue\n(返回task_id)" fontsize=9];
+        queue -> worker [color="#D32F2F" penwidth=2 label="Dequeue\n+ Callback" fontsize=9];
+        worker -> agent_svc [color="#FF7043" penwidth=2 label="Exec\nTask" fontsize=9 style=dashed constraint=false];
+        
+        // Results
+        agent_svc -> result [color="#7B1FA2" penwidth=1.5 style=dashed label="Save" fontsize=8];
+        worker -> notify [color="#E65100" penwidth=1.5 style=dashed];
+        notify -> user_agent [color="#E65100" penwidth=1 style=dashed label="Push" fontsize=8 constraint=false];
+    }
+    
+    // ====================
+    // Scheduler Flow (Cron → Worker → Agent Service)
+    // ====================
+    subgraph cluster_scheduler {
+        label="定时任务模式 (Cron → Worker → Agent Service)";
+        style="rounded,filled";
+        fillcolor="#F3E5F5";
+        fontname="Helvetica";
+        fontsize=14;
+        color="#7B1FA2";
+        penwidth=2;
+        
+        cron [label="Cron\nTrigger" shape=box style="rounded,filled" fillcolor="#E1BEE7" fontname="Helvetica" fontsize=11 width=1.2];
+        scheduler_svc [label="Scheduler\nService\n· 创建任务(MongoDB)\n· 入队 Redis Stream" shape=box style="rounded,filled" fillcolor="#BA68C8" fontname="Helvetica" fontsize=9 width=1.8 penwidth=2];
+        
+        sched_queue [label="Redis Stream\n(agent:tasks)" shape=cylinder style=filled fillcolor="#8E24AA" fontname="Helvetica" fontsize=9 width=1.4 color="#6A1B9A" fontcolor="white"];
+        
+        sched_worker [label="Worker Pool\n(消费 + 回调)" shape=box style="rounded,filled" fillcolor="#BF360C" fontname="Helvetica" fontsize=10 width=1.8 color="#3E2723" penwidth=2.5 fontcolor="white"];
+        
+        sched_agent [label="Agent Service\n(Agent Engine)" shape=box style="rounded,filled" fillcolor="#1B5E20" fontname="Helvetica" fontsize=10 width=1.8 color="#0D47A1" penwidth=2.5 fontcolor="white"];
+        
+        sched_result [label="Result\nStorage\n(MongoDB\n+ SeaweedFS)" shape=cylinder style=filled fillcolor="#7B1FA2" fontname="Helvetica" fontsize=9 width=1.2 color="#6A1B9A" fontcolor="white"];
+        
+        sched_notify [label="Notify\n(Email + WS)" shape=box style="rounded,filled" fillcolor="#E1BEE7" fontname="Helvetica" fontsize=9 width=1.2];
+        
+        cron -> scheduler_svc [color="#7B1FA2" penwidth=2];
+        scheduler_svc -> sched_queue [color="#8E24AA" penwidth=2 label="入队" fontsize=9];
+        sched_queue -> sched_worker [color="#BF360C" penwidth=2.5 label="Dequeue" fontsize=9];
+        sched_worker -> sched_agent [color="#BF360C" penwidth=2.5 style=dashed label="调用执行\nAgent Engine" fontsize=9];
+        sched_agent -> sched_result [color="#7B1FA2" penwidth=1.5 style=dashed label="Save" fontsize=8];
+        sched_worker -> sched_notify [color="#7B1FA2" penwidth=1.5 style=dashed];
+        sched_notify -> cron [color="#7B1FA2" penwidth=1 style=dashed label="Push" fontsize=8 constraint=false];
+    }
+    
+    // ====================
+    // Hermes 探索模式 Flow
+    // ====================
+    subgraph cluster_hermes {
+        label="Hermes 探索模式 (自由对话)";
+        style="rounded,filled";
+        fillcolor="#EDE7F6";
+        fontname="Helvetica";
+        fontsize=14;
+        color="#7B1FA2";
+        penwidth=2;
+        
+        user_hermes [label="User\n(探索模式)" shape=box style="rounded,filled" fillcolor="#D1C4E9" fontname="Helvetica" fontsize=11 width=1.2];
+        gw_hermes [label="API\nGateway" shape=box style="rounded,filled" fillcolor="#B39DDB" fontname="Helvetica" fontsize=10 width=1.2];
+        auth_hermes [label="Auth+\nRBAC" shape=diamond style=filled fillcolor="#9575CD" fontname="Helvetica" fontsize=9 width=1.2 fontcolor="white"];
+        
+        hermes_svc [label="Hermes Service\n· 请求转发\n· SSE 流式透传\n· 写入快照" shape=box style="rounded,filled" fillcolor="#7B1FA2" fontname="Helvetica" fontsize=10 width=2.2 color="#4A148C" penwidth=2.5 fontcolor="white"];
+        
+        hermes_agent [label="Hermes Agent\n(外部容器)\n· LLM 推理\n· Tool 调用\n· Session 管理" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=10 width=2 color="#8E24AA" penwidth=2];
+        
+        hermes_db [label="MongoDB\nhermes_sessions\n(上下文快照)" shape=cylinder style=filled fillcolor="#E1BEE7" fontname="Helvetica" fontsize=9 width=1.5];
+        
+        hermes_resp [label="SSE Stream\n流式响应\n(前端渲染)" shape=box style="rounded,filled" fillcolor="#D1C4E9" fontname="Helvetica" fontsize=10 width=1.2];
+        
+        // Edges
+        user_hermes -> gw_hermes [color="#7B1FA2" penwidth=2];
+        gw_hermes -> auth_hermes [color="#7B1FA2" penwidth=1.5];
+        auth_hermes -> hermes_svc [color="#7B1FA2" penwidth=2 label="PASS" fontsize=8];
+        hermes_svc -> hermes_agent [color="#8E24AA" penwidth=2 label="POST /v1/chat\n(OpenAI格式)" fontsize=8 style=dashed];
+        hermes_agent -> hermes_svc [color="#8E24AA" penwidth=2 style=dashed label="SSE\n流式返回" fontsize=8 dir=back];
+        hermes_svc -> hermes_db [color="#7B1FA2" penwidth=1.5 style=dashed label="写入\n快照" fontsize=8];
+        hermes_svc -> hermes_resp [color="#7B1FA2" penwidth=2 label="SSE 透传" fontsize=9];
+        
+        { rank=same; user_hermes; gw_hermes; auth_hermes; hermes_svc; hermes_agent; hermes_resp; }
+    }
+    // ====================
+    subgraph cluster_legend {
+        label="图例";
+        style="rounded,filled";
+        fillcolor="#FAFAFA";
+        fontname="Helvetica";
+        fontsize=11;
+        color="#9E9E9E";
+        
+        l1 [label="请求/响应" shape=box style=filled fillcolor="#A5D6A7" fontname="Helvetica" fontsize=9 width=1.5];
+        l2 [label="安全检查" shape=diamond style=filled fillcolor="#FFCC80" fontname="Helvetica" fontsize=9 width=1.5];
+        l3 [label="数据存储" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9 width=1.5];
+        l4 [label="拦截/告警" color="#D32F2F" penwidth=1.5 style=dashed fontname="Helvetica" fontsize=9];
+        l5 [label="异步路径" color="#D32F2F" penwidth=1.5 fontname="Helvetica" fontsize=9];
+    }
+}

@@ -1,0 +1,118 @@
+digraph RBACModel {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.5;
+    ranksep=0.5;
+    
+    // Users
+    subgraph cluster_users {
+        label="Users";
+        style="rounded,filled";
+        fillcolor="#E3F2FD";
+        color="#1976D2";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        u1 [label="普通员工\n张三" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=10];
+        u2 [label="数据分析师\n李四" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=10];
+        u3 [label="知识管理员\n王五" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=10];
+        u4 [label="系统管理员\n赵六" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=10];
+        u5 [label="审计员\n钱七" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=10];
+    }
+    
+    // Roles
+    subgraph cluster_roles {
+        label="Roles (RBAC)";
+        style="rounded,filled";
+        fillcolor="#E8F5E9";
+        color="#388E3C";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        r1 [label="Viewer\n普通用户" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        r2 [label="Analyst\n分析师" shape=box style="rounded,filled" fillcolor="#66BB6A" fontname="Helvetica" fontsize=10];
+        r3 [label="Knowledge Admin\n知识管理员" shape=box style="rounded,filled" fillcolor="#4CAF50" fontname="Helvetica" fontsize=10];
+        r4 [label="Admin\n系统管理员" shape=box style="rounded,filled" fillcolor="#388E3C" fontname="Helvetica" fontsize=10];
+        r5 [label="Auditor\n审计员" shape=box style="rounded,filled" fillcolor="#2E7D32" fontname="Helvetica" fontsize=10];
+    }
+    
+    // Permissions
+    subgraph cluster_permissions {
+        label="Permissions";
+        style="rounded,filled";
+        fillcolor="#F3E5F5";
+        color="#7B1FA2";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        p1 [label="chat:read/write\n使用 Chat 模式" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        p2 [label="data:read/analyze\n查询数据" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        p3 [label="agent:create/cancel\n发起批量分析" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        p4 [label="schedule:create\n创建定时任务" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        p5 [label="knowledge:manage\n管理知识库" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        p6 [label="api:convert\nAPI 转换审核" shape=box style="rounded,filled" fillcolor="#BA68C8" fontname="Helvetica" fontsize=9];
+        p7 [label="admin:users\n用户管理" shape=box style="rounded,filled" fillcolor="#AB47BC" fontname="Helvetica" fontsize=9];
+        p8 [label="admin:models\n模型配置" shape=box style="rounded,filled" fillcolor="#AB47BC" fontname="Helvetica" fontsize=9];
+        p9 [label="admin:tasks\n任务管理" shape=box style="rounded,filled" fillcolor="#AB47BC" fontname="Helvetica" fontsize=9];
+        p10 [label="audit:read\n审计查看" shape=box style="rounded,filled" fillcolor="#AB47BC" fontname="Helvetica" fontsize=9];
+    }
+    
+    // User -> Role mappings
+    u1 -> r1 [color="#1976D2" penwidth=1.5];
+    u2 -> r1 [color="#1976D2" penwidth=1.5];
+    u2 -> r2 [color="#1976D2" penwidth=1.5];
+    u3 -> r1 [color="#1976D2" penwidth=1.5];
+    u3 -> r3 [color="#1976D2" penwidth=1.5];
+    u4 -> r1 [color="#1976D2" penwidth=1.5];
+    u4 -> r2 [color="#1976D2" penwidth=1.5];
+    u4 -> r4 [color="#1976D2" penwidth=1.5];
+    u5 -> r5 [color="#1976D2" penwidth=1.5];
+    
+    // Role -> Permission mappings
+    r1 -> p1 [color="#388E3C" penwidth=1.5];
+    r1 -> p2 [color="#388E3C" penwidth=1.5];
+    
+    r2 -> p3 [color="#388E3C" penwidth=1.5];
+    r2 -> p4 [color="#388E3C" penwidth=1.5];
+    
+    r3 -> p5 [color="#388E3C" penwidth=1.5];
+    r3 -> p6 [color="#388E3C" penwidth=1.5];
+    
+    r4 -> p7 [color="#388E3C" penwidth=1.5];
+    r4 -> p8 [color="#388E3C" penwidth=1.5];
+    r4 -> p9 [color="#388E3C" penwidth=1.5];
+    
+    r5 -> p10 [color="#388E3C" penwidth=1.5];
+    
+    // Module access
+    subgraph cluster_modules {
+        label="Access Modules";
+        style="rounded,filled";
+        fillcolor="#FFF3E0";
+        color="#F57C00";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        lw [label="🟢 Lightweight\n轻量工作区\n(全员可用)" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=10];
+        pro [label="🟡 Professional\n专业分析工作区\n(分析师+)" shape=box style="rounded,filled" fillcolor="#FFCC80" fontname="Helvetica" fontsize=10];
+        ad [label="🔴 Admin\n管理后台\n(管理员/审计员)" shape=box style="rounded,filled" fillcolor="#FFB74D" fontname="Helvetica" fontsize=10];
+    }
+    
+    r1 -> lw [color="#F57C00" penwidth=1.5];
+    r2 -> lw [color="#F57C00" penwidth=1.5];
+    r3 -> lw [color="#F57C00" penwidth=1.5];
+    r4 -> lw [color="#F57C00" penwidth=1.5];
+    
+    r2 -> pro [color="#F57C00" penwidth=1.5];
+    r4 -> pro [color="#F57C00" penwidth=1.5];
+    
+    r3 -> ad [color="#F57C00" penwidth=1.5 style=dashed];
+    r4 -> ad [color="#F57C00" penwidth=1.5];
+    r5 -> ad [color="#F57C00" penwidth=1.5];
+}

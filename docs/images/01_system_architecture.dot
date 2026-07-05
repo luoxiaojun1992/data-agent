@@ -1,0 +1,195 @@
+digraph SystemArchitecture {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.4;
+    ranksep=0.5;
+    compound=true;
+    
+    // Client Layer
+    subgraph cluster_client {
+        label="Client Layer";
+        style="rounded,filled";
+        fillcolor="#E3F2FD";
+        fontname="Helvetica";
+        fontsize=13;
+        color="#1976D2";
+        penwidth=2;
+        
+        web [label="Web Frontend\n(React/Next.js)\n· Chat 模式\n· Agent 模式" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=9];
+        mobile [label="Mobile\n(小程序/APP v2)" shape=box style="rounded,filled,dashed" fillcolor="#BBDEFB" fontname="Helvetica" fontsize=9];
+        admin [label="Admin Dashboard\n(React/Next.js)" shape=box style="rounded,filled" fillcolor="#90CAF9" fontname="Helvetica" fontsize=9];
+    }
+    
+    // API Gateway
+    gateway [label="API Gateway\nHTTP/WebSocket + JWT Auth\nRate Limit + Validation" shape=box style="rounded,filled" fillcolor="#64B5F6" fontname="Helvetica" fontsize=10 width=3.5];
+    
+    // Service Layer
+    subgraph cluster_service {
+        label="Service Layer (Go) — 单二进制部署";
+        style="rounded,filled";
+        fillcolor="#E8F5E9";
+        fontname="Helvetica";
+        fontsize=13;
+        color="#388E3C";
+        penwidth=2;
+        
+        subgraph cluster_middleware {
+            label="Middleware";
+            style="rounded,filled";
+            fillcolor="#C8E6C9";
+            color="#4CAF50";
+            fontname="Helvetica";
+            fontsize=10;
+            
+            auth_mw [label="Auth/RBAC" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=9];
+            audit_mw [label="Audit" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=9];
+            security_mw [label="Security\nFilter" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=9];
+        }
+        
+        agent_svc [label="Agent Service\n★ 中央协调器（唯一入口）\n━━━━━━━━━━━━━━━\nChat 同步 (SSE)\nAgent 同步 (直接执行)\nAgent 异步 (入队 → 返回 task_id)\n━━━━━━━━━━━━━━━\n· Session Manager\n· Agent Engine (ADK)\n· Tool/Skill 调用" shape=box style="rounded,filled" fillcolor="#1B5E20" fontname="Helvetica" fontsize=9 width=3 color="#0D47A1" penwidth=3 fontcolor="white"];
+        
+        scheduler_svc [label="Scheduler\nCron 触发 →\n创建任务 + 入队" shape=box style="rounded,filled" fillcolor="#66BB6A" fontname="Helvetica" fontsize=9];
+        admin_svc [label="Admin Service\n(Dashboard/Mgmt)" shape=box style="rounded,filled" fillcolor="#66BB6A" fontname="Helvetica" fontsize=9];
+        
+        hermes_svc [label="Hermes Service\n(自由探索模式)\n━━━━━━━━━━━━━\n· 请求转发到 Hermes\n· SSE 流式透传\n· 记录 hermes_sessions" shape=box style="rounded,filled" fillcolor="#CE93D8" fontname="Helvetica" fontsize=9 width=3 color="#7B1FA2" penwidth=2.5 fontcolor="white"];
+        
+        // Redis Stream — 核心队列组件 (Service Layer 内可见)
+        redis_stream [label="★ Redis Stream\n(agent:tasks)\n━━━━━━━━━━\n消息来源:\n· Agent异步入队\n· Scheduler入队\n· Worker转换重入队\n━━━━━━━━━━\n消费:\n· Worker Pool" shape=cylinder style=filled fillcolor="#D32F2F" fontname="Helvetica" fontsize=9 width=2.5 color="#B71C1C" penwidth=2.5 fontcolor="white"];
+        
+        worker_pool [label="Worker Pool\n★ 异步统一入口\n(goroutine, 同进程)\n━━━━━━━━━━━━━\n消费 agent:tasks:\n· Scheduler 定时任务\n  → 转换 AgentTask\n  → 重入队\n· Agent 异步任务\n  → 直接回调执行\n━━━━━━━━━━━━━\n· 纯 Go" shape=box style="rounded,filled" fillcolor="#D84315" fontname="Helvetica" fontsize=9 width=3.5 color="#BF360C" penwidth=3 fontcolor="white"];
+    }
+    
+    // Agent Engine
+    subgraph cluster_engine {
+        label="Agent Engine (ADK) — 内嵌";
+        style="rounded,filled,dashed";
+        fillcolor="#FFF3E0";
+        fontname="Helvetica";
+        fontsize=12;
+        color="#F57C00";
+        penwidth=1.5;
+        
+        llm_router [label="LLM Router" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=9];
+        skill_mgr [label="Skill/MCP\nRegistry" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=9];
+        sub_agent [label="Sub-Agent\nOrchestrator\n(A2A)" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=9];
+        security_layer [label="Security Audit\nInput/Output/Tool" shape=box style="rounded,filled" fillcolor="#FFCC80" fontname="Helvetica" fontsize=9];
+        mem0 [label="Memory\n(Mem0)" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=9];
+    }
+    
+    // Plugin Layer
+    subgraph cluster_plugin {
+        label="Plugin / MCP Skills";
+        style="rounded,filled";
+        fillcolor="#FFEBEE";
+        fontname="Helvetica";
+        fontsize=13;
+        color="#D32F2F";
+        penwidth=2;
+        
+        sql [label="SQL Executor\n(+AST Parse)" shape=box style="rounded,filled" fillcolor="#FFCDD2" fontname="Helvetica" fontsize=9];
+        stats [label="Stats Engine" shape=box style="rounded,filled" fillcolor="#FFCDD2" fontname="Helvetica" fontsize=9];
+        email [label="Email Sender" shape=box style="rounded,filled" fillcolor="#FFCDD2" fontname="Helvetica" fontsize=9];
+        openapi [label="OpenAPI→\nMCP Conv." shape=box style="rounded,filled" fillcolor="#FFCDD2" fontname="Helvetica" fontsize=9];
+        knowledge [label="Knowledge\nSearch" shape=box style="rounded,filled" fillcolor="#FFCDD2" fontname="Helvetica" fontsize=9];
+        save_report [label="Save Report\n(validate)" shape=box style="rounded,filled" fillcolor="#FFCDD2" fontname="Helvetica" fontsize=8];
+        save_artifact [label="Save Artifact" shape=box style="rounded,filled" fillcolor="#FFCDD2" fontname="Helvetica" fontsize=8];
+    }
+    
+    // Data Layer
+    subgraph cluster_data {
+        label="Data / Storage Layer";
+        style="rounded,filled";
+        fillcolor="#F3E5F5";
+        fontname="Helvetica";
+        fontsize=13;
+        color="#7B1FA2";
+        penwidth=2;
+        
+        mongo [label="MongoDB\n(Tasks + Business)" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        milvus [label="Milvus\n(Vector Search)" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        seaweedfs [label="SeaweedFS\n(Workspace\n+ Artifacts)" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        redis_cache [label="Redis Cache\n(Sessions/Query)" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        vault [label="Vault\n(Secrets)" shape=cylinder style=filled fillcolor="#CE93D8" fontname="Helvetica" fontsize=9];
+        hermes_sessions [label="Hermes Sessions\n(MongoDB — 日志快照)" shape=cylinder style=filled fillcolor="#E1BEE7" fontname="Helvetica" fontsize=9];
+    }
+    
+    // ===== EDGES =====
+    
+    // Client → Gateway
+    web -> gateway [color="#1976D2" penwidth=1.5 label="Chat+Agent\n+探索" fontsize=8];
+    admin -> gateway [color="#1976D2" penwidth=1.5];
+    mobile -> gateway [color="#90CAF9" style=dashed penwidth=1];
+    
+    // Gateway → Middleware
+    gateway -> auth_mw [color="#388E3C" penwidth=1.5 lhead=cluster_middleware];
+    
+    // Middleware → Agent Service
+    auth_mw -> agent_svc [color="#0D47A1" penwidth=3 label="全部请求统一入口" fontsize=9];
+    auth_mw -> admin_svc [color="#388E3C" penwidth=1.5];
+    
+    // ===== Hermes Service 连线 =====
+    // Gateway → Hermes Service (探索模式路由)
+    auth_mw -> hermes_svc [color="#7B1FA2" penwidth=2 label="探索模式" fontsize=9 style=dashed];
+    
+    // Hermes Service → MongoDB (hermes_sessions)
+    hermes_svc -> hermes_sessions [color="#7B1FA2" penwidth=1.5 style=dashed label="上下文快照" fontsize=8];
+    
+    // === Queue (Redis Stream) 相关连线 ===
+    
+    // Agent Service → Redis Stream (Async 入队)
+    agent_svc -> redis_stream [color="#0D47A1" penwidth=2 style=dashed label="Agent异步\n入队" fontsize=8];
+    
+    // Scheduler → Redis Stream (Scheduled 入队)
+    scheduler_svc -> redis_stream [color="#2E7D32" penwidth=2 style=dashed label="Scheduled\n入队" fontsize=8];
+    
+    // Worker Pool → Redis Stream (Dequeue)
+    redis_stream -> worker_pool [color="#BF360C" penwidth=2.5 label="Dequeue\n消费" fontsize=8 dir=both];
+    
+    // Worker → Redis Stream (Scheduled task 转换后重入队)
+    worker_pool -> redis_stream [color="#BF360C" penwidth=1.5 style=dashed label="Scheduled\n→ AgentTask\n重入队" fontsize=7 constraint=false];
+    
+    // Worker → Agent Service (统一回调)
+    worker_pool -> agent_svc [color="#BF360C" penwidth=2.5 style=dashed label="消费后统一回调\n执行 Agent Engine" fontsize=9];
+    
+    // Worker → MongoDB (创建 AgentTask)
+    worker_pool -> mongo [color="#BF360C" penwidth=1 style=dashed label="Create\nAgentTask" fontsize=7 constraint=false];
+    
+    // Scheduler → MongoDB (Create ScheduledTask)
+    scheduler_svc -> mongo [color="#2E7D32" penwidth=1 style=dashed label="Create\nScheduled\nTask" fontsize=7 constraint=false];
+    
+    // Agent Service → MongoDB
+    agent_svc -> mongo [color="#7B1FA2" penwidth=1.5];
+    
+    // Agent Service ↔ Engine
+    agent_svc -> llm_router [color="#E65100" penwidth=2.5 label="调用引擎" fontsize=8 lhead=cluster_engine];
+    
+    // Engine internal
+    llm_router -> skill_mgr [color="#F57C00" penwidth=1];
+    llm_router -> security_layer [color="#E65100" penwidth=1.5];
+    llm_router -> mem0 [color="#F57C00" penwidth=1];
+    skill_mgr -> sub_agent [color="#F57C00" penwidth=1];
+    
+    // Engine → Plugins
+    skill_mgr -> sql [color="#D32F2F" penwidth=1.5 lhead=cluster_plugin];
+    skill_mgr -> stats [color="#D32F2F" penwidth=1.5];
+    skill_mgr -> email [color="#D32F2F" penwidth=1.5];
+    skill_mgr -> knowledge [color="#D32F2F" penwidth=1.5];
+    skill_mgr -> openapi [color="#D32F2F" penwidth=1.5];
+    skill_mgr -> save_report [color="#D32F2F" penwidth=1.5];
+    skill_mgr -> save_artifact [color="#D32F2F" penwidth=1.5];
+    
+    // Plugins → Data
+    sql -> mongo [color="#7B1FA2" penwidth=1.5 lhead=cluster_data];
+    stats -> mongo [color="#7B1FA2" penwidth=1.5];
+    knowledge -> milvus [color="#7B1FA2" penwidth=1.5];
+    knowledge -> mongo [color="#7B1FA2" penwidth=1.5];
+    
+    // Other data connections
+    agent_svc -> seaweedfs [color="#7B1FA2" penwidth=1 style=dashed label="workspace" fontsize=8];
+    agent_svc -> redis_cache [color="#7B1FA2" penwidth=1.5 style=dashed label="Cache" fontsize=8];
+    auth_mw -> mongo [color="#7B1FA2" penwidth=1.5];
+    admin_svc -> mongo [color="#7B1FA2" penwidth=1.5];
+    agent_svc -> vault [color="#9C27B0" penwidth=1 style=dashed label="Secrets" fontsize=7];
+}

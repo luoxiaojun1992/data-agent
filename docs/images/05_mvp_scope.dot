@@ -1,0 +1,74 @@
+digraph MVPScope {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.6;
+    ranksep=0.6;
+    compound=true;
+    
+    subgraph cluster_mvp {
+        label="MVP (Week 1-12)";
+        style="rounded,filled";
+        fillcolor="#E8F5E9";
+        color="#2E7D32";
+        penwidth=3;
+        fontname="Helvetica";
+        fontsize=16;
+        
+        mvp1 [label="F-01 数据接入(MCP)" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp2 [label="F-02 SQL统计分析" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp3 [label="F-02 回归+时间序列分析" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp4 [label="F-02 多维度聚合分析" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp5 [label="F-04 Chat模式+快捷提示词" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp6 [label="F-05 Agent模式(批量任务)" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp7 [label="F-07 Session管理+工作区" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp8 [label="F-08 共享知识库" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp9 [label="F-09 邮件发送" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp10 [label="F-11 认证+RBAC" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp11 [label="F-12/13 审计+安全审查" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp12 [label="F-15 管理后台(基础)" shape=box style="rounded,filled" fillcolor="#81C784" fontname="Helvetica" fontsize=10];
+        mvp13 [label="F-03 智能解读(基础版)" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=10];
+        mvp14 [label="F-02 聚类+PCA分析" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=10 style=dashed];
+        mvp15 [label="F-06 定时任务(基础)" shape=box style="rounded,filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=10];
+    }
+    
+    subgraph cluster_v11 {
+        label="V1.1 (Week 13-18)";
+        style="rounded,filled";
+        fillcolor="#FFF3E0";
+        color="#E65100";
+        penwidth=2;
+        fontname="Helvetica";
+        fontsize=14;
+        
+        v1 [label="F-02 财务分析\nF-10 API转MCP(双重审核)\nF-14 子Agent(A2A完整)\nF-06 Cron高级调度\nF-03 深度解读\nF-13 AI审查引擎\nSSO集成" shape=box style="rounded,filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=10];
+    }
+    
+    subgraph cluster_v20 {
+        label="V2.0 (Week 19+)";
+        style="rounded,filled";
+        fillcolor="#E3F2FD";
+        color="#1565C0";
+        penwidth=2;
+        fontname="Helvetica";
+        fontsize=14;
+        
+        v2 [label="F-16 小程序/APP\n高级可视化看板\n知识库版本管理\n多租户支持\n数据血缘追踪" shape=box style="rounded,filled" fillcolor="#BBDEFB" fontname="Helvetica" fontsize=10];
+    }
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Priority";
+        style="rounded";
+        fillcolor="#FAFAFA";
+        color="#9E9E9E";
+        fontname="Helvetica";
+        fontsize=10;
+        
+        p0 [label="P0 - Must Have" shape=box style="filled" fillcolor="#81C784" fontname="Helvetica" fontsize=9];
+        p1 [label="P1 - Should Have" shape=box style="filled" fillcolor="#A5D6A7" fontname="Helvetica" fontsize=9];
+        p2 [label="P2 - Nice to Have" shape=box style="filled" fillcolor="#FFE0B2" fontname="Helvetica" fontsize=9];
+        p3 [label="P3 - Future" shape=box style="filled" fillcolor="#BBDEFB" fontname="Helvetica" fontsize=9];
+    }
+}

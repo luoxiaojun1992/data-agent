@@ -1,0 +1,30 @@
+// Chat 模式 — 同步即时交互（简洁版）
+digraph ChatSequence {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.4;
+    ranksep=0.3;
+
+    label="时序图: Chat 模式 (同步即时交互)";
+    labelloc=t;
+    fontsize=16;
+
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10];
+
+    // Flow steps
+    step1 [label="① 用户发送自然语言查询\n(轻量工作区 Chat 输入框)" fillcolor="#E3F2FD"];
+    step2 [label="② API Gateway: JWT 验证 + Rate Limit" fillcolor="#BBDEFB"];
+    step3 [label="③ Auth/Security Middleware\nRBAC 权限检查 + 输入安全审查" fillcolor="#90CAF9"];
+    step4 [label="④ AgentService.HandleChat()\n创建/恢复 Session, 调用 Agent Engine" fillcolor="#1B5E20" fontcolor="white"];
+    step5 [label="⑤ Agent Engine: LLM 推理\nAgent 自主决定调用 Tool/Skill" fillcolor="#FFF3E0"];
+    step6 [label="⑥ Skill 调用\nSQL Executor / Stats Engine / KB Search" fillcolor="#FFEBEE"];
+    step7 [label="⑦ 查询/写入数据\nMongoDB + Milvus + Redis" fillcolor="#F3E5F5"];
+    step8 [label="⑧ 推理结果\nSecurity Output Filter 审查\nSSE 流式推送 → 前端渲染" fillcolor="#C8E6C9"];
+
+    step1 -> step2 -> step3 -> step4 -> step5 -> step6 -> step7 -> step8;
+
+    note [label="特点: 请求-响应模式, 用户等待结果实时返回\n耗时: 秒级, 支持 SSE 流式输出\n会话: AgentService 管理 Session 上下文" shape=note fillcolor="#FFF9C4" fontsize=9];
+    step8 -> note [style=dashed color="#F9A825"];
+}

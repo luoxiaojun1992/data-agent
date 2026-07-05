@@ -1,0 +1,72 @@
+digraph ScheduledSeq {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.3;
+    ranksep=0.3;
+    
+    label="时序图: 定时任务模式 (Scheduled -> 转换 AgentTask -> 复用异步管道)";
+    labelloc=t;
+    fontsize=14;
+    
+    // === Phase 1: Cron trigger ===
+    subgraph cluster_p1 {
+        label="Phase 1: Cron -> Scheduler -> Enqueue";
+        fontsize=11;
+        style="rounded,filled";
+        fillcolor="#F3E5F5";
+        color="#7B1FA2";
+        
+        node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10];
+        
+        p1_1 [label="1. Cron 到达触发时刻" fillcolor="#E1BEE7"];
+        p1_2 [label="2. Scheduler.onCronTrigger()\n创建 ScheduledTask 记录 (MongoDB)" fillcolor="#BA68C8"];
+        p1_3 [label="3. XADD agent:tasks\n{task_type: scheduled, sched_id: xxx}" fillcolor="#CE93D8" shape=cylinder];
+        
+        p1_1 -> p1_2 -> p1_3;
+    }
+    
+    // === Phase 2: Worker convert ===
+    subgraph cluster_p2 {
+        label="Phase 2: Worker 消费 -> 转换为 AgentTask -> 重入队";
+        fontsize=11;
+        style="rounded,filled";
+        fillcolor="#FFF3E0";
+        color="#E65100";
+        
+        node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10];
+        
+        p2_1 [label="4. Worker XREADGROUP\n识别 task_type=scheduled" fillcolor="#D84315" fontcolor="white"];
+        p2_2 [label="5. 创建 AgentTask (MongoDB)\n继承 Scheduled 参数\n(status=pending)" fillcolor="#D32F2F" fontcolor="white" shape=cylinder];
+        p2_3 [label="6. XADD agent:tasks\n{task_type: agent, agent_id: yyy}\n(转换成功, 重入队)" fillcolor="#FF7043" fontcolor="white"];
+        
+        p2_1 -> p2_2 -> p2_3;
+    }
+    
+    // === Phase 3: Execute ===
+    subgraph cluster_p3 {
+        label="Phase 3: Worker 消费 AgentTask -> 复用标准异步管道";
+        fontsize=11;
+        style="rounded,filled";
+        fillcolor="#E8F5E9";
+        color="#2E7D32";
+        
+        node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10];
+        
+        p3_1 [label="7. Worker 再次 dequeue\n识别 task_type=agent" fillcolor="#388E3C" fontcolor="white"];
+        p3_2 [label="8. Worker 回调 Agent Service\nagentSvc.ExecuteTask()\n(ADK + Skills)" fillcolor="#1B5E20" fontcolor="white"];
+        p3_3 [label="9. 结果写入\nMongoDB + SeaweedFS (Artifacts)" fillcolor="#CE93D8" shape=cylinder];
+        p3_4 [label="10. 通知: Email + WebSocket" fillcolor="#FFE0B2"];
+        
+        p3_1 -> p3_2 -> p3_3 -> p3_4;
+    }
+    
+    // Phase connections
+    p1_3 -> p2_1 [color="#7B1FA2" style=dashed penwidth=1.5];
+    p2_3 -> p3_1 [color="#E65100" style=dashed penwidth=1.5];
+    
+    // Summary
+    summary [label="设计意图: ScheduledTask 经 Worker 转换后,\n变成标准 AgentTask 重入同一队列 agent:tasks,\n复用异步 Agent 管道的所有执行逻辑和基础设施。" shape=note fillcolor="#FFF9C4" fontname="Helvetica" fontsize=10];
+    p3_4 -> summary [style=dashed color="#F9A825" minlen=1.5];
+}

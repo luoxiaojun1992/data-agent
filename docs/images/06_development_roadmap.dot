@@ -1,0 +1,140 @@
+digraph Roadmap {
+    rankdir=LR;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.3;
+    ranksep=0.8;
+    
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10];
+    
+    // Phase 1
+    subgraph cluster_p1 {
+        label="Phase 1: Foundation\nWeek 1-2 · 基础框架";
+        style="rounded,filled";
+        fillcolor="#E3F2FD";
+        color="#1565C0";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        p1_1 [label="Project Init\nGo Modules\nDocker Env" fillcolor="#BBDEFB" fontsize=9];
+        p1_2 [label="MongoDB\nMilvus\nSeaweedFS\nRedis Clients" fillcolor="#BBDEFB" fontsize=9];
+        p1_3 [label="Auth System\nJWT + RBAC\nFoundation" fillcolor="#BBDEFB" fontsize=9];
+        p1_4 [label="Middleware\nAuth, Audit\nSecurity Filter" fillcolor="#BBDEFB" fontsize=9];
+    }
+    
+    // Phase 2
+    subgraph cluster_p2 {
+        label="Phase 2: Core Services\nWeek 3-4 · 核心服务";
+        style="rounded,filled";
+        fillcolor="#E8F5E9";
+        color="#2E7D32";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        p2_1 [label="Agent Engine\nADK Integration\nLLM Router" fillcolor="#C8E6C9" fontsize=9];
+        p2_2 [label="Chat Service\nSSE Streaming\nSession Mgmt" fillcolor="#C8E6C9" fontsize=9];
+        p2_3 [label="Agent Service\nTask Queue\nWorker Pool" fillcolor="#C8E6C9" fontsize=9];
+        p2_4 [label="Skill Registry\nSQL+Stats\nPlugin Loader" fillcolor="#C8E6C9" fontsize=9];
+    }
+    
+    // Milestone 1
+    m1 [label="M1: Infra Ready\n✅ Dev Env\n✅ Core MW\n✅ Docker Compose" shape=box style="rounded,filled" fillcolor="#4CAF50" fontname="Helvetica" fontsize=9 color="#2E7D32" penwidth=2];
+    
+    // Milestone 2
+    m2 [label="M2: Chat MVP\n✅ NL→SQL\n✅ Result\n✅ Stream" shape=box style="rounded,filled" fillcolor="#4CAF50" fontname="Helvetica" fontsize=9 color="#2E7D32" penwidth=2];
+    
+    // Phase 3
+    subgraph cluster_p3 {
+        label="Phase 3: Knowledge & Analysis\nWeek 5-6 · 知识库与解读";
+        style="rounded,filled";
+        fillcolor="#FFF3E0";
+        color="#E65100";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        p3_1 [label="Doc Upload\nPDF/Word/Excel\nParse" fillcolor="#FFE0B2" fontsize=9];
+        p3_2 [label="Vector Index\nMilvus Async\nHybrid Search" fillcolor="#FFE0B2" fontsize=9];
+        p3_3 [label="Interpretation\nKnowledge+Industry\nContext" fillcolor="#FFE0B2" fontsize=9];
+        p3_4 [label="Aggregation\nMulti-dim\nLayered" fillcolor="#FFE0B2" fontsize=9];
+    }
+    
+    // Milestone 3
+    m3 [label="M3: Agent MVP\n✅ Async Tasks\n✅ Progress\n✅ Notify" shape=box style="rounded,filled" fillcolor="#4CAF50" fontname="Helvetica" fontsize=9 color="#2E7D32" penwidth=2];
+    
+    // Phase 4
+    subgraph cluster_p4 {
+        label="Phase 4: Advanced Features\nWeek 7-8 · 高级功能";
+        style="rounded,filled";
+        fillcolor="#F3E5F5";
+        color="#6A1B9A";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        p4_1 [label="Scheduler\nCron Jobs\nRetry" fillcolor="#E1BEE7" fontsize=9];
+        p4_2 [label="Sub-Agent\nA2A Protocol\nOrchestrate" fillcolor="#E1BEE7" fontsize=9];
+        p4_3 [label="Quick Prompts\nCluster+PCA\nFinance Stats" fillcolor="#E1BEE7" fontsize=9];
+        p4_4 [label="Security Layer\nCircuit Breaker\nAPI Converter" fillcolor="#E1BEE7" fontsize=9];
+    }
+    
+    // Milestone 4
+    m4 [label="M4: KB Online\n✅ Search\n✅ Auto-Interpret\n✅ Aggregation" shape=box style="rounded,filled" fillcolor="#4CAF50" fontname="Helvetica" fontsize=9 color="#2E7D32" penwidth=2];
+    
+    // Phase 5
+    subgraph cluster_p5 {
+        label="Phase 5: Admin Dashboard\nWeek 9-10 · 管理后台";
+        style="rounded,filled";
+        fillcolor="#FFEBEE";
+        color="#C62828";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        p5_1 [label="Frontend\nNext.js\nUI Components" fillcolor="#FFCDD2" fontsize=9];
+        p5_2 [label="Dashboard\nAgent Stats\nBiz Stats" fillcolor="#FFCDD2" fontsize=9];
+        p5_3 [label="User/Perm\nRole Mgmt\nModel Config" fillcolor="#FFCDD2" fontsize=9];
+        p5_4 [label="Task/KB\nTask Cancel\nDoc Upload" fillcolor="#FFCDD2" fontsize=9];
+    }
+    
+    // Milestone 5
+    m5 [label="M5: Admin Ready\n✅ All Admin\n✅ Dashboard\n✅ Audit View" shape=box style="rounded,filled" fillcolor="#4CAF50" fontname="Helvetica" fontsize=9 color="#2E7D32" penwidth=2];
+    
+    // Phase 6
+    subgraph cluster_p6 {
+        label="Phase 6: Test & Optimize\nWeek 11-12 · 测试优化";
+        style="rounded,filled";
+        fillcolor="#ECEFF1";
+        color="#546E7A";
+        fontname="Helvetica";
+        fontsize=12;
+        penwidth=2;
+        
+        p6_1 [label="Unit Tests\n>70% Coverage\ngolangci-lint" fillcolor="#CFD8DC" fontsize=9];
+        p6_2 [label="Integration\nE2E Tests\nPlaywright" fillcolor="#CFD8DC" fontsize=9];
+        p6_3 [label="Performance\nLoad Testing\nOptimization" fillcolor="#CFD8DC" fontsize=9];
+        p6_4 [label="Security\nSAST Scan\nPenetration" fillcolor="#CFD8DC" fontsize=9];
+    }
+    
+    // Final Milestone
+    m6 [label="M6: Alpha Release\n✅ E2E Flows\n✅ Perf Pass\n✅ Alpha Deploy" shape=box style="rounded,filled" fillcolor="#1976D2" fontname="Helvetica" fontsize=10 color="#0D47A1" penwidth=3];
+    
+    // Phase connections
+    p1_4 -> p2_1 [style=invis];
+    
+    // Timeline annotation
+    subgraph cluster_timeline {
+        label="Timeline";
+        style=invis;
+        
+        t1 [label="W1-2" shape=plaintext fontname="Helvetica" fontsize=9];
+        t2 [label="W3-4" shape=plaintext fontname="Helvetica" fontsize=9];
+        t3 [label="W5-6" shape=plaintext fontname="Helvetica" fontsize=9];
+        t4 [label="W7-8" shape=plaintext fontname="Helvetica" fontsize=9];
+        t5 [label="W9-10" shape=plaintext fontname="Helvetica" fontsize=9];
+        t6 [label="W11-12" shape=plaintext fontname="Helvetica" fontsize=9];
+    }
+}

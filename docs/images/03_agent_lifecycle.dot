@@ -1,0 +1,56 @@
+digraph AgentLifecycle {
+    rankdir=LR;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.6;
+    ranksep=0.4;
+    
+    // States
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=11];
+    
+    created [label="Created\n创建任务" fillcolor="#E3F2FD" color="#1976D2" penwidth=2];
+    queued [label="Queued\n排队等待" fillcolor="#BBDEFB" color="#1976D2" penwidth=2];
+    running [label="Running\n执行中" fillcolor="#FFF3E0" color="#F57C00" penwidth=2];
+    completed [label="Completed\n已完成" fillcolor="#E8F5E9" color="#388E3C" penwidth=2];
+    failed [label="Failed\n失败" fillcolor="#FFEBEE" color="#D32F2F" penwidth=2];
+    cancelled [label="Cancelled\n已取消" fillcolor="#F3E5F5" color="#7B1FA2" penwidth=2];
+    
+    // Transitions
+    created -> queued [label=" Submit" color="#1976D2" penwidth=1.5 fontname="Helvetica" fontsize=10];
+    queued -> running [label=" Worker Pick" color="#1976D2" penwidth=1.5 fontname="Helvetica" fontsize=10];
+    running -> completed [label=" Success" color="#388E3C" penwidth=1.5 fontname="Helvetica" fontsize=10];
+    running -> failed [label=" Error" color="#D32F2F" penwidth=1.5 fontname="Helvetica" fontsize=10];
+    running -> cancelled [label=" User Cancel\n/Timeout" color="#7B1FA2" penwidth=1.5 fontname="Helvetica" fontsize=10];
+    queued -> cancelled [label=" Cancel" color="#7B1FA2" penwidth=1.5 fontname="Helvetica" fontsize=10 style=dashed];
+    failed -> queued [label=" Retry\n(max 3x)" color="#FF9800" penwidth=1.5 fontname="Helvetica" fontsize=10 style=dashed];
+    
+    // Side notes
+    subgraph cluster_running_detail {
+        label="执行中状态详情";
+        style="rounded,filled";
+        fillcolor="#FFF8E1";
+        color="#F57C00";
+        fontname="Helvetica";
+        fontsize=10;
+        penwidth=1;
+        
+        sub_steps [label="Step 1: 数据提取\nStep 2: 数据清洗\nStep 3: 分析计算\nStep 4: 结果解读\nStep 5: 保存通知" shape=note style=filled fillcolor="#FFF9C4" fontname="Helvetica" fontsize=9];
+    }
+    
+    running -> sub_steps [style=invis];
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Action Triggers";
+        style="rounded";
+        fillcolor="#FAFAFA";
+        color="#9E9E9E";
+        fontname="Helvetica";
+        fontsize=9;
+        
+        trig1 [label="User Action" shape=box style="filled" fillcolor="#E3F2FD" fontname="Helvetica" fontsize=8];
+        trig2 [label="System Auto" shape=box style="filled" fillcolor="#E8F5E9" fontname="Helvetica" fontsize=8];
+        trig3 [label="Error/Retry" shape=box style="filled" fillcolor="#FFEBEE" fontname="Helvetica" fontsize=8];
+    }
+}

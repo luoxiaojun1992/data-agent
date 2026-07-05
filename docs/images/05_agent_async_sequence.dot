@@ -1,0 +1,29 @@
+digraph AgentAsyncSeq {
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=14;
+    bgcolor="#FAFAFA";
+    nodesep=0.3;
+    ranksep=0.25;
+    
+    label="时序图: Agent 异步模式";
+    labelloc=t;
+    fontsize=16;
+    
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10];
+    
+    step1 [label="1. User POST /tasks {mode: async}" fillcolor="#E3F2FD"];
+    step2 [label="2. Gateway: JWT + RBAC + Security Filter" fillcolor="#BBDEFB"];
+    step3 [label="3. AgentService.CreateTask()\n保存任务 (MongoDB)\nXADD agent:tasks (入队)\n立即返回 task_id" fillcolor="#1B5E20" fontcolor="white"];
+    step4 [label="4. Redis Stream: agent:tasks\n任务在队列中等候消费" fillcolor="#D32F2F" fontcolor="white" shape=cylinder];
+    step5 [label="5. Worker Pool: XREADGROUP 消费\n识别为 agent 类型" fillcolor="#D84315" fontcolor="white"];
+    step6 [label="6. Worker 回调 Agent Service\nagentSvc.ExecuteTask()\n复用 Agent Engine + Skills" fillcolor="#FFF3E0"];
+    step7 [label="7. Agent Engine: ADK 推理\n+ Skills (SQL/Stats/KB)" fillcolor="#FFEBEE"];
+    step8 [label="8. 结果写入\nMongoDB + SeaweedFS (Artifacts)" fillcolor="#F3E5F5"];
+    step9 [label="9. 通知: Email + WebSocket Push" fillcolor="#FFE0B2"];
+    
+    step1 -> step2 -> step3 -> step4 -> step5 -> step6 -> step7 -> step8 -> step9;
+    
+    key [label="关键: 步骤3立即返回 task_id, 用户不阻塞\n步骤4-9在 Worker goroutine 中异步执行\n定时任务也共享同一条 agent:tasks 队列" shape=note fillcolor="#FFF9C4" fontsize=9];
+    step9 -> key [style=dashed color="#F9A825"];
+}
