@@ -1,6 +1,6 @@
 # 企业级数据分析 Agent 系统 — 技术 RFC
 
-> **版本**: v1.0 | **日期**: 2026-07-01 | **作者**: 罗晓军团队
+> **版本**: v1.1 | **日期**: 2026-07-06 | **作者**: 罗晓军团队
 >
 > 本文档为技术架构与实现方案，面向开发团队。
 
@@ -37,7 +37,7 @@
 
 ### 1.1 系统全景图
 
-![系统架构全景图](./images/diagrams/01_system_architecture.png)
+![系统架构全景图](./diagrams/01_system_architecture.png)
 
 系统采用**前后端分离的 B/S 架构**，后端使用 Go 语言，分为以下核心层：
 
@@ -90,7 +90,7 @@
 │  │  │ (Model Conf)│  │ Manager      │  │ Orchestrator     │  │  │
 │  │  └─────────────┘  └──────────────┘  └──────────────────┘  │  │
 │  │  ┌──────────────────────────────────────────────────────┐  │  │
-│  │  │            Security Audit Layer (Input/Output/Tool)   │  │  │
+│  │  │            Security Audit Layer (Input/Output/Tool + Context Window Mgmt)   │  │  │
 │  │  └──────────────────────────────────────────────────────┘  │  │
 │  └──────────────────────────┬──────────────────────────────────┘  │
 │                             │                                     │
@@ -119,14 +119,14 @@
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                    │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │  IM Gateway Service（独立服务 — Go，统一 IM 消息网关）          │  │
+│  │  IM 模块（internal/service/im/，集成在主二进制内）             │  │
 │  │  · 飞书 Webhook 接收（MVP）+ 签名验证 + 消息解密                │  │
 │  │  · 用户识别与绑定（IM open_id → 系统 user_id）                  │  │
-│  │  · 消息路由：IM 消息 → Agent Service Chat API                  │  │
+│  │  · 消息路由：IM 消息 → Agent Service Chat API（内部调用）        │  │
 │  │  · 结果格式化：Agent 响应 → 飞书卡片消息 JSON                   │  │
 │  │  · 快捷指令解析（/分析 /查询 /周报 /帮助）                       │  │
 │  │  · 异步任务通知（Agent 完成 → 飞书消息推送）                     │  │
-│  │  · 与 Agent Service 低耦合，独立部署、独立扩缩                   │  │
+│  │  · 集成在主二进制，共享 Agent Service 的 MongoDB/Redis 连接      │  │
 │  │  · V1.1 扩展：钉钉、企业微信消息网关适配器                        │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 └────────────────────────────┬────────────────────────────────────┘
@@ -156,9 +156,9 @@
 
 ### 1.2 核心数据流
 
-![数据流对比图](./images/diagrams/02_data_flow.png)
+![数据流对比图](./diagrams/02_data_flow.png)
 
-> **核心架构约定**: Agent Service 是系统的中央协调器，统一管理所有用户请求的 Session、模型调用和工具编排。前端用户无论通过 Chat 模式还是 Agent 模式，最终都调用 Agent Service。**Hermes Service 例外**：探索模式下，请求直接转发到 Hermes，不经过 Agent Service。**IM Gateway Service 的 Chat 消息也经过 Agent Service**，复用 Chat 模式的完整能力。
+> **核心架构约定**: Agent Service 是系统的中央协调器，统一管理所有用户请求的 Session、模型调用和工具编排。前端用户无论通过 Chat 模式还是 Agent 模式，最终都调用 Agent Service。**Hermes Service 例外**：探索模式下，请求直接转发到 Hermes，不经过 Agent Service。**IM 模块集成在主二进制内**，通过 `internal/service/im/` 封装飞书 Webhook 和消息路由，Chat 消息经 Agent Service 处理，复用 Chat 模式的完整能力。
 
 **Chat 模式数据流 (同步即时交互)**:
 ```
@@ -270,25 +270,25 @@ Scheduler (Cron 触发时刻) → 创建 ScheduledTask (MongoDB)
 
 ### 3.1 Chat 模式 (同步即时交互)
 
-![Chat时序图](./images/diagrams/03_chat_sequence.png)
+![Chat时序图](./diagrams/03_chat_sequence.png)
 
 **流程**: User 发送自然语言 → API Gateway JWT+Rate Limit → Security Input Filter → Agent Service 创建 Session → ADK Agent Engine 推理 → Agent 自主调用 Skills (SQL/Stats/KB) → Security Output Filter + Audit → SSE 流式返回
 
 ### 3.2 Agent 同步模式
 
-![Agent同步时序图](./images/diagrams/04_agent_sync_sequence.png)
+![Agent同步时序图](./diagrams/04_agent_sync_sequence.png)
 
 **流程**: User POST `/tasks {mode: sync}` → Gateway Auth → AgentService.CreateAndExecuteSync() → Agent Engine + Skills → 同步返回 Response。请求-响应模式，适用于中等复杂度的实时分析任务。
 
 ### 3.3 Agent 异步模式
 
-![Agent异步时序图](./images/diagrams/05_agent_async_sequence.png)
+![Agent异步时序图](./diagrams/05_agent_async_sequence.png)
 
 **流程**: User POST `/tasks {mode: async}` → AgentService 保存任务(MongoDB) + XADD agent:tasks → 立即返回 task_id。Worker 从队列消费 → 回调 Agent Service → Agent Engine + Skills → 结果落库 → Email+WS 通知。
 
 ### 3.4 定时任务模式 (Scheduled → Convert → Re-enqueue)
 
-![定时任务时序图](./images/diagrams/06_scheduled_sequence.png)
+![定时任务时序图](./diagrams/06_scheduled_sequence.png)
 
 **流程**: Cron 触发 → Scheduler 创建 ScheduledTask(MongoDB) + XADD agent:tasks {type:scheduled} → Worker Dequeue → **转换为 AgentTask** → XADD agent:tasks {type:agent} (重入队) → Worker 再次 Dequeue → 回调 Agent Service → 复用 Agent 异步管道完成执行和通知。
 
@@ -690,6 +690,53 @@ POST /api/v1/chat/message
   "created_by": "system"
 }
 ```
+### 4.2.1 上下文窗口管理
+
+LLM 上下文窗口有限（通常 128K tokens），多轮对话 + 知识库检索 + 长报告生成容易超出限制。采用以下三层策略：
+
+**1. 对话摘要压缩**
+```go
+// 当消息历史超过阈值时，自动生成摘要替代早期消息
+type ContextCompressor struct {
+    MaxHistoryTokens int // 默认 64K tokens 用于历史消息
+    SummaryModel     string // 用于生成摘要的轻量模型
+}
+
+func (c *ContextCompressor) Compress(messages []Message) ([]Message, error) {
+    tokens := c.countTokens(messages)
+    if tokens <= c.MaxHistoryTokens {
+        return messages, nil // 无需压缩
+    }
+    // 保留最近 4 轮对话原文，更早的消息压缩为摘要
+    recent := messages[len(messages)-4:]
+    older := messages[:len(messages)-4]
+    summary := c.llm.Summarize(older) // 生成 200-500 字摘要
+    return append([]Message{{Role: "system", Content: summary}}, recent...), nil
+}
+```
+
+**2. 知识库结果截断**
+- 向量搜索结果按相似度排序，取 top-5 条
+- 每条 chunk 截断至 800 tokens
+- 5 × 800 = 4000 tokens 上限
+
+**3. 长报告分段生成合并**
+```go
+// 报告预计长度超过阈值时，分段生成后合并
+func (c *ReportBuilder) BuildLongReport(prompt string, estimatedTokens int) (string, error) {
+    if estimatedTokens <= c.MaxOutputTokens {
+        return c.llm.Generate(prompt) // 单次生成
+    }
+    // 分段生成
+    sections := c.splitPromptBySections(prompt)
+    var parts []string
+    for _, section := range sections {
+        part := c.llm.Generate(section)
+        parts = append(parts, part)
+    }
+    return strings.Join(parts, "\n\n"), nil
+}
+```
 
 ### 4.3 Agent 服务 — Agent 模式（批量任务）
 
@@ -1069,43 +1116,50 @@ Agent decides to save report → calls save_analysis_report
     {
       "name": "has_summary",
       "type": "section_required",
-      "patterns": ["## 摘要", "## 执行摘要"],
-      "match_mode": "regex",
+      "match_mode": "md_ast",
+      "sections": ["摘要", "执行摘要"],
+      "min_level": 2,
       "feedback": "请补充「摘要」章节，概述本次分析的核心发现"
     },
     {
       "name": "has_data_source",
       "type": "section_required",
-      "patterns": ["## 数据来源", "## 数据说明"],
-      "match_mode": "regex",
+      "match_mode": "md_ast",
+      "sections": ["数据来源", "数据说明"],
+      "min_level": 2,
       "feedback": "请补充「数据来源」章节，说明分析所使用的数据范围和时间"
     },
     {
       "name": "has_methodology",
       "type": "section_required",
-      "patterns": ["## 分析方法", "分析方法"],
-      "match_mode": "regex",
+      "match_mode": "md_ast",
+      "sections": ["分析方法"],
+      "min_level": 2,
       "feedback": "请补充「分析方法」章节，说明采用的统计方法及其选择理由"
     },
     {
       "name": "has_key_metrics",
       "type": "section_required",
-      "patterns": ["## 关键指标", "## 核心指标"],
-      "match_mode": "regex",
+      "match_mode": "md_ast",
+      "sections": ["关键指标", "核心指标"],
+      "min_level": 2,
       "feedback": "请补充「关键指标」章节，列出核心财务指标及其变化"
     },
     {
       "name": "has_comparison",
       "type": "element_required",
-      "patterns": ["同比|环比|对比|较上"],
-      "match_mode": "regex",
+      "match_mode": "md_ast",
+      "sections": [],        
+      "min_level": 0,
+      "keywords": ["同比", "环比", "对比", "较上"],
       "feedback": "请补充同比/环比对比数据，说明各项指标的变化趋势"
     },
     {
       "name": "has_conclusion",
       "type": "section_required",
-      "patterns": ["## 结论", "## 总结", "## 建议"],
-      "match_mode": "regex",
+      "match_mode": "md_ast",
+      "sections": ["结论", "总结", "建议"],
+      "min_level": 2,
       "feedback": "请补充「结论与建议」章节，给出分析结论和可操作的建议"
     },
     {
@@ -3011,7 +3065,7 @@ if cfg.LogSamplingInitial > 0 {
 │  Request Flow:                                           │
 │  ┌──────────┐    ┌───────────────┐    ┌──────────────┐  │
 │  │ Input    │───▶│ Rule Engine   │───▶│ Pass / Block │  │
-│  │ (User    │    │ · Regex       │    │              │  │
+│  │ (User    │    │ · MD AST      │    │              │  │
 │  │  Query)  │    │ · Keyword     │    │ Block →      │  │
 │  │          │    │ · Intent      │    │ Alert +      │  │
 │  └──────────┘    └───────────────┘    │ Audit Log    │  │
@@ -3965,27 +4019,139 @@ func (s *KnowledgeService) Search(query string, userID string, opts SearchOption
 }
 ```
 
-### 12.3 审计日志自动清理
+### 12.3 日志类数据表 TTL 自动过期
+
+所有日志类 Collection 使用 MongoDB TTL 索引自动过期，无需手动清理任务：
 
 ```go
-// MongoDB TTL Index
+// 审计日志 — 90 天
 db.audit_logs.createIndex(
-    { "timestamp": 1 },
-    { expireAfterSeconds: 7776000 }  // 90 天
+    { "created_at": 1 },
+    { expireAfterSeconds: 7776000, name: "ttl_created_at" }
 )
 
-// 定期清理任务
-func (a *AuditService) CleanupWorker() {
-    ticker := time.NewTicker(1 * time.Hour)
-    for range ticker.C {
-        cutoff := time.Now().AddDate(0, 0, -a.config.RetentionDays)
-        result := a.mongo.DeleteMany("audit_logs", bson.M{
-            "timestamp": bson.M{"$lt": cutoff},
-        })
-        log.Infof("Audit cleanup: deleted %d expired logs", result.DeletedCount)
+// 会话记录 — 30 天（已过期/已完成的会话）
+db.sessions.createIndex(
+    { "expires_at": 1 },
+    { expireAfterSeconds: 0, name: "ttl_expires_at" }
+)
+
+// 请求日志 — 30 天
+db.request_logs.createIndex(
+    { "created_at": 1 },
+    { expireAfterSeconds: 2592000, name: "ttl_created_at" }
+)
+
+// 通知记录 — 7 天
+db.notifications.createIndex(
+    { "created_at": 1 },
+    { expireAfterSeconds: 604800, name: "ttl_created_at" }
+)
+
+// Token 消耗日志 — 90 天（长期统计从 Redis Stats 聚合）
+db.token_consumptions.createIndex(
+    { "created_at": 1 },
+    { expireAfterSeconds: 7776000, name: "ttl_created_at" }
+)
+```
+
+> **TTL 策略**: MongoDB TTL 索引在后台每 60 秒扫描一次，过期文档自动删除。不需要额外的定时清理 Worker。部分查询依赖 `created_at` 的集合需额外创建非 TTL 的查询索引。
+
+---
+
+## 13. 统计监控 (Redis Stats Counter)
+
+### 13.1 设计原则
+
+统计指标使用 Redis 作为实时计数器（必须开启 AOF + RDB 持久化），Scheduler 定时任务直接写入 Redis，不经过消息队列，仅记录日志。提供 Dashboard API 聚合查询。
+
+### 13.2 统计指标
+
+| 指标 | Redis Key | 说明 |
+|------|-----------|------|
+| Agent 调用次数 | `stats:agent_calls:{date}` | 按日聚合，区分 sync/async |
+| 模型调用次数 | `stats:model_calls:{date}:{model_name}` | 按模型+日期聚合 |
+| Session 创建次数 | `stats:sessions:{date}` | 按日聚合，区分 chat/agent |
+| Task 创建次数 | `stats:tasks:{date}` | 按日聚合，区分 sync/async/scheduled |
+| Token 消耗量 | `stats:tokens:{date}:{model_name}` | 按模型+日期聚合 input/output token |
+| AI 总成本 | `stats:cost:{date}` | 按日聚合，单位分（cents） |
+
+### 13.3 Redis 写入策略
+
+```go
+// Scheduler 定时任务（每 5 分钟），直接写入 Redis
+func (s *StatsCollector) Collect(ctx context.Context) error {
+    today := time.Now().Format("2006-01-02")
+
+    // 原子递增 Redis 计数器
+    pipe := s.redis.Pipeline()
+
+    // Agent 调用次数
+    pipe.IncrBy(ctx, fmt.Sprintf("stats:agent_calls:%s", today), s.agentCallCount())
+    pipe.IncrBy(ctx, fmt.Sprintf("stats:agent_calls:%s:sync", today), s.agentSyncCount())
+    pipe.IncrBy(ctx, fmt.Sprintf("stats:agent_calls:%s:async", today), s.agentAsyncCount())
+
+    // Session/Task
+    pipe.IncrBy(ctx, fmt.Sprintf("stats:sessions:%s", today), s.sessionCount())
+    pipe.IncrBy(ctx, fmt.Sprintf("stats:tasks:%s", today), s.taskCount())
+
+    // Token 消耗（按模型拆分）
+    for model, tokens := range s.tokenUsage() {
+        pipe.IncrBy(ctx, fmt.Sprintf("stats:tokens:%s:%s:input", today, model), tokens.Input)
+        pipe.IncrBy(ctx, fmt.Sprintf("stats:tokens:%s:%s:output", today, model), tokens.Output)
+        pipe.IncrByFloat(ctx, fmt.Sprintf("stats:cost:%s", today), tokens.CostCents)
     }
+
+    _, err := pipe.Exec(ctx)
+    return err
 }
 ```
+
+### 13.4 投入产出比 (ROI) 计算
+
+```go
+// ROI = 等效节省人时 / AI 总成本
+// 等效节省人时 = Agent调用次数 × 平均单次节省时间(30min) / 60
+// AI 总成本 = sum(stats:cost:{date}) / 100 → 元
+
+func (s *StatsCollector) CalcROI(ctx context.Context, days int) (*ROIResult, error) {
+    // 从 Redis 读取近 N 天的聚合数据
+    dates := s.lastNDates(days)
+
+    var totalCalls int64
+    var totalCost float64
+
+    for _, date := range dates {
+        calls, _ := s.redis.Get(ctx, fmt.Sprintf("stats:agent_calls:%s", date)).Int64()
+        cost, _ := s.redis.Get(ctx, fmt.Sprintf("stats:cost:%s", date)).Float64()
+        totalCalls += calls
+        totalCost += cost
+    }
+
+    savedHours := float64(totalCalls) * 0.5 // 每次节省 30 分钟
+    totalCostYuan := totalCost / 100          // 分 → 元
+
+    return &ROIResult{
+        TotalCalls:    totalCalls,
+        SavedHours:    savedHours,
+        TotalCostYuan: totalCostYuan,
+        ROI:           savedHours / totalCostYuan * 100, // 百分比
+    }, nil
+}
+```
+
+### 13.5 Redis 持久化配置
+
+```
+# redis.conf — 必须同时开启 AOF + RDB
+save 900 1
+save 300 10
+save 60 10000
+appendonly yes
+appendfsync everysec
+```
+
+> **数据可靠性**: AOF + RDB 双持久化确保统计数据不会因 Redis 重启丢失。Scheduler 写入采用 Pipeline 批量操作，5 分钟窗口内的少量数据丢失可接受。
 
 ---
 
@@ -4285,15 +4451,15 @@ HERMES_LLM_MODEL=gpt-4o
 
 ---
 
-## 17.8 IM 集成架构 (IM Gateway Service)
+## 17.8 IM 集成架构 (IM 模块，集成在主二进制)
 
 ### 17.8.1 设计目标
 
-IM Gateway Service 是 Data Agent 系统中的一个**轻量独立服务**，负责统一管理企业 IM 平台的消息收发。遵循以下原则：
+IM 模块集成在 Data Agent 主二进制中（`internal/service/im/`），负责统一管理企业 IM 平台的消息收发。遵循以下原则：
 
-- **接口隔离**: IM Gateway 与 Agent Service 完全独立，通过 HTTP API 交互
+- **集成部署**: IM 模块与 Agent Service 在同一进程中运行，通过内部调用通信，不单独部署
 - **平台适配**: 每个 IM 平台（飞书/钉钉/企微）有独立的适配器，共享消息路由和用户绑定逻辑
-- **消息路由**: IM 消息 → Agent Service Chat API → IM 返回（复用现有 Chat 能力）
+- **消息路由**: IM 消息 → Agent Service Chat API（内部调用）→ IM 返回（复用现有 Chat 能力）
 - **MVP 策略**: 优先实现飞书适配器，架构预留钉钉/企微扩展点
 
 ### 17.8.2 飞书集成流程
@@ -4302,7 +4468,7 @@ IM Gateway Service 是 Data Agent 系统中的一个**轻量独立服务**，负
 用户在飞书@机器人/私聊
        │
        ▼
-飞书开放平台 ── Webhook POST ──→ IM Gateway Service
+飞书开放平台 ── Webhook POST ──→ IM 模块 (主二进制内)
        │                              │
        │                         ┌────┴────┐
        │                         │ 签名验证  │
@@ -4330,12 +4496,12 @@ IM Gateway Service 是 Data Agent 系统中的一个**轻量独立服务**，负
        │                    ┌────────┴────────┐
        │                    │ Agent Service    │
        │                    │ Chat API         │
-       │                    │ (POST /api/v1/   │
-       │                    │  chat/message)   │
+       │                    │ (内部调用)         │   │
+       │                    │                    ││
        │                    └────────┬────────┘
        │                             │
        │                    ┌────────┴────────┐
-       │                    │ IM Gateway       │
+       │                    │ IM 模块           │
        │                    │ 结果格式化        │
        │                    │ → 飞书卡片 JSON  │
        │                    └────────┬────────┘
@@ -4397,12 +4563,12 @@ func BuildAnalysisResultCard(result *chat.ChatResult) *lark.MsgContent {
 }
 ```
 
-### 17.8.4 IM Gateway 模块结构
+### 17.8.4 IM 模块结构
 
 ```
-internal/im/
-├── gateway.go           # IM Gateway 主入口（HTTP 路由注册）
-├── router.go            # 消息路由器（平台适配 → Agent Service）
+internal/service/im/
+├── gateway.go           # IM 模块主入口（HTTP 路由注册，集成在主二进制）
+├── router.go            # 消息路由器（平台适配 → Agent Service 内部调用）
 ├── binding.go           # 用户绑定管理（CRUD + 缓存）
 ├── command.go           # 快捷指令解析
 ├── formatter.go         # 消息格式化（Agent 响应 → IM 消息格式）
@@ -4425,7 +4591,7 @@ internal/im/
 **平台适配器接口**:
 
 ```go
-// internal/im/gateway.go
+// internal/service/im/gateway.go
 
 // PlatformAdapter 定义 IM 平台适配器接口
 type PlatformAdapter interface {
@@ -4517,7 +4683,7 @@ func (a *FeishuAdapter) SendCard(ctx context.Context, openID string, card *CardD
 用户 @机器人 或 私聊任意消息
   │
   ▼
-IM Gateway 查询 im_bindings
+IM 模块查询 im_bindings
   │
   ├─ 已绑定 → 识别 user_id → 正常处理消息
   │
@@ -4563,72 +4729,39 @@ type BindToken struct {
 | `/周报` | 生成本周经营周报 | → Agent Service Chat API (预设 prompt) |
 | `/帮助` | 查看可用指令和说明 | → 本地静态回复 |
 
-### 17.8.8 Docker Compose 集成
+### 17.8.8 集成说明
+
+IM 模块（`internal/service/im/`）编译在主二进制内，无需独立 Docker Compose 容器。飞书 Webhook 端口复用主服务的 HTTP Server（通过 `GET/POST /api/v1/im/feishu/*` 路由注册）。
+
+主服务 `docker-compose.yml` 中只需增加飞书环境变量：
 
 ```yaml
-# docker-compose.yml 新增
-
-services:
-  # IM Gateway Service
-  im-gateway:
-    build:
-      context: ./im-gateway
-      dockerfile: Dockerfile
-    container_name: im-gateway
-    ports:
-      - "${IM_GATEWAY_PORT:-8089}:8089"
-    environment:
-      # 飞书配置
-      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
-      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
-      FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
-      FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
-      FEISHU_EVENT_PORT: "8089"
-      # Agent Service
-      AGENT_SERVICE_URL: http://agent-service:8080
-      # MongoDB
-      MONGO_URI: mongodb://mongodb:27017
-      MONGO_DB: dataagent
-      # Redis（缓存用户绑定）
-      REDIS_URI: redis://redis:6379
-      LOG_LEVEL: info
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      agent-service:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8089/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+# docker-compose.yml agent-service 内新增
+environment:
+  FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+  FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+  FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
+  FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
 ```
 
 ### 17.8.9 环境变量
 
 ```bash
-# .env 新增
-
-# IM Gateway — 飞书
-IM_GATEWAY_PORT=8089
+# 飞书配置（主服务 .env 新增）
 FEISHU_APP_ID=cli_xxxxxxxxxxxx
 FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxx
 FEISHU_VERIFICATION_TOKEN=xxxxxxxxxxxxxxxxxxxx
 FEISHU_ENCRYPT_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Agent Service（IM Gateway 依赖）
-AGENT_SERVICE_URL=http://agent-service:8080
 ```
 
 ### 17.8.10 关键约束
 
-1. **消息转发不变形**: IM Gateway 不修改用户消息内容，仅做 @机器人 前缀去除和平台差异处理。
+1. **消息转发不变形**: IM 模块不修改用户消息内容，仅做 @机器人 前缀去除和平台差异处理。
 2. **用户绑定必做**: 未绑定用户的所有消息返回绑定引导，不进入 Agent 处理流程。
 3. **审计日志记录**: 所有 IM 消息（入/出）记录审计日志，`source: "feishu_bot"`，包含 open_id、user_id、消息内容摘要。
 4. **复用 Chat 模式**: IM 渠道复用现有 Agent Service Chat API，不创建独立的推理管道。
 5. **平台适配器模式**: 每个 IM 平台实现 `PlatformAdapter` 接口，核心路由逻辑不变。
-6. **无状态设计**: IM Gateway 本身无状态，会话上下文由 Agent Service 管理。
+6. **集成部署**: IM 模块与主服务编译在同一二进制，共享 MongoDB/Redis 连接池，IM 会话上下文由 Agent Service 统一管理。
 
 ### 17.8.11 V1.1 扩展规划
 
@@ -5802,7 +5935,7 @@ docker compose -f docker-compose.test.yml down -v
 | Phase 6 | ~56h | 测试 + 优化 + 发布 |
 | **总计** | **~342h** | 3 人团队约 12 周 |
 
-![开发路线图](./images/diagrams/06_development_roadmap.png)
+![开发路线图](./diagrams/06_development_roadmap.png)
 
 ---
 

@@ -1,6 +1,6 @@
 # 企业级数据分析 Agent — MVP 开发计划
 
-> **版本**: v2.0 | **日期**: 2026-07-01
+> **版本**: v2.1 | **日期**: 2026-07-06
 >
 > 本文档为纯项目执行跟踪，包含任务分解、工时估算和依赖关系。
 > 产品需求见 PRD，技术方案见 RFC。
@@ -39,7 +39,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | **M5** | Week 10 | 管理后台完整 |
 | **M6** | Week 12 | Alpha Release |
 
-![开发路线图](./images/diagrams/06_development_roadmap.png)
+![开发路线图](./diagrams/06_development_roadmap.png)
 
 ---
 
@@ -97,6 +97,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | P2-11 | 快捷提示词 CRUD + 按角色展示 | 3h | P1-05 |
 | P2-11a | Prompt Enhancement Service（无状态，进度圈→LLM→填充输入框） | 3h | P2-01 |
 | P2-11b | Vault Service（AES-256-GCM 加密 + 密钥轮转） | 4h | P1-01 |
+| P2-11c | 上下文窗口管理策略（对话摘要压缩 + KB 结果截断 + 长报告分段生成合并） | 3h | P2-01 |
 | P2-12 | Agent Task Queue（Redis Stream） | 4h | P1-06 |
 | P2-13 | Agent Worker Pool（并发消费任务） | 6h | P2-11 |
 | P2-14 | 任务取消机制（Context Cancel） | 3h | P2-12 |
@@ -155,23 +156,29 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | P4-10 | Security Audit Layer 完整实现 | 6h | P1-13 |
 | P4-11 | 熔断器 Circuit Breaker | 3h | P4-10 |
 | P4-12 | OpenAPI → MCP 转换器 | 8h | P2-03 |
-| P4-13 | 审计日志自动清理（TTL Index） | 2h | P1-12 |
+| P4-13 | 日志类数据表 TTL 自动过期（MongoDB `expireAfterSeconds`，覆盖审计日志/会话记录/请求日志/通知记录） | 2h | P1-12 |
 | P4-14 | 用户/Agent 审计日志完善（IP、Skill 调用） | 4h | P1-12 |
-| P4-15 | 报告格式校验（规则引擎 + Agent 修正循环） | 6h | P1-05 |
+| P4-15 | 报告格式校验（Markdown AST 结构化校验：标题层级、章节存在性 + Agent 修正循环） | 6h | P1-05 |
 
 ### Week 8 附加: IM 集成 — 飞书机器人 (MVP)
 
 | ID | 任务 | 工时 | 依赖 |
 |----|------|:---:|------|
 | P4-16 | 飞书开放平台应用创建与配置（AppID/Secret/事件订阅/权限） | 2h | - |
-| P4-17 | IM Gateway Service (Go) — 消息接收 Webhook + 签名验证 | 3h | P4-16 |
-| P4-18 | go-lark SDK 集成 — 消息收发（文本 + 卡片消息） | 3h | P4-16 |
-| P4-19 | 用户绑定模块（飞书 open_id ↔ 系统 user_id，MongoDB `im_bindings` 集合） | 3h | P1-05, P4-17 |
-| P4-20 | 消息路由（IM 消息 → Agent Service Chat API，复用现有 Chat 模式） | 3h | P2-10, P4-17 |
-| P4-21 | 分析结果卡片格式化（表格 + 关键指标 + 图表链接，飞书卡片 JSON 模板） | 4h | P4-18, P4-20 |
+| P4-17 | IM 模块（internal/service/im/）— 集成在主二进制，Webhook + 签名验证 + go-lark SDK 消息收发 | 3h | P4-16 |
+| P4-18 | 用户绑定模块（飞书 open_id ↔ 系统 user_id，MongoDB `im_bindings` 集合） | 3h | P1-05, P4-17 |
+| P4-20 | 消息路由（IM 消息 → Agent Service Chat API，复用现有 Chat 模式，内部调用） | 3h | P2-10, P4-17 |
+| P4-21 | 分析结果卡片格式化（表格 + 关键指标 + 图表链接，飞书卡片 JSON 模板） | 4h | P4-17, P4-20 |
 | P4-22 | 快捷指令支持（/分析 /查询 /周报 /帮助） | 2h | P4-20 |
-| P4-23 | Agent 异步任务完成 → 飞书消息通知 | 2h | P2-16, P4-18 |
-| P4-24 | Docker Compose 集成（im-gateway 容器 + 健康检查） | 2h | P4-17 |
+| P4-23 | Agent 异步任务完成 → 飞书消息通知 | 2h | P2-16, P4-17 |
+| P4-24 | IM 模块集成测试（主二进制内 Webhook 端到端验证） | 1h | P4-17 |
+
+### Week 8 附加: 统计监控与 ROI
+
+| ID | 任务 | 工时 | 依赖 |
+|----|------|:---:|------|
+| P4-25 | Redis Stats 计数器（Scheduler 定时直接写入 Redis，记录日志不经过队列；指标：Agent调用次数/模型调用次数/Session次数/Task次数/Token消耗量；Redis 必须开启 AOF+RDB 持久化） | 4h | P4-01, P1-06 |
+| P4-26 | Dashboard ROI 计算模块（投入产出比 = 等效节省人时 / AI 总成本，从 Redis Stats 聚合计算） | 2h | P4-25, P5-04 |
 
 ---
 
@@ -264,9 +271,9 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | Phase | 预估工时 |
 |-------|:-------:|
 | Phase 1 | ~45h |
-| Phase 2 | ~73h |
+| Phase 2 | ~76h |
 | Phase 3 | ~55h |
-| Phase 4 | ~85h |
+| Phase 4 | ~90h |
 | Phase 5 | ~64h |
 | Phase 6 | ~56h |
-| **总计** | **~378h** |
+| **总计** | **~386h** |

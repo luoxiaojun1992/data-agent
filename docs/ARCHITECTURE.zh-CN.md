@@ -40,11 +40,11 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 | 服务 | 描述 |
 |---------|-------------|
 | `agent-service` | 中央协调器：Chat 同步、Agent 同步/异步、Session 管理 |
-| `agent-engine` | 基于 ADK 的 Agent 引擎：LLM 路由、工具调用、安全审计 |
+| `agent-engine` | 基于 ADK 的 Agent 引擎：LLM 路由、工具调用、安全审计、上下文窗口管理 |
 | `worker-pool` | Goroutine 池，消费 Redis Stream 中的异步任务 |
-| `scheduler` | 基于 Cron 的定时任务触发器（写入 Redis Stream） |
-| `admin-service` | 管理后台 API（用户、角色、模型、任务、审计） |
-| `im-gateway` | 飞书机器人集成（Webhook + 消息路由） |
+| `scheduler` | 基于 Cron 的定时任务触发器（写入 Redis Stream）+ Stats 统计收集 |
+| `admin-service` | 管理后台 API（用户、角色、模型、任务、审计、Dashboard ROI） |
+| `im-module` | 飞书机器人集成（集成在主二进制，internal/service/im/，Webhook + 消息路由） |
 | `hermes-service` | 独立转发层，用于自由探索模式 |
 
 ## 数据存储
@@ -65,6 +65,11 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 3. **Redis Stream 做异步队列**: 轻量级消息队列，无需额外中间件（不引入 RabbitMQ/Kafka）。
 4. **LLM 智能分片**: 使用主 LLM 判断语义段落边界，不引入专用 embedding 模型。
 5. **SQL AST 安全校验**: 通过 `pingcap/tidb/parser` 在语法层面拦截写入操作，不依赖 LLM prompt 约束。
+6. **上下文窗口管理**: 三层策略——对话摘要压缩 + 知识库结果截断 (top-5, 800 tokens/条) + 长报告分段生成合并。
+7. **Markdown AST 报告校验**: 通过 Markdown AST 解析提取标题层级校验章节完整性，替代正则匹配方式。
+8. **Redis Stats 统计**: Scheduler 定时直接写入 Redis（AOF+RDB 持久化），记录 Agent/模型/Session/Task/Token 指标，Dashboard 实时聚合计算 ROI。
+9. **MongoDB TTL 自动清理**: 日志类集合（审计日志/请求日志/通知/Token消耗）使用 TTL 索引自动过期，无需手动清理 Worker。
+10. **IM 模块集成部署**: 飞书 Bot 集成在主二进制（`internal/service/im/`），复用 Agent Service 连接池，无独立容器。
 
 ## 目录结构
 
