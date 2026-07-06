@@ -249,6 +249,7 @@ Scheduler (Cron 触发时刻) → 创建 ScheduledTask (MongoDB)
 | 邮件发送 | `gomail` / `go-mail` | SMTP 邮件 |
 | 统计计算 | `gonum` | Go 原生统计和数值计算库 |
 | 飞书 SDK | `go-lark/lark` | Go 飞书开放平台 SDK，支持消息收发和事件订阅 |
+| Token 计数 | `pkoukk/tiktoken-go` | OpenAI 兼容 token 计数（MIT），用于上下文窗口压缩阈值判断 |
 | 结构化日志 | `uber-go/zap` | 高性能结构化日志，支持 Debug/Info/Warn/Error 级别 |
 | Mock LLM 存储 | 内嵌 Redis List（无额外依赖）| Mock Service 的 per-key 队列存储（复用现有 Redis 实例）|
 
@@ -692,32 +693,48 @@ POST /api/v1/chat/message
 ```
 ### 4.2.1 上下文窗口管理
 
-LLM 上下文窗口有限（通常 128K tokens），多轮对话 + 知识库检索 + 长报告生成容易超出限制。采用以下三层策略：
+LLM 上下文窗口有限（通常 128K tokens），多轮对话 + 知识库检索 + 长报告生成容易超出限制。采用 **tiktoken-go + LLM 摘要** 三层策略，无需引入额外 Python 服务。
 
-**1. 对话摘要压缩**
+**1. 对话摘要压缩（tiktoken-go 计数 + 轻量模型摘要）**
+
 ```go
-// 当消息历史超过阈值时，自动生成摘要替代早期消息
+import "github.com/pkoukk/tiktoken-go"
+
 type ContextCompressor struct {
-    MaxHistoryTokens int // 默认 64K tokens 用于历史消息
-    SummaryModel     string // 用于生成摘要的轻量模型
+    MaxHistoryTokens int    // 默认 48K tokens 用于历史消息
+    SummaryModel     string // GPT-4o-mini / Claude 3.5 Haiku
+    tke              *tiktoken.Tiktoken
 }
 
-func (c *ContextCompressor) Compress(messages []Message) ([]Message, error) {
-    tokens := c.countTokens(messages)
+func (c *ContextCompressor) Compress(messages []Message, model string) ([]Message, error) {
+    // 用 tiktoken-go 精确计算 token 数
+    tokens := 0
+    for _, msg := range messages {
+        tokens += len(c.tke.Encode(msg.Content, nil, nil))
+    }
     if tokens <= c.MaxHistoryTokens {
         return messages, nil // 无需压缩
     }
-    // 保留最近 4 轮对话原文，更早的消息压缩为摘要
+    // 保留最近 4 轮对话原文（约 2K-4K tokens）
     recent := messages[len(messages)-4:]
     older := messages[:len(messages)-4]
-    summary := c.llm.Summarize(older) // 生成 200-500 字摘要
-    return append([]Message{{Role: "system", Content: summary}}, recent...), nil
+
+    // 轻量模型生成 200-500 字摘要（~100 tokens，成本约 ¥0.001/次）
+    summary := c.llmRouter.Chat(ctx, &ChatRequest{
+        Model:    c.SummaryModel,
+        Messages: append(older, Message{Role: "user", Content: "请用200字以内总结以上对话的关键信息和结论"}),
+    })
+
+    // 摘要作为 system message 前置，原文消息丢弃
+    return append([]Message{{Role: "system", Content: "历史对话摘要:\n" + summary}}, recent...), nil
 }
 ```
 
+> **依赖**: `github.com/pkoukk/tiktoken-go` (MIT 许可证，Go 原生，编译进主二进制)。不引入 Python 服务、额外容器或专用压缩模型。
+
 **2. 知识库结果截断**
 - 向量搜索结果按相似度排序，取 top-5 条
-- 每条 chunk 截断至 800 tokens
+- 每条 chunk 截断至 800 tokens（用 tiktoken-go 精确计算）
 - 5 × 800 = 4000 tokens 上限
 
 **3. 长报告分段生成合并**

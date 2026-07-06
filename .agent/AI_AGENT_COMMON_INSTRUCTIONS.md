@@ -21,6 +21,7 @@ DataAgent 是一个企业级智能数据分析平台，基于 Go 语言构建。
 | 记忆系统 | Mem0 | latest |
 | 前端 | React / Next.js | 18 / 14 |
 | 飞书 SDK | go-lark/lark | latest |
+| Token 计数 | pkoukk/tiktoken-go | latest |
 | 结构化日志 | uber-go/zap | latest |
 | SQL AST 解析 | pingcap/tidb/parser | latest |
 | 统计计算 | gonum | latest |

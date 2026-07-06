@@ -65,7 +65,7 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 3. **Redis Stream 做异步队列**: 轻量级消息队列，无需额外中间件（不引入 RabbitMQ/Kafka）。
 4. **LLM 智能分片**: 使用主 LLM 判断语义段落边界，不引入专用 embedding 模型。
 5. **SQL AST 安全校验**: 通过 `pingcap/tidb/parser` 在语法层面拦截写入操作，不依赖 LLM prompt 约束。
-6. **上下文窗口管理**: 三层策略——对话摘要压缩 + 知识库结果截断 (top-5, 800 tokens/条) + 长报告分段生成合并。
+6. **上下文窗口管理**: tiktoken-go (MIT) token 计数 + LLM 摘要压缩，保留最近 4 轮原文，旧消息压缩为摘要（~100 tokens/次，成本 ¥0.001）。不引入 Python 服务或专用压缩模型。
 7. **Markdown AST 报告校验**: 通过 Markdown AST 解析提取标题层级校验章节完整性，替代正则匹配方式。
 8. **Redis Stats 统计**: Scheduler 定时直接写入 Redis（AOF+RDB 持久化），记录 Agent/模型/Session/Task/Token 指标，Dashboard 实时聚合计算 ROI。
 9. **MongoDB TTL 自动清理**: 日志类集合（审计日志/请求日志/通知/Token消耗）使用 TTL 索引自动过期，无需手动清理 Worker。

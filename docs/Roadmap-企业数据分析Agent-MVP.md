@@ -97,7 +97,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | P2-11 | 快捷提示词 CRUD + 按角色展示 | 3h | P1-05 |
 | P2-11a | Prompt Enhancement Service（无状态，进度圈→LLM→填充输入框） | 3h | P2-01 |
 | P2-11b | Vault Service（AES-256-GCM 加密 + 密钥轮转） | 4h | P1-01 |
-| P2-11c | 上下文窗口管理策略（对话摘要压缩 + KB 结果截断 + 长报告分段生成合并） | 3h | P2-01 |
+| P2-11c | 上下文窗口管理（tiktoken-go token 计数 + LLM 摘要压缩 + KB 结果截断 + 长报告分段生成合并） | 3h | P2-01 |
 | P2-12 | Agent Task Queue（Redis Stream） | 4h | P1-06 |
 | P2-13 | Agent Worker Pool（并发消费任务） | 6h | P2-11 |
 | P2-14 | 任务取消机制（Context Cancel） | 3h | P2-12 |
