@@ -70,11 +70,15 @@ data-agent/
 │   ├── worker/           # 异步任务 Worker Pool
 │   ├── infra/            # 基础设施（MongoDB/Milvus/Redis/SeaweedFS）
 │   └── config/           # 配置管理
-├── skills/               # Skill 定义（SQL/统计/邮件/知识库）
+├── skills/               # Skill 定义（SQL/统计/邮件/知识库/工作区）
 ├── frontend/             # React/Next.js 前端
+├── tests/ui/             # Playwright E2E 测试
 ├── configs/              # 配置文件
 ├── docs/                 # 公开文档
 ├── .agent/               # AI Agent 指令（SSOT）
+│   ├── specs/            # 设计规格（13 个 spec）
+│   ├── skills/           # AI Agent 技能（9 个 skill）
+│   └── memory/           # Agent 记忆文件
 ├── docker-compose.yml
 └── Makefile
 ```
@@ -84,12 +88,18 @@ data-agent/
 | 规格编号 | 功能 | 状态 |
 |------|---------|--------|
 | SPEC-001 | 项目初始化与文档架构 | ✅ 已实现 |
-| SPEC-002 | Phase 1: 基础设施与中间件 | 🚧 设计中 |
-| SPEC-003 | Phase 2: 核心服务（Agent Engine + Chat） | 📋 待开始 |
-| SPEC-004 | Phase 3: 知识库与解读 | 📋 待开始 |
-| SPEC-005 | Phase 4: 高级功能 + 飞书 IM | 📋 待开始 |
-| SPEC-006 | Phase 5: 管理后台 | 📋 待开始 |
-| SPEC-007 | Phase 6: 测试与 Alpha 发布 | 📋 待开始 |
+| SPEC-002 | CI/CD 环境与工具链 | 🚧 设计中 |
+| SPEC-003 | Phase 1 — 基础设施与认证 | 🚧 设计中 |
+| SPEC-004 | Phase 2 — Agent 核心引擎与服务 | 🚧 设计中 |
+| SPEC-005 | Phase 3 — 知识库系统 | 🚧 设计中 |
+| SPEC-006 | Artifact 存储与工作区管理 | 🚧 设计中 |
+| SPEC-007 | Skill 实现层 | 🚧 设计中 |
+| SPEC-008 | 安全审计与报告校验 | 🚧 设计中 |
+| SPEC-009 | 系统统计监控 | 🚧 设计中 |
+| SPEC-010 | IM 集成（飞书机器人） | 🚧 设计中 |
+| SPEC-011 | Hermes 自由探索模式 | 🚧 设计中 |
+| SPEC-012 | 管理后台 | 🚧 设计中 |
+| SPEC-013 | 测试体系与生产部署 | 🚧 设计中 |
 
 > 完整路线图详见：[Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 

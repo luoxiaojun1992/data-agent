@@ -31,8 +31,8 @@ Skill 是 Agent 执行任务的核心单元。SPEC-004 建立了 Skill 接口和
 
 ### 2. Stats Engine
 
-- 回归分析（线性/多元，gonum）
-- 时间序列分析（趋势/季节分解）
+- 基础统计：回归分析（线性/多元，gonum）、时间序列分析（趋势/季节分解）
+- 高级统计：聚类分析（K-Means）、主成分分析（PCA）、财务分析（比率计算 + 趋势对比）
 - 结果结构化 JSON 输出
 
 ### 3. Knowledge Search
@@ -74,6 +74,13 @@ Skill 是 Agent 执行任务的核心单元。SPEC-004 建立了 Skill 接口和
 - 域名白名单：仅允许发送到企业域名
 - 异步发送（避免阻塞 Agent 流程）
 
+### 9. OpenAPI → MCP 转换器
+
+- OpenAPI 3.0 规范解析
+- 自动生成 MCP Tool 定义
+- 双重审核机制（管理员审批 + 域名白名单）
+- 调用频率限制
+
 ## 可行性分析
 
 | 检查项 | 结论 |
@@ -98,6 +105,7 @@ Skill 是 Agent 执行任务的核心单元。SPEC-004 建立了 Skill 接口和
 | `skills/workspace_exec/` | 脚本执行 | 新建 |
 | `skills/prompt_enhance/` | 提示词增强 | 新建 |
 | `skills/email_sender/` | 邮件发送 | 新建 |
+| `skills/openapi_converter/` | OpenAPI→MCP | 新建 |
 | `internal/logic/` | 共用 Logic 层 | 新建 |
 
 ## 验证标准
@@ -108,3 +116,4 @@ Skill 是 Agent 执行任务的核心单元。SPEC-004 建立了 Skill 接口和
 4. 邮件发送仅允许企业域名白名单
 5. SkillContext 自动注入 SessionID/UserID/TaskID，Skill 无法覆盖
 6. 全部 Skill 通过 Skill 自动加载器注册
+7. OpenAPI 规范上传 → 解析为 MCP Tools → 管理员审批 → 上线

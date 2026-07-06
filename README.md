@@ -65,16 +65,20 @@ data-agent/
 │   ├── api/handler/      # HTTP handlers
 │   ├── api/middleware/   # Auth/RBAC/Audit middleware
 │   ├── logic/            # Shared business logic (Skill + Service)
-│   ├── service/          # Business services (chat/agent/scheduler/admin)
+│   ├── service/          # Business services (chat/agent/scheduler/admin/im)
 │   ├── domain/           # Domain models + Agent engine + Skill registry
 │   ├── worker/           # Async task worker pool
 │   ├── infra/            # Infrastructure (MongoDB/Milvus/Redis/SeaweedFS)
 │   └── config/           # Configuration management
-├── skills/               # Skill definitions (SQL/stats/email/knowledge)
+├── skills/               # Skill definitions (SQL/Stats/Email/Knowledge/Workspace)
 ├── frontend/             # React/Next.js frontend
+├── tests/ui/             # Playwright E2E tests
 ├── configs/              # Configuration files
 ├── docs/                 # Public documentation
 ├── .agent/               # AI agent instructions (SSOT)
+│   ├── specs/            # Design specifications (13 specs)
+│   ├── skills/           # AI agent skills (9 skills)
+│   └── memory/           # Agent memory files
 ├── docker-compose.yml
 └── Makefile
 ```
@@ -84,12 +88,18 @@ data-agent/
 | Spec | Feature | Status |
 |------|---------|--------|
 | SPEC-001 | Project Initialization & Doc Architecture | ✅ 已实现 |
-| SPEC-002 | Phase 1: Infrastructure & Middleware | 🚧 设计中 |
-| SPEC-003 | Phase 2: Core Services (Agent Engine + Chat) | 📋 待开始 |
-| SPEC-004 | Phase 3: Knowledge Base & Insights | 📋 待开始 |
-| SPEC-005 | Phase 4: Advanced Features + Feishu IM | 📋 待开始 |
-| SPEC-006 | Phase 5: Admin Dashboard | 📋 待开始 |
-| SPEC-007 | Phase 6: Testing & Alpha Release | 📋 待开始 |
+| SPEC-002 | CI/CD Environment & Toolchain | 🚧 设计中 |
+| SPEC-003 | Phase 1 — Infrastructure & Auth | 🚧 设计中 |
+| SPEC-004 | Phase 2 — Agent Engine & Services | 🚧 设计中 |
+| SPEC-005 | Phase 3 — Knowledge Base System | 🚧 设计中 |
+| SPEC-006 | Artifact Storage & Workspace | 🚧 设计中 |
+| SPEC-007 | Skill Implementations | 🚧 设计中 |
+| SPEC-008 | Security Audit & Report Validation | 🚧 设计中 |
+| SPEC-009 | System Monitoring (Redis Stats) | 🚧 设计中 |
+| SPEC-010 | IM Integration (Feishu Bot) | 🚧 设计中 |
+| SPEC-011 | Hermes Explore Mode | 🚧 设计中 |
+| SPEC-012 | Admin Dashboard | 🚧 设计中 |
+| SPEC-013 | Testing & Production Deploy | 🚧 设计中 |
 
 > Full roadmap details: [Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 

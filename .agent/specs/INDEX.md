@@ -21,7 +21,7 @@
 | SPEC-005 | Phase 3 — 知识库系统 | [spec-005-knowledge-base.md](spec-005-knowledge-base.md) | 🚧 设计中 |
 | SPEC-006 | Phase 2 — Artifact 存储与工作区 | [spec-006-artifact-storage.md](spec-006-artifact-storage.md) | 🚧 设计中 |
 | SPEC-007 | Skill 实现层 | [spec-007-skill-implementations.md](spec-007-skill-implementations.md) | 🚧 设计中 |
-| SPEC-008 | Phase 4 — 高级统计与安全审计 | [spec-008-advanced-stats-security.md](spec-008-advanced-stats-security.md) | 🚧 设计中 |
+| SPEC-008 | Phase 4 — 安全审计与报告校验 | [spec-008-security-report-validation.md](spec-008-security-report-validation.md) | 🚧 设计中 |
 | SPEC-009 | Phase 4 — 系统统计监控 | [spec-009-stats-monitoring.md](spec-009-stats-monitoring.md) | 🚧 设计中 |
 | SPEC-010 | Phase 4 — IM 集成（飞书） | [spec-010-im-integration.md](spec-010-im-integration.md) | 🚧 设计中 |
 | SPEC-011 | Phase 5 — Hermes 自由探索 | [spec-011-hermes-explore.md](spec-011-hermes-explore.md) | 🚧 设计中 |
