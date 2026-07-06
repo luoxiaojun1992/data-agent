@@ -13,14 +13,33 @@
 ## 索引表
 
 | 编号 | 标题 | 文件路径 | 状态 |
-|--------|-------|-----------|--------|
+|------|------|----------|------|
 | SPEC-001 | 项目初始化与文档架构 | [spec-001-project-init.md](spec-001-project-init.md) | ✅ 已实现 |
-| SPEC-002 | Phase 1: 基础设施与中间件 | [spec-002-infrastructure.md](spec-002-infrastructure.md) | 🚧 设计中 |
-| SPEC-003 | Phase 2: 核心服务（Agent Engine + Chat） | [spec-003-core-services.md](spec-003-core-services.md) | 📋 待开始 |
-| SPEC-004 | Phase 3: 知识库与解读 | [spec-004-knowledge-base.md](spec-004-knowledge-base.md) | 📋 待开始 |
-| SPEC-005 | Phase 4: 高级功能 + 飞书 IM | [spec-005-advanced-features.md](spec-005-advanced-features.md) | 📋 待开始 |
-| SPEC-006 | Phase 5: 管理后台 | [spec-006-admin-dashboard.md](spec-006-admin-dashboard.md) | 📋 待开始 |
-| SPEC-007 | Phase 6: 测试与 Alpha 发布 | [spec-007-testing-release.md](spec-007-testing-release.md) | 📋 待开始 |
+| SPEC-002 | CI/CD 环境与工具链 | [spec-002-ci-environment.md](spec-002-ci-environment.md) | 🚧 设计中 |
+| SPEC-003 | Phase 1 — 基础设施与认证授权 | [spec-003-infrastructure.md](spec-003-infrastructure.md) | 🚧 设计中 |
+| SPEC-004 | Phase 2 — Agent 核心引擎与服务 | [spec-004-agent-engine.md](spec-004-agent-engine.md) | 🚧 设计中 |
+| SPEC-005 | Phase 3 — 知识库系统 | [spec-005-knowledge-base.md](spec-005-knowledge-base.md) | 🚧 设计中 |
+| SPEC-006 | Phase 4 — 高级功能（统计/安全/IM） | [spec-006-advanced-features.md](spec-006-advanced-features.md) | 🚧 设计中 |
+| SPEC-007 | Phase 5 — 管理后台与 Hermes | [spec-007-admin-hermes.md](spec-007-admin-hermes.md) | 🚧 设计中 |
+| SPEC-008 | Phase 6 — 测试体系与生产部署 | [spec-008-testing-deploy.md](spec-008-testing-deploy.md) | 🚧 设计中 |
+
+## 依赖关系
+
+```
+SPEC-002 (CI)
+  ↓
+SPEC-003 (Infra)
+  ↓
+SPEC-004 (Agent Core) ←─┐
+  ↓                      │
+SPEC-005 (KB) ───────────┤
+  ↓                      │
+SPEC-006 (Advanced) ─────┤
+  ↓                      │
+SPEC-007 (Admin+Hermes)  │
+  ↓                      │
+SPEC-008 (Test+Deploy) ──┘
+```
 
 ---
 
