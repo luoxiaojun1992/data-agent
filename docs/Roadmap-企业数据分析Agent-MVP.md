@@ -1,11 +1,25 @@
 # 企业级数据分析 Agent — MVP 开发计划
 
-> **版本**: v2.1 | **日期**: 2026-07-06
+> **版本**: v2.2 | **日期**: 2026-07-06
 >
 > 本文档为纯项目执行跟踪，包含任务分解、工时估算和依赖关系。
 > 产品需求见 PRD，技术方案见 RFC。
 
 ---
+
+## Phase ↔ Spec 对照
+
+| Phase | Week | 对应 Spec | 关键交付 |
+|-------|------|-----------|----------|
+| Phase 1 | W1-2 | SPEC-003 | 基础设施 + 中间件 |
+| Phase 2 | W3-4 | SPEC-004, SPEC-006, SPEC-014 | Agent 核心引擎（含安全审计）+ Artifact + 任务队列/Worker |
+| Phase 3 | W5-6 | SPEC-005 | 知识库系统 |
+| Phase 2～4 | — | SPEC-007 | Skill 实现层（Logic + Skill 分层，跨阶段实现） |
+| Phase 4 | W7-8 | SPEC-009, SPEC-010, SPEC-014（调度器） | 统计监控 + 飞书 IM + Cron 调度器 |
+| Phase 5 | W9-10 | SPEC-011, SPEC-012 | Hermes 探索 + 管理后台 |
+| Phase 6 | W11-12 | SPEC-013 | 测试 + 部署 |
+| 前置 | — | SPEC-002 | CI/CD 环境 |
+| 已废弃 | — | SPEC-008 | → 合并至 SPEC-004 |
 
 ## 目录
 
@@ -77,6 +91,8 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 ## 3. Phase 2: 核心服务 (Week 3-4)
 
+> 对应: SPEC-004（Agent 核心引擎，含安全审计）, SPEC-006（Artifact）, SPEC-014（任务队列 + Worker Pool）
+
 ### Week 3: Agent Engine + Skill Registry
 
 | ID | 任务 | 工时 | 依赖 |
@@ -137,6 +153,8 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 ## 5. Phase 4: 高级功能 (Week 7-8)
 
+> 对应: SPEC-009（统计监控）, SPEC-010（IM 集成）, SPEC-014 调度器部分（Cron）, SPEC-004 安全审计/熔断器/子Agent
+
 ### Week 7: 定时任务 + 子 Agent
 
 | ID | 任务 | 工时 | 依赖 |
@@ -185,6 +203,8 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 ---
 
 ## 6. Phase 5: 管理后台 (Week 9-10)
+
+> 对应: SPEC-011（Hermes 自由探索）, SPEC-012（管理后台）
 
 ### Week 9: 后台前端搭建 + 核心页面
 

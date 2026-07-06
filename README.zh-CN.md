@@ -64,10 +64,17 @@ data-agent/
 ├── internal/
 │   ├── api/handler/      # HTTP 处理器
 │   ├── api/middleware/   # Auth/RBAC/审计中间件
-│   ├── logic/            # 共用业务逻辑（Skill + Service 共用）
-│   ├── service/          # 业务服务（chat/agent/scheduler/admin）
-│   ├── domain/           # 领域模型 + Agent 引擎 + Skill 注册中心
-│   ├── worker/           # 异步任务 Worker Pool
+│   ├── logic/            # 共用业务逻辑
+│   │   ├── sql/          # SQL 生成 + AST 安全校验
+│   │   ├── stats/        # 统计分析（回归/PCA/聚类）
+│   │   ├── knowledge/    # 混合搜索 + RRF 排序
+│   │   ├── report/       # Markdown AST 报告校验
+│   │   └── openapi/      # OpenAPI 3.0 解析器
+│   ├── service/          # 业务服务（chat/agent/admin/im）
+│   ├── domain/           # 领域模型 + Agent 引擎 + Skill 注册中心 + 安全审计
+│   ├── worker/           # Worker Pool + 任务执行器
+│   ├── queue/            # Redis Stream 任务队列 + 死信队列
+│   ├── scheduler/        # Cron 调度器（robfig/cron）
 │   ├── infra/            # 基础设施（MongoDB/Milvus/Redis/SeaweedFS）
 │   └── config/           # 配置管理
 ├── skills/               # Skill 定义（SQL/统计/邮件/知识库/工作区）
@@ -76,8 +83,8 @@ data-agent/
 ├── configs/              # 配置文件
 ├── docs/                 # 公开文档
 ├── .agent/               # AI Agent 指令（SSOT）
-│   ├── specs/            # 设计规格（13 个 spec）
-│   ├── skills/           # AI Agent 技能（9 个 skill）
+│   ├── specs/            # 设计规格（14 个 spec）
+│   ├── skills/           # AI Agent 技能（11 个 skill）
 │   └── memory/           # Agent 记忆文件
 ├── docker-compose.yml
 └── Makefile
@@ -90,16 +97,17 @@ data-agent/
 | SPEC-001 | — | 项目初始化与文档架构 | ✅ 已实现 |
 | SPEC-002 | 前置 | CI/CD 环境与工具链 | 🚧 设计中 |
 | SPEC-003 | **P1** | 基础设施与认证授权 | 🚧 设计中 |
-| SPEC-004 | **P2** | Agent 核心引擎与服务 | 🚧 设计中 |
+| SPEC-004 | **P2** | Agent 核心引擎（含安全审计） | 🚧 设计中 |
 | SPEC-006 | **P2** | Artifact 存储与工作区管理 | 🚧 设计中 |
 | SPEC-005 | **P3** | 知识库系统 | 🚧 设计中 |
-| SPEC-007 | P2～4 | Skill 实现层 | 🚧 设计中 |
-| SPEC-008 | **P4** | 安全审计与报告校验 | 🚧 设计中 |
+| SPEC-007 | P2～4 | Skill 实现层（Logic + Skill 分层） | 🚧 设计中 |
+| SPEC-014 | P2～4 | 任务队列与调度基础设施 | 🚧 设计中 |
 | SPEC-009 | **P4** | 系统统计监控 | 🚧 设计中 |
 | SPEC-010 | **P4** | IM 集成（飞书机器人） | 🚧 设计中 |
 | SPEC-011 | **P5** | Hermes 自由探索模式 | 🚧 设计中 |
 | SPEC-012 | **P5** | 管理后台 | 🚧 设计中 |
 | SPEC-013 | **P6** | 测试体系与生产部署 | 🚧 设计中 |
+| SPEC-008 | — | ~~安全审计~~（→ SPEC-004） | 🗄️ 已废弃 |
 
 > 完整路线图详见：[Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 

@@ -1,6 +1,6 @@
 # Phase 5 — 管理后台
 
-> **SPEC-012** | Status: 设计中 | 依赖: SPEC-004（Agent API），SPEC-007, SPEC-008, SPEC-009
+> **SPEC-012** | Status: 设计中 | 依赖: SPEC-004（Agent API）, SPEC-007, SPEC-009, SPEC-010
 
 ## 目标
 
@@ -12,8 +12,8 @@
 | SPEC-003 | ✅/❌ | 基础设施可用 |
 | SPEC-004 | ✅/❌ | Agent API 可用（用户/权限/模型配置管理） |
 | SPEC-007 | ✅/❌ | OpenAPI 审核 API 可用 |
-| SPEC-008 | ✅/❌ | Dashboard Stats/ROI API 可用 |
-| SPEC-009 | ✅/❌ | IM 消息记录可查询 |
+| SPEC-009 | ✅/❌ | Dashboard Stats/ROI API 可用 |
+| SPEC-010 | ✅/❌ | IM 消息记录可查询 |
 
 实现管理后台全量前端页面（React/Next.js），覆盖 12 页管理功能，深色玻璃极光 UI 风格。
 

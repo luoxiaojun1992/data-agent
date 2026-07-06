@@ -64,10 +64,17 @@ data-agent/
 ├── internal/
 │   ├── api/handler/      # HTTP handlers
 │   ├── api/middleware/   # Auth/RBAC/Audit middleware
-│   ├── logic/            # Shared business logic (Skill + Service)
-│   ├── service/          # Business services (chat/agent/scheduler/admin/im)
-│   ├── domain/           # Domain models + Agent engine + Skill registry
-│   ├── worker/           # Async task worker pool
+│   ├── logic/            # Shared business logic
+│   │   ├── sql/          # SQL generation + AST validation
+│   │   ├── stats/        # Statistics (regression, PCA, clustering)
+│   │   ├── knowledge/    # Hybrid search + RRF ranking
+│   │   ├── report/       # Markdown AST report validation
+│   │   └── openapi/      # OpenAPI 3.0 parser
+│   ├── service/          # Business services (chat/agent/admin/im)
+│   ├── domain/           # Domain models + Agent engine + Skill registry + Security
+│   ├── worker/           # Worker pool + task runner
+│   ├── queue/            # Redis Stream task queue + dead letter
+│   ├── scheduler/        # Cron scheduler (robfig/cron)
 │   ├── infra/            # Infrastructure (MongoDB/Milvus/Redis/SeaweedFS)
 │   └── config/           # Configuration management
 ├── skills/               # Skill definitions (SQL/Stats/Email/Knowledge/Workspace)
@@ -76,8 +83,8 @@ data-agent/
 ├── configs/              # Configuration files
 ├── docs/                 # Public documentation
 ├── .agent/               # AI agent instructions (SSOT)
-│   ├── specs/            # Design specifications (13 specs)
-│   ├── skills/           # AI agent skills (9 skills)
+│   ├── specs/            # Design specifications (14 specs)
+│   ├── skills/           # AI agent skills (11 skills)
 │   └── memory/           # Agent memory files
 ├── docker-compose.yml
 └── Makefile
@@ -90,16 +97,17 @@ data-agent/
 | SPEC-001 | — | Project Initialization & Doc Architecture | ✅ Done |
 | SPEC-002 | Pre | CI/CD Environment & Toolchain | 🚧 Designing |
 | SPEC-003 | **P1** | Infrastructure & Auth | 🚧 Designing |
-| SPEC-004 | **P2** | Agent Engine & Services | 🚧 Designing |
+| SPEC-004 | **P2** | Agent Core Engine (incl. Security) | 🚧 Designing |
 | SPEC-006 | **P2** | Artifact Storage & Workspace | 🚧 Designing |
 | SPEC-005 | **P3** | Knowledge Base System | 🚧 Designing |
-| SPEC-007 | P2~4 | Skill Implementations | 🚧 Designing |
-| SPEC-008 | **P4** | Security Audit & Report Validation | 🚧 Designing |
+| SPEC-007 | P2~4 | Skill Implementations (Logic + Skill layers) | 🚧 Designing |
+| SPEC-014 | P2~4 | Task Queue & Scheduler Infrastructure | 🚧 Designing |
 | SPEC-009 | **P4** | System Monitoring (Redis Stats) | 🚧 Designing |
 | SPEC-010 | **P4** | IM Integration (Feishu Bot) | 🚧 Designing |
 | SPEC-011 | **P5** | Hermes Explore Mode | 🚧 Designing |
 | SPEC-012 | **P5** | Admin Dashboard | 🚧 Designing |
 | SPEC-013 | **P6** | Testing & Production Deploy | 🚧 Designing |
+| SPEC-008 | — | ~~Security Audit~~ (→ SPEC-004) | 🗄️ Deprecated |
 
 > Full roadmap details: [Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 
