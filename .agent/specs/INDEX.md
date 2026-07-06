@@ -23,8 +23,8 @@
 | SPEC-007 | Phase 4 — 高级统计与安全审计 | [spec-007-advanced-stats-security.md](spec-007-advanced-stats-security.md) | 🚧 设计中 |
 | SPEC-008 | Phase 4 — 系统统计监控 | [spec-008-stats-monitoring.md](spec-008-stats-monitoring.md) | 🚧 设计中 |
 | SPEC-009 | Phase 4 — IM 集成（飞书） | [spec-009-im-integration.md](spec-009-im-integration.md) | 🚧 设计中 |
-| SPEC-010 | Phase 5 — 管理后台 | [spec-010-admin-dashboard.md](spec-010-admin-dashboard.md) | 🚧 设计中 |
-| SPEC-011 | Phase 5 — Hermes 自由探索 | [spec-011-hermes-explore.md](spec-011-hermes-explore.md) | 🚧 设计中 |
+| SPEC-010 | Phase 5 — Hermes 自由探索 | [spec-010-hermes-explore.md](spec-010-hermes-explore.md) | 🚧 设计中 |
+| SPEC-011 | Phase 5 — 管理后台 | [spec-011-admin-dashboard.md](spec-011-admin-dashboard.md) | 🚧 设计中 |
 | SPEC-012 | Phase 6 — 测试体系与生产部署 | [spec-012-testing-deploy.md](spec-012-testing-deploy.md) | 🚧 设计中 |
 
 ## 依赖关系
@@ -34,24 +34,23 @@ SPEC-002 (CI)
   ↓
 SPEC-003 (Infra)
   ↓
-SPEC-004 (Agent Core) ←──────────────┐
+SPEC-004 (Agent Core) ← depends: 003 ───┐
+  ↓                                      │
+SPEC-005 (KB) ← depends: 004 ────────────┤
+  ↓                                      │
+SPEC-006 (Skills) ← depends: 004,005 ────┤
+  ↓                                      │
+SPEC-007 (Stats+Security) ← deps: 004,005,006──┤
+  ↓                                      │
+SPEC-008 (Monitoring) ← depends: 004,006 ┤
+  ↓                                      │
+SPEC-009 (IM) ← depends: 004 ────────────┤
+  ↓                                      │
+SPEC-010 (Hermes) ←─ 独立，无依赖
+  ↓
+SPEC-011 (Admin) ────────────────────┤ depends: 004,007,008,009
   ↓                                  │
-SPEC-005 (KB) ───────────────────────┤
-  ↓                                  │
-SPEC-006 (Skills) ───────────────────┤
-  ↓                                  │
-SPEC-007 (Stats + Security) ─────────┤
-  ↓                                  │
-SPEC-008 (Monitoring) ───────────────┤
-  ↓                                  │
-SPEC-009 (IM) ───────────────────────┤
-  ↓                                  │
-SPEC-010 (Admin) ────────────────────┤
-  ↓                                  │
-SPEC-011 (Hermes) ───────────────────┤
-  ↓                                  │
-SPEC-012 (Test + Deploy) ────────────┘
-```
+SPEC-012 (Test + Deploy) ←── all ────┘
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Phase 4 — 系统统计监控
 
-> **SPEC-008** | Status: 设计中 | 依赖: SPEC-004（Scheduler + Redis）
+> **SPEC-008** | Status: 设计中 | 依赖: SPEC-004（Scheduler + Redis）, SPEC-006（Skill 产生可统计的 Agent/Task 数据）
 
 ## 目标
 
