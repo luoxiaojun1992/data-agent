@@ -1,6 +1,6 @@
 # Phase 5 — 管理后台与 Hermes 探索模式
 
-> **SPEC-007** | Status: 设计中 | 依赖: SPEC-004（管理后台依赖 Agent API），SPEC-006（Hermes 独立）
+> **SPEC-009** | Status: 设计中 | 依赖: SPEC-004（管理后台依赖 Agent API），SPEC-006（Hermes 独立）
 
 ## 目标
 

@@ -1,6 +1,6 @@
 # Phase 6 — 测试体系与生产部署
 
-> **SPEC-008** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-005, SPEC-006, SPEC-007
+> **SPEC-010** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-005, SPEC-006, SPEC-007, SPEC-008, SPEC-009
 
 ## 目标
 

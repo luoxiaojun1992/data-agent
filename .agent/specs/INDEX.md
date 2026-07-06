@@ -19,9 +19,11 @@
 | SPEC-003 | Phase 1 — 基础设施与认证授权 | [spec-003-infrastructure.md](spec-003-infrastructure.md) | 🚧 设计中 |
 | SPEC-004 | Phase 2 — Agent 核心引擎与服务 | [spec-004-agent-engine.md](spec-004-agent-engine.md) | 🚧 设计中 |
 | SPEC-005 | Phase 3 — 知识库系统 | [spec-005-knowledge-base.md](spec-005-knowledge-base.md) | 🚧 设计中 |
-| SPEC-006 | Phase 4 — 高级功能（统计/安全/IM） | [spec-006-advanced-features.md](spec-006-advanced-features.md) | 🚧 设计中 |
-| SPEC-007 | Phase 5 — 管理后台与 Hermes | [spec-007-admin-hermes.md](spec-007-admin-hermes.md) | 🚧 设计中 |
-| SPEC-008 | Phase 6 — 测试体系与生产部署 | [spec-008-testing-deploy.md](spec-008-testing-deploy.md) | 🚧 设计中 |
+| SPEC-006 | Phase 4 — 高级统计与安全审计 | [spec-006-advanced-stats-security.md](spec-006-advanced-stats-security.md) | 🚧 设计中 |
+| SPEC-007 | Phase 4 — 系统统计监控 | [spec-007-stats-monitoring.md](spec-007-stats-monitoring.md) | 🚧 设计中 |
+| SPEC-008 | Phase 4 — IM 集成（飞书） | [spec-008-im-integration.md](spec-008-im-integration.md) | 🚧 设计中 |
+| SPEC-009 | Phase 5 — 管理后台与 Hermes | [spec-009-admin-hermes.md](spec-009-admin-hermes.md) | 🚧 设计中 |
+| SPEC-010 | Phase 6 — 测试体系与生产部署 | [spec-010-testing-deploy.md](spec-010-testing-deploy.md) | 🚧 设计中 |
 
 ## 依赖关系
 
@@ -30,11 +32,20 @@ SPEC-002 (CI)
   ↓
 SPEC-003 (Infra)
   ↓
-SPEC-004 (Agent Core) ←─┐
-  ↓                      │
-SPEC-005 (KB) ───────────┤
-  ↓                      │
-SPEC-006 (Advanced) ─────┤
+SPEC-004 (Agent Core) ←──────────────┐
+  ↓                                  │
+SPEC-005 (KB) ───────────────────────┤
+  ↓                                  │
+SPEC-006 (Stats + Security) ─────────┤
+  ↓                                  │
+SPEC-007 (Monitoring) ───────────────┤
+  ↓                                  │
+SPEC-008 (IM) ───────────────────────┤
+  ↓                                  │
+SPEC-009 (Admin + Hermes) ───────────┤
+  ↓                                  │
+SPEC-010 (Test + Deploy) ────────────┘
+```
   ↓                      │
 SPEC-007 (Admin+Hermes)  │
   ↓                      │
