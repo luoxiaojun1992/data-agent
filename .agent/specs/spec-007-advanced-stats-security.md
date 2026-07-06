@@ -4,6 +4,16 @@
 
 ## 目标
 
+## 前置依赖检查
+
+| 前置 Spec | 状态 | 备注 |
+|-----------|:---:|------|
+| SPEC-002 | ✅/❌ | CI Pipeline 就绪 |
+| SPEC-003 | ✅/❌ | 基础设施可用 |
+| SPEC-004 | ✅/❌ | Agent Engine + Skill 接口可用 |
+| SPEC-005 | ✅/❌ | KB 基础设施可用 |
+| SPEC-006 | ✅/❌ | 基础 Stats Engine 实现可用（聚类/PCA 扩展基于此） |
+
 实现高级统计分析（聚类/PCA/财务）、安全审计层、OpenAPI→MCP 转换器、报告格式校验（Markdown AST）。
 
 ## 背景

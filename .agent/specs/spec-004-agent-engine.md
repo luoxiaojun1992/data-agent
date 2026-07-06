@@ -4,6 +4,13 @@
 
 ## 目标
 
+## 前置依赖检查
+
+| 前置 Spec | 状态 | 备注 |
+|-----------|:---:|------|
+| SPEC-002 | ✅/❌ | CI Pipeline 就绪 |
+| SPEC-003 | ✅/❌ | 基础设施（MongoDB/Redis/Milvus/SeaweedFS）可用 |
+
 实现 Agent Engine（ADK）、LLM Router、Skill Registry、Chat Service（SSE 流式）、Agent Service（同步/异步）、Worker Pool、Scheduler、上下文窗口管理、Vault 密钥管理。
 
 ## 背景

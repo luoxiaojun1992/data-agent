@@ -30,7 +30,16 @@ agent_created: true
 3. 展示可选列表给用户选择
 4. 用户输入纯数字自动补全为 `SPEC-XXX` 格式
 
-### Step 2 — 阅读 memory 文档
+### Step 2 — 前置依赖检查（强制）
+
+1. 读取当前 spec 的「前置依赖检查」表格
+2. 逐项确认每个前置 Spec 的状态是否为 ✅（已实现）
+3. 任一项为 ❌ → **阻塞当前 spec，必须先完成前置 spec**
+4. 全部 ✅ → 继续下一步
+
+> **规则**: 前置 spec 未完成时禁止开始当前 spec 的开发。此检查不可跳过。
+
+### Step 3 — 阅读 memory 文档
 
 依次阅读以下文档：
 1. `.agent/memory/INDEX.md`
@@ -38,7 +47,7 @@ agent_created: true
 3. `.agent/memory/CONVENTIONS.md`
 4. `.agent/memory/ARCHITECTURE.md`
 
-### Step 3 — 阅读 SPEC 文档
+### Step 4 — 阅读 SPEC 文档
 
 - 查找路径：`.agent/specs/{spec-file}.md`
 - 完整阅读，理解设计意图和验收标准

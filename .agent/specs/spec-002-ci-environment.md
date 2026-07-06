@@ -4,6 +4,12 @@
 
 ## 目标
 
+## 前置依赖检查
+
+| 前置 Spec | 状态 | 备注 |
+|-----------|:---:|------|
+| — | — | 无前置依赖，可立即开始 |
+
 建立 GitHub Actions CI Pipeline（sonar-check + ui-tests），创建 `docker-compose.ui-test.yml`（含 SonarQube + Playwright/Allure），补齐 Go 工具链，确保 PR merge gate 可执行。
 
 ## 背景

@@ -81,16 +81,16 @@ git push
 
 #### Step 2.1 — 列出未实现 spec
 
-读取 `.agent/specs/INDEX.md`，提取状态为 `设计中` 的 spec：
+读取 `.agent/specs/INDEX.md`，提取状态为 `设计中` 的 spec，同时读取每个 spec 的「前置依赖检查」表格：
 
 ```
 当前有 N 个未实现的 spec：
 
-| 编号 | 标题 | 依赖 |
-|------|------|------|
-| SPEC-002 | xxx | — |
-| SPEC-003 | xxx | SPEC-002 |
-| SPEC-004 | xxx | — |
+| 编号 | 标题 | 前置依赖 | 是否阻塞 |
+|------|------|---------|:---:|
+| SPEC-002 | CI/CD | — | ✅ 可开始 |
+| SPEC-003 | Infra | SPEC-002 | ❌ 等待 SPEC-002 |
+| SPEC-004 | Agent Core | SPEC-003 | ❌ 等待 SPEC-003 |
 ```
 
 #### Step 2.2 — 确认 Scope

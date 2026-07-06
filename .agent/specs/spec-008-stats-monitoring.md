@@ -4,6 +4,15 @@
 
 ## 目标
 
+## 前置依赖检查
+
+| 前置 Spec | 状态 | 备注 |
+|-----------|:---:|------|
+| SPEC-002 | ✅/❌ | CI Pipeline 就绪 |
+| SPEC-003 | ✅/❌ | Redis 连接层可用 |
+| SPEC-004 | ✅/❌ | Scheduler + Agent Service 可用 |
+| SPEC-006 | ✅/❌ | Skill 实现就绪（产生可统计的 Agent/Task 数据） |
+
 实现系统级统计监控（Redis Stats Counter）、Dashboard ROI 投入产出比计算、MongoDB TTL 日志自动清理。
 
 ## 背景

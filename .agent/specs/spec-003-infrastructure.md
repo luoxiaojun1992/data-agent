@@ -4,6 +4,12 @@
 
 ## 目标
 
+## 前置依赖检查
+
+| 前置 Spec | 状态 | 备注 |
+|-----------|:---:|------|
+| SPEC-002 | ✅/❌ | CI Pipeline 必须就绪 |
+
 搭建项目脚手架（Go Module、目录结构、Makefile）、Docker Compose 开发环境、中间件（JWT/RBAC/审计/安全过滤）、数据库连接层（MongoDB/Redis/Milvus/SeaweedFS）。
 
 ## 背景
