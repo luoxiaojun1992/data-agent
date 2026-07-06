@@ -1,6 +1,6 @@
 # Skill 实现层
 
-> **SPEC-006** | Status: 设计中 | 依赖: SPEC-004（Skill 接口）, SPEC-005（知识库基础设施）
+> **SPEC-007** | Status: 设计中 | 依赖: SPEC-004（Skill 接口）, SPEC-005（知识库基础设施）, SPEC-006（Artifact 存储 + 工作区管理）
 
 ## 目标
 
@@ -12,6 +12,7 @@
 | SPEC-003 | ✅/❌ | 基础设施可用 |
 | SPEC-004 | ✅/❌ | Skill 接口 + 注册中心可用 |
 | SPEC-005 | ✅/❌ | GridFS + Milvus Collection 可用（knowledge_search 依赖） |
+| SPEC-006 | ✅/❌ | Artifact 存储 + 工作区管理可用（save_artifact/workspace_* 依赖） |
 
 实现所有自定义 Skill 的完整逻辑，覆盖数据查询、统计分析、知识库搜索、结果保存、邮件通知、工作区管理、提示词增强等核心能力。本 spec 承接 SPEC-004 定义的 Skill 接口和注册机制，提供具体实现。
 

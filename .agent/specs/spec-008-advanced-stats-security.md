@@ -1,6 +1,6 @@
 # Phase 4 — 高级统计与安全审计
 
-> **SPEC-007** | Status: 设计中 | 依赖: SPEC-004, SPEC-005, SPEC-006
+> **SPEC-008** | Status: 设计中 | 依赖: SPEC-004, SPEC-005, SPEC-006, SPEC-007
 
 ## 目标
 
@@ -13,6 +13,7 @@
 | SPEC-004 | ✅/❌ | Agent Engine + Skill 接口可用 |
 | SPEC-005 | ✅/❌ | KB 基础设施可用 |
 | SPEC-006 | ✅/❌ | 基础 Stats Engine 实现可用（聚类/PCA 扩展基于此） |
+| SPEC-007 | ✅/❌ | 全部 Skill 实现可用（安全审计层基于此） |
 
 实现高级统计分析（聚类/PCA/财务）、安全审计层、OpenAPI→MCP 转换器、报告格式校验（Markdown AST）。
 

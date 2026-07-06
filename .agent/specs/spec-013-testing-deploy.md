@@ -1,6 +1,6 @@
 # Phase 6 — 测试体系与生产部署
 
-> **SPEC-012** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-005, SPEC-006, SPEC-007, SPEC-008, SPEC-009, SPEC-010, SPEC-011
+> **SPEC-013** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-005, SPEC-006, SPEC-007, SPEC-008, SPEC-009, SPEC-010, SPEC-011, SPEC-012
 
 ## 目标
 
@@ -18,6 +18,7 @@
 | SPEC-009 | ✅/❌ | IM 集成可用 |
 | SPEC-010 | ✅/❌ | Hermes 可用 |
 | SPEC-011 | ✅/❌ | 管理后台可用 |
+| SPEC-012 | ✅/❌ | 管理后台可用 |
 
 建立完整测试体系（单元测试 >70% 覆盖率、集成测试、E2E 测试）、性能优化、安全渗透测试、Docker/K8s 生产部署配置。
 

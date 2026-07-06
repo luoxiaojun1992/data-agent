@@ -1,6 +1,6 @@
 # Phase 4 — IM 集成（飞书机器人）
 
-> **SPEC-009** | Status: 设计中 | 依赖: SPEC-004（Chat API）
+> **SPEC-010** | Status: 设计中 | 依赖: SPEC-004（Chat API）
 
 ## 目标
 
