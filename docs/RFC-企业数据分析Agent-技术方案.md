@@ -2009,7 +2009,7 @@ func New(prefix string) string {
 | `analysis_reports` | 分析报告 | `_id`, `user_id`, `session_id`, `task_id`, `report_type`, `title`, `content`, `artifact_id`, `created_at`, `updated_at` | `{task_id:1}`, `{session_id:1, created_at:-1}`, `{user_id:1, created_at:-1}` |
 | `aggregation_layers` | 聚合层数据 | `_id`, `name`, `dimensions[]`, `metrics[]`, `source`, `data`, `created_at`, `updated_at` | `{name:1}` unique |
 | `knowledge_docs` | 知识库文档元数据 | `_id`, `user_id`, `title`, `type`, `tags[]`, `permissions`, `versions[]`, `created_at`, `updated_at` | `{user_id:1, created_at:-1}`, `{tags:1}` |
-| `knowledge_doc_contents` | 知识库文档内容 | `_id`, `doc_id`, `version`, `content`, `chunks[]`, `created_at` | `{doc_id:1, version:-1}` |
+| `knowledge_doc_contents` | 知识库文档内容 | `_id`, `doc_id`, `version`, `content`, `storage_backend`, `artifact_id`, `size_bytes`, `chunks[]`, `created_at` | `{doc_id:1, version:-1}` |
 | `prompts` | 快捷提示词 | `_id`, `category`, `text`, `roles[]`, `sort_order`, `created_at` | `{category:1, sort_order:1}` |
 | `audit_logs` | 审计日志 | `_id`, `user_id`, `session_id`, `action`, `ip`, `detail`, `created_at` | `{user_id:1, created_at:-1}`, `{created_at:-1}` |
 | `security_alerts` | 安全告警 | `_id`, `type`, `user_id`, `content`, `rule`, `created_at` | `{created_at:-1}`, `{type:1, created_at:-1}` |
@@ -2035,6 +2035,7 @@ func New(prefix string) string {
 > 2. `kb_chunks.embedding` 由当前配置的 LLM 模型生成（非专用 embedding 模型），通过向量索引实现语义检索
 > 3. `kb_chunks.doc_id` 与 `knowledge_docs._id` 强绑定，查询时按 `doc_id` 隔离，避免跨文档串数据
 > 4. `prompt_enhancements` 为无状态记录表，不关联 `session_id` 或 `user_id`，仅用于增强结果缓存和日志审计
+> 5. **大文档存储策略**: 上传文档 > 16MB（MongoDB 单文档上限）时，`content` 存入 SeaweedFS 并记录 `artifact_id`，`storage_backend` = `"seaweedfs"`。≤ 16MB 直接存 MongoDB，`storage_backend` = `"mongodb"`。索引任务根据 `storage_backend` 选择读取方式（见 §14.2）
 
 ### 7.2 分析报告数据模型（analysis_reports）
 
@@ -3862,21 +3863,24 @@ func (s *SaveArtifactSkill) Execute(ctx context.Context, sc SkillContext, params
 │                                                            │
 │  Upload Flow:                                              │
 │  ┌──────────┐    ┌──────────┐    ┌──────────────────┐    │
-│  │ Document │───▶│ Parse    │───▶│ Store to MongoDB │    │
-│  │ Upload   │    │ (PDF/    │    │ (完整文档)        │    │
-│  │          │    │  Word/   │    └────────┬─────────┘    │
-│  │          │    │  Excel/  │             │              │
-│  │          │    │  MD/TXT) │    ┌────────▼─────────┐    │
-│  └──────────┘    └──────────┘    │ Async Queue      │    │
-│                                  │ (Redis Stream)   │    │
-│  Search Flow:                    └────────┬─────────┘    │
-│  ┌──────────┐                             │              │
-│  │ Query    │───▶ Embedding ──▶ Milvus    │              │
-│  │          │    Model        Search      │              │
+│  │ Document │───▶│ Parse    │───▶│ Store            │    │
+│  │ Upload   │    │ (PDF/    │    │                  │    │
+│  │          │    │  Word/   │    │ ≤ 16MB → MongoDB │    │
+│  │          │    │  Excel/  │    │ > 16MB → Seaweed │    │
+│  │          │    │  MD/TXT) │    │ (artifact_id)    │    │
+│  └──────────┘    └──────────┘    └────────┬─────────┘    │
+│                                           │              │
+│  Search Flow:                    ┌────────▼─────────┐    │
+│  ┌──────────┐                    │ Async Queue      │    │
+│  │ Query    │───▶ Embedding ──▶  │ (Redis Stream)   │    │
+│  │          │    Model Search    └────────┬─────────┘    │
+│  │          │                             │              │
 │  │          │                             ▼              │
 │  │          │              ┌──────────────────────┐      │
-│  │          │              │ Chunk + Index to     │      │
-│  │          │              │ Milvus               │      │
+│  │          │              │ Read content         │      │
+│  │          │              │ (MongoDB or SeaweedFS│      │
+│  │          │              │ 分批读取)             │      │
+│  │          │              │ → Chunk + Index      │      │
 │  │          │              └──────────────────────┘      │
 │  │          │                                            │
 │  │          │    ┌──────────┐                            │
@@ -3890,37 +3894,65 @@ func (s *SaveArtifactSkill) Execute(ctx context.Context, sc SkillContext, params
 ```go
 type KnowledgeService struct {
     mongo      *MongoClient
+    seaweedfs  *SeaweedFSClient
     milvus     *MilvusClient
     redis      *RedisClient
     embedModel EmbeddingModel
 }
 
+const MongoMaxDocSize = 16 * 1024 * 1024 // 16MB — MongoDB 单文档上限
+
 func (s *KnowledgeService) UploadDocument(userID string, file io.Reader, filename string, metadata DocMetadata) (*Document, error) {
     // 1. 解析文档
-    content, err := s.parseDocument(file, filename) // PDF/Word/Excel/MD
+    content, err := s.parseDocument(file, filename)
     if err != nil { return nil, err }
-    
-    // 2. 保存完整文档到 MongoDB
+    contentBytes := []byte(content)
+
     doc := &Document{
         ID:       uuid.New().String(),
         Title:    metadata.Title,
         Type:     metadata.Type,
-        Content:  content,
         Tags:     metadata.Tags,
         UploadBy: userID,
         Status:   "processing",
     }
+
+    // 2. 根据大小选择存储后端
+    if len(contentBytes) > MongoMaxDocSize {
+        // 大文档 → SeaweedFS 对象存储
+        artifactID := uuid.New().String()
+        storagePath := fmt.Sprintf("kb/%s/%s", doc.ID, filename)
+        _, err = s.seaweedfs.Upload(storagePath, bytes.NewReader(contentBytes))
+        if err != nil { return nil, fmt.Errorf("seaweedfs upload: %w", err) }
+
+        docContent := &DocContent{
+            DocID:          doc.ID,
+            StorageBackend: "seaweedfs",
+            ArtifactID:     artifactID,
+            SizeBytes:      int64(len(contentBytes)),
+            Content:        "", // 不存 MongoDB
+        }
+        s.mongo.Insert("knowledge_doc_contents", docContent)
+    } else {
+        // 小文档 → MongoDB 直接存储
+        docContent := &DocContent{
+            DocID:          doc.ID,
+            StorageBackend: "mongodb",
+            Content:        content,
+            SizeBytes:      int64(len(contentBytes)),
+        }
+        s.mongo.Insert("knowledge_doc_contents", docContent)
+    }
+
     s.mongo.Insert("knowledge_docs", doc)
-    
-    // 3. 异步索引：推入 Redis Stream
+
+    // 3. 异步索引
     s.redis.XAdd(ctx, "knowledge:index:queue", map[string]any{
         "doc_id": doc.ID,
     })
-    
     return doc, nil
 }
-
-// Worker: 异步索引进程
+```
 func (s *KnowledgeService) IndexWorker() {
     for {
         msgs := s.redis.XReadGroup(ctx, "knowledge:index:queue", "indexer")
@@ -3934,10 +3966,26 @@ func (s *KnowledgeService) IndexWorker() {
 
 func (s *KnowledgeService) indexDocument(docID string) {
     doc := s.mongo.FindOne("knowledge_docs", bson.M{"_id": docID})
-    
-    // 1. 分块
-    chunks := s.splitIntoChunks(doc.Content, 500) // 每块 500 字符
-    
+
+    // 根据 storage_backend 读取文档内容
+    docContent := s.mongo.FindOne("knowledge_doc_contents", bson.M{"doc_id": docID})
+    var content string
+    switch docContent.StorageBackend {
+    case "seaweedfs":
+        // 大文档：从 SeaweedFS 下载到 session workspace，分批读取
+        storagePath := fmt.Sprintf("kb/%s/%s", docID, docContent.Filename)
+        reader, err := s.seaweedfs.Download(storagePath)
+        if err != nil { /* handle */ }
+        data, _ := io.ReadAll(reader)
+        content = string(data)
+    case "mongodb":
+        // 小文档：直接从 MongoDB 读取
+        content = docContent.Content
+    }
+
+    // 1. LLM 语义分片
+    chunks := s.splitIntoChunks(content, 500)
+
     // 2. 向量化 + 写入 Milvus
     for i, chunk := range chunks {
         embedding := s.embedModel.Embed(chunk)
@@ -3949,7 +3997,7 @@ func (s *KnowledgeService) indexDocument(docID string) {
             Tags:       doc.Tags,
         })
     }
-    
+
     // 3. 更新状态
     s.mongo.Update("knowledge_docs", bson.M{"_id": docID}, bson.M{
         "$set": bson.M{"status": "indexed", "chunk_count": len(chunks)},
