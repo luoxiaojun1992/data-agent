@@ -79,9 +79,16 @@ data-agent/
 ├── internal/
 │   ├── api/                  # HTTP 层（handler、middleware、router）
 │   ├── logic/                # 共用业务逻辑（Skill + Handler + Service）
-│   ├── service/              # 业务服务（chat/agent/scheduler/admin）
-│   ├── domain/               # 领域模型、Agent 引擎、Skill 注册
+│   │   ├── sql/              # SQL 生成 + AST 安全校验
+│   │   ├── stats/            # 统计分析（回归/PCA/聚类）
+│   │   ├── knowledge/        # 混合搜索 + RRF 排序
+│   │   ├── report/           # Markdown AST 报告校验
+│   │   └── openapi/          # OpenAPI 3.0 解析器
+│   ├── service/              # 业务服务（chat/agent/admin/im）
+│   ├── domain/               # 领域模型、Agent 引擎、Skill 注册、安全审计
 │   ├── worker/               # 异步任务 Worker Pool
+│   ├── queue/                # Redis Stream 任务队列 + 死信队列
+│   ├── scheduler/            # Cron 调度器
 │   ├── infra/                # 基础设施（MongoDB/Milvus/Redis/SeaweedFS）
 │   └── config/               # 配置管理
 ├── skills/                   # Skill 实现

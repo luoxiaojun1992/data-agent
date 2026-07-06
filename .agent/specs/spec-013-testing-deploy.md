@@ -1,6 +1,6 @@
 # Phase 6 — 测试体系与生产部署
 
-> **SPEC-013** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-005, SPEC-006, SPEC-007, SPEC-009, SPEC-010, SPEC-011, SPEC-012, SPEC-014
+> **SPEC-013** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-005, SPEC-006, SPEC-007, SPEC-008, SPEC-009, SPEC-010, SPEC-011, SPEC-012, SPEC-014
 
 ## 目标
 
@@ -13,6 +13,7 @@
 | SPEC-004 | ✅/❌ | Agent 核心可用（含安全审计） |
 | SPEC-005 | ✅/❌ | 知识库系统可用 |
 | SPEC-006 | ✅/❌ | Artifact 存储可用 |
+| SPEC-008 | ✅/❌ | 数据分析 Logic 可用 |
 | SPEC-007 | ✅/❌ | 全部 Skill 可用 |
 | SPEC-009 | ✅/❌ | 统计监控可用 |
 | SPEC-010 | ✅/❌ | IM 集成可用 |

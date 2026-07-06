@@ -103,10 +103,11 @@ DataAgent 是企业级智能数据分析平台，采用 **前后端分离的 B/S
 - **依赖**: Redis, Agent Service
 
 ### Scheduler Service
-- **路径**: `internal/service/scheduler/`
+- **路径**: `internal/scheduler/`
 - **职责**: Cron 定时触发，创建定时任务记录，写入 Redis Stream
 - **关键文件**:
-  - `internal/service/scheduler/scheduler.go`: Cron 调度器
+  - `internal/scheduler/cron.go`: Cron 调度器
+  - `internal/scheduler/manager.go`: 调度任务 CRUD
 - **依赖**: robfig/cron, Redis Stream, MongoDB
 
 ### Hermes Service
@@ -176,19 +177,25 @@ data-agent/
 │   │   ├── middleware/       # Auth/RBAC/Audit/Security/CORS
 │   │   └── router/           # 路由注册
 │   ├── logic/                # ★ Logic 层（Skill/Handler/Service 共用）
+│   │   ├── sql/              # SQL 生成 + AST 安全校验
+│   │   ├── stats/            # 统计分析（回归/PCA/聚类）
+│   │   ├── knowledge/        # 混合搜索 + RRF 排序
+│   │   ├── report/           # Markdown AST 报告校验
+│   │   └── openapi/          # OpenAPI 3.0 解析器
 │   ├── service/
 │   │   ├── chat/             # Chat 模式业务逻辑
-│   │   ├── agent/            # Agent 批量任务业务逻辑
-│   │   ├── scheduler/        # 定时任务调度
+│   │   ├── agent/            # Agent 同步/异步任务入口
 │   │   ├── admin/            # 管理后台业务逻辑
-│   │   └── knowledge/        # 知识库业务逻辑
+│   │   └── im/               # IM 消息收发
 │   ├── domain/
 │   │   ├── model/            # MongoDB 数据模型
 │   │   ├── agent/            # Agent 引擎 (ADK)
 │   │   ├── skill/            # Skill 注册中心 + SkillContext
 │   │   ├── audit/            # 审计系统
-│   │   └── security/         # 安全审查层
+│   │   └── security/         # 安全审查层（Input/Output/Tool Call 过滤 + 熔断器）
 │   ├── worker/               # Worker Pool (goroutine)
+│   ├── queue/                # Redis Stream 任务队列 + 死信队列
+│   ├── scheduler/            # Cron 调度器 (robfig/cron)
 │   ├── infra/                # 基础设施
 │   │   ├── mongo/            # MongoDB Repository
 │   │   ├── milvus/           # Milvus Client

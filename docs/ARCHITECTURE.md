@@ -74,9 +74,16 @@ data-agent/
 ├── internal/
 │   ├── api/                  # HTTP layer (handlers, middleware, router)
 │   ├── logic/                # Shared business logic (Skill + Handler + Service)
-│   ├── service/              # Business services (chat/agent/scheduler/admin)
-│   ├── domain/               # Domain models, agent engine, skill registry
+│   │   ├── sql/              # SQL generation + AST validation
+│   │   ├── stats/            # Statistics (regression, PCA, clustering)
+│   │   ├── knowledge/        # Hybrid search + RRF ranking
+│   │   ├── report/           # Markdown AST report validation
+│   │   └── openapi/          # OpenAPI 3.0 parser
+│   ├── service/              # Business services (chat/agent/admin/im)
+│   ├── domain/               # Domain models, agent engine, skill registry, security audit
 │   ├── worker/               # Async task worker pool
+│   ├── queue/                # Redis Stream task queue + dead letter
+│   ├── scheduler/            # Cron scheduler
 │   ├── infra/                # Infrastructure (MongoDB/Milvus/Redis/SeaweedFS)
 │   └── config/               # Configuration management
 ├── skills/                   # Skill implementations
