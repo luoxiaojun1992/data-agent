@@ -1,7 +1,8 @@
 # DataAgent — E2E 测试
 
-> MVP 阶段：框架已就绪，占位用例保证 CI Pipeline 不报错。
-> 前端功能开发时逐步添加真实用例。
+> E2E 框架已就绪，占位用例保证 CI Pipeline 不报错。
+> **前端功能开发完成后必须编写真实 E2E 用例并通过 CI（sonar-check + ui-tests）。**
+> CI 配置与 game-dev-studio 一致：sonar-check → ui-tests，两者均通过才算完成。
 
 ## 测试框架
 

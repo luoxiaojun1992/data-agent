@@ -22,10 +22,10 @@ Verify code changes through GitHub Actions CI and execute the debug-fix-retry cy
 Code change → git push → CI triggers automatically
                               │
                               ▼
-                     go-lint + go-test (15 min)
+                     sonar-check (15 min)
                               │
                               ▼
-                      integration-tests (20 min)
+                      ui-tests (20 min)
                               │
                     ┌─────────┴──────────┐
                     ▼                    ▼

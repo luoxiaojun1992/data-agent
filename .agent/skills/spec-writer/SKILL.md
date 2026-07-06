@@ -109,13 +109,15 @@ agent_created: true
 ```markdown
 ## UI Test / E2E 验收规则
 
-> MVP 阶段 E2E 框架已就绪，仅有占位用例。前端功能开发时逐步添加真实用例。
+> 开发任务完成后必须编写真实 E2E 用例并通过 CI（sonar-check + ui-tests）。
 
-- [ ] 新增前端交互功能时必须同步编写对应 E2E 用例
-- [ ] 修改 UI 组件必须更新 `data-testid` 属性
-- [ ] CI 包含 E2E 检查步骤，占位用例保证 Pipeline 不报错
-- [ ] 用例命名: `UI-XXX: {描述}`，编号递增
-- [ ] 严禁删除/降级测试用例、严禁修改业务逻辑绕过测试
+- [ ] **必须** 新增前端交互功能时同步编写对应 E2E 用例（`tests/ui/`，编号 `UI-XXX`）
+- [ ] **必须** 修改 UI 组件时更新 `data-testid` 属性
+- [ ] **必须** CI Pipeline 中 sonar-check 和 ui-tests 均通过才可合并
+- [ ] **严禁** 删除/降级测试用例、修改业务逻辑绕过测试
+- [ ] **严禁** 以占位用例顶替真实功能测试
+
+参考: `.agent/memory/E2E_TESTING.md`
 ```
 
 ### 10. 验证标准（必需）

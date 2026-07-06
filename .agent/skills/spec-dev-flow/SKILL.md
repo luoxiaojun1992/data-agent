@@ -73,11 +73,13 @@ agent_created: true
 - 执行 `golangci-lint run ./...` + `go vet ./...` + `govulncheck ./...`
 - 如有 lint 错误，修复后重新检查
 
-### Step 7b — E2E 测试占位检查（MVP 阶段）
+### Step 7b — E2E 测试编写（强制）
 
-- 确认 `tests/ui/placeholder.spec.ts` 存在且通过
-- 如涉及前端 UI 变更，添加对应 `data-testid` 属性到组件
-- 后续功能开发时转换为真实用例，编号 `UI-XXX`
+- 涉及前端 UI 变更时必须编写真实 E2E 用例（`tests/ui/`，编号 `UI-XXX`）
+- 添加对应 `data-testid` 属性到组件
+- 更新 `.agent/memory/E2E_TESTING.md` 测试矩阵（3 处：标题数字 + 表格行）
+- 纯后端变更可跳过（仅保留占位用例）
+- **运行** `cd tests && npx playwright test` 确认通过
 
 ### Step 8 — 推送分支
 
@@ -96,9 +98,11 @@ git push origin feat/SPEC-XXX-{描述}
 ### Step 10 — CI 验证修复
 
 - 加载 `ci-verification` skill
+- CI Pipeline: **sonar-check** → **ui-tests**（两者均通过才算完成）
 - 检查 CI 状态 → 如有失败 → 下载日志 → 分析根因 → 修复 → push
 - 最多重试 10 次
 - 禁止删除测试用例、禁止降低断言
+- sonar-check 不通过视为 CI 失败，必须修复
 
 ### Step 11 — doc-sync 文档同步
 
