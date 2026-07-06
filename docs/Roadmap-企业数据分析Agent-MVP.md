@@ -161,12 +161,12 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | P4-14 | 用户/Agent 审计日志完善（IP、Skill 调用） | 4h | P1-12 |
 | P4-15 | 报告格式校验（Markdown AST 结构化校验：标题层级、章节存在性 + Agent 修正循环） | 6h | P1-05 |
 
-### Week 8 附加: IM 集成 — 飞书机器人 (MVP)
+### Week 8 附加: IM 集成 — 飞书机器人（仅限轻量办公 Chat 模式，MVP）
 
 | ID | 任务 | 工时 | 依赖 |
 |----|------|:---:|------|
 | P4-16 | 飞书开放平台应用创建与配置（AppID/Secret/事件订阅/权限） | 2h | - |
-| P4-17 | IM 模块（internal/service/im/）— 集成在主二进制，Webhook + 签名验证 + go-lark SDK 消息收发 | 3h | P4-16 |
+| P4-17 | IM 模块（internal/service/im/）— 集成在主二进制，Webhook + 签名验证 + go-lark SDK 消息收发（仅接入 Chat API，不接入 Agent/Hermes） | 3h | P4-16 |
 | P4-18 | 用户绑定模块（飞书 open_id ↔ 系统 user_id，MongoDB `im_bindings` 集合） | 3h | P1-05, P4-17 |
 | P4-20 | 消息路由（IM 消息 → Agent Service Chat API，复用现有 Chat 模式，内部调用） | 3h | P2-10, P4-17 |
 | P4-21 | 分析结果卡片格式化（表格 + 关键指标 + 图表链接，飞书卡片 JSON 模板） | 4h | P4-17, P4-20 |

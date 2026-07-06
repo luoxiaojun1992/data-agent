@@ -69,7 +69,7 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 7. **Markdown AST 报告校验**: 通过 Markdown AST 解析提取标题层级校验章节完整性，替代正则匹配方式。
 8. **Redis Stats 统计**: Scheduler 定时直接写入 Redis（AOF+RDB 持久化），记录 Agent/模型/Session/Task/Token 指标，Dashboard 实时聚合计算 ROI。
 9. **MongoDB TTL 自动清理**: 日志类集合（审计日志/请求日志/通知/Token消耗）使用 TTL 索引自动过期，无需手动清理 Worker。
-10. **IM 模块集成部署**: 飞书 Bot 集成在主二进制（`internal/service/im/`），复用 Agent Service 连接池，无独立容器。
+10. **IM 模块集成部署（仅 Chat 模式）**: 飞书 Bot 集成在主二进制（`internal/service/im/`），仅接入轻量办公 Chat API，不接入 Agent 批量任务和 Hermes 探索模式。
 
 ## 目录结构
 

@@ -120,6 +120,8 @@
 │                                                                    │
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │  IM 模块（internal/service/im/，集成在主二进制内）             │  │
+│  │  · 仅服务于轻量办公模式（Chat），不接入 Agent 任务模式和         │  │
+│  │    Hermes 自由探索模式                                          │  │
 │  │  · 飞书 Webhook 接收（MVP）+ 签名验证 + 消息解密                │  │
 │  │  · 用户识别与绑定（IM open_id → 系统 user_id）                  │  │
 │  │  · 消息路由：IM 消息 → Agent Service Chat API（内部调用）        │  │
@@ -4504,6 +4506,7 @@ HERMES_LLM_MODEL=gpt-4o
 
 IM 模块集成在 Data Agent 主二进制中（`internal/service/im/`），负责统一管理企业 IM 平台的消息收发。遵循以下原则：
 
+- **适用范围**: IM 渠道仅服务于**轻量办公模式（Chat）**，不接入 Agent 批量任务模式和 Hermes 自由探索模式
 - **集成部署**: IM 模块与 Agent Service 在同一进程中运行，通过内部调用通信，不单独部署
 - **平台适配**: 每个 IM 平台（飞书/钉钉/企微）有独立的适配器，共享消息路由和用户绑定逻辑
 - **消息路由**: IM 消息 → Agent Service Chat API（内部调用）→ IM 返回（复用现有 Chat 能力）
@@ -4803,12 +4806,13 @@ FEISHU_ENCRYPT_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ### 17.8.10 关键约束
 
-1. **消息转发不变形**: IM 模块不修改用户消息内容，仅做 @机器人 前缀去除和平台差异处理。
-2. **用户绑定必做**: 未绑定用户的所有消息返回绑定引导，不进入 Agent 处理流程。
-3. **审计日志记录**: 所有 IM 消息（入/出）记录审计日志，`source: "feishu_bot"`，包含 open_id、user_id、消息内容摘要。
-4. **复用 Chat 模式**: IM 渠道复用现有 Agent Service Chat API，不创建独立的推理管道。
-5. **平台适配器模式**: 每个 IM 平台实现 `PlatformAdapter` 接口，核心路由逻辑不变。
-6. **集成部署**: IM 模块与主服务编译在同一二进制，共享 MongoDB/Redis 连接池，IM 会话上下文由 Agent Service 统一管理。
+1. **仅限轻量办公模式**: IM 渠道仅接入 Agent Service Chat API（同步即时对话），不支持 Agent 异步批量任务和 Hermes 自由探索模式。
+2. **消息转发不变形**: IM 模块不修改用户消息内容，仅做 @机器人 前缀去除和平台差异处理。
+3. **用户绑定必做**: 未绑定用户的所有消息返回绑定引导，不进入处理流程。
+4. **审计日志记录**: 所有 IM 消息（入/出）记录审计日志，`source: "feishu_bot"`，包含 open_id、user_id、消息内容摘要。
+5. **复用 Chat 模式**: IM 渠道复用现有 Agent Service Chat API，不创建独立的推理管道。
+6. **平台适配器模式**: 每个 IM 平台实现 `PlatformAdapter` 接口，核心路由逻辑不变。
+7. **集成部署**: IM 模块与主服务编译在同一二进制，共享 MongoDB/Redis 连接池，IM 会话上下文由 Agent Service 统一管理。
 
 ### 17.8.11 V1.1 扩展规划
 
