@@ -4,7 +4,7 @@ description: >
   SPEC 开发全流程编排技能。当用户要求开发某个 SPEC、实现某个功能规格、开始 SPEC 开发时触发。
   覆盖从确认 SPEC 编号到文档同步推送的完整工作流：
   确认编号 → 阅读 memory → 阅读 spec → 规划任务 → 实现 → review → code-lint →
-  E2E 占位检查 → 推送分支 → 等待人工建 PR → CI 验证修复 → doc-sync 文档同步推送。
+  E2E 测试 → 推送分支 → 自动创建 PR → CI 验证（sonar + E2E）→ 自动合并 → doc-sync。
 agent_created: true
 ---
 
@@ -89,20 +89,75 @@ git commit -m "feat(SPEC-XXX): {变更描述}"
 git push origin feat/SPEC-XXX-{描述}
 ```
 
-### Step 9 — 等待人工创建 PR
+### Step 9 — 自动创建 PR（本项目特有，gm-dev-studio 为手动）
 
-- 告知用户分支名称和变更摘要
-- 提醒用户手动在 GitHub 上创建 PR
-- **等待用户明确告知 PR 已创建**
+使用 GitHub API + PAT 自动创建 PR：
 
-### Step 10 — CI 验证修复
+```bash
+TOKEN=$(cat .github-pat)
+BRANCH="feat/SPEC-XXX-{描述}"
 
-- 加载 `ci-verification` skill
-- CI Pipeline: **sonar-check** → **ui-tests**（两者均通过才算完成）
-- 检查 CI 状态 → 如有失败 → 下载日志 → 分析根因 → 修复 → push
+# 创建 PR
+PR_RESPONSE=$(curl -s -X POST https://api.github.com/repos/luoxiaojun1992/data-agent/pulls \
+  -H "Authorization: token $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"title\": \"feat(SPEC-XXX): {变更描述}\",
+    \"head\": \"$BRANCH\",
+    \"base\": \"main\",
+    \"body\": \"## 变更\n\n- xxx\n\n## PR 验收标准\n\n- [ ] sonar-check 通过\n- [ ] ui-tests 通过（含真实 E2E 用例）\n\n## 关联 Spec\n\n- SPEC-XXX: {标题}\"
+  }")
+
+PR_NUMBER=$(echo $PR_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin).get('number',''))")
+echo "PR created: https://github.com/luoxiaojun1992/data-agent/pull/$PR_NUMBER"
+```
+
+### Step 10 — CI 验证 + 自动合并
+
+> **PR 合并验收标准（必须同时满足）**: `sonar-check = success` **AND** `ui-tests = success`
+
+**10.1 等待 CI 完成**
+
+```bash
+# 加载 ci-verification skill，运行 wait-for-ci.sh
+bash scripts/wait-for-ci.sh feat/SPEC-XXX-{描述}
+```
+
 - 最多重试 10 次
 - 禁止删除测试用例、禁止降低断言
-- sonar-check 不通过视为 CI 失败，必须修复
+- sonar-check 不通过 = CI 失败，必须修复
+
+**10.2 验证通过后自动合并 PR**
+
+```bash
+# 确认 sonar-check 和 ui-tests 均为 success
+CI_STATUS=$(curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/commits/$BRANCH/check-runs" \
+  | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+statuses = {r['name']: r['conclusion'] for r in data.get('check_runs', [])}
+sonar = statuses.get('sonar-check')
+ui = statuses.get('ui-tests')
+print(f'sonar-check: {sonar}, ui-tests: {ui}')
+")
+
+echo "$CI_STATUS"
+
+# 仅当两者均为 success 时才合并
+if echo "$CI_STATUS" | grep -q "sonar-check: success" && echo "$CI_STATUS" | grep -q "ui-tests: success"; then
+  curl -s -X PUT "https://api.github.com/repos/luoxiaojun1992/data-agent/pulls/$PR_NUMBER/merge" \
+    -H "Authorization: token $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"merge_method": "squash"}'
+  echo "✅ PR #$PR_NUMBER merged (sonar-check ✅ + ui-tests ✅)"
+else
+  echo "❌ PR #$PR_NUMBER NOT merged — gate not satisfied"
+  exit 1
+fi
+```
+
+> **与 game-dev-studio 的区别**: 本项目 skill 有 PAT 权限，自动创建和合并 PR。不再需要等待人工操作。
 
 ### Step 11 — doc-sync 文档同步
 

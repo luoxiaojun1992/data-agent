@@ -6,7 +6,7 @@ agent_created: true
 
 # CI Verification Skill — data-agent
 
-Verify code changes through GitHub Actions CI and execute the debug-fix-retry cycle when tests fail.
+Verify code changes through GitHub Actions CI. **PR merge gate: sonar-check + ui-tests must both pass.** Auto-creates and auto-merges PRs via PAT — unlike game-dev-studio where PR creation is manual.
 
 ## Prerequisites
 
