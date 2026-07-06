@@ -66,6 +66,11 @@ Roadmap Phase 2 (Week 3-4)，P2-01 ~ P2-16 + P2-11a ~ P2-11c，总计 ~76h。这
 - AES-256-GCM 加密
 - 密钥轮转
 
+### 10. 子 Agent 编排（Phase 4 实现）
+- Sub-Agent 编排基础（A2A 协议）：主 Agent 调度子 Agent 执行子任务
+- 子 Agent 会话生命周期管理：创建、注入父上下文、结果回传、超时回收
+- 子 Agent 隔离：独立 Skill 权限集，不可越权调用
+
 ## 可行性分析
 
 | 检查项 | 结论 |

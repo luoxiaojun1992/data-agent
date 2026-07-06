@@ -85,21 +85,21 @@ data-agent/
 
 ## Roadmap
 
-| Spec | Feature | Status |
-|------|---------|--------|
-| SPEC-001 | Project Initialization & Doc Architecture | ✅ 已实现 |
-| SPEC-002 | CI/CD Environment & Toolchain | 🚧 设计中 |
-| SPEC-003 | Phase 1 — Infrastructure & Auth | 🚧 设计中 |
-| SPEC-004 | Phase 2 — Agent Engine & Services | 🚧 设计中 |
-| SPEC-005 | Phase 3 — Knowledge Base System | 🚧 设计中 |
-| SPEC-006 | Artifact Storage & Workspace | 🚧 设计中 |
-| SPEC-007 | Skill Implementations | 🚧 设计中 |
-| SPEC-008 | Security Audit & Report Validation | 🚧 设计中 |
-| SPEC-009 | System Monitoring (Redis Stats) | 🚧 设计中 |
-| SPEC-010 | IM Integration (Feishu Bot) | 🚧 设计中 |
-| SPEC-011 | Hermes Explore Mode | 🚧 设计中 |
-| SPEC-012 | Admin Dashboard | 🚧 设计中 |
-| SPEC-013 | Testing & Production Deploy | 🚧 设计中 |
+| Spec | Phase | Feature | Status |
+|------|:-----:|---------|--------|
+| SPEC-001 | — | Project Initialization & Doc Architecture | ✅ Done |
+| SPEC-002 | Pre | CI/CD Environment & Toolchain | 🚧 Designing |
+| SPEC-003 | **P1** | Infrastructure & Auth | 🚧 Designing |
+| SPEC-004 | **P2** | Agent Engine & Services | 🚧 Designing |
+| SPEC-006 | **P2** | Artifact Storage & Workspace | 🚧 Designing |
+| SPEC-005 | **P3** | Knowledge Base System | 🚧 Designing |
+| SPEC-007 | P2~4 | Skill Implementations | 🚧 Designing |
+| SPEC-008 | **P4** | Security Audit & Report Validation | 🚧 Designing |
+| SPEC-009 | **P4** | System Monitoring (Redis Stats) | 🚧 Designing |
+| SPEC-010 | **P4** | IM Integration (Feishu Bot) | 🚧 Designing |
+| SPEC-011 | **P5** | Hermes Explore Mode | 🚧 Designing |
+| SPEC-012 | **P5** | Admin Dashboard | 🚧 Designing |
+| SPEC-013 | **P6** | Testing & Production Deploy | 🚧 Designing |
 
 > Full roadmap details: [Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 
