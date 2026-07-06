@@ -2009,7 +2009,7 @@ func New(prefix string) string {
 | `analysis_reports` | 分析报告 | `_id`, `user_id`, `session_id`, `task_id`, `report_type`, `title`, `content`, `artifact_id`, `created_at`, `updated_at` | `{task_id:1}`, `{session_id:1, created_at:-1}`, `{user_id:1, created_at:-1}` |
 | `aggregation_layers` | 聚合层数据 | `_id`, `name`, `dimensions[]`, `metrics[]`, `source`, `data`, `created_at`, `updated_at` | `{name:1}` unique |
 | `knowledge_docs` | 知识库文档元数据 | `_id`, `user_id`, `title`, `type`, `tags[]`, `permissions`, `versions[]`, `created_at`, `updated_at` | `{user_id:1, created_at:-1}`, `{tags:1}` |
-| `knowledge_doc_contents` | 知识库文档内容 | `_id`, `doc_id`, `version`, `content`, `storage_backend`, `artifact_id`, `size_bytes`, `chunks[]`, `created_at` | `{doc_id:1, version:-1}` |
+| `knowledge_doc_contents` | 知识库文档内容（GridFS 引用） | `_id`, `doc_id`, `version`, `gridfs_file_id`, `filename`, `size_bytes`, `created_at` | `{doc_id:1, version:-1}` |
 | `prompts` | 快捷提示词 | `_id`, `category`, `text`, `roles[]`, `sort_order`, `created_at` | `{category:1, sort_order:1}` |
 | `audit_logs` | 审计日志 | `_id`, `user_id`, `session_id`, `action`, `ip`, `detail`, `created_at` | `{user_id:1, created_at:-1}`, `{created_at:-1}` |
 | `security_alerts` | 安全告警 | `_id`, `type`, `user_id`, `content`, `rule`, `created_at` | `{created_at:-1}`, `{type:1, created_at:-1}` |
@@ -2035,7 +2035,7 @@ func New(prefix string) string {
 > 2. `kb_chunks.embedding` 由当前配置的 LLM 模型生成（非专用 embedding 模型），通过向量索引实现语义检索
 > 3. `kb_chunks.doc_id` 与 `knowledge_docs._id` 强绑定，查询时按 `doc_id` 隔离，避免跨文档串数据
 > 4. `prompt_enhancements` 为无状态记录表，不关联 `session_id` 或 `user_id`，仅用于增强结果缓存和日志审计
-> 5. **大文档存储策略**: 上传文档 > 16MB（MongoDB 单文档上限）时，`content` 存入 SeaweedFS 并记录 `artifact_id`，`storage_backend` = `"seaweedfs"`。≤ 16MB 直接存 MongoDB，`storage_backend` = `"mongodb"`。索引任务根据 `storage_backend` 选择读取方式（见 §14.2）
+> 5. **KB 文档统一使用 GridFS 存储**: 所有知识库文档上传后存 MongoDB GridFS（无需区分大小，GridFS 自动分片 255KB chunk），`gridfs_file_id` 关联 `knowledge_doc_contents`。索引任务和详情页均通过 `GridFSDownloadStream`（实现 `io.ReadSeeker`）流式读取，不占内存。小文件（<16MB）同样走 GridFS，避免两套路径。
 
 ### 7.2 分析报告数据模型（analysis_reports）
 
@@ -3863,13 +3863,11 @@ func (s *SaveArtifactSkill) Execute(ctx context.Context, sc SkillContext, params
 │                                                            │
 │  Upload Flow:                                              │
 │  ┌──────────┐    ┌──────────┐    ┌──────────────────┐    │
-│  │ Document │───▶│ Parse    │───▶│ Store            │    │
-│  │ Upload   │    │ (PDF/    │    │                  │    │
-│  │          │    │  Word/   │    │ ≤ 16MB → MongoDB │    │
-│  │          │    │  Excel/  │    │ > 16MB → Seaweed │    │
-│  │          │    │  MD/TXT) │    │ (artifact_id)    │    │
-│  └──────────┘    └──────────┘    └────────┬─────────┘    │
-│                                           │              │
+│  │ Document │───▶│ Parse    │───▶│ GridFS Upload    │    │
+│  │ Upload   │    │ (PDF/    │    │ (MongoDB GridFS,  │    │
+│  │          │    │  Word/   │    │  自动 255KB 分片) │    │
+│  │          │    │  Excel/  │    └────────┬─────────┘    │
+│  │          │    │  MD/TXT) │             │              │
 │  Search Flow:                    ┌────────▼─────────┐    │
 │  ┌──────────┐                    │ Async Queue      │    │
 │  │ Query    │───▶ Embedding ──▶  │ (Redis Stream)   │    │
@@ -3877,10 +3875,10 @@ func (s *SaveArtifactSkill) Execute(ctx context.Context, sc SkillContext, params
 │  │          │                             │              │
 │  │          │                             ▼              │
 │  │          │              ┌──────────────────────┐      │
-│  │          │              │ Read content         │      │
-│  │          │              │ (MongoDB or SeaweedFS│      │
-│  │          │              │ 分批读取)             │      │
-│  │          │              │ → Chunk + Index      │      │
+│  │          │              │ GridFS:              │      │
+│  │          │              │ DownloadStream       │      │
+│  │          │              │ (io.ReadSeeker)      │      │
+│  │          │              │ → LLM Chunk → Milvus │      │
 │  │          │              └──────────────────────┘      │
 │  │          │                                            │
 │  │          │    ┌──────────┐                            │
@@ -3893,14 +3891,11 @@ func (s *SaveArtifactSkill) Execute(ctx context.Context, sc SkillContext, params
 **文档处理流程**:
 ```go
 type KnowledgeService struct {
-    mongo      *MongoClient
-    seaweedfs  *SeaweedFSClient
-    milvus     *MilvusClient
-    redis      *RedisClient
-    embedModel EmbeddingModel
+    mongo  *MongoClient
+    gridfs *gridfs.Bucket // mongo.GridFSBucket
+    milvus *MilvusClient
+    redis  *RedisClient
 }
-
-const MongoMaxDocSize = 16 * 1024 * 1024 // 16MB — MongoDB 单文档上限
 
 func (s *KnowledgeService) UploadDocument(userID string, file io.Reader, filename string, metadata DocMetadata) (*Document, error) {
     // 1. 解析文档
@@ -3917,36 +3912,26 @@ func (s *KnowledgeService) UploadDocument(userID string, file io.Reader, filenam
         Status:   "processing",
     }
 
-    // 2. 根据大小选择存储后端
-    if len(contentBytes) > MongoMaxDocSize {
-        // 大文档 → SeaweedFS 对象存储
-        artifactID := uuid.New().String()
-        storagePath := fmt.Sprintf("kb/%s/%s", doc.ID, filename)
-        _, err = s.seaweedfs.Upload(storagePath, bytes.NewReader(contentBytes))
-        if err != nil { return nil, fmt.Errorf("seaweedfs upload: %w", err) }
+    // 2. 统一存入 GridFS（小文件和大文件同一路径，GridFS 自动 255KB 分片）
+    uploadOpts := options.GridFSUpload().SetMetadata(bson.M{
+        "doc_id":   doc.ID,
+        "filename": filename,
+    })
+    fileID, err := s.gridfs.UploadFromStream(filename, bytes.NewReader(contentBytes), uploadOpts)
+    if err != nil { return nil, fmt.Errorf("gridfs upload: %w", err) }
 
-        docContent := &DocContent{
-            DocID:          doc.ID,
-            StorageBackend: "seaweedfs",
-            ArtifactID:     artifactID,
-            SizeBytes:      int64(len(contentBytes)),
-            Content:        "", // 不存 MongoDB
-        }
-        s.mongo.Insert("knowledge_doc_contents", docContent)
-    } else {
-        // 小文档 → MongoDB 直接存储
-        docContent := &DocContent{
-            DocID:          doc.ID,
-            StorageBackend: "mongodb",
-            Content:        content,
-            SizeBytes:      int64(len(contentBytes)),
-        }
-        s.mongo.Insert("knowledge_doc_contents", docContent)
-    }
-
+    // 3. 保存元数据
+    s.mongo.Insert("knowledge_doc_contents", bson.M{
+        "_id":            uuid.New().String(),
+        "doc_id":         doc.ID,
+        "gridfs_file_id": fileID,
+        "filename":       filename,
+        "size_bytes":     len(contentBytes),
+        "created_at":     time.Now(),
+    })
     s.mongo.Insert("knowledge_docs", doc)
 
-    // 3. 异步索引
+    // 4. 异步索引
     s.redis.XAdd(ctx, "knowledge:index:queue", map[string]any{
         "doc_id": doc.ID,
     })
@@ -3966,25 +3951,15 @@ func (s *KnowledgeService) IndexWorker() {
 
 func (s *KnowledgeService) indexDocument(docID string) {
     doc := s.mongo.FindOne("knowledge_docs", bson.M{"_id": docID})
-
-    // 根据 storage_backend 读取文档内容
     docContent := s.mongo.FindOne("knowledge_doc_contents", bson.M{"doc_id": docID})
-    var content string
-    switch docContent.StorageBackend {
-    case "seaweedfs":
-        // 大文档：从 SeaweedFS 下载到 session workspace，分批读取
-        storagePath := fmt.Sprintf("kb/%s/%s", docID, docContent.Filename)
-        reader, err := s.seaweedfs.Download(storagePath)
-        if err != nil { /* handle */ }
-        data, _ := io.ReadAll(reader)
-        content = string(data)
-    case "mongodb":
-        // 小文档：直接从 MongoDB 读取
-        content = docContent.Content
-    }
 
-    // 1. LLM 语义分片
-    chunks := s.splitIntoChunks(content, 500)
+    // 统一从 GridFS 读取，DownloadStream 实现 io.ReadSeeker，LLM 分片器直接 seek
+    stream, err := s.gridfs.OpenDownloadStream(docContent.GridFSFileID)
+    if err != nil { /* handle */ }
+    defer stream.Close()
+
+    // 1. LLM 语义分片（直接操作 io.ReadSeeker，不占内存）
+    chunks := s.llmChunker.Split(stream, docContent.SizeBytes)
 
     // 2. 向量化 + 写入 Milvus
     for i, chunk := range chunks {
