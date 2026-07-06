@@ -1,6 +1,6 @@
 # Phase 2～3 — 数据分析 Logic 层
 
-> **SPEC-008** | Status: 设计中 | 依赖: SPEC-003（数据库/Redis）, SPEC-004（Skill Context/LLM Router）, SPEC-005（知识库基础设施，Phase 3）
+> **SPEC-015** | Status: 设计中 | 依赖: SPEC-003（数据库/Redis）, SPEC-004（Skill Context/LLM Router）, SPEC-005（知识库基础设施，Phase 3）
 
 ## 目标
 
@@ -120,7 +120,7 @@
 └──────────┬─────────────────────────┘
            │ calls
 ┌──────────▼─────────────────────────┐
-│ Logic 层（SPEC-008）                │
+│ Logic 层（SPEC-015）                │
 │ - SQL 安全校验 / 执行               │
 │ - 统计算法                          │
 │ - 混合搜索                          │
