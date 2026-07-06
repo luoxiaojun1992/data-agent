@@ -1,6 +1,6 @@
 # Phase 5 — Hermes 自由探索模式
 
-> **SPEC-011** | Status: 设计中 | 依赖: 无（独立服务，不经 Agent Service）
+> **SPEC-012** | Status: 设计中 | 依赖: 无（独立服务，不经 Agent Service）
 
 ## 目标
 

@@ -6,8 +6,8 @@
 
 实现 Agent 核心引擎：LLM 调度、Skill 接口与注册、Chat/Agent 服务、安全审计横切层、上下文管理、Vault 密钥、子 Agent 编排。
 
-> 异步任务队列、Worker Pool、Scheduler 调度器已移入 **SPEC-014**（任务队列与调度基础设施）。
-> 具体 Skill 实现见 **SPEC-007**（Skill 实现层）。
+> 异步任务队列、Worker Pool、Scheduler 调度器已移入 **SPEC-009**（任务队列与调度基础设施）。
+> 具体 Skill 实现见 **SPEC-008**（Skill 实现层）。
 
 ## 前置依赖检查
 
@@ -43,7 +43,7 @@ type Skill interface {
 
 - Skill 自动加载器：扫描 `skills/` 目录，按子目录名注册
 - SkillContext 自动注入：SessionID / UserID / TaskID，Skill 实现层不可覆盖
-- 具体 Skill 实现（sql_executor, stats_engine, knowledge_search 等）见 **SPEC-007**
+- 具体 Skill 实现（sql_executor, stats_engine, knowledge_search 等）见 **SPEC-008**
 
 ### 3. Chat Service
 - SSE 流式响应：每个 token 增量推送
@@ -54,9 +54,9 @@ type Skill interface {
 ### 4. Agent Service（统一入口）
 - Chat 实时模式：同步调用 LLM → SSE 流式返回
 - Agent 同步模式：串行执行 Skill 链 → 返回最终结果
-- Agent 异步模式：创建 AgentTask → 入队（见 SPEC-014）→ 立即返回 `task_id`
+- Agent 异步模式：创建 AgentTask → 入队（见 SPEC-009）→ 立即返回 `task_id`
   - AgentTask 数据模型：`{task_id, session_id, user_id, skill_chain, status, created_at}`
-- 注意：Worker Pool、Task Queue（Redis Stream）、任务取消/进度/通知均见 **SPEC-014**
+- 注意：Worker Pool、Task Queue（Redis Stream）、任务取消/进度/通知均见 **SPEC-009**
 
 ### 5. 安全审计层（Security Audit Layer）
 
@@ -108,7 +108,7 @@ type Skill interface {
 | 是否需要新 DB 集合 | Yes（sessions, model_configs, vault_secrets, prompts, prompt_enhancements, security_alerts, token_consumptions） |
 | 是否影响现有 API | No |
 | 性能影响 | Input/Output 过滤 < 2ms，熔断器判断 O(1) |
-| 是否需要新增 Skill | No（Skill 实现见 SPEC-007） |
+| 是否需要新增 Skill | No（Skill 实现见 SPEC-008） |
 | 是否需要 E2E 测试 | Chat → SSE 流式返回 UI 用例；熔断器打开→拒绝→恢复 UI 用例 |
 
 ## 相关文件
@@ -127,7 +127,7 @@ type Skill interface {
 ## 验证标准
 
 1. Chat 模式：发送消息 → SSE 流式返回 → Tool Call 调用链可见
-2. Agent 异步：创建任务 → 返回 task_id → 结果持久化（见 SPEC-014 验证）
+2. Agent 异步：创建任务 → 返回 task_id → 结果持久化（见 SPEC-009 验证）
 3. SQL 注入输入（如 `'; DROP TABLE users; --`）→ Input Sanitization 拦截并记录 alert
 4. 输出含手机号 `13812345678` → Output Sanitization 脱敏为 `138****5678`
 5. 连续 5 次 Skill 执行失败 → 该 Skill 熔断器打开 → 返回 503

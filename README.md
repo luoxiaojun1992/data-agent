@@ -98,16 +98,16 @@ data-agent/
 | SPEC-002 | Pre | CI/CD Environment & Toolchain | 🚧 Designing |
 | SPEC-003 | **P1** | Infrastructure & Auth | 🚧 Designing |
 | SPEC-004 | **P2** | Agent Core Engine (incl. Security) | 🚧 Designing |
-| SPEC-006 | **P2** | Artifact Storage & Workspace | 🚧 Designing |
-| SPEC-005 | **P3** | Knowledge Base System | 🚧 Designing |
-| SPEC-015 | P2~3 | Data Analysis Logic Layer | 🚧 Designing |
-| SPEC-007 | P2~4 | Skill Implementations | 🚧 Designing |
-| SPEC-014 | P2~4 | Task Queue & Scheduler Infrastructure | 🚧 Designing |
-| SPEC-009 | **P4** | System Monitoring (Redis Stats) | 🚧 Designing |
-| SPEC-010 | **P4** | IM Integration (Feishu Bot) | 🚧 Designing |
-| SPEC-011 | **P5** | Hermes Explore Mode | 🚧 Designing |
-| SPEC-012 | **P5** | Admin Dashboard | 🚧 Designing |
-| SPEC-013 | **P6** | Testing | 🚧 Designing |
+| SPEC-005 | **P2** | Artifact Storage & Workspace | 🚧 Designing |
+| SPEC-006 | **P3** | Knowledge Base System | 🚧 Designing |
+| SPEC-007 | **P3** | Data Analysis Logic Layer | 🚧 Designing |
+| SPEC-008 | **P4** | Skill Implementations | 🚧 Designing |
+| SPEC-009 | **P4** | Task Queue & Scheduler Infrastructure | 🚧 Designing |
+| SPEC-010 | **P4** | System Monitoring (Redis Stats) | 🚧 Designing |
+| SPEC-011 | **P4** | IM Integration (Feishu Bot) | 🚧 Designing |
+| SPEC-012 | **P5** | Hermes Explore Mode | 🚧 Designing |
+| SPEC-013 | **P5** | Admin Dashboard | 🚧 Designing |
+| SPEC-014 | **P6** | Testing | 🚧 Designing |
 
 > Full roadmap details: [Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 

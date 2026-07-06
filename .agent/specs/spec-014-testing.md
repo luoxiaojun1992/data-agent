@@ -1,6 +1,6 @@
 # Phase 6 — 测试体系
 
-> **SPEC-013** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-005, SPEC-006, SPEC-007, SPEC-009, SPEC-010, SPEC-011, SPEC-012, SPEC-014, SPEC-015
+> **SPEC-014** | Status: 设计中 | 依赖: SPEC-002, SPEC-003, SPEC-004, SPEC-006, SPEC-005, SPEC-008, SPEC-010, SPEC-011, SPEC-012, SPEC-013, SPEC-009, SPEC-007
 
 ## 目标
 
@@ -11,15 +11,15 @@
 | SPEC-002 | ✅/❌ | CI Pipeline 就绪 |
 | SPEC-003 | ✅/❌ | 基础设施可用 |
 | SPEC-004 | ✅/❌ | Agent 核心可用（含安全审计） |
-| SPEC-005 | ✅/❌ | 知识库系统可用 |
-| SPEC-006 | ✅/❌ | Artifact 存储可用 |
-| SPEC-015 | ✅/❌ | 数据分析 Logic 可用 |
-| SPEC-007 | ✅/❌ | 全部 Skill 可用 |
-| SPEC-009 | ✅/❌ | 统计监控可用 |
-| SPEC-010 | ✅/❌ | IM 集成可用 |
-| SPEC-011 | ✅/❌ | Hermes 可用 |
-| SPEC-012 | ✅/❌ | 管理后台可用 |
-| SPEC-014 | ✅/❌ | 任务队列/调度器可用 |
+| SPEC-006 | ✅/❌ | 知识库系统可用 |
+| SPEC-005 | ✅/❌ | Artifact 存储可用 |
+| SPEC-007 | ✅/❌ | 数据分析 Logic 可用 |
+| SPEC-008 | ✅/❌ | 全部 Skill 可用 |
+| SPEC-010 | ✅/❌ | 统计监控可用 |
+| SPEC-011 | ✅/❌ | IM 集成可用 |
+| SPEC-012 | ✅/❌ | Hermes 可用 |
+| SPEC-013 | ✅/❌ | 管理后台可用 |
+| SPEC-009 | ✅/❌ | 任务队列/调度器可用 |
 
 建立完整测试体系：单元测试 >70% 覆盖率、集成测试、E2E 测试、性能优化、安全测试。
 

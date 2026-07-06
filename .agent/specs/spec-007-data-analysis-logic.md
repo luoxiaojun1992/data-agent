@@ -1,12 +1,12 @@
-# Phase 2～3 — 数据分析 Logic 层
+# Phase 3 — 数据分析 Logic 层
 
-> **SPEC-015** | Status: 设计中 | 依赖: SPEC-003（数据库/Redis）, SPEC-004（Skill Context/LLM Router）, SPEC-005（知识库基础设施，Phase 3）
+> **SPEC-007** | Status: 设计中 | 依赖: SPEC-003（数据库/Redis）, SPEC-004（Skill Context/LLM Router）, SPEC-006（知识库基础设施，Phase 3）
 
 ## 目标
 
 实现数据分析核心 Logic 层，为 Skill 提供可复用、可独立测试的数据处理与校验能力。本 spec 不包含任何 Skill 接口实现，只输出可被 Skill 调用的函数/服务。
 
-> Skill 包装层见 **SPEC-007（Skill 实现层）**。Logic 层必须先于 Skill 层完成，Skill 仅做参数校验、权限检查、调用 Logic、格式化输出。
+> Skill 包装层见 **SPEC-008（Skill 实现层）**。Logic 层必须先于 Skill 层完成，Skill 仅做参数校验、权限检查、调用 Logic、格式化输出。
 
 ## 前置依赖检查
 
@@ -15,7 +15,7 @@
 | SPEC-002 | ✅/❌ | CI Pipeline 就绪 |
 | SPEC-003 | ✅/❌ | MongoDB / Redis 可用 |
 | SPEC-004 | ✅/❌ | SkillContext 注入机制可用 |
-| SPEC-005 | ✅/❌ | GridFS + Milvus Collection 可用（knowledge Logic 依赖） |
+| SPEC-006 | ✅/❌ | GridFS + Milvus Collection 可用（knowledge Logic 依赖） |
 
 ## 背景
 
@@ -113,14 +113,14 @@
 
 ```
 ┌────────────────────────────────────┐
-│ Skill 层（SPEC-007）                │
+│ Skill 层（SPEC-008）                │
 │ - 参数校验 / 权限检查                │
 │ - 调用 Logic 函数                    │
 │ - 格式化输出 / 错误包装              │
 └──────────┬─────────────────────────┘
            │ calls
 ┌──────────▼─────────────────────────┐
-│ Logic 层（SPEC-015）                │
+│ Logic 层（SPEC-007）                │
 │ - SQL 安全校验 / 执行               │
 │ - 统计算法                          │
 │ - 混合搜索                          │
@@ -135,7 +135,7 @@
 | 是否需要新 DB 集合 | Yes（report_validation_logs） |
 | 是否影响现有 API | No（Logic 层不直接暴露 HTTP API） |
 | 性能影响 | SQL 缓存命中 < 5ms；KB Search < 200ms；Stats 计算 < 1s |
-| 是否需要新增 Skill | No（Skill 在 SPEC-007 实现） |
+| 是否需要新增 Skill | No（Skill 在 SPEC-008 实现） |
 | 是否需要 E2E 测试 | No（以单元测试为主） |
 
 ## 相关文件

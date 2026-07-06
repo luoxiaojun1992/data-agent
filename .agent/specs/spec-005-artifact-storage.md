@@ -1,6 +1,6 @@
 # Artifact 存储与工作区管理
 
-> **SPEC-006** | Status: 设计中 | 依赖: SPEC-003（SeaweedFS 连接层）, SPEC-004（Session Manager）
+> **SPEC-005** | Status: 设计中 | 依赖: SPEC-003（SeaweedFS 连接层）, SPEC-004（Session Manager）
 
 ## 目标
 
