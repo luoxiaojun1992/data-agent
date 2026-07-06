@@ -75,7 +75,7 @@ agent_created: true
 
 ### Step 7b — E2E 测试占位检查（MVP 阶段）
 
-- 确认 `frontend/tests/e2e/placeholder.spec.ts` 存在且通过
+- 确认 `tests/ui/placeholder.spec.ts` 存在且通过
 - 如涉及前端 UI 变更，添加对应 `data-testid` 属性到组件
 - 后续功能开发时转换为真实用例，编号 `UI-XXX`
 

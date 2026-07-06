@@ -137,7 +137,7 @@ cd frontend && npx playwright test
 
 ### E2E 测试（MVP 占位）
 ```bash
-cd frontend && npx playwright test
+cd tests && npx playwright test
 # MVP 阶段仅有 UI-000 占位用例，保证 CI Pipeline 不报错
 ```
 

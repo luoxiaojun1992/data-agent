@@ -6,8 +6,8 @@
 ## 测试框架
 
 - **工具**: Playwright (TypeScript)
-- **配置**: `frontend/playwright.config.ts`
-- **目录**: `frontend/tests/e2e/`
+- **配置**: `tests/playwright.config.ts`
+- **目录**: `tests/ui/`
 
 ## 用例编号规则
 
@@ -32,13 +32,13 @@
 ## 运行 E2E
 
 ```bash
-cd frontend && npx playwright test
+cd tests && npx playwright test
 ```
 
 ## 占位用例
 
 ```typescript
-// frontend/tests/e2e/placeholder.spec.ts
+// tests/ui/placeholder.spec.ts
 import { test, expect } from '@playwright/test';
 
 test('UI-000: Placeholder — Always Pass', async ({ page }) => {
