@@ -86,6 +86,7 @@ data-agent/
 │   └── config/               # 配置管理
 ├── skills/                   # Skill 实现
 ├── frontend/                 # React/Next.js 前端
+│   └── tests/e2e/            # Playwright E2E 测试（MVP 占位）
 ├── configs/                  # YAML 配置文件
 ├── docs/                     # 公开文档
 ├── .agent/                   # AI Agent 指令（SSOT）

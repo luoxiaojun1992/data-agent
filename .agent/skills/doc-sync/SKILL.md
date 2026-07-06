@@ -92,6 +92,10 @@ agent_created: true
   - 实现细节是否与 spec 设计一致？
 ```
 
+□ .agent/memory/E2E_TESTING.md
+  - data-testid 对照表：新组件是否添加？
+  - 测试矩阵：新增用例是否添加行？
+
 ### 区域 E：.agent/ 根目录
 
 ```

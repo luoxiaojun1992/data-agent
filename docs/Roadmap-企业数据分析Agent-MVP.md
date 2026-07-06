@@ -50,6 +50,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | ID | 任务 | 工时 | 依赖 |
 |----|------|:---:|------|
 | P1-01 | Go 项目初始化（Module、目录结构、Makefile） | 2h | - |
+| P1-01a | E2E 框架就绪（Playwright 配置 + UI-000 占位用例，保证 CI Pipeline 不报错） | 2h | P1-01 |
 | P1-02 | Docker Compose 开发环境（MongoDB/Milvus/SeaweedFS/Redis） | 4h | - |
 | P1-03 | 配置管理系统（Viper/YAML + 环境变量覆盖） | 3h | P1-01 |
 | P1-04 | 统一日志系统（slog 结构化日志） | 2h | P1-01 |
@@ -229,7 +230,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 |----|------|:---:|------|
 | P6-01 | 单元测试补充（目标覆盖率 > 70%） | 10h | All |
 | P6-02 | 集成测试（Service 层 + 数据库交互） | 8h | P6-01 |
-| P6-03 | E2E 测试（Playwright: 登录→Chat→Agent→结果） | 8h | P6-02 |
+| P6-03 | E2E 测试（Playwright: 基于占位框架逐步添加登录→Chat→Agent→结果用例） | 8h | P6-02 |
 | P6-04 | golangci-lint 全量检查 + 修复 | 4h | All |
 | P6-05 | 依赖安全扫描（govulncheck） | 2h | All |
 
@@ -270,10 +271,10 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 | Phase | 预估工时 |
 |-------|:-------:|
-| Phase 1 | ~45h |
+| Phase 1 | ~47h |
 | Phase 2 | ~76h |
 | Phase 3 | ~55h |
 | Phase 4 | ~90h |
 | Phase 5 | ~64h |
 | Phase 6 | ~56h |
-| **总计** | **~386h** |
+| **总计** | **~388h** |

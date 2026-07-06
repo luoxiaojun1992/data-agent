@@ -135,6 +135,12 @@ go test ./tests/integration/... -v -tags=integration
 cd frontend && npx playwright test
 ```
 
+### E2E 测试（MVP 占位）
+```bash
+cd frontend && npx playwright test
+# MVP 阶段仅有 UI-000 占位用例，保证 CI Pipeline 不报错
+```
+
 ### Mock LLM Service
 - 路径: `POST /mock/llm/v1/chat/completions`
 - 使用 Redis List 存储 per-model 的 mock 响应队列
@@ -202,6 +208,7 @@ chore: update dependencies   # 杂项
 | `.agent/memory/INDEX.md` | 主经验索引 |
 | `.agent/memory/ARCHITECTURE.md` | 详细架构 |
 | `.agent/memory/CONVENTIONS.md` | 编码规范与 bug 记录 |
+| `.agent/memory/E2E_TESTING.md` | E2E 测试模式与用例矩阵 |
 | `.agent/memory/MEMORY.md` | 工程决策日志 |
 | `.agent/specs/INDEX.md` | 设计规格注册表 |
 

@@ -3,8 +3,8 @@ name: spec-dev-flow
 description: >
   SPEC 开发全流程编排技能。当用户要求开发某个 SPEC、实现某个功能规格、开始 SPEC 开发时触发。
   覆盖从确认 SPEC 编号到文档同步推送的完整工作流：
-  确认编号 → 阅读 memory → 阅读 spec → 规划任务 → 实现 → review → code-lint → 推送分支 →
-  等待人工建 PR → CI 验证修复 → doc-sync 文档同步推送。
+  确认编号 → 阅读 memory → 阅读 spec → 规划任务 → 实现 → review → code-lint →
+  E2E 占位检查 → 推送分支 → 等待人工建 PR → CI 验证修复 → doc-sync 文档同步推送。
 agent_created: true
 ---
 
@@ -72,6 +72,12 @@ agent_created: true
 - 加载 `code-lint` skill
 - 执行 `golangci-lint run ./...` + `go vet ./...` + `govulncheck ./...`
 - 如有 lint 错误，修复后重新检查
+
+### Step 7b — E2E 测试占位检查（MVP 阶段）
+
+- 确认 `frontend/tests/e2e/placeholder.spec.ts` 存在且通过
+- 如涉及前端 UI 变更，添加对应 `data-testid` 属性到组件
+- 后续功能开发时转换为真实用例，编号 `UI-XXX`
 
 ### Step 8 — 推送分支
 

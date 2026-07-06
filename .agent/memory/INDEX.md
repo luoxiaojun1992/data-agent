@@ -9,6 +9,7 @@
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构、关键文件、模块交互 |
 | [CONVENTIONS.md](./CONVENTIONS.md) | 编码规范、红线、Bug 修复记录 |
 | [MEMORY.md](./MEMORY.md) | 工程决策日志（按日期追加） |
+| [E2E_TESTING.md](./E2E_TESTING.md) | E2E 测试模式、data-testid 规范、用例矩阵（MVP 占位） |
 | [REUSABLE_PATTERNS.md](./REUSABLE_PATTERNS.md) | 代码片段与设计模式复用 |
 
 ## 快速参考
