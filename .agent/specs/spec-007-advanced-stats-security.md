@@ -1,6 +1,6 @@
 # Phase 4 — 高级统计与安全审计
 
-> **SPEC-006** | Status: 设计中 | 依赖: SPEC-004, SPEC-005
+> **SPEC-007** | Status: 设计中 | 依赖: SPEC-004, SPEC-005
 
 ## 目标
 

@@ -1,6 +1,6 @@
 # Phase 4 — 系统统计监控
 
-> **SPEC-007** | Status: 设计中 | 依赖: SPEC-004（Scheduler + Redis）
+> **SPEC-008** | Status: 设计中 | 依赖: SPEC-004（Scheduler + Redis）
 
 ## 目标
 

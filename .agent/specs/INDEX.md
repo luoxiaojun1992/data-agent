@@ -19,11 +19,13 @@
 | SPEC-003 | Phase 1 — 基础设施与认证授权 | [spec-003-infrastructure.md](spec-003-infrastructure.md) | 🚧 设计中 |
 | SPEC-004 | Phase 2 — Agent 核心引擎与服务 | [spec-004-agent-engine.md](spec-004-agent-engine.md) | 🚧 设计中 |
 | SPEC-005 | Phase 3 — 知识库系统 | [spec-005-knowledge-base.md](spec-005-knowledge-base.md) | 🚧 设计中 |
-| SPEC-006 | Phase 4 — 高级统计与安全审计 | [spec-006-advanced-stats-security.md](spec-006-advanced-stats-security.md) | 🚧 设计中 |
-| SPEC-007 | Phase 4 — 系统统计监控 | [spec-007-stats-monitoring.md](spec-007-stats-monitoring.md) | 🚧 设计中 |
-| SPEC-008 | Phase 4 — IM 集成（飞书） | [spec-008-im-integration.md](spec-008-im-integration.md) | 🚧 设计中 |
-| SPEC-009 | Phase 5 — 管理后台与 Hermes | [spec-009-admin-hermes.md](spec-009-admin-hermes.md) | 🚧 设计中 |
-| SPEC-010 | Phase 6 — 测试体系与生产部署 | [spec-010-testing-deploy.md](spec-010-testing-deploy.md) | 🚧 设计中 |
+| SPEC-006 | Skill 实现层 | [spec-006-skill-implementations.md](spec-006-skill-implementations.md) | 🚧 设计中 |
+| SPEC-007 | Phase 4 — 高级统计与安全审计 | [spec-007-advanced-stats-security.md](spec-007-advanced-stats-security.md) | 🚧 设计中 |
+| SPEC-008 | Phase 4 — 系统统计监控 | [spec-008-stats-monitoring.md](spec-008-stats-monitoring.md) | 🚧 设计中 |
+| SPEC-009 | Phase 4 — IM 集成（飞书） | [spec-009-im-integration.md](spec-009-im-integration.md) | 🚧 设计中 |
+| SPEC-010 | Phase 5 — 管理后台 | [spec-010-admin-dashboard.md](spec-010-admin-dashboard.md) | 🚧 设计中 |
+| SPEC-011 | Phase 5 — Hermes 自由探索 | [spec-011-hermes-explore.md](spec-011-hermes-explore.md) | 🚧 设计中 |
+| SPEC-012 | Phase 6 — 测试体系与生产部署 | [spec-012-testing-deploy.md](spec-012-testing-deploy.md) | 🚧 设计中 |
 
 ## 依赖关系
 
@@ -36,20 +38,20 @@ SPEC-004 (Agent Core) ←──────────────┐
   ↓                                  │
 SPEC-005 (KB) ───────────────────────┤
   ↓                                  │
-SPEC-006 (Stats + Security) ─────────┤
+SPEC-006 (Skills) ───────────────────┤
   ↓                                  │
-SPEC-007 (Monitoring) ───────────────┤
+SPEC-007 (Stats + Security) ─────────┤
   ↓                                  │
-SPEC-008 (IM) ───────────────────────┤
+SPEC-008 (Monitoring) ───────────────┤
   ↓                                  │
-SPEC-009 (Admin + Hermes) ───────────┤
+SPEC-009 (IM) ───────────────────────┤
   ↓                                  │
-SPEC-010 (Test + Deploy) ────────────┘
+SPEC-010 (Admin) ────────────────────┤
+  ↓                                  │
+SPEC-011 (Hermes) ───────────────────┤
+  ↓                                  │
+SPEC-012 (Test + Deploy) ────────────┘
 ```
-  ↓                      │
-SPEC-007 (Admin+Hermes)  │
-  ↓                      │
-SPEC-008 (Test+Deploy) ──┘
 ```
 
 ---
