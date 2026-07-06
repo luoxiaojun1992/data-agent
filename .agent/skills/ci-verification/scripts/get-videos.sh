@@ -13,7 +13,7 @@
 # Prerequisites:
 #   - gh CLI installed and authenticated (GITHUB_TOKEN or gh auth login)
 #   - Artifact name must be "allure-report"
-#   - Working directory: game-dev-studio repo root
+#   - Working directory: repo root
 
 set -euo pipefail
 

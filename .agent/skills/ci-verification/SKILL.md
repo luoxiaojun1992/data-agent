@@ -45,7 +45,7 @@ Code change → git push → CI triggers automatically
 
 All scripts live under `scripts/` in the skill directory.
 
-> **Script 来源**: 以下脚本从 game-dev-studio 的 CI verification skill 移植，核心 GitHub API 逻辑通用。
+> **Script 来源**: 以下脚本为 CI verification 通用脚本，核心 GitHub API 逻辑项目无关。
 > 脚本路径均为相对于本 skill 安装目录的相对路径。
 
 ### wait-for-ci.sh — Poll Until Complete
