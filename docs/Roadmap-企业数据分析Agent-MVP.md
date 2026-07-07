@@ -12,8 +12,8 @@
 | Phase | Week | 对应 Spec | 关键交付 |
 |-------|------|-----------|----------|
 | Phase 1 | W1-2 | SPEC-003 | 基础设施 + 中间件 |
-| Phase 2 | W3-4 | SPEC-004, SPEC-005, SPEC-007 | Agent 核心引擎（含安全审计）+ Artifact + 数据分析 Logic 基础 |
-| Phase 3 | W5-6 | SPEC-006, SPEC-007 | 知识库系统 + 数据分析 Logic 完成 |
+| Phase 2 | W3-4 | SPEC-004, SPEC-005 | Agent 核心引擎（含安全审计）+ Artifact |
+| Phase 3 | W5-6 | SPEC-006, SPEC-007 | 知识库系统 + 数据分析 Logic |
 | Phase 4 | W7-8 | SPEC-008, SPEC-009, SPEC-010, SPEC-011 | Skill 实现 + 任务队列/调度 + 统计监控 + 飞书 IM |
 | Phase 5 | W9-10 | SPEC-012, SPEC-013 | Hermes 探索 + 管理后台 |
 | Phase 6 | W11-12 | SPEC-014 | 测试 |
@@ -89,7 +89,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 ## 3. Phase 2: 核心服务 (Week 3-4)
 
-> 对应: SPEC-004（Agent 核心引擎，含安全审计）, SPEC-006（Artifact）, SPEC-014（任务队列 + Worker Pool）
+> 对应: SPEC-004（Agent 核心引擎，含安全审计）, SPEC-005（Artifact）
 
 ### Week 3: Agent Engine + Skill Registry
 
@@ -124,6 +124,8 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 ## 4. Phase 3: 知识库与解读 (Week 5-6)
 
+> 对应: SPEC-006（知识库）, SPEC-007（数据分析 Logic）
+
 ### Week 5: 知识库文档处理
 
 | ID | 任务 | 工时 | 依赖 |
@@ -151,7 +153,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 ## 5. Phase 4: 高级功能 (Week 7-8)
 
-> 对应: SPEC-009（统计监控）, SPEC-010（IM 集成）, SPEC-014 调度器部分（Cron）, SPEC-004 安全审计/熔断器/子Agent
+> 对应: SPEC-008（Skill 实现）, SPEC-009（任务队列/调度）, SPEC-010（统计监控）, SPEC-011（IM 集成）
 
 ### Week 7: 定时任务 + 子 Agent
 
@@ -202,7 +204,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 ## 6. Phase 5: 管理后台 (Week 9-10)
 
-> 对应: SPEC-011（Hermes 自由探索）, SPEC-012（管理后台）
+> 对应: SPEC-012（Hermes 自由探索）, SPEC-013（管理后台）
 
 ### Week 9: 后台前端搭建 + 核心页面
 
