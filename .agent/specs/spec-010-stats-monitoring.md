@@ -1,8 +1,10 @@
 # Phase 4 — 系统统计监控
 
-> **SPEC-010** | Status: 设计中 | 依赖: SPEC-004（Scheduler + Redis）, SPEC-008（Skill 产生可统计的 Agent/Task 数据）
+> **SPEC-010** | Status: 设计中 | 依赖: SPEC-004（Scheduler + Redis）, SPEC-008（Skill 产数据）, SPEC-009（任务队列）
 
 ## 目标
+
+实现系统级统计监控（Redis Stats Counter）、Dashboard ROI 投入产出比计算、MongoDB TTL 日志自动清理。
 
 ## 前置依赖检查
 
@@ -12,6 +14,7 @@
 | SPEC-003 | ✅/❌ | Redis 连接层可用 |
 | SPEC-004 | ✅/❌ | Scheduler + Agent Service 可用 |
 | SPEC-008 | ✅/❌ | Skill 实现就绪（产生可统计的 Agent/Task 数据） |
+| SPEC-009 | ✅/❌ | 任务队列/调度器可用 |
 
 实现系统级统计监控（Redis Stats Counter）、Dashboard ROI 投入产出比计算、MongoDB TTL 日志自动清理。
 
