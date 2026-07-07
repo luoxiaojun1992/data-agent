@@ -123,8 +123,8 @@ DataAgent 是企业级智能数据分析平台，采用 **前后端分离的 B/S
 
 ### Admin Service
 - **路径**: `internal/service/admin/`
-- **职责**: 管理后台 API（Dashboard/用户/权限/模型配置/任务/知识库/审计日志）
-- **依赖**: MongoDB
+- **职责**: 管理后台 API（Dashboard/用户（三��角色：system_admin/admin/user）/模型配置+系统配置（仅system_admin）/任务/知识库/审计日志/站内信/密码管理）
+- **依赖**: MongoDB（notifications 集合）
 
 ### Logic 层
 - **路径**: `internal/logic/`
