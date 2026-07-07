@@ -125,6 +125,7 @@
 │ - 统计算法                          │
 │ - 混合搜索                          │
 │ - 报告校验                          │
+│ - OpenAPI 解析                      │
 └────────────────────────────────────┘
 ```
 
@@ -151,6 +152,7 @@
 | `internal/logic/stats/financial.go` | 财务分析（Phase 4） | 新建 |
 | `internal/logic/knowledge/search.go` | 混合搜索（Phase 3） | 新建 |
 | `internal/logic/report/validator.go` | 报告格式校验 | 新建 |
+| `internal/logic/openapi/parser.go` | OpenAPI 解析 + MCP Tool 生成 | 新建（Phase 4） |
 
 ## 验证标准
 
