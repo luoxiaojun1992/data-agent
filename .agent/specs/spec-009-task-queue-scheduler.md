@@ -1,6 +1,6 @@
 # Phase 4 — 任务队列与调度基础设施
 
-> **SPEC-009** | Status: 设计中 | 依赖: SPEC-003（Redis/MongoDB）, SPEC-004（Agent Service 生成任务）
+> **SPEC-009** | Status: 已实现 | 依赖: SPEC-003（Redis/MongoDB）, SPEC-004（Agent Service 生成任务）
 
 ## 目标
 
