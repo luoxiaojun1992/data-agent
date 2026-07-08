@@ -19,8 +19,12 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	agent_svc "github.com/luoxiaojun1992/data-agent/internal/service/agent"
+	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
+	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"go.uber.org/zap"
 )
 
@@ -116,6 +120,21 @@ func main() {
 	// Initialize Agent Service
 	agentService := agent_svc.NewService(engine, chatService, sessionManager, cbRegistry)
 
+	// ── SPEC-005: Artifact Storage & Workspace ──
+
+	// Initialize SeaweedFS client (non-fatal — artifacts work only if available)
+	swClient := seaweedfs.NewClient(cfg.SeaweedFS.Master, cfg.SeaweedFS.Filer)
+	_ = swClient // ready for use
+
+	// Initialize Artifact Storage
+	artifactStorage := artifact_svc.NewStorage(swClient, mongoClient.DB())
+
+	// Initialize Workspace Manager
+	workspaceMgr := workspace.NewManager(artifactStorage)
+
+	// Initialize Artifact HTTP Handler
+	artifactHandler := handler.NewArtifactHandler(artifactStorage, workspaceMgr)
+
 	// ── Setup Gin Router ──
 	if cfg.Log.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
@@ -194,6 +213,21 @@ func main() {
 			"expires_at":  sess.ExpiresAt,
 		})
 	})
+
+	// ── SPEC-005: Artifact routes ──
+	artifactRoutes := router.Group("/api/v1/artifacts")
+	artifactRoutes.Use(jwtManager.AuthMiddleware())
+	artifactRoutes.POST("/upload", artifactHandler.Upload)
+	artifactRoutes.GET("/:id/download", artifactHandler.Download)
+	artifactRoutes.DELETE("/:id", artifactHandler.Delete)
+	artifactRoutes.GET("", artifactHandler.ListSession)
+
+	// Workspace routes
+	wsRoutes := router.Group("/api/v1/workspace/:session_id")
+	wsRoutes.Use(jwtManager.AuthMiddleware())
+	wsRoutes.GET("/files", artifactHandler.ListWorkspace)
+	wsRoutes.GET("/files/:filename", artifactHandler.ReadWorkspaceFile)
+	wsRoutes.PUT("/files/:filename", artifactHandler.WriteWorkspaceFile)
 
 	// Start server
 	srv := &http.Server{
