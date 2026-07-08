@@ -15,7 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	agent_svc "github.com/luoxiaojun1992/data-agent/internal/service/agent"
+	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"go.uber.org/zap"
 )
@@ -76,7 +80,43 @@ func main() {
 	// Initialize audit logger
 	auditLogger := middleware.NewAuditLogger(mongoClient.Collection(model.CollAuditLogs))
 
-	// Setup Gin router
+	// ── SPEC-004: Agent Engine & Services ──
+
+	// Initialize LLM Router with default model from env
+	llmRouter := agent.NewRouter()
+	if model := os.Getenv("LLM_MODEL"); model != "" {
+		llmRouter.RegisterModel("default", &agent.ModelConfig{
+			Model:       model,
+			BaseURL:     getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com"),
+			APIKey:      os.Getenv("LLM_API_KEY"),
+			MaxTokens:   4096,
+			Temperature: 0.7,
+			IsDefault:   true,
+		})
+	}
+
+	// Initialize Security Auditor
+	secAuditor := security.NewAuditor(nil)
+
+	// Initialize Circuit Breaker Registry
+	cbRegistry := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+
+	// Initialize Session Manager (24h TTL)
+	sessionManager := chat.NewManager(24 * time.Hour)
+
+	// Initialize Skill Registry (placeholder — real skills in SPEC-008)
+	skillRegistry := agent.NewSkillRegistryAdapter()
+
+	// Initialize Agent Engine
+	engine := agent.NewEngine(llmRouter, skillRegistry, secAuditor)
+
+	// Initialize Chat Service
+	chatService := chat.NewService(engine, sessionManager, secAuditor, cbRegistry)
+
+	// Initialize Agent Service
+	agentService := agent_svc.NewService(engine, chatService, sessionManager, cbRegistry)
+
+	// ── Setup Gin Router ──
 	if cfg.Log.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -122,6 +162,37 @@ func main() {
 	admin.Use(jwtManager.AuthMiddleware())
 	admin.GET("/dashboard", middleware.RequirePermission("system:config"), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "admin dashboard placeholder"})
+	})
+
+	// ── SPEC-004: Chat & Agent routes ──
+
+	// Chat endpoint (streaming SSE)
+	chatRoutes := router.Group("/api/v1/chat")
+	chatRoutes.Use(jwtManager.AuthMiddleware())
+	chatRoutes.POST("", agentService.HandleChat)
+
+	// Agent endpoints
+	agentRoutes := router.Group("/api/v1/agent")
+	agentRoutes.Use(jwtManager.AuthMiddleware())
+	agentRoutes.POST("/tasks", agentService.CreateAgentTask)
+	agentRoutes.GET("/tasks/:task_id", agentService.GetAgentTask)
+	agentRoutes.GET("/skills", agentService.ListSkills)
+	agentRoutes.GET("/skills/search", agentService.SearchSkills)
+
+	// Session management
+	sessionRoutes := router.Group("/api/v1/sessions")
+	sessionRoutes.Use(jwtManager.AuthMiddleware())
+	sessionRoutes.POST("", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		sess, err := sessionManager.Create(userID.(string), "chat")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{
+			"session_id":  sess.ID,
+			"expires_at":  sess.ExpiresAt,
+		})
 	})
 
 	// Start server
@@ -224,4 +295,12 @@ func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, log
 	)
 
 	return nil
+}
+
+// getEnvOrDefault returns the env var value or a default.
+func getEnvOrDefault(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultVal
 }
