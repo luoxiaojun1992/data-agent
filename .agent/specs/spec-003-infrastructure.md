@@ -1,6 +1,6 @@
 # Phase 1 — 基础设施与认证授权
 
-> **SPEC-003** | Status: 设计中 | 依赖: SPEC-002
+> **SPEC-003** | Status: 已实现 | 依赖: SPEC-002
 
 ## 目标
 
