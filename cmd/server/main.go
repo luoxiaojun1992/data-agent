@@ -30,6 +30,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
+	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
 	"go.uber.org/zap"
 )
@@ -191,6 +192,15 @@ func main() {
 			"status": "ok",
 			"time":   time.Now().UTC().Format(time.RFC3339),
 		})
+	})
+
+	// ── SPEC-011: Feishu IM Webhook (no auth) ──
+	imService := im.NewService(im.Config{
+		AppID:     os.Getenv("FEISHU_APP_ID"),
+		AppSecret: os.Getenv("FEISHU_APP_SECRET"),
+	})
+	router.POST("/api/v1/im/feishu/webhook", func(c *gin.Context) {
+		imService.WebhookHandler()(c.Writer, c.Request)
 	})
 
 	// Auth routes (no auth required)
