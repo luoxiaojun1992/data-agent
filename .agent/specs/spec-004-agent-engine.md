@@ -1,6 +1,6 @@
 # Phase 2 — Agent 核心引擎
 
-> **SPEC-004** | Status: 设计中 | 依赖: SPEC-003
+> **SPEC-004** | Status: 已实现 | 依赖: SPEC-003
 
 ## 目标
 
