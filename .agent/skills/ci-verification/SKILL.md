@@ -90,6 +90,28 @@ bash scripts/get-logs.sh 12345678 --failed-only  # only failed
 bash scripts/get-logs.sh 12345678 --dir ./my-logs
 ```
 
+### get-videos.sh — Download Branch-Related UI Test Videos
+
+After CI passes, download the UI test recordings for tests modified on the current branch.
+
+```bash
+bash scripts/get-videos.sh <run-id>
+
+# Custom output directory
+bash scripts/get-videos.sh 12345678 --dir ./my-videos
+```
+
+**How it works:**
+1. Downloads the `allure-results` artifact from the CI run
+2. Detects which UI tests are new/changed on this branch (`git diff origin/main`, auto-discovers all `*.spec.ts` files in `tests/ui/`)
+3. Extracts only the matching `video.webm` files
+4. Names them `UI-XXX-video.webm` for easy identification
+
+**Prerequisites:**
+- `gh` CLI authenticated (uses `GH_TOKEN` or `gh auth login`)
+- Working directory: data-agent repo root
+- `origin/main` must be fetchable for diff comparison
+
 ## Debug-Fix-Retry Cycle
 
 When CI fails, max 10 retries:
@@ -105,8 +127,99 @@ When CI fails, max 10 retries:
 - NEVER downgrade a test assertion (e.g. skip, fixme, relax checks)
 - NEVER modify business logic to work around a test failure
 
+### Step 6: 假性成功排查 — 检查日志中的隐藏错误
+
+**CI "passed" ≠ 真的没问题。** Mock chains、error recovery middleware、HTTP 200 响应都可能掩盖真实的业务错误，导致测试通过但底层服务实际返回了异常。CI 通过后必须执行以下检查：
+
+#### 6.1 下载完整日志
+
+```bash
+# 下载 ui-tests job 的完整日志（不仅 failed-only）
+bash scripts/get-logs.sh <run-id> --dir ./ci-logs-full
+```
+
+#### 6.2 检查 Agent Service HTTP 错误码
+
+data-agent 的 gin.Recovery() 中间件会捕获 panic 并返回 HTTP 500，但测试可能没有验证响应体内容。检查 data-agent 容器日志中的 >=400 状态码：
+
+```bash
+# 检查 data-agent 服务的 HTTP 错误响应（排除 /health 健康检查）
+cat ./ci-logs-full/*.log \
+  | grep -E "status.*[45][0-9]{2}" \
+  | grep -v "/health"
+```
+
+当 data-agent 出现以下状态码时，CI 视为**假性成功**，必须修复：
+
+| 状态码 | 常见假性成功场景 |
+|--------|----------------|
+| 500 | gin.Recovery() 捕获 panic，返回 500 但测试未验证响应体 |
+| 404 | Handler 路由未注册或资源不存在，测试用了错误的 API 路径 |
+| 422 | 请求参数校验失败，但测试 mock 了错误的请求体 |
+| 503 | 下游服务（MongoDB/Milvus/Redis）不可达，被熔断器降级 |
+
+#### 6.3 检查基础设施服务错误
+
+逐个检查 docker compose 中各基础设施服务的错误日志：
+
+```bash
+# MongoDB: 连接错误、认证失败、超时
+cat ./ci-logs-full/*.log \
+  | grep -iE "(mongo|mongodb)" \
+  | grep -iE "(error|fail|timeout|refused)"
+
+# Milvus: collection 未加载、搜索超时、连接断开
+cat ./ci-logs-full/*.log \
+  | grep -iE "(milvus)" \
+  | grep -iE "(error|fail|timeout|not found|not loaded)"
+
+# Redis: 连接池耗尽、命令失败
+cat ./ci-logs-full/*.log \
+  | grep -iE "(redis)" \
+  | grep -iE "(error|fail|timeout|refused)"
+
+# SeaweedFS: 上传/下载失败、master 不可达
+cat ./ci-logs-full/*.log \
+  | grep -iE "(seaweedfs|filer|weed)" \
+  | grep -iE "(error|fail|timeout|refused)"
+```
+
+| 服务 | 常见假性成功 |
+|------|-------------|
+| MongoDB | 连接超时被自动重试掩盖，集合不存在返回空结果 |
+| Milvus | Collection 未加载，搜索返回空但无报错 |
+| Redis | 连接池耗尽时 fallback 到直接 DB 查询，性能降级但不报错 |
+| SeaweedFS | 上传失败但 fileID 为空，后续操作静默跳过 |
+| SonarQube | 扫描超时或项目未创建，CI 步骤 marked as warning |
+
+#### 6.4 检查应用层错误日志
+
+HTTP 200 不意味着业务逻辑正确。还需检查 Go 应用的错误级别日志输出：
+
+```bash
+# 搜索 Go 错误级别日志（排除误匹配）
+cat ./ci-logs-full/*.log \
+  | grep -iE "\b(error|panic|fatal|fail|exception)\b" \
+  | grep -v "error message above" \
+  | grep -v "expected.*error" \
+  | grep -v "/health"
+```
+
+常见掩藏在正常响应中的 Go 错误模式：
+- `[ERROR]` — 业务错误被 log.Error() 记录但返回了降级结果
+- `panic: ...` — gin.Recovery() 恢复的 panic，HTTP 层面返回 500 但测试可能未断言
+- `context deadline exceeded` — 超时被 context 取消，返回部分结果
+- `connection refused` — 下游服务不可达，降级返回空数据
+- `driver:.*connection.*error` — MongoDB driver 连接错误被自动重试吞噬
+
+> **处理原则**：发现任何隐藏错误，即使 CI 显示 "success"，也必须定位根因并修复。假性成功 = 实际失败。
+
 ## After CI Passes
 
+- Download branch-related UI test videos:
+  ```bash
+  bash scripts/get-videos.sh <run-id>
+  ```
 - Mark the task as complete
 - Update daily memory log with the fix summary
 - If the root cause was a non-obvious pattern, update `.agent/memory/CONVENTIONS.md`
