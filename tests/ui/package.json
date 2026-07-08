@@ -1,0 +1,14 @@
+{
+  "name": "data-agent-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed",
+    "test:debug": "npx playwright test --debug"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "allure-playwright": "^3.0.5"
+  }
+}

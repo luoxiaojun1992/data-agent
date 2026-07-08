@@ -1,0 +1,158 @@
+services:
+  sonarqube:
+    image: sonarqube:community
+    ports:
+      - "9002:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-logs:/opt/sonarqube/logs
+      - sonarqube-extensions:/opt/sonarqube/extensions
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  mongodb:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  milvus:
+    image: milvusdb/milvus:v2.4
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      - ETCD_ENDPOINTS=etcd:2379
+      - MINIO_ADDRESS=minio:9000
+    depends_on:
+      - etcd
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    volumes:
+      - minio-data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  seaweedfs:
+    image: chrislusf/seaweedfs
+    ports:
+      - "9333:9333"
+      - "8080:8080"
+    command: server -master -filer -dir=/data
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  data-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - REDIS_ADDR=redis:6379
+      - MILVUS_ADDR=milvus:19530
+      - SEAWEEDFS_MASTER=http://seaweedfs:9333
+      - SEAWEEDFS_FILER=http://seaweedfs:8080
+      - SONARQUBE_HOST=http://sonarqube:9000
+      - SONARQUBE_USER=admin
+      - SONARQUBE_PASSWORD=admin
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      sonarqube:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  ui-e2e:
+    build:
+      context: tests/ui
+      dockerfile: Dockerfile.e2e
+    environment:
+      - UI_BASE_URL=http://data-agent:8080
+      - ALLURE_RESULTS_DIR=artifacts/allure-results
+    volumes:
+      - ./tests/ui/artifacts:/workspace/artifacts
+      - ./tests/ui/coverage:/workspace/coverage
+    depends_on:
+      data-agent:
+        condition: service_healthy
+
+volumes:
+  sonarqube-data:
+  sonarqube-logs:
+  sonarqube-extensions:
+  mongodb-data:
+  etcd-data:
+  minio-data:
+  seaweedfs-data:

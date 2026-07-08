@@ -1,0 +1,42 @@
+name: UI Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ui-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Compose
+        run: |
+          docker compose -f docker-compose.ui-test.yml up -d --wait
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright Dependencies
+        run: |
+          cd tests/ui
+          npm ci
+          npx playwright install chromium --with-deps
+
+      - name: Run E2E Tests
+        run: |
+          cd tests/ui
+          npx playwright test --reporter=allure-playwright
+
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: tests/ui/allure-results/
+          retention-days: 7
