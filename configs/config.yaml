@@ -1,0 +1,21 @@
+# DataAgent Configuration
+# Connection settings default to localhost. In Docker/CI, override via env vars.
+# See .env.example for all supported environment variables.
+
+server:
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+
+mongo:
+  database: "data_agent"
+
+redis:
+  db: 0
+
+jwt:
+  expiration: 24h
+
+log:
+  level: "info"
+  format: "json"
