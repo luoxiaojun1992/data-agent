@@ -55,11 +55,21 @@ type LogConfig struct {
 }
 
 // Load reads config from file and environment variables.
+// Environment variables override file values using Viper's automatic env binding.
+// Key env vars: MONGO_URI, REDIS_ADDR, MILVUS_ADDR, SEAWEEDFS_MASTER, SEAWEEDFS_FILER, JWT_SECRET
 func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
 	v.AutomaticEnv()
+
+	// Explicit env var bindings for Docker/CI overrides
+	_ = v.BindEnv("mongo.uri", "MONGO_URI")
+	_ = v.BindEnv("redis.addr", "REDIS_ADDR")
+	_ = v.BindEnv("milvus.addr", "MILVUS_ADDR")
+	_ = v.BindEnv("seaweedfs.master", "SEAWEEDFS_MASTER")
+	_ = v.BindEnv("seaweedfs.filer", "SEAWEEDFS_FILER")
+	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
 
 	// Set defaults
 	v.SetDefault("server.port", 8080)
