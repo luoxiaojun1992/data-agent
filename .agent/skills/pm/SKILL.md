@@ -8,6 +8,16 @@ agent_created: true
 
 # PM — 项目管理全流程
 
+## 🚫 核心红线（禁止事项）
+
+以下规则为硬性约束，不可违反：
+
+1. **一个 Spec = 一个分支 = 一个 PR。** 禁止将多个 spec 的代码合并到同一个分支或同一个 PR 中。每个 spec 必须独立分支、独立 PR、独立合并。
+2. **CI 未完全通过，禁止合并 PR。** 合并前提：`sonar-check = success` **AND** `ui-tests = success`。任一未通过均不得合并，必须先修复再重跑 CI。
+3. **禁止合并开发。** 不在一个分支上同时实现多个 spec 的功能。拆分 spec 的目的就是隔离变更、独立验证。
+
+> 违反以上任何一条，PR 不得合并，必须拆分后重新提交。
+
 ## 概述
 
 本 skill 编排从需求到合并的完整开发流程，覆盖三个阶段：
@@ -137,6 +147,8 @@ git checkout main && git pull origin main
 
 #### Step 3.2 — 实现当前 spec
 
+> **红线确认**: 每次只实现 **一个** spec。分支上只包含当前 spec 的代码变更，严禁混入其他 spec 的代码。
+
 对每个 spec（按 Phase 2 确定的顺序），执行以下子流程：
 
 **3.2.1 加载 spec-dev-flow**
@@ -180,6 +192,8 @@ curl -X POST https://api.github.com/repos/luoxiaojun1992/data-agent/pulls \
 - 最多 10 次重试
 
 **3.2.5 合并 PR**
+
+> **合并前置条件（红线）**: `sonar-check = success` **AND** `ui-tests = success`。任一不满足，**绝对禁止合并**。
 
 CI 全部通过后，合并 PR：
 
