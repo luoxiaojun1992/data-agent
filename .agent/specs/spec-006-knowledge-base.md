@@ -1,6 +1,6 @@
 # Phase 3 — 知识库系统
 
-> **SPEC-006** | Status: 设计中 | 依赖: SPEC-004
+> **SPEC-006** | Status: 已实现 | 依赖: SPEC-004
 
 ## 目标
 
