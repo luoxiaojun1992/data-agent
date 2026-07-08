@@ -1,6 +1,6 @@
 # Phase 4 — Skill 实现层
 
-> **SPEC-008** | Status: 设计中 | 依赖: SPEC-004（Skill 接口/注册中心）, **SPEC-007（数据分析 Logic 层）**, SPEC-006（知识库基础设施）, SPEC-005（Artifact 存储 + 工作区管理）
+> **SPEC-008** | Status: 已实现 | 依赖: SPEC-004（Skill 接口/注册中心）, **SPEC-007（数据分析 Logic 层）**, SPEC-006（知识库基础设施）, SPEC-005（Artifact 存储 + 工作区管理）
 
 ## 目标
 
