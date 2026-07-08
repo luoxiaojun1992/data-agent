@@ -30,7 +30,9 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
+	"github.com/luoxiaojun1992/data-agent/internal/service/hermes"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
+	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
 	"go.uber.org/zap"
 )
@@ -202,6 +204,16 @@ func main() {
 	router.POST("/api/v1/im/feishu/webhook", func(c *gin.Context) {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
+
+	// ── SPEC-012: Hermes Free Explore (no auth) ──
+	hermesURL := os.Getenv("HERMES_URL")
+	hermesSvc := hermes.NewService(hermesURL)
+	router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
+		hermesSvc.Proxy(c.Writer, c.Request)
+	})
+
+	// ── SPEC-010: System Monitoring ──
+	router.GET("/api/v1/system/stats", monitor.Handler())
 
 	// Auth routes (no auth required)
 	auth := router.Group("/api/v1/auth")
