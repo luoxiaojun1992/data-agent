@@ -1,8 +1,9 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -39,10 +40,9 @@ func RequestIDMiddleware() gin.HandlerFunc {
 }
 
 func generateShortID() string {
-	b := make([]byte, 8)
-	for i := range b {
-		b[i] = "0123456789abcdef"[time.Now().UnixNano()%16]
-		time.Sleep(1) // Ensure uniqueness across rapid calls
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return "unknown"
 	}
-	return string(b)
+	return hex.EncodeToString(b)
 }

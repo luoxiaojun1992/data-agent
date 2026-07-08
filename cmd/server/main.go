@@ -32,7 +32,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to init logger: %v", err)
 	}
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			log.Printf("logger sync error: %v", err)
+		}
+	}()
 
 	// Connect to MongoDB
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
