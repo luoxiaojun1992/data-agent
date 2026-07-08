@@ -1,6 +1,6 @@
 # Phase 5 — 管理后台
 
-> **SPEC-013** | Status: 设计中 | 依赖: SPEC-004（Agent API）, SPEC-008, SPEC-009, SPEC-010, SPEC-011
+> **SPEC-013** | Status: 已实现 | 依赖: SPEC-004（Agent API）, SPEC-008, SPEC-009, SPEC-010, SPEC-011
 
 ## 目标
 
