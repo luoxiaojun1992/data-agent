@@ -47,6 +47,11 @@ logs/
 # Docker
 docker-data/
 
+# E2E Test outputs
+tests/ui/allure-results/
+tests/ui/artifacts/
+tests/ui/coverage/
+
 # Temp
 tmp/
 temp/
