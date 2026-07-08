@@ -73,7 +73,6 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
 		if time.Since(cb.lastState) > time.Duration(cb.config.CooldownSec)*time.Second {
 			cb.state = StateHalfOpen
 			cb.lastState = time.Now()
-			state = StateHalfOpen
 		} else {
 			cb.mu.Unlock()
 			return fmt.Errorf("circuit breaker is open (cooldown: %ds remaining)",
