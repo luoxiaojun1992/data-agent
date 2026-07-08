@@ -22,6 +22,7 @@ import (
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
@@ -135,6 +136,10 @@ func main() {
 	// Initialize Artifact HTTP Handler
 	artifactHandler := handler.NewArtifactHandler(artifactStorage, workspaceMgr)
 
+	// ── SPEC-006: Knowledge Base ──
+	kbService := knowledge.NewService(mongoClient.DB())
+	kbHandler := handler.NewKnowledgeHandler(kbService)
+
 	// ── Setup Gin Router ──
 	if cfg.Log.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
@@ -228,6 +233,16 @@ func main() {
 	wsRoutes.GET("/files", artifactHandler.ListWorkspace)
 	wsRoutes.GET("/files/:filename", artifactHandler.ReadWorkspaceFile)
 	wsRoutes.PUT("/files/:filename", artifactHandler.WriteWorkspaceFile)
+
+	// ── SPEC-006: Knowledge Base routes ──
+	kbRoutes := router.Group("/api/v1/knowledge")
+	kbRoutes.Use(jwtManager.AuthMiddleware())
+	kbRoutes.POST("/docs", kbHandler.UploadDoc)
+	kbRoutes.GET("/docs", kbHandler.ListDocs)
+	kbRoutes.GET("/docs/:id", kbHandler.GetDoc)
+	kbRoutes.DELETE("/docs/:id", kbHandler.DeleteDoc)
+	kbRoutes.POST("/docs/:id/chunks", kbHandler.AddChunks)
+	kbRoutes.GET("/search", kbHandler.Search)
 
 	// Start server
 	srv := &http.Server{
