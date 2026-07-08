@@ -1,0 +1,28 @@
+server:
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+
+mongo:
+  uri: "mongodb://localhost:27017"
+  database: "data_agent"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+milvus:
+  addr: "localhost:19530"
+
+seaweedfs:
+  master: "http://localhost:9333"
+  filer: "http://localhost:8080"
+
+jwt:
+  secret: "change-me-in-production"
+  expiration: 24h
+
+log:
+  level: "info"
+  format: "json"
