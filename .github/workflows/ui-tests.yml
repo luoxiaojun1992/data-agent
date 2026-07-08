@@ -13,6 +13,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cleanup previous containers
+        run: |
+          docker compose -f docker-compose.ui-test.yml down --remove-orphans --volumes 2>/dev/null || true
+
       - name: Setup Docker Compose
         run: |
           docker compose -f docker-compose.ui-test.yml up -d --wait
@@ -32,6 +36,11 @@ jobs:
         run: |
           cd tests/ui
           npx playwright test --reporter=allure-playwright
+
+      - name: Cleanup containers
+        if: always()
+        run: |
+          docker compose -f docker-compose.ui-test.yml down --remove-orphans --volumes 2>/dev/null || true
 
       - name: Upload Allure Report
         if: always()
