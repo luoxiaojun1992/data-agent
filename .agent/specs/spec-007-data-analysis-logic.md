@@ -1,6 +1,6 @@
 # Phase 3 — 数据分析 Logic 层
 
-> **SPEC-007** | Status: 设计中 | 依赖: SPEC-003（数据库/Redis）, SPEC-004（Skill Context/LLM Router）, SPEC-006（知识库基础设施，Phase 3）
+> **SPEC-007** | Status: 已实现 | 依赖: SPEC-003（数据库/Redis）, SPEC-004（Skill Context/LLM Router）, SPEC-006（知识库基础设施，Phase 3）
 
 ## 目标
 
