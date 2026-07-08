@@ -18,8 +18,20 @@ jobs:
           docker compose -f docker-compose.ui-test.yml down --remove-orphans --volumes 2>/dev/null || true
 
       - name: Setup Docker Compose
+        id: compose
         run: |
-          docker compose -f docker-compose.ui-test.yml up -d --wait
+          docker compose -f docker-compose.ui-test.yml up -d --wait || true
+          echo "compose_exit=$?" >> $GITHUB_OUTPUT
+
+      - name: Show data-agent logs
+        if: always()
+        run: |
+          docker compose -f docker-compose.ui-test.yml logs data-agent 2>/dev/null || true
+          docker compose -f docker-compose.ui-test.yml ps 2>/dev/null || true
+
+      - name: Fail if compose failed
+        if: steps.compose.outputs.compose_exit != '0'
+        run: exit 1
 
       - name: Setup Node
         uses: actions/setup-node@v4

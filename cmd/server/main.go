@@ -38,30 +38,36 @@ func main() {
 		}
 	}()
 
-	// Connect to MongoDB
+	// Connect to MongoDB (non-fatal for MVP — server starts even without DB)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	mongoClient, err := mongoinfra.NewClient(ctx, cfg.Mongo.URI, cfg.Mongo.Database)
+	var mongoClient *mongoinfra.Client
+	var userRepo *mongoinfra.UserRepository
+	mongoClient, err = mongoinfra.NewClient(ctx, cfg.Mongo.URI, cfg.Mongo.Database)
 	if err != nil {
-		logger.Fatal("Failed to connect to MongoDB", zap.Error(err))
-	}
-	defer func() {
-		if err := mongoClient.Disconnect(context.Background()); err != nil {
-			logger.Error("Failed to disconnect MongoDB", zap.Error(err))
+		logger.Warn("Failed to connect to MongoDB — server will start without database",
+			zap.Error(err),
+			zap.String("uri", cfg.Mongo.URI),
+		)
+	} else {
+		defer func() {
+			if err := mongoClient.Disconnect(context.Background()); err != nil {
+				logger.Error("Failed to disconnect MongoDB", zap.Error(err))
+			}
+		}()
+		logger.Info("MongoDB connected", zap.String("database", cfg.Mongo.Database))
+
+		// Ensure indexes
+		if err := mongoinfra.EnsureIndexes(ctx, mongoClient.DB()); err != nil {
+			logger.Warn("Failed to ensure indexes", zap.Error(err))
 		}
-	}()
-	logger.Info("MongoDB connected", zap.String("database", cfg.Mongo.Database))
 
-	// Ensure indexes
-	if err := mongoinfra.EnsureIndexes(ctx, mongoClient.DB()); err != nil {
-		logger.Fatal("Failed to ensure indexes", zap.Error(err))
-	}
-
-	// Auto-create system admin if not exists
-	userRepo := mongoinfra.NewUserRepository(mongoClient.DB())
-	if err := ensureSystemAdmin(ctx, userRepo, logger); err != nil {
-		logger.Fatal("Failed to ensure system admin", zap.Error(err))
+		// Auto-create system admin if MongoDB connected
+		userRepo = mongoinfra.NewUserRepository(mongoClient.DB())
+		if err := ensureSystemAdmin(ctx, userRepo, logger); err != nil {
+			logger.Warn("Failed to ensure system admin", zap.Error(err))
+		}
 	}
 
 	// Initialize JWT manager
