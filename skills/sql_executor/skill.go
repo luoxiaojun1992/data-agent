@@ -1,7 +1,6 @@
 package sql_executor
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
