@@ -23,9 +23,14 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
+	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
+	"github.com/luoxiaojun1992/data-agent/internal/queue"
+	"github.com/luoxiaojun1992/data-agent/internal/worker"
 	"go.uber.org/zap"
 )
 
@@ -140,6 +145,33 @@ func main() {
 	kbService := knowledge.NewService(mongoClient.DB())
 	kbHandler := handler.NewKnowledgeHandler(kbService)
 
+	// ── SPEC-009: Task Queue & Worker Pool ──
+
+	var taskHandler *handler.TaskHandler
+	var taskService *task_svc.Service
+
+	redisClient, redisErr := redis.NewClient(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	if redisErr != nil {
+		logger.Warn("Failed to connect to Redis — task queue disabled", zap.Error(redisErr))
+	} else {
+		defer redisClient.Close()
+
+		taskStream, streamErr := queue.NewStream(redisClient.Client())
+		if streamErr != nil {
+			logger.Warn("Failed to create task stream", zap.Error(streamErr))
+		} else {
+			taskService = task_svc.NewService(mongoClient.DB(), taskStream)
+			taskHandler = handler.NewTaskHandler(taskService)
+
+			workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, &simpleExecutor{taskSvc: taskService})
+			workerPool.Start(context.Background())
+			defer workerPool.Stop()
+
+			logger.Info("Task queue and worker pool started", zap.Int("workers", 4))
+		}
+	}
+	_ = taskService // used for route registration check
+
 	// ── Setup Gin Router ──
 	if cfg.Log.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
@@ -243,6 +275,16 @@ func main() {
 	kbRoutes.DELETE("/docs/:id", kbHandler.DeleteDoc)
 	kbRoutes.POST("/docs/:id/chunks", kbHandler.AddChunks)
 	kbRoutes.GET("/search", kbHandler.Search)
+
+	// ── SPEC-009: Task routes ──
+	if taskHandler != nil {
+		taskRoutes := router.Group("/api/v1/tasks")
+		taskRoutes.Use(jwtManager.AuthMiddleware())
+		taskRoutes.POST("", taskHandler.CreateTask)
+		taskRoutes.GET("", taskHandler.ListTasks)
+		taskRoutes.GET("/:task_id", taskHandler.GetTask)
+		taskRoutes.PUT("/:task_id/cancel", taskHandler.CancelTask)
+	}
 
 	// Start server
 	srv := &http.Server{
@@ -352,4 +394,17 @@ func getEnvOrDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// simpleExecutor is a basic task executor for the worker pool.
+// In production, this would route to the Agent Engine for actual execution.
+type simpleExecutor struct {
+	taskSvc *task_svc.Service
+}
+
+func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
+	// Placeholder: in production, this routes to Agent Engine
+	_ = ctx
+	_ = t
+	return nil
 }
