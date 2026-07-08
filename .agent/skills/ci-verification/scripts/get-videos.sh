@@ -5,15 +5,15 @@
 #   --dir      Output directory (default: ./ui-test-videos-<run-id>)
 #
 # Workflow:
-#   1. Downloads the allure-report artifact from the given CI run
+#   1. Downloads the allure-results artifact from the given CI run
 #   2. Detects which UI tests are new/changed on this branch (git diff vs main)
 #   3. Extracts only the relevant video.webm files
 #   4. Names them UI-XXX-video.webm for easy identification
 #
 # Prerequisites:
 #   - gh CLI installed and authenticated (GITHUB_TOKEN or gh auth login)
-#   - Artifact name must be "allure-report"
-#   - Working directory: repo root
+#   - Artifact name must be "allure-results"
+#   - Working directory: data-agent repo root
 
 set -euo pipefail
 
@@ -34,8 +34,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-REPO="${GITHUB_REPO:-luoxiaojun1992/game-studio}"
-ARTIFACT_NAME="allure-report"
+REPO="${GITHUB_REPO:-luoxiaojun1992/data-agent}"
+ARTIFACT_NAME="allure-results"
 TEMP_DIR="/tmp/ci-videos-$$"
 
 echo "🎬 Downloading UI test videos for run #$RUN_ID"
@@ -49,19 +49,31 @@ echo "📋 Detecting branch-specific UI tests..."
 # Get current branch name
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-# Find UI-XXX test IDs added or modified on this branch vs main
-# Parse the studio.spec.ts for test('[UI-XXX] ...') and compare git diff
-SPEC_FILE="tests/ui/e2e/studio.spec.ts"
+# Find UI-XXX test IDs added or modified on this branch vs main.
+# Auto-discovers all *.spec.ts files in tests/ui/ (project-specific structure).
+SPEC_FILES=$(find tests/ui -name "*.spec.ts" -type f 2>/dev/null | sort)
 
-# Get the set of test IDs on main (base)
-MAIN_TESTS=$(git show "origin/main:${SPEC_FILE}" 2>/dev/null | grep -oE "test\('\[UI-[0-9]+\]" | grep -oE 'UI-[0-9]+' | sort -u || echo "")
-if [ -z "$MAIN_TESTS" ]; then
-  echo "   ⚠️  Could not read ${SPEC_FILE} from origin/main, using all tests"
-  MAIN_TESTS=""
+if [ -z "$SPEC_FILES" ]; then
+  echo "   ⚠️  No spec files found in tests/ui/"
+  SPEC_FILES=""
 fi
 
-# Get the set of test IDs on current branch
-BRANCH_TESTS=$(grep -oE "test\('\[UI-[0-9]+\]" "$SPEC_FILE" | grep -oE 'UI-[0-9]+' | sort -u)
+# Get the set of test IDs on main (base) — aggregate across all spec files
+MAIN_TESTS=""
+for f in $SPEC_FILES; do
+  T=$(git show "origin/main:$f" 2>/dev/null | grep -oE "test\('\[UI-[0-9]+\]" | grep -oE 'UI-[0-9]+' | sort -u || echo "")
+  MAIN_TESTS=$(echo -e "${MAIN_TESTS}\n${T}" | sort -u | sed '/^$/d')
+done
+if [ -z "$MAIN_TESTS" ]; then
+  echo "   ⚠️  Could not read spec files from origin/main, using all tests"
+fi
+
+# Get the set of test IDs on current branch — aggregate across all spec files
+BRANCH_TESTS=""
+for f in $SPEC_FILES; do
+  T=$(grep -oE "test\('\[UI-[0-9]+\]" "$f" | grep -oE 'UI-[0-9]+' | sort -u)
+  BRANCH_TESTS=$(echo -e "${BRANCH_TESTS}\n${T}" | sort -u | sed '/^$/d')
+done
 
 # Find new tests (not in main)
 if [ -n "$MAIN_TESTS" ]; then
@@ -70,8 +82,12 @@ else
   NEW_TESTS="$BRANCH_TESTS"
 fi
 
-# Also find tests whose test block content changed (git diff)
-CHANGED_TESTS=$(git diff "origin/main" -- "$SPEC_FILE" 2>/dev/null | grep -oE "test\('\[UI-[0-9]+\]" | grep -oE 'UI-[0-9]+' | sort -u || echo "")
+# Also find tests whose test block content changed (git diff, all spec files)
+CHANGED_TESTS=""
+for f in $SPEC_FILES; do
+  T=$(git diff "origin/main" -- "$f" 2>/dev/null | grep -oE "test\('\[UI-[0-9]+\]" | grep -oE 'UI-[0-9]+' | sort -u || echo "")
+  CHANGED_TESTS=$(echo -e "${CHANGED_TESTS}\n${T}" | sort -u | sed '/^$/d')
+done
 
 # Merge: new tests + changed tests
 TARGET_TESTS=$(echo -e "${NEW_TESTS}\n${CHANGED_TESTS}" | sort -u | sed '/^$/d')
@@ -84,7 +100,7 @@ fi
 echo "   Branch: $BRANCH"
 echo "   Target tests: $(echo "$TARGET_TESTS" | tr '\n' ' ')"
 
-# ── Step 1: Download the allure-report artifact ──
+# ── Step 1: Download the allure-results artifact ──
 echo ""
 echo "📥 Downloading artifact '$ARTIFACT_NAME' from run #$RUN_ID..."
 
@@ -135,7 +151,7 @@ mkdir -p "$OUTPUT_DIR"
 VIDEO_COUNT=0
 
 for TEST_ID in $TARGET_TESTS; do
-  # Video files follow Playwright naming: studio--UI-XXX-...--chromium/video.webm
+  # Video files follow Playwright naming: spec-file--UI-XXX-...--chromium/video.webm
   # Search case-insensitively for the test ID in the directory path
   VIDEO_FILE=$(find "$TEMP_DIR" -path "*${TEST_ID}*" -name "video.webm" -type f 2>/dev/null | head -1)
 
