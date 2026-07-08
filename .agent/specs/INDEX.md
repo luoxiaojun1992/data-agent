@@ -28,6 +28,7 @@
 | SPEC-012 | Hermes 自由探索 | **P5** | [spec-012-hermes-explore.md](spec-012-hermes-explore.md) | ✅ 已实现 |
 | SPEC-013 | 管理后台 | **P5** | [spec-013-admin-dashboard.md](spec-013-admin-dashboard.md) | ✅ 已实现 |
 | SPEC-014 | 测试体系 | **P6** | [spec-014-testing.md](spec-014-testing.md) | ✅ 已实现 |
+| SPEC-015 | 代码审核修复（一致性修复） | **P7** | [spec-015-audit-fix.md](spec-015-audit-fix.md) | 设计中 |
 
 ## Phase 对应与依赖
 
@@ -46,6 +47,7 @@
 | **P5** | SPEC-012 | Hermes 自由探索 | 独立 |
 | **P5** | SPEC-013 | 管理后台 | SPEC-004, 010, 011, 009 |
 | **P6** | SPEC-014 | 测试体系 | 全部 |
+| **P7** | SPEC-015 | 代码审核修复 | SPEC-001 ~ SPEC-014 |
 
 ### 依赖流向（简化）
 
@@ -95,4 +97,7 @@ SPEC-006│               │
             │       │
             ▼       ▼
 [P6]   SPEC-014 ─── 测试体系
+    │
+    ▼
+[P7]   SPEC-015 ─── 审核修复（基于 SPEC-001~014 一致性审计）
 ```
