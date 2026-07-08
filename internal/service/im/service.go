@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -128,7 +129,9 @@ func (s *Service) WebhookHandler() http.HandlerFunc {
 		}
 		if err := json.Unmarshal(body, &challenge); err == nil && challenge.Type == "url_verification" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"challenge": challenge.Challenge})
+			if err := json.NewEncoder(w).Encode(map[string]string{"challenge": challenge.Challenge}); err != nil {
+				log.Printf("feishu webhook: encode challenge response error: %v", err)
+			}
 			return
 		}
 
@@ -163,7 +166,9 @@ func (s *Service) WebhookHandler() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		resp := s.FormatTextMessage("收到消息: " + msg.Text)
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("feishu webhook: encode response error: %v", err)
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ package hermes
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -42,5 +43,7 @@ func (s *Service) Proxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("hermes proxy: io.Copy error: %v", err)
+	}
 }
