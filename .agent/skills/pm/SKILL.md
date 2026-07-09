@@ -20,7 +20,8 @@ agent_created: true
 
 ## 概述
 
-本 skill 编排从需求到合并的完整开发流程，覆盖三个阶段：
+本 skill 编排从需求到合并的完整开发流程，覆盖四个阶段：
+0. **环境准备** — 切换 main 分支 → 拉取最新代码（每次必执行，不可跳过）
 1. **需求收集** — 用户描述需求 → spec-writer 编写设计文档
 2. **实施规划** — 确认 scope → 编排 spec 实现顺序
 3. **迭代实现** — spec-dev-flow 逐个实现 → 创建 PR → CI 通过 → 合并 → 下一个
@@ -32,6 +33,43 @@ agent_created: true
 - 已安装 `spec-writer`、`spec-dev-flow`、`ci-verification`、`doc-sync` 子 skill
 
 ## 工作流
+
+---
+
+### Phase 0: 环境准备（每次必执行）
+
+> **⚠️ 强制规则：进入任何其他 Phase 之前，必须先执行 Phase 0。不可跳过。**
+
+在开始任何工作（需求收集、状态检查、spec 实现）之前，必须先执行以下两步：
+
+#### Step 0.1 — 切换到 main 分支
+
+```bash
+git checkout main
+```
+
+如果当前有未提交的变更，先 stash 或 commit 后再切换。
+
+#### Step 0.2 — 拉取最新代码
+
+```bash
+git pull origin main
+```
+
+确保本地 main 与远端完全同步。如果 pull 失败（如网络问题），暂停并告知用户。
+
+#### Step 0.3 — 验证同步状态
+
+```bash
+git log --oneline -3
+```
+
+确认本地 HEAD 与 `origin/main` 一致。
+
+> **为什么必须在最前面？** main 分支是 spec 状态（`.agent/specs/INDEX.md`）的唯一真源。不先同步 main 会导致：
+> - 读到过期的 spec 状态，误判实现进度
+> - 基于旧代码创建分支，引入合并冲突
+> - CI 状态与实际代码不一致
 
 ---
 
@@ -89,9 +127,11 @@ git push
 
 ### Phase 2: 实施规划 → 确认 Scope
 
+> 进入 Phase 2 前，确认 Phase 0 已执行，main 分支已是最新。
+
 #### Step 2.1 — 列出未实现 spec
 
-读取 `.agent/specs/INDEX.md`，提取状态为 `设计中` 的 spec，同时读取每个 spec 的「前置依赖检查」表格：
+读取 `.agent/specs/INDEX.md`（注意：此时已在最新 main 分支上），提取状态为 `设计中` 的 spec，同时读取每个 spec 的「前置依赖检查」表格：
 
 ```
 当前有 N 个未实现的 spec：
@@ -139,10 +179,20 @@ git push
 
 ### Phase 3: 迭代实现 → PR → 合并
 
-#### Step 3.1 — 切换到 main 并更新
+> 进入 Phase 3 前，确认 Phase 0 已执行。
+
+#### Step 3.1 — 确认 main 最新并创建分支
+
+每个 spec 开始前，再次确认 main 已同步（防止上一个 spec 合并后有新提交）：
 
 ```bash
 git checkout main && git pull origin main
+```
+
+然后基于最新 main 创建 spec 分支：
+
+```bash
+git checkout -b feat/SPEC-XXX-{kebab-description}
 ```
 
 #### Step 3.2 — 实现当前 spec
@@ -275,10 +325,12 @@ git push
 
 | 场景 | 处理 |
 |------|------|
+| 忘记执行 Phase 0（未同步 main） | 立即回退，执行 `git checkout main && git pull origin main`，然后重新开始 |
 | CI 超过 10 次重试仍失败 | 暂停，告知用户排查 |
 | PR 合并冲突 | 手动 rebase main 解决冲突后重新 push |
 | PAT 权限不足 | 提示用户检查 PAT scope（需要 repo + pull） |
 | spec-dev-flow 中断 | 记录当前 spec 和步骤，恢复时从断点继续 |
+| main pull 失败（网络/权限） | 暂停流程，告知用户具体错误，等待修复后重试 |
 
 ## 子 Skill 引用
 
