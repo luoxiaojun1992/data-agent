@@ -13,7 +13,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Redirect to login if not authenticated
   React.useEffect(() => {
     if (!auth.token && pathname !== '/login') {
-      router.push('/login');
+      router.push('/login?expired=true');
     }
   }, [auth.token, pathname, router]);
 
