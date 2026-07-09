@@ -18,12 +18,46 @@ agent_created: true
 ## 前置条件
 
 - 在 data-agent 项目根目录下执行
-- 当前分支为 `main` 且代码已更新到最新（每次执行前必须先 `git checkout main && git pull origin main`）
 - GitHub PAT 已配置（`.github-pat` 文件在项目根目录），无需人工介入
 - 已安装 `code-lint`、`ci-verification`、`doc-sync` 三个子 skill
   - **注意**: `ci-verification` 的安装目录不一定在项目目录下（可能在 `~/.workbuddy/skills/` 或其他位置），使用 `Skill` 工具加载即可，脚本路径由加载后的 skill 指令提供
 
 ## 工作流
+
+### Step 0 — 环境准备（每次必执行）
+
+> **⚠️ 强制规则：进入任何其他 Step 之前，必须先执行 Step 0。不可跳过。**
+
+每次开始 spec-dev-flow 之前，必须先执行以下两步：
+
+**Step 0.1 — 切换到 main 分支**
+
+```bash
+git checkout main
+```
+
+如果当前有未提交的变更，先 stash 或 commit 后再切换。
+
+**Step 0.2 — 拉取最新代码**
+
+```bash
+git pull origin main
+```
+
+确保本地 main 与远端完全同步。如果 pull 失败（如网络问题），暂停并告知用户。
+
+**Step 0.3 — 验证同步状态**
+
+```bash
+git log --oneline -3
+```
+
+确认本地 HEAD 与 `origin/main` 一致。
+
+> **为什么必须在最前面？** main 分支是 spec 状态和代码的唯一真源。不先同步 main 会导致：
+> - 读到过期的 spec 文档和 INDEX 状态
+> - 基于旧代码创建分支，引入合并冲突
+> - 前置依赖检查结果不准确
 
 ### Step 1 — 确认 SPEC 编号
 
