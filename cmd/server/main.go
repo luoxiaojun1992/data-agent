@@ -132,9 +132,15 @@ func main() {
 
 	// Initialize Skill Registry — all skills are registered at startup
 	skillRegistry := skill.NewRegistry()
-	skillRegistry.Register(&sqlskill.SQLExecutor{})
-	skillRegistry.Register(&statsskill.StatsEngine{})
-	skillRegistry.Register(&saveskill.SaveReport{})
+	if err := skillRegistry.Register(&sqlskill.SQLExecutor{}); err != nil {
+		logger.Warn("Failed to register sql_executor skill", zap.Error(err))
+	}
+	if err := skillRegistry.Register(&statsskill.StatsEngine{}); err != nil {
+		logger.Warn("Failed to register stats_engine skill", zap.Error(err))
+	}
+	if err := skillRegistry.Register(&saveskill.SaveReport{}); err != nil {
+		logger.Warn("Failed to register save_report skill", zap.Error(err))
+	}
 	// knowledge_search requires the KB service (registered after kbService init)
 
 	// Initialize Agent Engine with skill registry
@@ -167,7 +173,9 @@ func main() {
 	kbHandler := handler.NewKnowledgeHandler(kbService)
 
 	// Register knowledge search skill (requires kbService)
-	skillRegistry.Register(kbskill.NewKnowledgeSearch(kbService))
+	if err := skillRegistry.Register(kbskill.NewKnowledgeSearch(kbService)); err != nil {
+		logger.Warn("Failed to register knowledge_search skill", zap.Error(err))
+	}
 
 	// ── SPEC-009: Task Queue & Worker Pool ──
 
@@ -195,13 +203,15 @@ func main() {
 		sched.Start(context.Background())
 
 		// Register default scheduled tasks
-		sched.AddSchedule(&scheduler.Schedule{
+		if err := sched.AddSchedule(&scheduler.Schedule{
 			Name:       "System Monitoring Stats",
 			CronExpr:   "every_5m",
 			Enabled:    true,
 			SkillChain: []string{"stats_engine"},
 			Params:     map[string]interface{}{"method": "descriptive"},
-		})
+		}); err != nil {
+			logger.Warn("Failed to add monitoring schedule", zap.Error(err))
+		}
 		logger.Info("Scheduler started with default tasks")
 
 			workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, &simpleExecutor{taskSvc: taskService})
