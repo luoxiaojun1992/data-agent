@@ -22,23 +22,24 @@
 10. [USER — 用户管理](#10-user--用户管理)
 11. [ROLE — 权限管理](#11-role--权限管理)
 12. [MODEL — 模型配置](#12-model--模型配置)
-13. [TASK — 任务管理（全局）](#13-task--任务管理全局)
-14. [KB — 知识库管理](#14-kb--知识库管理)
-15. [AUDIT — 审计日志](#15-audit--审计日志)
-16. [API — API 转换审核](#16-api--api-转换审核)
-17. [NOTIF — 站内信系统](#17-notif--站内信系统)
-18. [PWD — 密码管理](#18-pwd--密码管理)
-19. [PROMPT — 增强提示词](#19-prompt--增强提示词)
-20. [IM — IM 集成（飞书）](#20-im--im-集成飞书)
-21. [LIST — 列表管理通用规范](#21-list--列表管理通用规范)
-22. [UPLOAD — 批量文件上传](#22-upload--批量文件上传)
-23. [SESSION — Session 管理](#23-session--session-管理)
-24. [SEC — 安全审查层](#24-sec--安全审查层)
-25. [RBAC — 角色权限访问控制](#25-rbac--角色权限访问控制)
-26. [RESP — 响应式设计](#26-resp--响应式设计)
-27. [ERR — 错误状态与边界条件](#27-err--错误状态与边界条件)
-28. [端到端场景测试](#28-端到端场景测试)
-29. [附录：功能覆盖矩阵](#29-附录功能覆盖矩阵)
+13. [SYSCONFIG — 系统配置](#13-sysconfig--系统配置)
+14. [TASK — 任务管理（全局）](#14-task--任务管理全局)
+15. [KB — 知识库管理](#15-kb--知识库管理)
+16. [AUDIT — 审计日志](#16-audit--审计日志)
+17. [API — API 转换审核](#17-api--api-转换审核)
+18. [NOTIF — 站内信系统](#18-notif--站内信系统)
+19. [PWD — 密码管理](#19-pwd--密码管理)
+20. [PROMPT — 增强提示词](#20-prompt--增强提示词)
+21. [IM — IM 集成（飞书）](#21-im--im-集成飞书)
+22. [LIST — 列表管理通用规范](#22-list--列表管理通用规范)
+23. [UPLOAD — 批量文件上传](#23-upload--批量文件上传)
+24. [SESSION — Session 管理](#24-session--session-管理)
+25. [SEC — 安全审查层](#25-sec--安全审查层)
+26. [RBAC — 角色权限访问控制](#26-rbac--角色权限访问控制)
+27. [RESP — 响应式设计](#27-resp--响应式设计)
+28. [ERR — 错误状态与边界条件](#28-err--错误状态与边界条件)
+29. [端到端场景测试](#29-端到端场景测试)
+30. [附录：功能覆盖矩阵](#30-附录功能覆盖矩阵)
 
 ---
 
@@ -127,7 +128,7 @@ modal-delete-confirm — 删除确认弹窗
   4. 失去焦点
   5. 输入有效邮箱 `test@company.com`
 - **预期结果**:
-  - 标签「邮箱地址」（13px #7A7A7A）显示在输入框上方
+  - 标签「邮箱地址」（12px SemiBold #7A7A7A）显示在输入框上方
   - Placeholder 显示 `name@company.com`
   - 聚焦时边框变为 `#B1E2FF`
   - 无效格式时显示错误提示（红色文字）
@@ -142,7 +143,7 @@ modal-delete-confirm — 删除确认弹窗
   1. 检查密码输入框
   2. 输入密码
 - **预期结果**:
-  - 标签「密码」（13px #7A7A7A）显示在输入框上方
+  - 标签「密码」（12px SemiBold #7A7A7A）显示在输入框上方
   - 输入内容以掩码圆点 (`······`) 显示
   - 输入框类型为 `type="password"`
   - `data-testid`: `login-password-label`, `login-password-input`
@@ -251,7 +252,7 @@ modal-delete-confirm — 删除确认弹窗
   - 侧边栏宽度 240px，背景 `#0D0D17`(HTML)/`#13121C`(设计稿)
   - 顶部 Logo 区：DA 图标 + "DataAgent" 文字
   - 导航分 3 个分组，每组有 Section Label（10px 大写 #666）
-  - 导航项共 12 项
+  - 导航项共 11 项
   - `data-testid`: `sidebar`, `sidebar-logo`, `sidebar-logo-icon`, `sidebar-logo-text`
 - **相关设计**: UI原型设计文档 §1.5
 
@@ -330,7 +331,7 @@ modal-delete-confirm — 删除确认弹窗
   1. 依次切换到每个页面
   2. 检查页面标题
 - **预期结果**:
-  - 每个页面顶部显示对应的中文页面标题（22px Bold 白色）
+  - 每个页面顶部显示对应的中文页面标题（20px SemiBold 白色）
   - 对照表：
     - 轻量工作区 → 「轻量工作区」
     - 专业工作区 → 「专业工作区 · 任务管理」
@@ -577,7 +578,7 @@ modal-delete-confirm — 删除确认弹窗
   1. Hover 某个会话项，点击出现的删除图标
   2. 确认删除
 - **预期结果**:
-  - 弹出删除确认弹窗：「确定要删除此会话吗？」
+  - 弹出删除确认弹窗：「确定要删除此会话吗？此操作不可撤销。」
   - 确认后该会话从列表中移除
   - 如果删除的是当前活跃会话，自动切换到最近一个会话
   - `data-testid`: `session-item-delete-{id}`, `session-delete-confirm-modal`
@@ -972,7 +973,7 @@ modal-delete-confirm — 删除确认弹窗
 - **步骤**:
   1. 检查页面顶部
 - **预期结果**:
-  - 左侧：「下午好，管理员 👋」(26px Bold)
+  - 左侧：「下午好，管理员 👋」(24px Bold)
   - 下方：「实时数据概览 · 2026-07-09」(13px #7A7A7A)
   - （根据当前时间动态显示「上午好/下午好/晚上好」和角色名）
   - `data-testid`: `dashboard-greeting`, `dashboard-subtitle`
@@ -1000,7 +1001,7 @@ modal-delete-confirm — 删除确认弹窗
 - **预期结果**:
   - 4 列等宽网格布局（`grid-template-columns: repeat(4, 1fr)`）
   - 每个卡片：玻璃背景 + 28px 圆角 + 32px 内边距
-  - KPI 1：Chat 查询 — 标签紫色系 + 数值 1,247 (38px IBM Plex Mono) + ↑ 12.5% vs 昨日
+  - KPI 1：Chat 查询 — 标签紫色系 + 数值 1,247 (42px IBM Plex Mono SemiBold) + ↑ 12.5% vs 昨日
   - KPI 2：Agent 任务 — 标签蓝色系 + 数值 38 + ↑ 8.3% vs 昨日
   - KPI 3：成功率 — 标签绿色系 + 数值 96.8% + ↑ 2.1% vs 上周
   - KPI 4：在线用户 — 标签琥珀色系 + 数值 24 + ↓ 2 vs 昨日
@@ -1223,7 +1224,21 @@ modal-delete-confirm — 删除确认弹窗
   - 或「删除」按钮为禁用状态 + tooltip 提示「不可删除系统管理员」
   - `data-testid`: `user-row-{systemAdminId}`
 
-### UI-082: User — 邮箱唯一性校验
+### UI-082: User — 不可创建第二个 system_admin
+- **优先级**: P0
+- **前置条件**: 以 system_admin 身份登录，用户列表中已有 system_admin
+- **步骤**:
+  1. 点击「+ 添加用户」
+  2. 填写用户信息，角色选择「system_admin」
+  3. 点击确认
+- **预期结果**:
+  - 角色下拉中「system_admin」不可选或带 tooltip「系统管理员唯一，不可创建第二个」
+  - 或创建时后端返回错误并显示提示：「系统管理员已存在，无法创建」
+  - 已有 system_admin 不可被降级为其他角色
+  - `data-testid`: `user-add-role`, `user-add-role-system-admin-disabled`
+- **相关 PRD**: PRD §F-11, SPEC-003 §6.3
+
+### UI-083: User — 邮箱唯一性校验
 - **优先级**: P1
 - **前置条件**: 已有用户 test@company.com
 - **步骤**:
@@ -1234,7 +1249,7 @@ modal-delete-confirm — 删除确认弹窗
   - 用户未被创建
   - `data-testid`: `user-add-email-error`
 
-### UI-083: User — 用户列表分页
+### UI-084: User — 用户列表分页
 - **优先级**: P1
 - **前置条件**: 用户总数 > 20
 - **步骤**:
@@ -1251,7 +1266,7 @@ modal-delete-confirm — 删除确认弹窗
 
 > **对应 PRD**: F-15 权限管理 + F-11 RBAC | **对应 Spec**: SPEC-013, SPEC-003 §6 | **UI 原型**: 权限管理 (Screen 7)
 
-### UI-084: Role — 权限管理页渲染
+### UI-085: Role — 权限管理页渲染
 - **优先级**: P0
 - **前置条件**: 以 system_admin 身份登录，点击「权限管理」
 - **步骤**:
@@ -1263,7 +1278,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `role-page-header`, `role-create-btn`, `role-tabs`
 - **相关设计**: UI原型设计文档 §3.7
 
-### UI-085: Role — 固定角色卡片
+### UI-086: Role — 固定角色卡片
 - **优先级**: P0
 - **前置条件**: 权限管理页，「角色」Tab 激活
 - **步骤**:
@@ -1278,7 +1293,7 @@ modal-delete-confirm — 删除确认弹窗
   - 「固定角色」Badge 为灰色 Pill
   - `data-testid`: `role-fixed-cards`, `role-fixed-card-{0-3}`, `role-fixed-badge`
 
-### UI-086: Role — 自定义角色表格
+### UI-087: Role — 自定义角色表格
 - **优先级**: P0
 - **前置条件**: 权限管理页，「角色」Tab 激活
 - **步骤**:
@@ -1289,7 +1304,7 @@ modal-delete-confirm — 删除确认弹窗
   - 操作列：编辑 / 删除
   - `data-testid`: `role-custom-table`
 
-### UI-087: Role — 新建自定义角色
+### UI-088: Role — 新建自定义角色
 - **优先级**: P0
 - **前置条件**: 权限管理页
 - **步骤**:
@@ -1303,7 +1318,7 @@ modal-delete-confirm — 删除确认弹窗
   - 确认后新增角色出现在自定义角色表格中
   - `data-testid`: `role-create-modal`, `role-create-name`, `role-create-permissions`, `role-create-submit`
 
-### UI-088: Role — 权限 Tab 渲染
+### UI-089: Role — 权限 Tab 渲染
 - **优先级**: P0
 - **前置条件**: 权限管理页
 - **步骤**:
@@ -1315,7 +1330,7 @@ modal-delete-confirm — 删除确认弹窗
   - 权限标识如 `user.manage`, `model.config`, `task.manage`
   - `data-testid`: `role-permissions-tab`, `role-permission-table`
 
-### UI-089: Role — 编辑角色权限
+### UI-090: Role — 编辑角色权限
 - **优先级**: P0
 - **前置条件**: 自定义角色表格中有角色
 - **步骤**:
@@ -1327,7 +1342,7 @@ modal-delete-confirm — 删除确认弹窗
   - 拥有该角色的用户权限同步更新
   - `data-testid`: `role-edit-btn-{roleId}`, `role-edit-modal`
 
-### UI-090: Role — 删除自定义角色
+### UI-091: Role — 删除自定义角色
 - **优先级**: P1
 - **前置条件**: 有自定义角色，且无用户使用
 - **步骤**:
@@ -1338,7 +1353,7 @@ modal-delete-confirm — 删除确认弹窗
   - 确认后角色从列表中移除
   - `data-testid`: `role-delete-btn-{roleId}`, `role-delete-confirm-modal`
 
-### UI-091: Role — 不可删除固定角色
+### UI-092: Role — 不可删除固定角色
 - **优先级**: P1
 - **前置条件**: 权限管理页
 - **步骤**:
@@ -1354,7 +1369,7 @@ modal-delete-confirm — 删除确认弹窗
 
 > **对应 PRD**: F-15 模型配置 | **对应 Spec**: SPEC-013 §§??, SPEC-004 §1 | **UI 原型**: 模型配置 (Screen 8)
 
-### UI-092: Model — 模型配置页渲染
+### UI-093: Model — 模型配置页渲染
 - **优先级**: P0
 - **前置条件**: 以 system_admin 身份登录，点击「模型配置」
 - **步骤**:
@@ -1367,7 +1382,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `model-page-header`, `model-llm-card`, `model-hermes-card`
 - **相关设计**: UI原型设计文档 §3.8
 
-### UI-093: Model — OpenAI 兼容 API URL 配置
+### UI-094: Model — OpenAI 兼容 API URL 配置
 - **优先级**: P0
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1382,7 +1397,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `model-api-url-label`, `model-api-url-input`, `model-save-btn`
 - **相关设计**: UI原型设计文档 §3.8
 
-### UI-094: Model — API Key 输入与 Vault 加密
+### UI-095: Model — API Key 输入与 Vault 加密
 - **优先级**: P0
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1399,7 +1414,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `model-api-key-input`, `model-api-key-eye-toggle`, `model-api-key-masked`
 - **相关 PRD**: PRD §F-20
 
-### UI-095: Model — 眼睛按钮切换 API Key 可见性
+### UI-096: Model — 眼睛按钮切换 API Key 可见性
 - **优先级**: P0
 - **前置条件**: API Key 已保存
 - **步骤**:
@@ -1413,7 +1428,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `model-api-key-eye-toggle`, `model-api-key-input`
 - **相关 PRD**: PRD §F-20
 
-### UI-096: Model — Model Name 下拉选择
+### UI-097: Model — Model Name 下拉选择
 - **优先级**: P0
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1429,7 +1444,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `model-name-select`
 - **相关设计**: UI原型设计文档 §3.8
 
-### UI-097: Model — 上下文长度配置（Stepper）
+### UI-098: Model — 上下文长度配置（Stepper）
 - **优先级**: P1
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1445,7 +1460,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `model-context-len`, `model-context-len-plus`, `model-context-len-minus`
 - **相关设计**: UI原型设计文档 §3.8
 
-### UI-098: Model — 最大输出长度配置
+### UI-099: Model — 最大输出长度配置
 - **优先级**: P1
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1456,7 +1471,7 @@ modal-delete-confirm — 删除确认弹窗
   - 同样为 Stepper 控件
   - `data-testid`: `model-max-output`, `model-max-output-plus`, `model-max-output-minus`
 
-### UI-099: Model — Temperature 配置
+### UI-100: Model — Temperature 配置
 - **优先级**: P1
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1467,7 +1482,7 @@ modal-delete-confirm — 删除确认弹窗
   - 支持小数输入或滑块控件
   - `data-testid`: `model-temperature`
 
-### UI-100: Model — Top-P 配置
+### UI-101: Model — Top-P 配置
 - **优先级**: P1
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1478,7 +1493,7 @@ modal-delete-confirm — 删除确认弹窗
   - 支持小数输入或滑块控件
   - `data-testid`: `model-top-p`
 
-### UI-101: Model — Hermes 配置区域
+### UI-102: Model — Hermes 配置区域
 - **优先级**: P1
 - **前置条件**: 模型配置页
 - **步骤**:
@@ -1491,7 +1506,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `model-hermes-card`, `model-hermes-url`, `model-hermes-api-key`, `model-hermes-badge`
 - **相关设计**: UI原型设计文档 §3.8, SPEC-012
 
-### UI-102: Model — 仅 system_admin 可访问
+### UI-103: Model — 仅 system_admin 可访问
 - **优先级**: P0
 - **前置条件**: 以 admin 或 user 身份登录
 - **步骤**:
@@ -1504,11 +1519,80 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 13. TASK — 任务管理（全局）
+## 13. SYSCONFIG — 系统配置
+
+> **对应 PRD**: F-15 管理后台 | **对应 Spec**: SPEC-013 §2 | **UI 原型**: N/A (管理后台新增页)
+
+### UI-104: SysConfig — 系统配置页渲染
+- **优先级**: P0
+- **前置条件**: 以 system_admin 身份登录，点击「系统配置」
+- **步骤**:
+  1. 检查页面渲染
+- **预期结果**:
+  - Header：「系统配置」
+  - 配置区域包含全局参数设置：
+    - Session 恢复缓冲期（默认 24h，可配 1~168h）
+    - 审计日志保留天数（默认 90 天）
+    - 通知 TTL 天数（默认 90 天）
+    - 邮件域名白名单（列表 + 添加/删除）
+    - 报告格式校验重试次数（默认 3 次）
+  - 每项配置有「保存」按钮
+  - `data-testid`: `sysconfig-page-header`, `sysconfig-session-recovery`, `sysconfig-audit-retention`, `sysconfig-notif-ttl`, `sysconfig-email-whitelist`, `sysconfig-report-retry`
+- **相关 Spec**: SPEC-013 §2, SPEC-012 (Hermes 配置独立), SPEC-009 (通知 TTL)
+
+### UI-105: SysConfig — 修改并保存全局参数
+- **优先级**: P0
+- **前置条件**: 系统配置页已加载
+- **步骤**:
+  1. 修改 Session 恢复缓冲期为 48 小时
+  2. 点击该配置项的「保存」按钮
+- **预期结果**:
+  - 保存成功 toast：「配置已更新」
+  - 重新加载页面后配置值保持为 48 小时
+  - 配置优先级：后台配置 > 环境变量 > 默认值
+  - `data-testid`: `sysconfig-session-recovery-save`, `sysconfig-save-success-toast`
+
+### UI-106: SysConfig — 仅 system_admin 可访问
+- **优先级**: P0
+- **前置条件**: 以 admin 或 user 身份登录
+- **步骤**:
+  1. 检查侧边栏是否显示「系统配置」导航项
+  2. 尝试直接访问系统配置 URL
+- **预期结果**:
+  - 「系统配置」不出现在侧边栏中
+  - 直接访问 URL 返回 403 或重定向
+  - `data-testid`: `sidebar`
+- **相关 Spec**: SPEC-013 §7
+
+### UI-107: SysConfig — 缓冲期上限校验
+- **优先级**: P1
+- **前置条件**: 系统配置页已加载
+- **步骤**:
+  1. 在 Session 恢复缓冲期输入 200（超过 168 小时上限）
+  2. 点击保存
+- **预期结果**:
+  - 显示错误提示：「缓冲期最长 1 周（168 小时）」
+  - 配置未保存，恢复原值
+  - `data-testid`: `sysconfig-session-recovery-error`
+
+### UI-108: SysConfig — 配置优先级验证
+- **优先级**: P1
+- **前置条件**: 同时设置了环境变量 `SESSION_RECOVERY_HOURS=72` 和后台配置 48h
+- **步骤**:
+  1. 检查系统实际使用的缓冲期值
+- **预期结果**:
+  - 实际生效值为后台配置的 48h（后台 > 环境变量）
+  - 若后台配置未设置（null），则使用环境变量值
+  - 若均未设置，使用默认值 24h
+  - `data-testid`: N/A (后端逻辑 + 配置页验证)
+
+---
+
+## 14. TASK — 任务管理（全局）
 
 > **对应 PRD**: F-15 任务管理 | **对应 Spec**: SPEC-013, SPEC-009 | **UI 原型**: 任务管理 (Screen 9)
 
-### UI-103: Task — 任务管理页渲染
+### UI-109: Task — 任务管理页渲染
 - **优先级**: P0
 - **前置条件**: 以管理员身份登录，点击「任务管理」
 - **步骤**:
@@ -1521,7 +1605,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `task-mgmt-page-header`, `task-mgmt-filter-tabs`, `task-mgmt-table`
 - **相关设计**: UI原型设计文档 §3.9
 
-### UI-104: Task — 全局查看所有用户任务
+### UI-110: Task — 全局查看所有用户任务
 - **优先级**: P0
 - **前置条件**: 任务管理页，有其他用户创建的任务
 - **步骤**:
@@ -1531,7 +1615,7 @@ modal-delete-confirm — 删除确认弹窗
   - 发起人列显示各任务的创建者
   - `data-testid`: `task-mgmt-row-{taskId}`, `task-mgmt-creator-{taskId}`
 
-### UI-105: Task — 查看任务详情
+### UI-111: Task — 查看任务详情
 - **优先级**: P0
 - **前置条件**: 任务列表中有任务
 - **步骤**:
@@ -1542,7 +1626,7 @@ modal-delete-confirm — 删除确认弹窗
   - 显示进度、日志、Artifact
   - `data-testid`: `task-mgmt-view-btn-{taskId}`
 
-### UI-106: Task — 取消运行中任务
+### UI-112: Task — 取消运行中任务
 - **优先级**: P0
 - **前置条件**: 有 status=running 的任务
 - **步骤**:
@@ -1553,7 +1637,7 @@ modal-delete-confirm — 删除确认弹窗
   - 确认后任务状态变为「已取消」
   - `data-testid`: `task-mgmt-cancel-btn-{taskId}`
 
-### UI-107: Task — 重试失败任务
+### UI-113: Task — 重试失败任务
 - **优先级**: P1
 - **前置条件**: 有 status=failed 的任务
 - **步骤**:
@@ -1563,7 +1647,7 @@ modal-delete-confirm — 删除确认弹窗
   - 状态变为「排队中」
   - `data-testid`: `task-mgmt-retry-btn-{taskId}`
 
-### UI-108: Task — 批量取消任务
+### UI-114: Task — 批量取消任务
 - **优先级**: P1
 - **前置条件**: 筛选标签「运行中」，有 ≥ 2 个任务
 - **步骤**:
@@ -1578,11 +1662,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 14. KB — 知识库管理
+## 15. KB — 知识库管理
 
 > **对应 PRD**: F-08 共享知识库 | **对应 Spec**: SPEC-006, SPEC-013 | **UI 原型**: 知识库管理 (Screen 10)
 
-### UI-109: KB — 知识库管理页渲染
+### UI-115: KB — 知识库管理页渲染
 - **优先级**: P0
 - **前置条件**: 以知识管理员或 system_admin 登录，点击「知识库管理」
 - **步骤**:
@@ -1596,7 +1680,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `kb-page-header`, `kb-upload-btn`, `kb-batch-upload-btn`, `kb-info-banner`
 - **相关设计**: UI原型设计文档 §3.10
 
-### UI-110: KB — 文档卡片渲染
+### UI-116: KB — 文档卡片渲染
 - **优先级**: P0
 - **前置条件**: 知识库中有文档
 - **步骤**:
@@ -1613,7 +1697,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `kb-doc-card-{docId}`, `kb-doc-name`, `kb-doc-meta`, `kb-doc-status`, `kb-doc-tags`
 - **相关设计**: UI原型设计文档 §3.10
 
-### UI-111: KB — 上传单个文档
+### UI-117: KB — 上传单个文档
 - **优先级**: P0
 - **前置条件**: 知识库管理页
 - **步骤**:
@@ -1627,7 +1711,7 @@ modal-delete-confirm — 删除确认弹窗
   - 异步 Agent 任务自动触发
   - `data-testid`: `kb-upload-modal`, `kb-upload-file-select`, `kb-upload-progress`
 
-### UI-112: KB — 批量上传文档
+### UI-118: KB — 批量上传文档
 - **优先级**: P0
 - **前置条件**: 知识库管理页
 - **步骤**:
@@ -1642,7 +1726,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `kb-batch-upload-modal`, `kb-batch-file-list`, `kb-batch-progress-{index}`
 - **相关 PRD**: PRD §F-22
 
-### UI-113: KB — 拖拽上传
+### UI-119: KB — 拖拽上传
 - **优先级**: P1
 - **前置条件**: 知识库管理页
 - **步骤**:
@@ -1653,7 +1737,7 @@ modal-delete-confirm — 删除确认弹窗
   - 每文件独立进度条
   - `data-testid`: `kb-drop-zone`
 
-### UI-114: KB — 索引状态实时更新
+### UI-120: KB — 索引状态实时更新
 - **优先级**: P0
 - **前置条件**: 有新上传的文档（索引中状态）
 - **步骤**:
@@ -1664,7 +1748,7 @@ modal-delete-confirm — 删除确认弹窗
   - 显示分片数和 chunk 信息
   - `data-testid`: `kb-doc-status-{docId}`
 
-### UI-115: KB — 搜索知识库文档
+### UI-121: KB — 搜索知识库文档
 - **优先级**: P0
 - **前置条件**: 知识库中有多个文档
 - **步骤**:
@@ -1678,7 +1762,7 @@ modal-delete-confirm — 删除确认弹窗
   - 清空后恢复完整列表
   - `data-testid`: `kb-search-input`, `kb-search-results`
 
-### UI-116: KB — 按标签筛选
+### UI-122: KB — 按标签筛选
 - **优先级**: P1
 - **前置条件**: 文档有标签（财务/市场/销售/客户）
 - **步骤**:
@@ -1688,7 +1772,7 @@ modal-delete-confirm — 删除确认弹窗
   - 筛选标签高亮
   - `data-testid`: `kb-tag-filter-{tagName}`
 
-### UI-117: KB — 删除知识库文档
+### UI-123: KB — 删除知识库文档
 - **优先级**: P0
 - **前置条件**: 有文档
 - **步骤**:
@@ -1700,7 +1784,7 @@ modal-delete-confirm — 删除确认弹窗
   - 对应 Milvus 向量数据级联删除（doc_id 级联清理 — SPEC-006）
   - `data-testid`: `kb-doc-delete-{docId}`, `kb-delete-confirm-modal`
 
-### UI-118: KB — 文档分页
+### UI-124: KB — 文档分页
 - **优先级**: P1
 - **前置条件**: 文档总数 > 20
 - **步骤**:
@@ -1712,11 +1796,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 15. AUDIT — 审计日志
+## 16. AUDIT — 审计日志
 
 > **对应 PRD**: F-12 操作审计 | **对应 Spec**: SPEC-013, SPEC-004 §5 | **UI 原型**: 审计日志 (Screen 11)
 
-### UI-119: Audit — 审计日志页渲染
+### UI-125: Audit — 审计日志页渲染
 - **优先级**: P0
 - **前置条件**: 以 system_admin 或审计员身份登录，点击「审计日志」
 - **步骤**:
@@ -1729,7 +1813,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `audit-page-header`, `audit-export-btn`, `audit-filter-bar`, `audit-table`
 - **相关设计**: UI原型设计文档 §3.11
 
-### UI-120: Audit — 审计日志表格数据
+### UI-126: Audit — 审计日志表格数据
 - **优先级**: P0
 - **前置条件**: 有审计数据
 - **步骤**:
@@ -1742,7 +1826,7 @@ modal-delete-confirm — 删除确认弹窗
   - IP 列：来源 IP 地址
   - `data-testid`: `audit-row-{logId}`, `audit-row-time`, `audit-row-user`, `audit-row-type`, `audit-row-detail`, `audit-row-ip`
 
-### UI-121: Audit — 按时间范围筛选
+### UI-127: Audit — 按时间范围筛选
 - **优先级**: P0
 - **前置条件**: 审计日志页
 - **步骤**:
@@ -1753,7 +1837,7 @@ modal-delete-confirm — 删除确认弹窗
   - 总条数更新
   - `data-testid`: `audit-date-start`, `audit-date-end`, `audit-filter-apply`
 
-### UI-122: Audit — 按操作类型筛选
+### UI-128: Audit — 按操作类型筛选
 - **优先级**: P0
 - **前置条件**: 审计日志页
 - **步骤**:
@@ -1763,7 +1847,7 @@ modal-delete-confirm — 删除确认弹窗
   - 仅显示 Chat 查询类型的日志
   - `data-testid`: `audit-type-select`, `audit-type-option-chat`
 
-### UI-123: Audit — 按用户筛选
+### UI-129: Audit — 按用户筛选
 - **优先级**: P1
 - **前置条件**: 审计日志页
 - **步骤**:
@@ -1773,7 +1857,7 @@ modal-delete-confirm — 删除确认弹窗
   - 仅显示张三的操作记录
   - `data-testid`: `audit-user-select`
 
-### UI-124: Audit — 导出审计日志 — 弹窗
+### UI-130: Audit — 导出审计日志 — 弹窗
 - **优先级**: P0
 - **前置条件**: 审计日志页
 - **步骤**:
@@ -1788,7 +1872,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `audit-export-modal`, `audit-export-date-start`, `audit-export-date-end`, `audit-export-limit`, `audit-export-format-csv`, `audit-export-format-json`, `audit-export-format-xlsx`
 - **相关设计**: UI原型设计文档 §3.11
 
-### UI-125: Audit — 执行导出
+### UI-131: Audit — 执行导出
 - **优先级**: P0
 - **前置条件**: 导出弹窗已打开
 - **步骤**:
@@ -1801,7 +1885,7 @@ modal-delete-confirm — 删除确认弹窗
   - 成功 toast 提示
   - `data-testid`: `audit-export-submit`, `audit-export-success-toast`
 
-### UI-126: Audit — 导出条数上限校验
+### UI-132: Audit — 导出条数上限校验
 - **优先级**: P1
 - **前置条件**: 导出弹窗已打开
 - **步骤**:
@@ -1812,7 +1896,7 @@ modal-delete-confirm — 删除确认弹窗
   - 导出不执行
   - `data-testid`: `audit-export-limit-error`
 
-### UI-127: Audit — 审计日志分页
+### UI-133: Audit — 审计日志分页
 - **优先级**: P1
 - **前置条件**: 审计日志总数 > 20
 - **步骤**:
@@ -1824,11 +1908,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 16. API — API 转换审核
+## 17. API — API 转换审核
 
 > **对应 PRD**: F-10 API 转工具 | **对应 Spec**: SPEC-013, SPEC-008 §9 | **UI 原型**: API 转换审核 (Screen 12)
 
-### UI-128: API — API 转换审核页渲染
+### UI-134: API — API 转换审核页渲染
 - **优先级**: P0
 - **前置条件**: 以 system_admin 或知识管理员登录，点击「API 转换审核」
 - **步骤**:
@@ -1841,7 +1925,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `api-page-header`, `api-upload-btn`, `api-batch-upload-btn`
 - **相关设计**: UI原型设计文档 §3.12
 
-### UI-129: API — API 卡片渲染
+### UI-135: API — API 卡片渲染
 - **优先级**: P0
 - **前置条件**: 有 API 转换记录
 - **步骤**:
@@ -1858,7 +1942,7 @@ modal-delete-confirm — 删除确认弹窗
     - 操作按钮（待审核时）：批准 + 驳回
   - `data-testid`: `api-card-{apiId}`, `api-card-name`, `api-card-desc`, `api-card-meta`, `api-card-status`, `api-card-actions`
 
-### UI-130: API — 上传 OpenAPI 文件
+### UI-136: API — 上传 OpenAPI 文件
 - **优先级**: P0
 - **前置条件**: API 转换审核页
 - **步骤**:
@@ -1873,7 +1957,7 @@ modal-delete-confirm — 删除确认弹窗
   - 上传成功后新卡片出现，状态「待审核」
   - `data-testid`: `api-upload-modal`, `api-upload-file`, `api-upload-rate-limit`, `api-upload-submit`
 
-### UI-131: API — 批准 API 转换
+### UI-137: API — 批准 API 转换
 - **优先级**: P0
 - **前置条件**: 有待审核的 API，当前登录人与发起人不同（双重审核）
 - **步骤**:
@@ -1886,7 +1970,7 @@ modal-delete-confirm — 删除确认弹窗
   - API 变为 Agent 可调用的 MCP Tool
   - `data-testid`: `api-approve-btn-{apiId}`, `api-approve-confirm-modal`
 
-### UI-132: API — 驳回 API 转换
+### UI-138: API — 驳回 API 转换
 - **优先级**: P0
 - **前置条件**: 有待审核的 API
 - **步骤**:
@@ -1899,7 +1983,7 @@ modal-delete-confirm — 删除确认弹窗
   - 驳回原因可查看
   - `data-testid`: `api-reject-btn-{apiId}`, `api-reject-reason`, `api-reject-confirm`
 
-### UI-133: API — 双重审核校验（不可审核自己的提交）
+### UI-139: API — 双重审核校验（不可审核自己的提交）
 - **优先级**: P0
 - **前置条件**: 当前用户提交了一个 API 转换
 - **步骤**:
@@ -1911,7 +1995,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `api-card-actions-{apiId}`
 - **相关 PRD**: PRD §F-10 双重审核
 
-### UI-134: API — 批量上传 OpenAPI 文件
+### UI-140: API — 批量上传 OpenAPI 文件
 - **优先级**: P1
 - **前置条件**: API 转换审核页
 - **步骤**:
@@ -1925,11 +2009,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 17. NOTIF — 站内信系统
+## 18. NOTIF — 站内信系统
 
 > **对应 PRD**: F-25 站内信系统 | **对应 Spec**: SPEC-013 §4 | **UI 原型**: 管理后台 Header 铃铛图标
 
-### UI-135: Notif — 铃铛图标与未读数红点
+### UI-141: Notif — 铃铛图标与未读数红点
 - **优先级**: P0
 - **前置条件**: 已登录，有未读通知
 - **步骤**:
@@ -1940,7 +2024,7 @@ modal-delete-confirm — 删除确认弹窗
   - 无未读时红点不可见
   - `data-testid`: `notif-bell-icon`, `notif-unread-badge`, `notif-unread-count`
 
-### UI-136: Notif — 点击展开通知列表
+### UI-142: Notif — 点击展开通知列表
 - **优先级**: P0
 - **前置条件**: 有通知数据
 - **步骤**:
@@ -1952,7 +2036,7 @@ modal-delete-confirm — 删除确认弹窗
   - 每条通知显示：标题 + 内容摘要 + 时间
   - `data-testid`: `notif-dropdown`, `notif-item-{id}`, `notif-item-read`, `notif-item-unread`
 
-### UI-137: Notif — 标记已读
+### UI-143: Notif — 标记已读
 - **优先级**: P0
 - **前置条件**: 有未读通知
 - **步骤**:
@@ -1963,7 +2047,7 @@ modal-delete-confirm — 删除确认弹窗
   - 查看通知详情（如有链接则跳转）
   - `data-testid`: `notif-item-{id}`
 
-### UI-138: Notif — 一键全部已读
+### UI-144: Notif — 一键全部已读
 - **优先级**: P1
 - **前置条件**: 有多条未读通知
 - **步骤**:
@@ -1973,7 +2057,7 @@ modal-delete-confirm — 删除确认弹窗
   - 未读计数归零，红点消失
   - `data-testid`: `notif-mark-all-read`
 
-### UI-139: Notif — 发送站内信（点对点）
+### UI-145: Notif — 发送站内信（点对点）
 - **优先级**: P0
 - **前置条件**: 以 system_admin 登录，有另一个用户
 - **步骤**:
@@ -1986,7 +2070,7 @@ modal-delete-confirm — 删除确认弹窗
   - 发送方显示发送成功
   - `data-testid`: `notif-send-modal`, `notif-send-recipient`, `notif-send-subject`, `notif-send-body`, `notif-send-submit`
 
-### UI-140: Notif — 群发站内信
+### UI-146: Notif — 群发站内信
 - **优先级**: P1
 - **前置条件**: 以 admin 登录
 - **步骤**:
@@ -1999,7 +2083,7 @@ modal-delete-confirm — 删除确认弹窗
   - 超过 50 条/天限制时提示错误
   - `data-testid`: `notif-group-send`, `notif-group-recipients`
 
-### UI-141: Notif — 全站发送（仅 system_admin）
+### UI-147: Notif — 全站发送（仅 system_admin）
 - **优先级**: P1
 - **前置条件**: 以 system_admin 登录
 - **步骤**:
@@ -2011,7 +2095,7 @@ modal-delete-confirm — 删除确认弹窗
   - 不产生 N 条独立数据（仅 1 条全局记录 + 视图聚合 — SPEC-013 §4）
   - `data-testid`: `notif-broadcast-btn`, `notif-broadcast-modal`
 
-### UI-142: Notif — 通知 TTL 90 天自动清理
+### UI-148: Notif — 通知 TTL 90 天自动清理
 - **优先级**: P2
 - **前置条件**: 有 90 天前的通知记录
 - **步骤**:
@@ -2022,11 +2106,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 18. PWD — 密码管理
+## 19. PWD — 密码管理
 
 > **对应 PRD**: F-11 | **对应 Spec**: SPEC-013 §3, SPEC-003 §6.3 | **UI 原型**: N/A (管理后台)
 
-### UI-143: Pwd — 初始密码登录后横幅通知
+### UI-149: Pwd — 初始密码登录后横幅通知
 - **优先级**: P0
 - **前置条件**: 使用 system_admin 初始随机密码登录（`password_changed=false`）
 - **步骤**:
@@ -2038,7 +2122,7 @@ modal-delete-confirm — 删除确认弹窗
   - 点击通知可跳转到修改密码页
   - `data-testid`: `pwd-initial-banner`, `pwd-change-link`
 
-### UI-144: Pwd — 修改密码页
+### UI-150: Pwd — 修改密码页
 - **优先级**: P0
 - **前置条件**: 已登录
 - **步骤**:
@@ -2049,7 +2133,7 @@ modal-delete-confirm — 删除确认弹窗
   - 「确认修改」按钮
   - `data-testid`: `pwd-old-input`, `pwd-new-input`, `pwd-confirm-input`, `pwd-change-btn`
 
-### UI-145: Pwd — 成功修改密码
+### UI-151: Pwd — 成功修改密码
 - **优先级**: P0
 - **前置条件**: 修改密码页
 - **步骤**:
@@ -2064,7 +2148,7 @@ modal-delete-confirm — 删除确认弹窗
   - 旧密码无法再登录
   - `data-testid`: `pwd-change-success-toast`
 
-### UI-146: Pwd — 旧密码错误
+### UI-152: Pwd — 旧密码错误
 - **优先级**: P0
 - **前置条件**: 修改密码页
 - **步骤**:
@@ -2075,7 +2159,7 @@ modal-delete-confirm — 删除确认弹窗
   - 密码未被修改
   - `data-testid`: `pwd-old-error`
 
-### UI-147: Pwd — 新密码不一致
+### UI-153: Pwd — 新密码不一致
 - **优先级**: P0
 - **前置条件**: 修改密码页
 - **步骤**:
@@ -2088,7 +2172,7 @@ modal-delete-confirm — 删除确认弹窗
   - 密码未被修改
   - `data-testid`: `pwd-confirm-error`
 
-### UI-148: Pwd — 新密码强度校验
+### UI-154: Pwd — 新密码强度校验
 - **优先级**: P1
 - **前置条件**: 修改密码页
 - **步骤**:
@@ -2099,7 +2183,7 @@ modal-delete-confirm — 删除确认弹窗
   - 密码未被修改
   - `data-testid`: `pwd-new-error`
 
-### UI-149: Pwd — 所有角色均可修改自己密码
+### UI-155: Pwd — 所有角色均可修改自己密码
 - **优先级**: P1
 - **前置条件**: 以 user 角色登录
 - **步骤**:
@@ -2112,11 +2196,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 19. PROMPT — 增强提示词
+## 20. PROMPT — 增强提示词
 
 > **对应 PRD**: F-18 增强提示词 | **对应 Spec**: SPEC-004 §3, SPEC-008 §7 | **UI 原型**: 轻量工作区输入框右侧 ✨ 增强按钮
 
-### UI-150: Prompt — 增强按钮渲染
+### UI-156: Prompt — 增强按钮渲染
 - **优先级**: P0
 - **前置条件**: 导航到轻量工作区
 - **步骤**:
@@ -2127,7 +2211,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `chat-enhance-btn`
 - **相关设计**: UI原型设计文档 §3.2, PRD §F-18
 
-### UI-151: Prompt — 点击增强按钮（输入为空）
+### UI-157: Prompt — 点击增强按钮（输入为空）
 - **优先级**: P0
 - **前置条件**: 输入框为空
 - **步骤**:
@@ -2138,7 +2222,7 @@ modal-delete-confirm — 删除确认弹窗
   - 无请求发出或提示「请先输入内容」
   - `data-testid`: `chat-enhance-btn`
 
-### UI-152: Prompt — 点击增强按钮（有输入）
+### UI-158: Prompt — 点击增强按钮（有输入）
 - **优先级**: P0
 - **前置条件**: 输入框中有文字「看看这个月的销售」
 - **步骤**:
@@ -2146,14 +2230,13 @@ modal-delete-confirm — 删除确认弹窗
   2. 等待响应（< 2 秒 — PRD §F-18）
 - **预期结果**:
   - 按钮显示 loading spinner（旋转动画，0.8s）
-  - LLM 生成 3 个增强版本建议（PRD §F-04 旧版）/ 或直接填充输入框（PRD §F-18 新版）
-  - 根据 PRD §F-18 最新定义：**增强结果直接填充输入框**（替换原始文本），不弹出选项面板
+  - 增强结果直接填充输入框（替换原始文本），用户可继续手动编辑后提交
   - 响应时间 < 2 秒（PRD §F-18 验收标准）
   - **无 Session 创建、无对话历史记录**（无状态）
   - `data-testid`: `chat-enhance-btn`, `chat-input`
 - **相关 PRD**: PRD §F-18
 
-### UI-153: Prompt — 增强后手动编辑再发送
+### UI-159: Prompt — 增强后手动编辑再发送
 - **优先级**: P1
 - **前置条件**: 增强提示词后输入框已填入增强文本
 - **步骤**:
@@ -2164,7 +2247,7 @@ modal-delete-confirm — 删除确认弹窗
   - 正常进入 Chat 对话流程
   - `data-testid`: `chat-input`, `chat-send-btn`
 
-### UI-154: Prompt — 增强调用不计入 Token 统计
+### UI-160: Prompt — 增强调用不计入 Token 统计
 - **优先级**: P2
 - **前置条件**: 增强功能正常
 - **步骤**:
@@ -2179,11 +2262,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 20. IM — IM 集成（飞书）
+## 21. IM — IM 集成（飞书）
 
 > **对应 PRD**: F-24 IM 集成 | **对应 Spec**: SPEC-011 | **UI 原型**: N/A (IM 客户端侧)
 
-### UI-155: IM — 飞书用户绑定页
+### UI-161: IM — 飞书用户绑定页
 - **优先级**: P1
 - **前置条件**: 飞书用户首次使用机器人
 - **步骤**:
@@ -2196,7 +2279,7 @@ modal-delete-confirm — 删除确认弹窗
   - 绑定成功后显示「绑定成功」，提示返回飞书
   - `data-testid`: `im-bind-page`, `im-bind-email`, `im-bind-password`, `im-bind-submit`
 
-### UI-156: IM — 绑定 Token 有效期
+### UI-162: IM — 绑定 Token 有效期
 - **优先级**: P1
 - **前置条件**: 绑定引导卡片中的 Token
 - **步骤**:
@@ -2206,7 +2289,7 @@ modal-delete-confirm — 删除确认弹窗
   - 页面显示：「绑定链接已过期，请在飞书中重新发送 /帮助 获取新链接」
   - `data-testid`: `im-bind-expired`
 
-### UI-157: IM — 飞书卡片消息格式化
+### UI-163: IM — 飞书卡片消息格式化
 - **优先级**: P1
 - **前置条件**: 已绑定用户，在飞书中发送分析请求
 - **步骤**:
@@ -2218,7 +2301,7 @@ modal-delete-confirm — 删除确认弹窗
   - 卡片美观易读
   - `data-testid`: N/A (飞书客户端侧)
 
-### UI-158: IM — 快捷指令
+### UI-164: IM — 快捷指令
 - **优先级**: P1
 - **前置条件**: 已绑定用户
 - **步骤**:
@@ -2234,7 +2317,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: N/A (飞书客户端侧)
 - **相关 PRD**: PRD §F-24
 
-### UI-159: IM — 异步任务完成飞书通知
+### UI-165: IM — 异步任务完成飞书通知
 - **优先级**: P1
 - **前置条件**: 已绑定用户，有异步 Agent 任务
 - **步骤**:
@@ -2245,7 +2328,7 @@ modal-delete-confirm — 删除确认弹窗
   - 消息包含：任务名称 + 完成时间 + 耗时 + 查看结果链接
   - `data-testid`: N/A (飞书客户端侧)
 
-### UI-160: IM — 未绑定用户引导
+### UI-166: IM — 未绑定用户引导
 - **优先级**: P1
 - **前置条件**: 飞书用户未绑定系统账号
 - **步骤**:
@@ -2258,11 +2341,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 21. LIST — 列表管理通用规范
+## 22. LIST — 列表管理通用规范
 
 > **对应 PRD**: F-19 列表管理通用规范 | **对应 Spec**: 跨所有管理页面
 
-### UI-161: List — 分页控件默认值
+### UI-167: List — 分页控件默认值
 - **优先级**: P0
 - **前置条件**: 任何列表页（用户管理/任务管理/审计日志/Agent列表），数据量 > 20
 - **步骤**:
@@ -2275,7 +2358,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `{page}-pagination`, `{page}-page-size-select`
 - **相关 PRD**: PRD §F-19
 
-### UI-162: List — 页码跳转
+### UI-168: List — 页码跳转
 - **优先级**: P1
 - **前置条件**: 数据量 > 40（≥ 3 页）
 - **步骤**:
@@ -2289,7 +2372,7 @@ modal-delete-confirm — 删除确认弹窗
   - 下一页在末页时禁用
   - `data-testid`: `{page}-pagination-prev`, `{page}-pagination-next`, `{page}-pagination-page-3`
 
-### UI-163: List — 每页条数切换不重置筛选
+### UI-169: List — 每页条数切换不重置筛选
 - **优先级**: P0
 - **前置条件**: 已应用筛选条件
 - **步骤**:
@@ -2300,7 +2383,7 @@ modal-delete-confirm — 删除确认弹窗
   - 仅改变每页显示数量
   - `data-testid`: `{page}-page-size-select`
 
-### UI-164: List — 表头排序（升序/降序/默认）
+### UI-170: List — 表头排序（升序/降序/默认）
 - **优先级**: P0
 - **前置条件**: 任何表格列表页
 - **步骤**:
@@ -2314,7 +2397,7 @@ modal-delete-confirm — 删除确认弹窗
   - 排序方向变化不影响筛选条件
   - `data-testid`: `{page}-table-header-{col}`, `{page}-sort-indicator-{col}`
 
-### UI-165: List — 全选/取消全选
+### UI-171: List — 全选/取消全选
 - **优先级**: P1
 - **前置条件**: 支持批量操作的列表页
 - **步骤**:
@@ -2328,11 +2411,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 22. UPLOAD — 批量文件上传
+## 23. UPLOAD — 批量文件上传
 
 > **对应 PRD**: F-22 批量文件上传 | **对应 Spec**: SPEC-006, SPEC-013
 
-### UI-166: Upload — 文件多选
+### UI-172: Upload — 文件多选
 - **优先级**: P0
 - **前置条件**: 知识库管理页或 API 转换审核页
 - **步骤**:
@@ -2343,7 +2426,7 @@ modal-delete-confirm — 删除确认弹窗
   - 选中的文件出现在文件列表中
   - `data-testid`: `{page}-upload-file-input`
 
-### UI-167: Upload — 拖拽上传
+### UI-173: Upload — 拖拽上传
 - **优先级**: P1
 - **前置条件**: 上传区域可见
 - **步骤**:
@@ -2353,7 +2436,7 @@ modal-delete-confirm — 删除确认弹窗
   - 释放后 2 个文件加入上传队列
   - `data-testid`: `{page}-drop-zone`
 
-### UI-168: Upload — 独立进度条
+### UI-174: Upload — 独立进度条
 - **优先级**: P0
 - **前置条件**: 批量上传 3 个文件
 - **步骤**:
@@ -2364,7 +2447,7 @@ modal-delete-confirm — 删除确认弹窗
   - 上传完成显示 ✅ 图标
   - `data-testid`: `{page}-upload-progress-{index}`
 
-### UI-169: Upload — 取消单个文件上传
+### UI-175: Upload — 取消单个文件上传
 - **优先级**: P1
 - **前置条件**: 正在批量上传
 - **步骤**:
@@ -2374,7 +2457,7 @@ modal-delete-confirm — 删除确认弹窗
   - 其他文件继续上传
   - `data-testid`: `{page}-upload-cancel-{index}`
 
-### UI-170: Upload — 上传不阻塞 UI
+### UI-176: Upload — 上传不阻塞 UI
 - **优先级**: P1
 - **前置条件**: 正在批量上传大文件
 - **步骤**:
@@ -2386,11 +2469,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 23. SESSION — Session 管理
+## 24. SESSION — Session 管理
 
 > **对应 PRD**: F-07 Session 管理 | **对应 Spec**: SPEC-004 §3, SPEC-005 §4
 
-### UI-171: Session — 30 分钟无操作超时提示
+### UI-177: Session — 30 分钟无操作超时提示
 - **优先级**: P0
 - **前置条件**: 已登录，29 分钟无操作
 - **步骤**:
@@ -2401,7 +2484,7 @@ modal-delete-confirm — 删除确认弹窗
   - 倒计时 60 秒
   - `data-testid`: `session-timeout-warning`, `session-timeout-continue-btn`
 
-### UI-172: Session — 超时后自动登出
+### UI-178: Session — 超时后自动登出
 - **优先级**: P0
 - **前置条件**: 超时倒计时结束，未点击「继续使用」
 - **步骤**:
@@ -2412,7 +2495,7 @@ modal-delete-confirm — 删除确认弹窗
   - 显示提示：「会话已过期，请重新登录」
   - `data-testid`: `login-session-expired-toast`
 
-### UI-173: Session — 点击继续使用续期
+### UI-179: Session — 点击继续使用续期
 - **优先级**: P1
 - **前置条件**: 超时提示已弹出
 - **步骤**:
@@ -2422,7 +2505,7 @@ modal-delete-confirm — 删除确认弹窗
   - 会话续期（30 分钟重新计时）
   - `data-testid`: `session-timeout-continue-btn`
 
-### UI-174: Session — 多端登录互不干扰
+### UI-180: Session — 多端登录互不干扰
 - **优先级**: P1
 - **前置条件**: 同一用户在 2 个浏览器中登录
 - **步骤**:
@@ -2434,13 +2517,58 @@ modal-delete-confirm — 删除确认弹窗
   - 各自的临时工作区文件互不干扰
   - `data-testid`: N/A
 
+### UI-181: Session — 整体删除后 24 小时内可恢复
+- **优先级**: P0
+- **前置条件**: 用户有历史会话
+- **步骤**:
+  1. 在会话历史侧边栏中删除一个完整会话（整体删除）
+  2. 在删除后 24 小时内重新登录或刷新
+  3. 检查该会话是否可恢复
+- **预期结果**:
+  - 整体删除的会话在缓冲期内可恢复
+  - 提供「恢复已删除会话」入口
+  - 恢复后会话历史、上下文中全部消息完整还原
+  - 超过缓冲期（默认 24h）后不可恢复
+  - `data-testid`: `session-recovery-banner`, `session-recovery-restore-btn`
+- **相关 PRD**: PRD §F-07, SPEC-005 §4
+
+### UI-182: Session — 删除部分上下文历史不可恢复
+- **优先级**: P0
+- **前置条件**: 用户当前会话中有多条历史消息
+- **步骤**:
+  1. 在当前会话中删除其中几条消息（非整体删除会话）
+  2. 尝试找回被删除的消息
+- **预期结果**:
+  - 部分上下文历史删除后**不可恢复**
+  - 无恢复入口
+  - 仅整体删除的会话（删除整个 session）才支持恢复
+  - `data-testid`: `session-history`, `session-item`
+
+### UI-183: Session — 恢复缓冲期可配置性
+- **优先级**: P1
+- **前置条件**: 系统管理员登录
+- **步骤**:
+  1. 进入系统配置页
+  2. 检查「Session 恢复缓冲期」配置项
+  3. 修改缓冲期为 168 小时（1 周）
+  4. 保存配置
+  5. 验证环境变量 `SESSION_RECOVERY_HOURS` 也被设置
+- **预期结果**:
+  - 缓冲期默认值 24 小时
+  - 支持修改（最小 1 小时，最大 168 小时 / 1 周）
+  - **配置优先级**：后台配置 > 环境变量 `SESSION_RECOVERY_HOURS` > 默认值 24h
+  - 超过 168 小时（1 周）时输入框拒绝并提示「缓冲期最长 1 周」
+  - 修改后新删除的会话按新缓冲期计算
+  - `data-testid`: `sysconfig-session-recovery-hours`, `sysconfig-session-recovery-save`
+- **说明**: 具体恢复逻辑和触发方式在实现测试功能时根据实际 API 细化
+
 ---
 
-## 24. SEC — 安全审查层
+## 25. SEC — 安全审查层
 
 > **对应 PRD**: F-13 安全审查层 | **对应 Spec**: SPEC-004 §5
 
-### UI-175: Sec — 输入包含敏感词被拦截
+### UI-184: Sec — 输入包含敏感词被拦截
 - **优先级**: P0
 - **前置条件**: 安全规则已配置，在 Chat 输入框
 - **步骤**:
@@ -2453,7 +2581,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `sec-input-blocked-toast`
 - **相关 Spec**: SPEC-004 §5
 
-### UI-176: Sec — 输出敏感信息脱敏
+### UI-185: Sec — 输出敏感信息脱敏
 - **优先级**: P0
 - **前置条件**: AI 可能返回含电话号码的内容
 - **步骤**:
@@ -2465,7 +2593,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `chat-msg-ai-{index}`
 - **相关 Spec**: SPEC-004 §5
 
-### UI-177: Sec — 越权工具调用被拦截
+### UI-186: Sec — 越权工具调用被拦截
 - **优先级**: P0
 - **前置条件**: 以 user 角色尝试调用管理级 Skill
 - **步骤**:
@@ -2478,11 +2606,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 25. RBAC — 角色权限访问控制
+## 26. RBAC — 角色权限访问控制
 
 > **对应 PRD**: F-11 | **对应 Spec**: SPEC-003 §6
 
-### UI-178: RBAC — Viewer 可见导航项
+### UI-187: RBAC — Viewer 可见导航项
 - **优先级**: P0
 - **前置条件**: 以 Viewer (普通用户) 身份登录
 - **步骤**:
@@ -2493,7 +2621,7 @@ modal-delete-confirm — 删除确认弹窗
   - 不可见：系统管理下所有导航项（用户管理/权限管理/模型配置/任务管理/知识库管理/审计日志/API审核）
   - `data-testid`: `sidebar`
 
-### UI-179: RBAC — Analyst 可见导航项
+### UI-188: RBAC — Analyst 可见导航项
 - **优先级**: P0
 - **前置条件**: 以 Analyst (分析师) 身份登录
 - **步骤**:
@@ -2504,7 +2632,7 @@ modal-delete-confirm — 删除确认弹窗
   - 不可见：系统管理下所有导航项
   - `data-testid`: `sidebar`
 
-### UI-180: RBAC — Admin 可见导航项
+### UI-189: RBAC — Admin 可见导航项
 - **优先级**: P0
 - **前置条件**: 以 Admin (普通管理员) 身份登录
 - **步骤**:
@@ -2516,7 +2644,7 @@ modal-delete-confirm — 删除确认弹窗
   - 可见：任务管理、知识库管理、审计日志、API 转换审核
   - `data-testid`: `sidebar`
 
-### UI-181: RBAC — System_admin 可见全部导航项
+### UI-190: RBAC — System_admin 可见全部导航项
 - **优先级**: P0
 - **前置条件**: 以 system_admin 身份登录
 - **步骤**:
@@ -2525,7 +2653,7 @@ modal-delete-confirm — 删除确认弹窗
   - 所有 12 个导航项全部可见
   - `data-testid`: `sidebar`
 
-### UI-182: RBAC — Viewer 无法直接访问管理页面 URL
+### UI-191: RBAC — Viewer 无法直接访问管理页面 URL
 - **优先级**: P0
 - **前置条件**: 以 Viewer 身份登录
 - **步骤**:
@@ -2536,7 +2664,7 @@ modal-delete-confirm — 删除确认弹窗
   - 显示无权限提示
   - `data-testid`: N/A
 
-### UI-183: RBAC — Viewer 无法创建 Agent 任务
+### UI-192: RBAC — Viewer 无法创建 Agent 任务
 - **优先级**: P0
 - **前置条件**: 以 Viewer 身份登录
 - **步骤**:
@@ -2548,11 +2676,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 26. RESP — 响应式设计
+## 27. RESP — 响应式设计
 
 > **对应 PRD**: F-16 移动端预备 | **对应 Spec**: SPEC-013
 
-### UI-184: Resp — 移动浏览器布局适配
+### UI-193: Resp — 移动浏览器布局适配
 - **优先级**: P1
 - **前置条件**: 在移动端浏览器（宽度 375px ~ 768px）中打开
 - **步骤**:
@@ -2566,7 +2694,7 @@ modal-delete-confirm — 删除确认弹窗
   - 图表自适应容器宽度
   - `data-testid`: N/A (viewport-based)
 
-### UI-185: Resp — 平板布局适配
+### UI-194: Resp — 平板布局适配
 - **优先级**: P2
 - **前置条件**: 在 iPad/平板浏览器（宽度 768px ~ 1024px）中打开
 - **步骤**:
@@ -2577,7 +2705,7 @@ modal-delete-confirm — 删除确认弹窗
   - KPI 卡片行 2 列或 4 列
   - `data-testid`: N/A
 
-### UI-186: Resp — 触摸友好交互
+### UI-195: Resp — 触摸友好交互
 - **优先级**: P2
 - **前置条件**: 移动端浏览器
 - **步骤**:
@@ -2590,9 +2718,9 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 27. ERR — 错误状态与边界条件
+## 28. ERR — 错误状态与边界条件
 
-### UI-187: Err — 网络断开提示
+### UI-196: Err — 网络断开提示
 - **优先级**: P0
 - **前置条件**: 已登录
 - **步骤**:
@@ -2604,7 +2732,7 @@ modal-delete-confirm — 删除确认弹窗
   - 网络恢复后自动重试或提示用户重试
   - `data-testid`: `network-error-toast`
 
-### UI-188: Err — API 500 错误处理
+### UI-197: Err — API 500 错误处理
 - **优先级**: P1
 - **前置条件**: 模拟后端 500 错误
 - **步骤**:
@@ -2614,7 +2742,7 @@ modal-delete-confirm — 删除确认弹窗
   - 不显示技术栈堆信息
   - `data-testid`: `api-error-toast`
 
-### UI-189: Err — 404 页面
+### UI-198: Err — 404 页面
 - **优先级**: P1
 - **前置条件**: 访问不存在的路由
 - **步骤**:
@@ -2624,7 +2752,7 @@ modal-delete-confirm — 删除确认弹窗
   - 包含返回首页链接
   - `data-testid`: `page-404`, `page-404-home-link`
 
-### UI-190: Err — 空数据状态
+### UI-199: Err — 空数据状态
 - **优先级**: P1
 - **前置条件**: 任何列表页无数据
 - **步骤**:
@@ -2635,7 +2763,7 @@ modal-delete-confirm — 删除确认弹窗
   - 「创建」按钮（如适用）
   - `data-testid`: `{page}-empty-state`, `{page}-empty-action`
 
-### UI-191: Err — 加载状态 Skeleton
+### UI-200: Err — 加载状态 Skeleton
 - **优先级**: P1
 - **前置条件**: 首次加载数据量大的页面
 - **步骤**:
@@ -2645,7 +2773,7 @@ modal-delete-confirm — 删除确认弹窗
   - 数据加载完成后替换为实际内容
   - `data-testid`: `{page}-skeleton`
 
-### UI-192: Err — 熔断器打开状态提示
+### UI-201: Err — 熔断器打开状态提示
 - **优先级**: P1
 - **前置条件**: 某 Skill 连续失败 5 次导致熔断器打开（SPEC-004 §6）
 - **步骤**:
@@ -2657,7 +2785,7 @@ modal-delete-confirm — 删除确认弹窗
   - `data-testid`: `circuit-breaker-open-toast`
 - **相关 Spec**: SPEC-004 §6
 
-### UI-193: Err — 浏览器后退按钮行为
+### UI-202: Err — 浏览器后退按钮行为
 - **优先级**: P1
 - **前置条件**: 已登录并浏览多个页面
 - **步骤**:
@@ -2670,11 +2798,11 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 28. 端到端场景测试
+## 29. 端到端场景测试
 
 > 以下为完整业务流程级别测试，验证系统各模块协同工作
 
-### UI-E2E-001: 管理员配置数据源 → 分析师 SQL 统计 → 结果解读 → 追问
+### UI-203: 管理员配置数据源 → 分析师 SQL 统计 → 结果解读 → 追问
 - **优先级**: P0
 - **场景**: PRD §6.2 端到端场景 1
 - **步骤**:
@@ -2688,7 +2816,7 @@ modal-delete-confirm — 删除确认弹窗
   8. 检查历史会话列表 → 点击恢复
 - **预期结果**: 全流程无错误，每步符合对应 test case 要求
 
-### UI-E2E-002: 普通员工 Chat 快捷查询 → 即时分析
+### UI-204: 普通员工 Chat 快捷查询 → 即时分析
 - **优先级**: P0
 - **场景**: PRD §6.2 端到端场景 2
 - **步骤**:
@@ -2700,7 +2828,7 @@ modal-delete-confirm — 删除确认弹窗
   6. 修改增强后的文本 → 发送
 - **预期结果**: 所有快捷提示词正常工作，增强功能正常
 
-### UI-E2E-003: 分析师批量回归分析（异步）→ 通知
+### UI-205: 分析师批量回归分析（异步）→ 通知
 - **优先级**: P0
 - **场景**: PRD §6.2 端到端场景 3
 - **步骤**:
@@ -2715,7 +2843,7 @@ modal-delete-confirm — 删除确认弹窗
   9. 批量下载 ZIP
 - **预期结果**: 任务全生命周期无误，通知和下载功能正常
 
-### UI-E2E-004: 管理员上传知识库文档 → 索引 → 搜索引用
+### UI-206: 管理员上传知识库文档 → 索引 → 搜索引用
 - **优先级**: P0
 - **场景**: PRD §6.2 端到端场景 4
 - **步骤**:
@@ -2730,7 +2858,7 @@ modal-delete-confirm — 删除确认弹窗
   9. 检查 AI 回复是否引用了知识库内容
 - **预期结果**: 上传→索引→搜索→引用全流程无误
 
-### UI-E2E-005: 审计员查看记录 → 筛选 → 导出
+### UI-207: 审计员查看记录 → 筛选 → 导出
 - **优先级**: P0
 - **场景**: PRD §6.2 端到端场景 5
 - **步骤**:
@@ -2743,7 +2871,7 @@ modal-delete-confirm — 删除确认弹窗
   7. 检查下载的 CSV 文件内容
 - **预期结果**: 筛选准确，导出文件内容正确
 
-### UI-E2E-006: 安全审查层拦截 → 记录 → 通知
+### UI-208: 安全审查层拦截 → 记录 → 通知
 - **优先级**: P0
 - **场景**: PRD §6.2 端到端场景 6
 - **步骤**:
@@ -2755,7 +2883,7 @@ modal-delete-confirm — 删除确认弹窗
   6. 检查拦截记录
 - **预期结果**: 安全拦截生效，审计日志记录完整
 
-### UI-E2E-007: 管理员完整管理流程
+### UI-209: 管理员完整管理流程
 - **优先级**: P0
 - **步骤**:
   1. system_admin 登录
@@ -2768,7 +2896,7 @@ modal-delete-confirm — 删除确认弹窗
   8. 修改密码：修改 → 重新登录
 - **预期结果**: 所有管理功能正常，RBAC 权限限制正确
 
-### UI-E2E-008: Hermes 探索模式完整流程
+### UI-210: Hermes 探索模式完整流程
 - **优先级**: P1
 - **步骤**:
   1. system_admin 登录 → 模型配置 → 配置 Hermes URL 和 API Key
@@ -2783,22 +2911,22 @@ modal-delete-confirm — 删除确认弹窗
 
 ---
 
-## 29. 附录：功能覆盖矩阵
+## 30. 附录：功能覆盖矩阵
 
 | 功能编号 | 功能名称 | 对应 Test Case | 覆盖率 |
 |:---:|------|------|:---:|
-| F-01 | 数据接入 (MCP) | UI-E2E-001 | ✅ |
-| F-02-1 | SQL 统计分析 | UI-025, UI-E2E-001 | ✅ |
-| F-02-2 | 高级统计 (回归/聚类/PCA/时间序列) | UI-040, UI-042, UI-E2E-003 | ✅ |
+| F-01 | 数据接入 (MCP) | UI-197 | ✅ |
+| F-02-1 | SQL 统计分析 | UI-025, UI-197 | ✅ |
+| F-02-2 | 高级统计 (回归/聚类/PCA/时间序列) | UI-040, UI-042, UI-199 | ✅ |
 | F-02-3 | 财务数据分析 | UI-040 (type=财务分析) | ✅ |
 | F-02-4 | 多维度聚合 | UI-040 (type=聚合分析) | ✅ |
-| F-03 | 分析结果智能解读 | UI-E2E-001 | ✅ |
+| F-03 | 分析结果智能解读 | UI-197 | ✅ |
 | F-03-1 | 报告格式校验与自动修正 | (后端逻辑，审计日志可见) | ⚠️ |
 | F-04 | Chat 模式 (即时交互) | UI-018 ~ UI-038 | ✅ |
 | F-05 | Agent 模式 (批量任务) | UI-039 ~ UI-056 | ✅ |
 | F-06 | 定时任务 | UI-054, UI-055 | ✅ |
 | F-07 | Session 管理 | UI-171 ~ UI-174 | ✅ |
-| F-08 | 共享知识库 | UI-109 ~ UI-118, UI-E2E-004 | ✅ |
+| F-08 | 共享知识库 | UI-109 ~ UI-118, UI-200 | ✅ |
 | F-09 | 邮件发送 | (后端逻辑) | ⚠️ |
 | F-10 | API 转工具 | UI-128 ~ UI-134 | ✅ |
 | F-11 | 认证权限 | UI-001 ~ UI-010, UI-143 ~ UI-149 | ✅ |
@@ -2813,12 +2941,12 @@ modal-delete-confirm — 删除确认弹窗
 | F-20 | 密钥 Vault 管理 | UI-094, UI-095 | ✅ |
 | F-21 | Artifact 批量下载与任务详情导航 | UI-045, UI-051 | ✅ |
 | F-22 | 批量文件上传 | UI-112, UI-113, UI-166 ~ UI-170 | ✅ |
-| F-23 | Hermes 自由探索模式 | UI-057 ~ UI-061, UI-E2E-008 | ✅ |
+| F-23 | Hermes 自由探索模式 | UI-057 ~ UI-061, UI-204 | ✅ |
 | F-24 | IM 集成 (飞书) | UI-155 ~ UI-160 | ✅ |
 | F-25 | 站内信系统 | UI-135 ~ UI-142 | ✅ |
 
 **统计**:
-- 总 Test Case 数：**193** (UI-001 ~ UI-193) + **8** 端到端场景 = **201** 用例
+- 总 Test Case 数：**210** (UI-001 ~ UI-210)
 - P0 用例：核心功能全路径覆盖
 - P1 用例：重要功能和边界情况
 - P2 用例：增强功能和低频场景
