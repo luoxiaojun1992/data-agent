@@ -18,6 +18,12 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
+	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
+	kbskill "github.com/luoxiaojun1992/data-agent/skills/knowledge_search"
+	saveskill "github.com/luoxiaojun1992/data-agent/skills/save_report"
+	sqlskill "github.com/luoxiaojun1992/data-agent/skills/sql_executor"
+	statsskill "github.com/luoxiaojun1992/data-agent/skills/stats_engine"
 	agent_svc "github.com/luoxiaojun1992/data-agent/internal/service/agent"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
@@ -30,7 +36,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
-	"github.com/luoxiaojun1992/data-agent/internal/service/hermes"
+	"github.com/luoxiaojun1992/data-agent/internal/scheduler"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
@@ -90,6 +96,13 @@ func main() {
 	// Initialize JWT manager
 	jwtManager := middleware.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
 
+	// Initialize auth service and handler
+	var authHandler *handler.AuthHandler
+	if userRepo != nil {
+		authService := authsvc.NewService(userRepo, jwtManager)
+		authHandler = handler.NewAuthHandler(authService)
+	}
+
 	// Initialize audit logger
 	auditLogger := middleware.NewAuditLogger(mongoClient.Collection(model.CollAuditLogs))
 
@@ -117,17 +130,22 @@ func main() {
 	// Initialize Session Manager (24h TTL)
 	sessionManager := chat.NewManager(24 * time.Hour)
 
-	// Initialize Skill Registry (placeholder — real skills in SPEC-008)
-	skillRegistry := agent.NewSkillRegistryAdapter()
+	// Initialize Skill Registry — all skills are registered at startup
+	skillRegistry := skill.NewRegistry()
+	skillRegistry.Register(&sqlskill.SQLExecutor{})
+	skillRegistry.Register(&statsskill.StatsEngine{})
+	skillRegistry.Register(&saveskill.SaveReport{})
+	// knowledge_search requires the KB service (registered after kbService init)
 
-	// Initialize Agent Engine
-	engine := agent.NewEngine(llmRouter, skillRegistry, secAuditor)
+	// Initialize Agent Engine with skill registry
+	engine := agent.NewEngine(llmRouter, agent.NewSkillRegistryFromDomain(skillRegistry), secAuditor)
 
 	// Initialize Chat Service
 	chatService := chat.NewService(engine, sessionManager, secAuditor, cbRegistry)
 
 	// Initialize Agent Service
 	agentService := agent_svc.NewService(engine, chatService, sessionManager, cbRegistry)
+	agentService.WithSkillRegistry(agent.NewSkillRegistryFromDomain(skillRegistry))
 
 	// ── SPEC-005: Artifact Storage & Workspace ──
 
@@ -148,6 +166,9 @@ func main() {
 	kbService := knowledge.NewService(mongoClient.DB())
 	kbHandler := handler.NewKnowledgeHandler(kbService)
 
+	// Register knowledge search skill (requires kbService)
+	skillRegistry.Register(kbskill.NewKnowledgeSearch(kbService))
+
 	// ── SPEC-009: Task Queue & Worker Pool ──
 
 	var taskHandler *handler.TaskHandler
@@ -163,8 +184,25 @@ func main() {
 		if streamErr != nil {
 			logger.Warn("Failed to create task stream", zap.Error(streamErr))
 		} else {
-			taskService = task_svc.NewService(mongoClient.DB(), taskStream)
-			taskHandler = handler.NewTaskHandler(taskService)
+		taskService = task_svc.NewService(mongoClient.DB(), taskStream)
+		taskHandler = handler.NewTaskHandler(taskService)
+
+		// Inject task service into agent service for Redis-backed async tasks
+		agentService.WithTaskService(taskService)
+
+		// Initialize Scheduler
+		sched := scheduler.New(scheduler.NewTaskCreatorFromService(taskService))
+		sched.Start(context.Background())
+
+		// Register default scheduled tasks
+		sched.AddSchedule(&scheduler.Schedule{
+			Name:       "System Monitoring Stats",
+			CronExpr:   "every_5m",
+			Enabled:    true,
+			SkillChain: []string{"stats_engine"},
+			Params:     map[string]interface{}{"method": "descriptive"},
+		})
+		logger.Info("Scheduler started with default tasks")
 
 			workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, &simpleExecutor{taskSvc: taskService})
 			workerPool.Start(context.Background())
@@ -205,34 +243,88 @@ func main() {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
 
-	// ── SPEC-012: Hermes Free Explore (no auth) ──
-	hermesURL := os.Getenv("HERMES_URL")
-	hermesSvc := hermes.NewService(hermesURL)
-	router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
-		hermesSvc.Proxy(c.Writer, c.Request)
-	})
+	// ── SPEC-012: Hermes Free Explore (独立服务，不再路由到主二进制) ──
+	// Hermes 现在是独立二进制 cmd/hermes/main.go，通过 Docker Compose 独立部署
+	// 如果需要代理模式，设置 HERMES_URL 环境变量后取消下方注释
+	// hermesURL := os.Getenv("HERMES_URL")
+	// hermesSvc := hermes.NewService(hermesURL)
+	// router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
+	// 	hermesSvc.Proxy(c.Writer, c.Request)
+	// })
 
 	// ── SPEC-010: System Monitoring ──
 	router.GET("/api/v1/system/stats", monitor.Handler())
 
 	// Auth routes (no auth required)
-	auth := router.Group("/api/v1/auth")
-	auth.POST("/login", func(c *gin.Context) {
-		// TODO: Implement login in SPEC-004 (needs auth handler + service)
-		c.JSON(http.StatusOK, gin.H{"message": "login endpoint placeholder"})
-	})
+	authGroup := router.Group("/api/v1/auth")
+	if authHandler != nil {
+		authGroup.POST("/login", authHandler.Login)
+		authGroup.POST("/register", authHandler.Register)
+	} else {
+		authGroup.POST("/login", func(c *gin.Context) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+		})
+		authGroup.POST("/register", func(c *gin.Context) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+		})
+	}
 
 	// Protected routes
 	api := router.Group("/api/v1")
 	api.Use(jwtManager.AuthMiddleware())
 
+	// Token refresh (requires valid JWT)
+	api.POST("/auth/refresh", func(c *gin.Context) {
+		if authHandler != nil {
+			authHandler.RefreshToken(c)
+		} else {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+		}
+	})
+
+	// Profile
+	api.GET("/auth/profile", func(c *gin.Context) {
+		if authHandler != nil {
+			authHandler.GetProfile(c)
+		} else {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+		}
+	})
+
 	// User management (requires user:manage or user:manage_all)
 	api.GET("/users", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "users list placeholder"})
+		if userRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		role, _ := c.Get("role")
+		users, total, err := userRepo.List(c.Request.Context(), role.(string), 0, 100)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
 	})
 
 	api.GET("/users/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "user detail placeholder"})
+		if userRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		user, err := userRepo.FindByID(c.Request.Context(), c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if user == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"id":       user.ID.Hex(),
+			"username": user.Username,
+			"role":     user.Role,
+		})
 	})
 
 	// Admin-only routes

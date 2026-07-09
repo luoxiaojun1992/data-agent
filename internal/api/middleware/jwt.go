@@ -37,6 +37,11 @@ func NewJWTManager(secret string, expiration time.Duration) *JWTManager {
 	}
 }
 
+// GetExpiration returns the configured token expiration duration.
+func (m *JWTManager) GetExpiration() time.Duration {
+	return m.expiration
+}
+
 // GenerateToken creates a new JWT token for a user.
 func (m *JWTManager) GenerateToken(userID, username, role string) (string, error) {
 	now := time.Now()

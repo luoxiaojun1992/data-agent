@@ -1,49 +1,66 @@
-package save_report
+package skill
 
 import (
 	"fmt"
 
-	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
-	"github.com/luoxiaojun1992/data-agent/internal/logic/report"
+	reportpkg "github.com/luoxiaojun1992/data-agent/internal/logic/report"
+	skilldomain "github.com/luoxiaojun1992/data-agent/internal/domain/skill"
 )
 
-type Saver struct{}
+// SaveReport implements skill.Skill for saving and validating analysis reports.
+type SaveReport struct{}
 
-func (s *Saver) Name() string        { return "save_analysis_report" }
-func (s *Saver) Description() string { return "Validates and saves an analysis report" }
+func (s *SaveReport) Name() string        { return "save_report" }
+func (s *SaveReport) Description() string { return "Validates and saves analysis reports, ensuring mandatory sections are present" }
 
-func (s *Saver) Parameters() []skill.Parameter {
-	return []skill.Parameter{
+func (s *SaveReport) Parameters() []skilldomain.Parameter {
+	return []skilldomain.Parameter{
 		{Name: "title", Type: "string", Description: "Report title", Required: true},
-		{Name: "content", Type: "string", Description: "Markdown report content", Required: true},
-		{Name: "session_id", Type: "string", Description: "Session ID", Required: false},
+		{Name: "content", Type: "string", Description: "Report content in markdown format", Required: true},
+		{Name: "validate", Type: "boolean", Description: "Whether to validate mandatory sections (default: true)", Required: false},
 	}
 }
 
-func (s *Saver) Permissions() []string               { return []string{"kb:manage_own"} }
-func (s *Saver) RateLimit() *skill.RateLimitConfig   { return &skill.RateLimitConfig{MaxRequests: 5, WindowSec: 60} }
+func (s *SaveReport) Permissions() []string {
+	return []string{"skill:save_report"}
+}
 
-func (s *Saver) Execute(ctx skill.SkillContext, params map[string]any) (any, error) {
-	content, _ := params["content"].(string)
-	if content == "" {
-		return nil, fmt.Errorf("content required")
+func (s *SaveReport) RateLimit() *skilldomain.RateLimitConfig {
+	return &skilldomain.RateLimitConfig{MaxRequests: 20, WindowSec: 60}
+}
+
+func (s *SaveReport) Execute(ctx skilldomain.SkillContext, params map[string]any) (any, error) {
+	title, ok := params["title"].(string)
+	if !ok || title == "" {
+		return nil, fmt.Errorf("save_report: missing required parameter 'title'")
 	}
 
-	// Validate report structure
-	vr := report.Validate(content)
-	if !vr.Valid {
-		return map[string]interface{}{
-			"status":   "validation_failed",
-			"valid":    false,
-			"feedback": vr.Feedback,
-			"missing":  vr.MissingSections,
-		}, nil
+	content, ok := params["content"].(string)
+	if !ok || content == "" {
+		return nil, fmt.Errorf("save_report: missing required parameter 'content'")
 	}
 
-	_ = ctx
+	shouldValidate := true
+	if raw, ok := params["validate"].(bool); ok {
+		shouldValidate = raw
+	}
 
-	return map[string]interface{}{
+	result := map[string]any{
+		"title":  title,
 		"status": "saved",
-		"valid":  true,
-	}, nil
+	}
+
+	if shouldValidate {
+		validation := reportpkg.Validate(content)
+		result["valid"] = validation.Valid
+		result["detected_sections"] = validation.DetectedSections
+
+		if !validation.Valid {
+			result["missing_sections"] = validation.MissingSections
+			result["feedback"] = validation.Feedback
+			result["status"] = "validation_failed"
+		}
+	}
+
+	return result, nil
 }
