@@ -9,6 +9,7 @@ on:
 jobs:
   ui-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,37 +18,25 @@ jobs:
         run: |
           docker compose -f docker-compose.ui-test.yml down --remove-orphans --volumes 2>/dev/null || true
 
-      - name: Setup Docker Compose
-        id: compose
+      - name: Build Docker images
         run: |
-          docker compose -f docker-compose.ui-test.yml up -d --wait || true
-          echo "compose_exit=$?" >> $GITHUB_OUTPUT
+          docker compose -f docker-compose.ui-test.yml build --no-cache 2>&1
 
-      - name: Show data-agent logs
-        if: always()
+      - name: Run services + E2E tests
         run: |
+          docker compose -f docker-compose.ui-test.yml up --abort-on-container-exit --exit-code-from ui-e2e 2>&1
+
+      - name: Show service logs (on failure)
+        if: failure()
+        run: |
+          echo "=== data-agent logs ==="
           docker compose -f docker-compose.ui-test.yml logs data-agent 2>/dev/null || true
+          echo "=== frontend logs ==="
+          docker compose -f docker-compose.ui-test.yml logs frontend 2>/dev/null || true
+          echo "=== ui-e2e logs ==="
+          docker compose -f docker-compose.ui-test.yml logs ui-e2e 2>/dev/null || true
+          echo "=== service status ==="
           docker compose -f docker-compose.ui-test.yml ps 2>/dev/null || true
-
-      - name: Fail if compose failed
-        if: steps.compose.outputs.compose_exit != '0'
-        run: exit 1
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Playwright Dependencies
-        run: |
-          cd tests/ui
-          npm ci
-          npx playwright install chromium --with-deps
-
-      - name: Run E2E Tests
-        run: |
-          cd tests/ui
-          npx playwright test --reporter=allure-playwright
 
       - name: Cleanup containers
         if: always()
@@ -59,5 +48,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: allure-results
-          path: tests/ui/allure-results/
+          path: tests/ui/artifacts/allure-results/
           retention-days: 7
+          if-no-files-found: warn

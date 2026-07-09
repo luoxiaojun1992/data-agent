@@ -4,15 +4,16 @@ import { test, expect } from '@playwright/test';
  * SPEC-017: AUTH E2E Tests
  * Test cases UI-001 through UI-010
  * All API calls mocked via page.route()
- * Using wildcard patterns to match any host since NEXT_PUBLIC_API_URL varies by environment
+ * Uses baseURL from playwright config (UI_BASE_URL env or default http://localhost:3000)
  */
 
-const FRONTEND_URL = process.env.UI_BASE_URL || 'http://localhost:3000';
+const log = (msg: string) => process.stderr.write(`[auth.spec] ${new Date().toISOString()} ${msg}\n`);
 
 test.describe('AUTH - Login Page', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, baseURL }, testInfo) => {
+    log(`${testInfo.title}: navigating to /login (baseURL=${baseURL})`);
     // Clear localStorage to ensure logged-out state
-    await page.goto(`${FRONTEND_URL}/login`);
+    await page.goto('/login');
     await page.evaluate(() => {
       localStorage.clear();
     });
@@ -190,7 +191,7 @@ test.describe('AUTH - Login Page', () => {
   // UI-009: JWT Token expired redirect
   test('UI-009: JWT Token expired shows session-expired toast', async ({ page }) => {
     // Navigate to login with expired=true param
-    await page.goto(`${FRONTEND_URL}/login?expired=true`);
+    await page.goto('/login?expired=true');
 
     // Session expired toast should be visible
     await expect(page.locator('[data-testid="login-session-expired-toast"]')).toBeVisible();
@@ -219,7 +220,7 @@ test.describe('AUTH - Login Page', () => {
     });
 
     // Login first
-    await page.goto(`${FRONTEND_URL}/login`);
+    await page.goto('/login');
     await page.locator('[data-testid="login-email-input"]').fill('admin@company.com');
     await page.locator('[data-testid="login-password-input"]').fill('password123');
     await page.locator('[data-testid="login-btn"]').click();

@@ -76,11 +76,11 @@ services:
     expose:
       - "8082"
     environment:
-      REDIS_ADDR: redis:6379
-      MOCKLLM_PORT: "8082"
-      MOCK_ADMIN_TOKEN: test-admin-token
-      MOCK_CHUNK_DELAY_MS: "5"
-      MOCK_DEFAULT_REPLY: "Mock LLM: please inject test response"
+      - REDIS_ADDR=redis:6379
+      - MOCKLLM_PORT=8082
+      - MOCK_ADMIN_TOKEN=test-admin-token
+      - MOCK_CHUNK_DELAY_MS=5
+      - MOCK_DEFAULT_REPLY=Mock LLM: please inject test response
     depends_on:
       redis:
         condition: service_healthy
@@ -95,8 +95,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       - MONGO_URI=mongodb://mongodb:27017
       - REDIS_ADDR=redis:6379
@@ -130,8 +130,8 @@ services:
     build:
       context: frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://data-agent:8080
     depends_on:
@@ -151,6 +151,8 @@ services:
     depends_on:
       data-agent:
         condition: service_healthy
+      frontend:
+        condition: service_started
 
 volumes:
   sonarqube-data:

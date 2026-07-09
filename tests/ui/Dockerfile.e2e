@@ -7,4 +7,6 @@ RUN npm ci
 
 COPY . .
 
-CMD ["npx", "playwright", "test"]
+RUN mkdir -p artifacts/allure-results artifacts/coverage
+
+CMD ["npx", "playwright", "test", "-c", "playwright.config.ts"]
