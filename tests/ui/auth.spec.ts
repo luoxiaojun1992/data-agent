@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-const API_BASE = 'http://localhost:8080/api/v1';
-
 /**
  * SPEC-017: AUTH E2E Tests
  * Test cases UI-001 through UI-010
  * All API calls mocked via page.route()
+ * Using wildcard patterns to match any host since NEXT_PUBLIC_API_URL varies by environment
  */
 
 test.describe('AUTH - Login Page', () => {
@@ -88,7 +87,7 @@ test.describe('AUTH - Login Page', () => {
   // UI-004: Login button interaction and state
   test('UI-004: Login button interaction and state', async ({ page }) => {
     // Mock successful login
-    await page.route(`${API_BASE}/auth/login`, async (route) => {
+    await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -163,7 +162,7 @@ test.describe('AUTH - Login Page', () => {
   // UI-008: Wrong credentials handling
   test('UI-008: Wrong credentials shows error toast', async ({ page }) => {
     // Mock failed login
-    await page.route(`${API_BASE}/auth/login`, async (route) => {
+    await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
         status: 401,
         contentType: 'application/json',
@@ -199,7 +198,7 @@ test.describe('AUTH - Login Page', () => {
   // UI-010: Logout flow
   test('UI-010: Logout clears session and redirects to login', async ({ page }) => {
     // Mock successful login
-    await page.route(`${API_BASE}/auth/login`, async (route) => {
+    await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
