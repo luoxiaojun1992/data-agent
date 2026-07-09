@@ -18,8 +18,10 @@ agent_created: true
 ## 前置条件
 
 - 在 data-agent 项目根目录下执行
-- 当前分支为 `main` 且代码已更新到最新
-- 已加载 `code-lint`、`ci-verification`、`doc-sync` 三个子 skill
+- 当前分支为 `main` 且代码已更新到最新（每次执行前必须先 `git checkout main && git pull origin main`）
+- GitHub PAT 已配置（`.github-pat` 文件在项目根目录），无需人工介入
+- 已安装 `code-lint`、`ci-verification`、`doc-sync` 三个子 skill
+  - **注意**: `ci-verification` 的安装目录不一定在项目目录下（可能在 `~/.workbuddy/skills/` 或其他位置），使用 `Skill` 工具加载即可，脚本路径由加载后的 skill 指令提供
 
 ## 工作流
 
@@ -98,7 +100,9 @@ git commit -m "feat(SPEC-XXX): {变更描述}"
 git push origin feat/SPEC-XXX-{描述}
 ```
 
-### Step 9 — 自动创建 PR（本项目特有，gm-dev-studio 为手动）
+### Step 9 — 自动创建 PR
+
+> **PAT 已配置，无需人工介入。** 分支推送后立即自动创建 PR，不与用户交互确认。
 
 使用 GitHub API + PAT 自动创建 PR：
 
@@ -124,21 +128,42 @@ echo "PR created: https://github.com/luoxiaojun1992/data-agent/pull/$PR_NUMBER"
 ### Step 10 — CI 验证 + 自动合并
 
 > **PR 合并验收标准（必须同时满足）**: `sonar-check = success` **AND** `ui-tests = success`
+> **合并策略**: CI 全部通过后自动合并 PR，无需人工确认。
 
-**10.1 等待 CI 完成**
+**10.1 加载 ci-verification skill**
 
 ```bash
-# 加载 ci-verification skill，运行 wait-for-ci.sh
-bash scripts/wait-for-ci.sh feat/SPEC-XXX-{描述}
+# 通过 Skill 工具加载 ci-verification，获取脚本路径
+# 注意: ci-verification 的安装目录不一定在项目目录下
+# 脚本路径由 skill 指令提供（如 ~/.workbuddy/skills/ci-verification/scripts/）
 ```
 
+**10.2 等待 CI 完成**
+
+使用 ci-verification 提供的 `wait-for-ci.sh`：
+
+```bash
+bash <ci-verification-skill-dir>/scripts/wait-for-ci.sh feat/SPEC-XXX-{描述}
+```
+
+- 轮询间隔默认 120s
 - 最多重试 10 次
+- **必须在 foreground 执行，阻塞等待 CI 完成**
 - 禁止删除测试用例、禁止降低断言
 - sonar-check 不通过 = CI 失败，必须修复
 
-**10.2 验证通过后自动合并 PR**
+**10.3 假性成功排查（强制）**
+
+CI 显示 "success" 后，按 ci-verification skill 的 Step 6 执行假性成功排查：
+- 检查 Agent Service HTTP 错误码（≥400）
+- 检查基础设施服务错误日志（MongoDB/Milvus/Redis/SeaweedFS）
+- 检查应用层错误日志（error/panic/fatal）
+
+**10.4 验证通过后自动合并 PR**
 
 ```bash
+TOKEN=$(cat .github-pat)
+
 # 确认 sonar-check 和 ui-tests 均为 success
 CI_STATUS=$(curl -s -H "Authorization: token $TOKEN" \
   "https://api.github.com/repos/luoxiaojun1992/data-agent/commits/$BRANCH/check-runs" \
@@ -165,8 +190,6 @@ else
   exit 1
 fi
 ```
-
-> **与 game-dev-studio 的区别**: 本项目 skill 有 PAT 权限，自动创建和合并 PR。不再需要等待人工操作。
 
 ### Step 11 — doc-sync 文档同步
 
