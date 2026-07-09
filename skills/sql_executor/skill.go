@@ -1,51 +1,53 @@
-package sql_executor
+package skill
 
 import (
 	"fmt"
 
-	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
-	sqllogic "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
+	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
+	skilldomain "github.com/luoxiaojun1992/data-agent/internal/domain/skill"
 )
 
-// Executor implements the SQL executor skill.
-type Executor struct{}
+// SQLExecutor implements skill.Skill for SQL query execution.
+type SQLExecutor struct{}
 
-func (e *Executor) Name() string        { return "sql_executor" }
-func (e *Executor) Description() string { return "Executes safe SQL queries against the connected database" }
+func (s *SQLExecutor) Name() string        { return "sql_executor" }
+func (s *SQLExecutor) Description() string { return "Executes validated SQL SELECT queries with safety checks" }
 
-func (e *Executor) Parameters() []skill.Parameter {
-	return []skill.Parameter{
-		{Name: "sql", Type: "string", Description: "The SQL query to execute", Required: true},
-		{Name: "params", Type: "array", Description: "Query parameters for parameterized queries", Required: false},
+func (s *SQLExecutor) Parameters() []skilldomain.Parameter {
+	return []skilldomain.Parameter{
+		{Name: "query", Type: "string", Description: "SQL SELECT statement to execute", Required: true},
+		{Name: "params", Type: "array", Description: "Parameterized query bind values", Required: false},
 	}
 }
 
-func (e *Executor) Permissions() []string {
-	return []string{"kb:manage_own"}
+func (s *SQLExecutor) Permissions() []string {
+	return []string{"skill:sql_executor"}
 }
 
-func (e *Executor) RateLimit() *skill.RateLimitConfig {
-	return &skill.RateLimitConfig{MaxRequests: 10, WindowSec: 60}
+func (s *SQLExecutor) RateLimit() *skilldomain.RateLimitConfig {
+	return &skilldomain.RateLimitConfig{MaxRequests: 30, WindowSec: 60}
 }
 
-func (e *Executor) Execute(ctx skill.SkillContext, params map[string]any) (any, error) {
-	sql, ok := params["sql"].(string)
-	if !ok || sql == "" {
-		return nil, fmt.Errorf("sql parameter required")
+func (s *SQLExecutor) Execute(ctx skilldomain.SkillContext, params map[string]any) (any, error) {
+	query, ok := params["query"].(string)
+	if !ok || query == "" {
+		return nil, fmt.Errorf("sql_executor: missing required parameter 'query'")
 	}
 
-	// Validate SQL safety
-	result := sqllogic.Validate(sql, nil)
+	var bindParams []interface{}
+	if raw, ok := params["params"].([]interface{}); ok {
+		bindParams = raw
+	}
+
+	result := sqlpkg.Validate(query, bindParams)
 	if !result.Allowed {
-		return nil, fmt.Errorf("SQL not allowed: %s", result.Reason)
+		return nil, fmt.Errorf("sql_executor: query rejected: %s", result.Reason)
 	}
 
-	_ = ctx
-	_ = params
-
-	return map[string]interface{}{
-		"status": "executed",
-		"sql":    sql,
-		"rows":   []interface{}{},
+	return map[string]any{
+		"status":  "validated",
+		"query":   query,
+		"message": "SQL query passed safety validation. Execute against your database.",
+		"reason":  result.Reason,
 	}, nil
 }

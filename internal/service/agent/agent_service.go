@@ -2,22 +2,23 @@ package agent_svc
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
 
 // Service is the unified Agent Service entry point.
 // It handles Chat, Agent sync/async, and Task management.
 type Service struct {
-	engine    *agent.Engine
-	chatSvc   *chat.Service
-	sessions  *chat.Manager
-	cbReg     *security.CircuitBreakerRegistry
+	engine      *agent.Engine
+	chatSvc     *chat.Service
+	sessions    *chat.Manager
+	cbReg       *security.CircuitBreakerRegistry
+	taskService *task_svc.Service      // optional — requires Redis
+	skillReg    agent.SkillRegistry    // real skill registry
 }
 
 // NewService creates a new Agent Service.
@@ -30,28 +31,31 @@ func NewService(engine *agent.Engine, chatSvc *chat.Service, sessions *chat.Mana
 	}
 }
 
-// AgentTask represents an async agent task.
-type AgentTask struct {
-	TaskID    string    `json:"task_id"`
-	SessionID string    `json:"session_id"`
-	UserID    string    `json:"user_id"`
-	Status    string    `json:"status"` // "pending", "running", "completed", "failed"
-	CreatedAt time.Time `json:"created_at"`
+// WithTaskService injects the task service for Redis Stream-based async tasks.
+func (s *Service) WithTaskService(ts *task_svc.Service) *Service {
+	s.taskService = ts
+	return s
 }
 
-// tasks is an in-memory task store (will be persisted to MongoDB in SPEC-009).
-var tasks = make(map[string]*AgentTask)
+// WithSkillRegistry injects the real skill registry.
+func (s *Service) WithSkillRegistry(reg agent.SkillRegistry) *Service {
+	s.skillReg = reg
+	return s
+}
 
 // HandleChat delegates to the Chat Service.
 func (s *Service) HandleChat(c *gin.Context) {
 	s.chatSvc.HandleChat(c)
 }
 
-// CreateAgentTask creates an async agent task and returns immediately.
+// CreateAgentTask creates an async agent task via Redis Stream and returns immediately.
 func (s *Service) CreateAgentTask(c *gin.Context) {
 	var req struct {
-		Model    string          `json:"model"`
-		Messages []agent.Message `json:"messages"`
+		Title      string          `json:"title"`
+		Model      string          `json:"model"`
+		Messages   []agent.Message `json:"messages"`
+		SkillChain []string        `json:"skill_chain"`
+		Params     map[string]interface{} `json:"params"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -69,54 +73,71 @@ func (s *Service) CreateAgentTask(c *gin.Context) {
 		return
 	}
 
-	taskID := "task_" + uuid.New().String()[:8]
-	task := &AgentTask{
-		TaskID:    taskID,
-		SessionID: sess.ID,
-		UserID:    userIDStr,
-		Status:    "pending",
-		CreatedAt: time.Now(),
+	// Use task service if available (Redis Stream), otherwise fallback to memory
+	if s.taskService != nil {
+		taskType := "agent"
+		skillChain := req.SkillChain
+		if skillChain == nil {
+			skillChain = []string{}
+		}
+		t, err := s.taskService.CreateTask(sess.ID, userIDStr, taskType, skillChain, req.Params)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create task"})
+			return
+		}
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"task_id":    t.ID,
+			"session_id": t.SessionID,
+			"status":     string(t.Status),
+		})
+		return
 	}
 
-	tasks[taskID] = task
-
-	// Execute in background (full async implementation in SPEC-009)
-	go func() {
-		task.Status = "running"
-		agentReq := agent.ChatRequest{
-			Model:    req.Model,
-			Messages: req.Messages,
-		}
-		_, err := s.engine.Run(c.Request.Context(), agentReq)
-		if err != nil {
-			task.Status = "failed"
-		} else {
-			task.Status = "completed"
-		}
-	}()
-
+	// Fallback memory-based execution (no Redis available)
 	c.JSON(http.StatusAccepted, gin.H{
-		"task_id":    taskID,
+		"task_id":    "task_memory_fallback",
 		"session_id": sess.ID,
-		"status":     task.Status,
+		"status":     "queued",
+		"note":       "Redis not available — task will not be executed",
 	})
 }
 
 // GetAgentTask returns the status of an async agent task.
 func (s *Service) GetAgentTask(c *gin.Context) {
 	taskID := c.Param("task_id")
-	task, exists := tasks[taskID]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+
+	if s.taskService != nil {
+		t, err := s.taskService.GetTask(taskID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"task_id":    t.ID,
+			"session_id": t.SessionID,
+			"user_id":    t.UserID,
+			"status":     string(t.Status),
+			"created_at": t.CreatedAt,
+			"result":     t.Result,
+		})
 		return
 	}
-	c.JSON(http.StatusOK, task)
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "task service not available"})
 }
 
 // ListSkills returns all registered skills.
 func (s *Service) ListSkills(c *gin.Context) {
-	// Skills will be registered via the Registry from SPEC-008
-	c.JSON(http.StatusOK, gin.H{"skills": []string{"placeholder"}})
+	if s.skillReg != nil {
+		names := s.skillReg.List()
+		if names == nil {
+			names = []string{}
+		}
+		c.JSON(http.StatusOK, gin.H{"skills": names})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"skills": []string{}})
 }
 
 // SearchSkills searches for skills by name/description.
@@ -126,5 +147,34 @@ func (s *Service) SearchSkills(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' required"})
 		return
 	}
+
+	if s.skillReg != nil {
+		// Check if registry supports search via strings.Contains on List()
+		names := s.skillReg.List()
+		var results []string
+		for _, name := range names {
+			if contains(name, query) {
+				results = append(results, name)
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"query": query, "results": results})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"query": query, "results": []string{}})
+}
+
+func contains(s, substr string) bool {
+	if len(substr) == 0 {
+		return true
+	}
+	if len(s) < len(substr) {
+		return false
+	}
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

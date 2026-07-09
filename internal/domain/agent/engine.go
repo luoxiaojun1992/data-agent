@@ -194,6 +194,15 @@ func (e *Engine) Run(ctx context.Context, req ChatRequest) (*ChatResponse, error
 		return nil, fmt.Errorf("chat failed: %w", err)
 	}
 
+	// Security audit on tool calls before execution
+	if e.security != nil {
+		for _, tc := range resp.ToolCalls {
+			if err := e.security.AuditToolCall(tc.Name, tc.Arguments); err != nil {
+				return nil, fmt.Errorf("tool call audit failed for %q: %w", tc.Name, err)
+			}
+		}
+	}
+
 	// Security audit on output
 	if e.security != nil {
 		sanitized, err := e.security.AuditOutput(resp.Content)

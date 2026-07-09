@@ -1,6 +1,6 @@
 # 代码审核修复 — main 分支与 Spec/PRD/RFC/设计稿一致性修复
 
-> **SPEC-015** | Status: 设计中 | 依赖: SPEC-001 ~ SPEC-014（全部已实现）
+> **SPEC-015** | Status: 已实现 | 依赖: SPEC-001 ~ SPEC-014（全部已实现）
 
 ## 目标
 
