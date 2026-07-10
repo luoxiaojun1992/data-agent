@@ -41,6 +41,7 @@ services:
   milvus:
     image: milvusdb/milvus:v2.5.9
     command: milvus run standalone
+    restart: on-failure
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -72,6 +73,7 @@ services:
     build:
       context: mockllm
       dockerfile: Dockerfile
+    restart: on-failure
     image: data-agent-mockllm:latest
     expose:
       - "8082"
