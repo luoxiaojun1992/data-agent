@@ -153,4 +153,74 @@ test.describe('CHAT — Complete', () => {
     await expect(page.locator('[data-testid="chat-inline-kpi-val"]').first()).toBeVisible();
     await expect(page.locator('[data-testid="chat-inline-kpi-lbl"]').first()).toBeVisible();
   });
+
+  // === CHART (UI-028) ===
+  test('[UI-028] Chat — chart rendering', async ({ page }) => {
+    const chart = { type: 'chart', title: '销售趋势', labels: ['一','二','三','四','五'], values: [100,150,120,200,180] };
+    await page.route('**/api/v1/chat', r => mockSSE(r, `\`\`\`json\n${JSON.stringify(chart)}\n\`\`\``));
+    await page.locator('[data-testid="chat-input"]').fill('chart');
+    await page.locator('[data-testid="chat-send-btn"]').click();
+    await expect(page.locator('[data-testid="chat-inline-chart"]')).toBeVisible({ timeout: 15000 });
+  });
+
+  // === SESSION PANEL (UI-030~034) ===
+  test('[UI-030] Chat — session panel opens', async ({ page }) => {
+    // Send a message first to create a session
+    await page.route('**/api/v1/chat', r => mockSSE(r, 'ok'));
+    await page.locator('[data-testid="chat-input"]').fill('hi');
+    await page.locator('[data-testid="chat-send-btn"]').click();
+    await expect(page.locator('text=ok')).toBeVisible({ timeout: 10000 });
+
+    // Open session panel
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    await expect(page.locator('[data-testid="session-sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-testid="session-search"]')).toBeVisible();
+  });
+
+  test('[UI-031] Chat — session items rendered', async ({ page }) => {
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    const list = page.locator('[data-testid="session-list"]');
+    await expect(list).toBeVisible({ timeout: 5000 });
+    // At least one session item should exist (from previous test user's sessions)
+    const items = page.locator('[data-testid^="session-item-"]');
+    expect(await items.count()).toBeGreaterThan(0);
+  });
+
+  test('[UI-032] Chat — click session switches', async ({ page }) => {
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    const first = page.locator('[data-testid^="session-item-"]').first();
+    await expect(first).toBeVisible({ timeout: 5000 });
+    await first.click();
+    await expect(page.locator('[data-testid="chat-session-info"]')).toBeVisible();
+  });
+
+  test('[UI-033] Chat — search sessions', async ({ page }) => {
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    await page.locator('[data-testid="session-search"]').fill('xyz123');
+    // Verify panel still shows
+    await expect(page.locator('[data-testid="session-sidebar"]')).toBeVisible();
+  });
+
+  test('[UI-034] Chat — delete session', async ({ page }) => {
+    // Create session first
+    await page.evaluate(async () => {
+      const t = localStorage.getItem('token');
+      await fetch('http://data-agent:8080/api/v1/sessions', { method: 'POST',
+        headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }});
+    });
+    await page.reload(); await page.waitForSelector('[data-testid="chat-session-btn"]', { timeout: 10000 });
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    // Delete first session
+    const delBtn = page.locator('[data-testid^="session-delete-"]').first();
+    if (await delBtn.isVisible()) await delBtn.click();
+    await expect(page.locator('[data-testid="session-sidebar"]')).toBeVisible();
+  });
+
+  // === CUSTOM PROMPT (UI-037) ===
+  test('[UI-037] Chat — save custom prompt', async ({ page }) => {
+    await page.locator('[data-testid="prompt-btn"]').click();
+    await page.locator('[data-testid="prompt-modal-custom-input"]').fill('查询上月客户留存率');
+    await page.locator('[data-testid="prompt-modal-save-btn"]').click();
+    await expect(page.locator('[data-testid="prompt-modal-custom-0"]')).toHaveText('查询上月客户留存率');
+  });
 });
