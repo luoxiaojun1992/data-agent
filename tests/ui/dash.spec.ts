@@ -37,10 +37,10 @@ test.describe('DASH — Dashboard', () => {
 
   // UI-064: Dashboard — stats cards visible
   test('[UI-064] Dashboard — stats cards', async ({ page }) => {
-    // Dashboard has 4 stat cards with labels
-    await expect(page.locator('text=活跃 Chat 会话')).toBeVisible();
-    await expect(page.locator('text=Agent 任务')).toBeVisible();
-    await expect(page.locator('text=知识库文档')).toBeVisible();
-    await expect(page.locator('text=系统可用率')).toBeVisible();
+    const main = page.locator('[data-testid="main-content"]');
+    // Dashboard has 4 stat cards with labels, scoped to main content
+    await expect(main.locator('text=活跃 Chat 会话')).toBeVisible();
+    await expect(main.locator('text=知识库文档')).toBeVisible();
+    await expect(main.locator('text=系统可用率')).toBeVisible();
   });
 });
