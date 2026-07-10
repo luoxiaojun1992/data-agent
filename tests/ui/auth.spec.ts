@@ -165,8 +165,8 @@ test.describe('AUTH - Login Page', () => {
     expect(token).toBeTruthy();
 
     // Sidebar should be visible with user card and logout button
-    await expect(page.locator('[data-testid="nav-user-card"]')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('[data-testid="nav-logout-btn"]')).toBeVisible({ timeout: 10000 });
+    await page.waitForSelector('[data-testid="nav-user-card"]', { state: 'visible', timeout: 10000 });
+    await page.waitForSelector('[data-testid="nav-logout-btn"]', { state: 'visible', timeout: 10000 });
 
     // Click logout
     await page.locator('[data-testid="nav-logout-btn"]').click();
