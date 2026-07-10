@@ -33,11 +33,9 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="nav-agent"]').click();
     await page.waitForURL('**/agent', { timeout: 5000 });
 
-    // Page header visible
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
     await expect(page.locator('text=Agent 任务')).toBeVisible();
 
-    // Empty state — real API returns no tasks
     await expect(page.locator('[data-testid="agent-empty"]')).toBeVisible();
     await expect(page.locator('text=暂无任务')).toBeVisible();
   });
@@ -47,7 +45,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="nav-agent"]').click();
     await page.waitForURL('**/agent', { timeout: 5000 });
 
-    // Skills section with all 4 skills
     await expect(page.locator('text=可用技能')).toBeVisible();
     await expect(page.locator('text=sql_executor')).toBeVisible();
     await expect(page.locator('text=stats_engine')).toBeVisible();
