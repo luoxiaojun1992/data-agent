@@ -30,6 +30,8 @@ function parseBlocks(content: string) {
             blocks.push({ type: 'table', headers: parsed.headers, rows: parsed.rows });
           } else if (parsed.type === 'kpi') {
             blocks.push({ type: 'kpi', items: parsed.items } as any);
+          } else if (parsed.type === 'chart') {
+            blocks.push({ type: 'chart', title: parsed.title, labels: parsed.labels, values: parsed.values } as any);
           } else {
             blocks.push({ type: 'text', text: inner.trim() });
           }
@@ -56,6 +58,13 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
+  const [customPrompts, setCustomPrompts] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('customPrompts') || '[]'); } catch { return []; }
+  });
+  const [newPromptText, setNewPromptText] = useState('');
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [showSessions, setShowSessions] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,6 +84,28 @@ export default function ChatPage() {
   };
 
   const newSession = () => { setMessages([]); setSessionId(null); setInput(''); };
+
+  const fetchSessions = async () => {
+    try {
+      const res = await apiFetch('/sessions');
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch { /* ignore */ }
+  };
+
+  const toggleSessions = () => {
+    const next = !showSessions;
+    setShowSessions(next);
+    if (next) fetchSessions();
+  };
+
+  const deleteSession = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await apiFetch(`/sessions/${id}`, { method: 'DELETE' });
+      setSessions(prev => prev.filter(s => s.id !== id));
+    } catch { /* ignore */ }
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || streaming) return;
@@ -118,24 +149,26 @@ export default function ChatPage() {
               const parsed = JSON.parse(data);
               const chunk = parsed.content || parsed.choices?.[0]?.delta?.content || '';
               if (chunk) {
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last && last.role === 'assistant') last.content += chunk;
-                  return [...updated];
-                });
+                setMessages((prev) =>
+                  prev.map((m, i) =>
+                    i === prev.length - 1 && m.role === 'assistant'
+                      ? { ...m, content: m.content + chunk }
+                      : m
+                  )
+                );
               }
             } catch { /* skip */ }
           }
         }
       }
     } catch {
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last && last.role === 'assistant') last.content = 'Error: Failed to get response from server.';
-        return [...updated];
-      });
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 && m.role === 'assistant'
+            ? { ...m, content: 'Error: Failed to get response from server.' }
+            : m
+        )
+      );
     } finally {
       setStreaming(false);
     }
@@ -168,6 +201,9 @@ export default function ChatPage() {
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="chat-new-session-btn"
               >新对话</button>
+              <button onClick={toggleSessions}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                data-testid="chat-session-btn">📋 会话</button>
             </div>
           </div>
 
@@ -261,6 +297,35 @@ export default function ChatPage() {
           </div>
         </div>
 
+        {/* Session Panel */}
+        {showSessions && (
+          <div className="border-t border-[var(--border-glass)]" data-testid="session-sidebar">
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-[var(--text-primary)]">历史会话</p>
+                <button onClick={() => setShowSessions(false)} className="text-xs text-[var(--text-secondary)]">关闭</button>
+              </div>
+              <input type="text" placeholder="搜索会话..."
+                value={sessionSearch} onChange={e => setSessionSearch(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none mb-2"
+                data-testid="session-search" />
+              <div className="max-h-48 overflow-y-auto" data-testid="session-list">
+                {sessions.filter(s => !sessionSearch || s.id.includes(sessionSearch)).map(s => (
+                  <button key={s.id} onClick={() => { setSessionId(s.id); setMessages([]); }}
+                    className={`w-full text-left px-2 py-1.5 text-xs hover:bg-white/5 rounded transition-colors ${s.id === sessionId ? 'bg-[var(--accent)]/10' : ''}`}
+                    data-testid={`session-item-${s.id}`}>
+                    <span className="text-[var(--text-primary)]" data-testid="session-item-title">Session {s.id.slice(-8)}</span>
+                    <span className="text-[var(--text-secondary)] ml-2" data-testid="session-item-meta">{new Date(s.created_at).toLocaleDateString()}</span>
+                    <button onClick={e => deleteSession(s.id, e)}
+                      className="float-right text-[10px] text-red-400 hover:text-red-300"
+                      data-testid={`session-delete-${s.id}`}>删除</button>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Prompt Modal */}
         {showPromptModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="prompt-modal">
@@ -277,6 +342,30 @@ export default function ChatPage() {
                     className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-white/5 transition-colors"
                     data-testid={`prompt-modal-chip-${i}`}>{p}</button>
                 ))}
+              </div>
+              {customPrompts.length > 0 && (
+                <div>
+                  <p className="text-xs text-[var(--text-secondary)] mb-2 uppercase">我的常用</p>
+                  {customPrompts.map((p, i) => (
+                    <button key={i} onClick={() => { setInput(p); setShowPromptModal(false); }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-white/5 transition-colors"
+                      data-testid={`prompt-modal-custom-${i}`}>{p}</button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 pt-2 border-t border-[var(--border-glass)]">
+                <input type="text" placeholder="输入自定义提示词..."
+                  value={newPromptText} onChange={e => setNewPromptText(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none"
+                  data-testid="prompt-modal-custom-input" />
+                <button onClick={() => {
+                  if (!newPromptText.trim()) return;
+                  const updated = [...customPrompts, newPromptText.trim()].slice(-5);
+                  setCustomPrompts(updated);
+                  localStorage.setItem('customPrompts', JSON.stringify(updated));
+                  setNewPromptText('');
+                }} className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-white hover:opacity-90"
+                  data-testid="prompt-modal-save-btn">保存</button>
               </div>
             </div>
           </div>
@@ -367,6 +456,24 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
                   <div className="text-[10px] text-[var(--text-secondary)]" data-testid="chat-inline-kpi-lbl">{item.label}</div>
                 </div>
               ))}
+            </div>
+          );
+        }
+        if ((block as any).type === 'chart') {
+          const { title, labels, values } = block as any;
+          const max = Math.max(...values, 1);
+          const h = (v: number) => Math.max(4, (v / max) * 72);
+          return (
+            <div key={i} className="p-3 rounded-lg bg-white/5" data-testid="chat-inline-chart">
+              {title && <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">{title}</p>}
+              <div className="flex items-end gap-1" style={{ height: '80px' }}>
+                {labels.map((l: string, idx: number) => (
+                  <div key={idx} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full bg-[var(--accent)]/60 rounded-t" style={{ height: `${h(values[idx])}px` }} />
+                    <span className="text-[9px] text-[var(--text-secondary)]">{l}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           );
         }
