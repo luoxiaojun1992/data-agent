@@ -33,11 +33,12 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="nav-agent"]').click();
     await page.waitForURL('**/agent', { timeout: 5000 });
 
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
-    await expect(page.locator('text=Agent 任务')).toBeVisible();
+    const header = page.locator('[data-testid="agent-page-header"]');
+    await expect(header).toBeVisible();
+    await expect(header.locator('h2')).toHaveText('Agent 任务');
 
     await expect(page.locator('[data-testid="agent-empty"]')).toBeVisible();
-    await expect(page.locator('text=暂无任务')).toBeVisible();
+    await expect(page.locator('[data-testid="agent-empty"] p')).toContainText('暂无任务');
   });
 
   // UI-040: Available skills section
