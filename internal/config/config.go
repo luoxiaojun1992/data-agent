@@ -12,7 +12,7 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Mongo    MongoConfig    `mapstructure:"mongo"`
 	Redis    RedisConfig    `mapstructure:"redis"`
-	Milvus   MilvusConfig   `mapstructure:"milvus"`
+	Qdrant   QdrantConfig   `mapstructure:"qdrant"`
 	SeaweedFS SeaweedFSConfig `mapstructure:"seaweedfs"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Log      LogConfig      `mapstructure:"log"`
@@ -35,7 +35,7 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
-type MilvusConfig struct {
+type QdrantConfig struct {
 	Addr string `mapstructure:"addr"`
 }
 
@@ -56,7 +56,7 @@ type LogConfig struct {
 
 // Load reads config from file and environment variables.
 // Environment variables override file values using Viper's automatic env binding.
-// Key env vars: MONGO_URI, REDIS_ADDR, MILVUS_ADDR, SEAWEEDFS_MASTER, SEAWEEDFS_FILER, JWT_SECRET
+// Key env vars: MONGO_URI, REDIS_ADDR, QDRANT_URL, SEAWEEDFS_MASTER, SEAWEEDFS_FILER, JWT_SECRET
 func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -66,7 +66,7 @@ func Load(path string) (*Config, error) {
 	// Explicit env var bindings for Docker/CI overrides
 	_ = v.BindEnv("mongo.uri", "MONGO_URI")
 	_ = v.BindEnv("redis.addr", "REDIS_ADDR")
-	_ = v.BindEnv("milvus.addr", "MILVUS_ADDR")
+	_ = v.BindEnv("qdrant.addr", "QDRANT_URL")
 	_ = v.BindEnv("seaweedfs.master", "SEAWEEDFS_MASTER")
 	_ = v.BindEnv("seaweedfs.filer", "SEAWEEDFS_FILER")
 	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
@@ -80,7 +80,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.db", 0)
-	v.SetDefault("milvus.addr", "localhost:19530")
+	v.SetDefault("qdrant.addr", "localhost:6334")
 	v.SetDefault("seaweedfs.master", "http://localhost:9333")
 	v.SetDefault("seaweedfs.filer", "http://localhost:8080")
 	v.SetDefault("jwt.secret", "change-me-in-production")

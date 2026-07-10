@@ -38,21 +38,30 @@ services:
       timeout: 3s
       retries: 10
 
-  milvus:
-    image: milvusdb/milvus:v2.5.9
-    command: milvus run standalone
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
     restart: always
     expose:
-      - "19530"
-      - "9091"
+      - "6333"
+      - "6334"
     volumes:
-      - milvus-data:/var/lib/milvus
+      - qdrant-data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 10s
-      timeout: 10s
-      retries: 30
-      start_period: 60s
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e 'GET /readyz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q 'HTTP/1.1 200' <&3",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   seaweedfs:
     image: chrislusf/seaweedfs
@@ -102,7 +111,7 @@ services:
     environment:
       - MONGO_URI=mongodb://mongodb:27017
       - REDIS_ADDR=redis:6379
-      - MILVUS_ADDR=milvus:19530
+      - QDRANT_URL=qdrant:6334
       - SEAWEEDFS_MASTER=http://seaweedfs:9333
       - SEAWEEDFS_FILER=http://seaweedfs:8080
       - LLM_BASE_URL=http://mockllm:8082
@@ -113,7 +122,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      milvus:
+      qdrant:
         condition: service_healthy
       seaweedfs:
         condition: service_healthy
@@ -162,5 +171,5 @@ volumes:
   sonarqube-logs:
   sonarqube-extensions:
   mongodb-data:
-  milvus-data:
+  qdrant-data:
   seaweedfs-data:
