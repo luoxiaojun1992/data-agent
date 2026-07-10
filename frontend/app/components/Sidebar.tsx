@@ -11,25 +11,25 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { href: '/', label: '仪表盘', icon: '◉' },
-  { href: '/chat', label: 'Chat 对话', icon: '💬' },
-  { href: '/agent', label: 'Agent 任务', icon: '⚡' },
-  { href: '/knowledge', label: '知识库', icon: '📚' },
-  { href: '/docs', label: '文档', icon: '📄' },
-  { href: '/admin', label: '管理后台', icon: '⚙' },
+  { href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard' },
+  { href: '/chat', label: 'Chat 对话', icon: '💬', testid: 'nav-chat' },
+  { href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent' },
+  { href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt' },
+  { href: '/docs', label: '文档', icon: '📄', testid: 'nav-docs' },
+  { href: '/admin', label: '管理后台', icon: '⚙', testid: 'nav-admin' },
 ];
 
 export default function Sidebar({ username, role, onLogout }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 h-screen fixed left-0 top-0 flex flex-col border-r border-[var(--border-glass)] bg-[var(--bg-secondary)] z-40">
+    <aside className="w-60 h-screen fixed left-0 top-0 flex flex-col border-r border-[var(--border-glass)] bg-[var(--bg-secondary)] z-40" data-testid="sidebar">
       {/* Logo */}
-      <div className="p-5 border-b border-[var(--border-glass)]">
+      <div className="p-5 border-b border-[var(--border-glass)]" data-testid="sidebar-logo">
         <Link href="/" className="flex items-center gap-3 no-underline">
-          <span className="text-2xl">🔮</span>
+          <span className="text-2xl" data-testid="sidebar-logo-icon">🔮</span>
           <div>
-            <h1 className="text-base font-semibold text-[var(--text-primary)]">DataAgent</h1>
+            <h1 className="text-base font-semibold text-[var(--text-primary)]" data-testid="sidebar-logo-text">DataAgent</h1>
             <p className="text-xs text-[var(--text-secondary)]">企业数据分析平台</p>
           </div>
         </Link>
@@ -43,6 +43,7 @@ export default function Sidebar({ username, role, onLogout }: SidebarProps) {
             <Link
               key={item.href}
               href={item.href}
+              data-testid={item.testid}
               className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm no-underline transition-all duration-200 ${
                 isActive
                   ? 'bg-[var(--glass-hover)] text-[var(--accent)] font-medium'
@@ -59,7 +60,7 @@ export default function Sidebar({ username, role, onLogout }: SidebarProps) {
       {/* User section */}
       <div className="p-4 border-t border-[var(--border-glass)]" data-testid="nav-user-card">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-[var(--accent)] flex items-center justify-center text-sm font-semibold">
+          <div className="w-8 h-8 rounded-full bg-[var(--accent)] flex items-center justify-center text-sm font-semibold" data-testid="user-avatar">
             {username?.[0]?.toUpperCase() || '?'}
           </div>
           <div className="flex-1 min-w-0">
