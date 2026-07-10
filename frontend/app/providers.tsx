@@ -10,12 +10,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated (only after localStorage is read)
   React.useEffect(() => {
-    if (!auth.token && pathname !== '/login') {
+    if (auth.hydrated && !auth.token && pathname !== '/login') {
       router.push('/login?expired=true');
     }
-  }, [auth.token, pathname, router]);
+  }, [auth.hydrated, auth.token, pathname, router]);
+
+  // Show nothing until localStorage is read to prevent flash-redirect
+  if (!auth.hydrated) {
+    return null;
+  }
 
   if (!auth.token) {
     return <>{children}</>;

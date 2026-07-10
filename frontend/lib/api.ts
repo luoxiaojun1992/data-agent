@@ -7,6 +7,7 @@ export interface AuthState {
   userId: string | null;
   username: string | null;
   role: string | null;
+  hydrated: boolean;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
@@ -17,6 +18,7 @@ export function useAuth() {
     userId: null,
     username: null,
     role: null,
+    hydrated: false,
   });
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export function useAuth() {
     const username = localStorage.getItem('username');
     const role = localStorage.getItem('role');
     if (token) {
-      setAuth({ token, userId, username, role });
+      setAuth({ token, userId, username, role, hydrated: true });
     }
   }, []);
 
@@ -49,6 +51,7 @@ export function useAuth() {
       userId: data.user_id,
       username: data.username,
       role: data.role,
+      hydrated: true,
     });
     return data;
   }, []);
@@ -58,7 +61,7 @@ export function useAuth() {
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
     localStorage.removeItem('role');
-    setAuth({ token: null, userId: null, username: null, role: null });
+    setAuth({ token: null, userId: null, username: null, role: null, hydrated: true });
   }, []);
 
   const apiFetch = useCallback(async (path: string, options: RequestInit = {}) => {

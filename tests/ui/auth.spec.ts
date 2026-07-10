@@ -166,12 +166,7 @@ test.describe('AUTH - Login Page', () => {
 
     // Sidebar should be visible with user card and logout button
     await page.waitForSelector('[data-testid="nav-user-card"]', { state: 'visible', timeout: 10000 });
-    // Debug: take screenshot if logout button not found
-    const logoutCount = await page.locator('[data-testid="nav-logout-btn"]').count();
-    if (logoutCount === 0) {
-      log(`DEBUG: nav-logout-btn not found. Page HTML snippet: ${(await page.content()).slice(0, 500)}`);
-    }
-    await page.waitForSelector('[data-testid="nav-logout-btn"]', { state: 'visible', timeout: 15000 });
+    await page.waitForSelector('[data-testid="nav-logout-btn"]', { state: 'visible', timeout: 10000 });
 
     // Click logout
     await page.locator('[data-testid="nav-logout-btn"]').click();
