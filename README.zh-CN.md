@@ -18,7 +18,7 @@
 | 后端语言 | Go 1.22+ |
 | Agent 框架 | google.golang.org/adk |
 | 业务数据库 | MongoDB 7.0+ |
-| 向量数据库 | Milvus 2.4+ |
+| 向量数据库 | Qdrant 2.4+ |
 | 对象存储 | SeaweedFS |
 | 缓存与消息队列 | Redis 7.2+ |
 | 密钥管理 | HashiCorp Vault 1.18+ |
@@ -49,7 +49,7 @@ make build
 |----------|---------|-------------|
 | `MONGO_URI` | `mongodb://localhost:27017` | MongoDB 连接字符串 |
 | `REDIS_ADDR` | `localhost:6379` | Redis 地址 |
-| `MILVUS_ADDR` | `localhost:19530` | Milvus 地址 |
+| `QDRANT_URL` | `localhost:6334` | Qdrant 地址 |
 | `SEAWEEDFS_MASTER` | `localhost:9333` | SeaweedFS 主节点地址 |
 | `VAULT_ADDR` | `http://localhost:8200` | Vault 地址 |
 | `JWT_SECRET` | (必填) | JWT 签名密钥 |
@@ -75,7 +75,7 @@ data-agent/
 │   ├── worker/           # Worker Pool + 任务执行器
 │   ├── queue/            # Redis Stream 任务队列 + 死信队列
 │   ├── scheduler/        # Cron 调度器（robfig/cron）
-│   ├── infra/            # 基础设施（MongoDB/Milvus/Redis/SeaweedFS）
+│   ├── infra/            # 基础设施（MongoDB/Qdrant/Redis/SeaweedFS）
 │   └── config/           # 配置管理
 ├── skills/               # Skill 定义（SQL/统计/邮件/知识库/工作区）
 ├── frontend/             # React/Next.js 前端

@@ -15,7 +15,7 @@
 | SPEC-002 | ✅/❌ | CI Pipeline 就绪 |
 | SPEC-003 | ✅/❌ | MongoDB / Redis 可用 |
 | SPEC-004 | ✅/❌ | SkillContext 注入机制可用 |
-| SPEC-006 | ✅/❌ | GridFS + Milvus Collection 可用（knowledge Logic 依赖） |
+| SPEC-006 | ✅/❌ | GridFS + Qdrant Collection 可用（knowledge Logic 依赖） |
 
 ## 背景
 
@@ -80,7 +80,7 @@
 ### 3. Knowledge Search Logic（`internal/logic/knowledge/`）
 
 #### 3.1 混合搜索（Phase 3）
-- 向量搜索：Milvus `similarity_search`，返回 top-50
+- 向量搜索：Qdrant `similarity_search`，返回 top-50
 - 全文搜索：MongoDB `$text` 索引，返回 top-50
 - RRF 融合排序：Reciprocal Rank Fusion，k=60，取 top-5
 

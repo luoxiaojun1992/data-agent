@@ -14,7 +14,7 @@
 | 前置 Spec | 状态 | 备注 |
 |-----------|:---:|------|
 | SPEC-002 | ✅/❌ | CI Pipeline 就绪 |
-| SPEC-003 | ✅/❌ | 基础设施（MongoDB/Redis/Milvus/SeaweedFS）可用 |
+| SPEC-003 | ✅/❌ | 基础设施（MongoDB/Redis/Qdrant/SeaweedFS）可用 |
 
 ## 背景
 

@@ -61,7 +61,7 @@ DataAgent 是企业级智能数据分析平台，采用 **前后端分离的 B/S
                               │
 ┌─────────────────────────────┴───────────────────────────────┐
 │                   Data / Storage Layer                       │
-│  MongoDB | Milvus | SeaweedFS | Redis | Mem0 | Vault        │
+│  MongoDB | Qdrant | SeaweedFS | Redis | Mem0 | Vault        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -198,7 +198,7 @@ data-agent/
 │   ├── scheduler/            # Cron 调度器 (robfig/cron)
 │   ├── infra/                # 基础设施
 │   │   ├── mongo/            # MongoDB Repository
-│   │   ├── milvus/           # Milvus Client
+│   │   ├── qdrant/           # Qdrant Client
 │   │   ├── seaweedfs/        # SeaweedFS Client (S3)
 │   │   ├── redis/            # Redis Client (Cache + Stream)
 │   │   ├── mem0/             # Mem0 Client
@@ -246,7 +246,7 @@ data-agent/
 | Service | Image | Port | 用途 |
 |---------|-------|------|------|
 | `mongodb` | mongo:7.0 | 27017 | 业务数据库 |
-| `milvus` | milvusdb/milvus:2.4 | 19530 | 向量数据库 |
+| `qdrant` | qdrant/qdrant:v1.18.2 | 6334/6333 | 向量数据库（本地存储，零外部依赖） |
 | `seaweedfs` | chrislusf/seaweedfs | 9333/8080 | 对象存储 |
 | `redis` | redis:7.2 | 6379 | 缓存+消息队列 |
 | `vault` | vault:1.18 | 8200 | 密钥管理 |

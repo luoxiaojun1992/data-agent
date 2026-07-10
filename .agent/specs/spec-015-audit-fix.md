@@ -24,7 +24,7 @@
 |:----:|:----:|------|
 | **P0 阻塞** | 3 | 前端缺失、Skill Registry 未集成、Login 占位 |
 | **P1 重大** | 5 | Hermes 位置错误、AgentService 内存任务、Scheduler 缺失、飞书 Mock、Skill 缺失 |
-| **P2 重要** | 9 | tiktoken、Vault、Stats、Session 持久化、WebSocket、Model Config、Milvus、Admin API、Security 集成 |
+| **P2 重要** | 9 | tiktoken、Vault、Stats、Session 持久化、WebSocket、Model Config、Qdrant、Admin API、Security 集成 |
 | **P3 优化** | 6 | 子Agent编排、ZIP下载、批量上传、Email Skill、OpenAPI-MCP、通知服务 |
 
 ---
@@ -179,13 +179,13 @@
 
 **修复方向**: 模型配置 CRUD API + MongoDB 持久化 + 热加载机制。
 
-#### P2-7: Milvus 向量搜索未集成到知识库搜索
+#### P2-7: Qdrant 向量搜索未集成到知识库搜索
 
 **现状**: `knowledge/service.go:162-167` semanticSearch 返回 nil（占位）。
 
-**Spec 要求（SPEC-006 第 4 节 + 第 6 节）**: "Milvus 向量索引...混合搜索 RRF fusion"
+**Spec 要求（SPEC-006 第 4 节 + 第 6 节）**: "Qdrant 向量索引...混合搜索 RRF fusion"
 
-**修复方向**: 集成 Milvus client，实现语义向量搜索，与 MongoDB 全文搜索做 RRF 融合。
+**修复方向**: 集成 Qdrant client，实现语义向量搜索，与 MongoDB 全文搜索做 RRF 融合。
 
 #### P2-8: 管理后台 API 路由不完整
 
@@ -217,7 +217,7 @@
 | P3-6 | 无 Prompt Enhancement Skill | SPEC-008 第 7 节 |
 | P3-7 | 无站内信通知服务（模型已定义） | SPEC-013 第 4 节 |
 | P3-8 | RBAC 未覆盖全部路由 | SPEC-003 第 6.5 节 |
-| P3-9 | `configs/config.yaml` 缺少 Milvus/Vault 配置项 | SPEC-003 第 3 节 |
+| P3-9 | `configs/config.yaml` 缺少 Qdrant/Vault 配置项 | SPEC-003 第 3 节 |
 
 ---
 
@@ -233,7 +233,7 @@
 | F-05 | Agent 批量任务 | ⚠️ 内存实现，未用 Redis Stream |
 | F-06 | 定时任务 | ❌ |
 | F-07 | Session 管理 | ⚠️ 仅内存，未持久化 |
-| F-08 | 知识库 | ⚠️ Milvus 未集成 |
+| F-08 | 知识库 | ⚠️ Qdrant 未集成 |
 | F-09 | 邮件发送 | ❌ |
 | F-10 | API-to-MCP | ❌ |
 | F-11 | Auth & RBAC | ⚠️ Login 占位，RBAC 不完整 |
@@ -288,7 +288,7 @@
 | P2-4: Session MongoDB 持久化 | `internal/service/chat/session.go` | 6h |
 | P2-5: WebSocket 进度推送 | `internal/api/handler/ws.go`, Worker 改造 | 10h |
 | P2-6: 模型配置 CRUD + 热加载 | `internal/service/admin/model_config.go` | 8h |
-| P2-7: Milvus 向量搜索集成 | `internal/service/knowledge/service.go` | 8h |
+| P2-7: Qdrant 向量搜索集成 | `internal/service/knowledge/service.go` | 8h |
 | P2-8: Admin API 完整路由 | `main.go`, handler 文件 | 6h |
 | P2-9: Security Auditor 集成 Skill | `internal/domain/agent/engine.go` | 2h |
 | **Phase 3 合计** | | **60h** |
@@ -325,7 +325,7 @@
 | `internal/service/chat/session.go` | MongoDB 持久化 | 修改 |
 | `internal/service/chat/context_manager.go` | tiktoken-go 替换启发式 | 修改 |
 | `internal/service/im/service.go` | go-lark SDK 集成 | 重写 |
-| `internal/service/knowledge/service.go` | Milvus 集成 | 修改 |
+| `internal/service/knowledge/service.go` | Qdrant 集成 | 修改 |
 | `internal/domain/agent/vault.go` | AES-GCM 集成 | 修改 |
 | `main.go` | 路由整合、移除 Hermes route | 修改 |
 

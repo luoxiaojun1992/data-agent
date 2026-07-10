@@ -24,7 +24,7 @@
 
 ### 技术栈要点
 - **Go 1.22+** 后端，**React/Next.js** 前端
-- **MongoDB** 业务主存储，**Milvus** 向量搜索，**SeaweedFS** 对象存储
+- **MongoDB** 业务主存储，**Qdrant** 向量搜索，**SeaweedFS** 对象存储
 - **Redis** 缓存 + Stream 消息队列
 - **HashiCorp Vault** 密钥管理
 - **go-lark/lark** 飞书 SDK

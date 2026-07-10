@@ -190,7 +190,7 @@ bash <ci-verification-skill-dir>/scripts/wait-for-ci.sh feat/SPEC-XXX-{描述}
 
 CI 显示 "success" 后，按 ci-verification skill 的 Step 6 执行假性成功排查：
 - 检查 Agent Service HTTP 错误码（≥400）
-- 检查基础设施服务错误日志（MongoDB/Milvus/Redis/SeaweedFS）
+- 检查基础设施服务错误日志（MongoDB/Qdrant/Redis/SeaweedFS）
 - 检查应用层错误日志（error/panic/fatal）
 
 **10.4 验证通过后自动合并 PR**

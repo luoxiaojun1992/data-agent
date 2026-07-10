@@ -156,7 +156,7 @@ cat ./ci-logs-full/*.log \
 | 500 | gin.Recovery() 捕获 panic，返回 500 但测试未验证响应体 |
 | 404 | Handler 路由未注册或资源不存在，测试用了错误的 API 路径 |
 | 422 | 请求参数校验失败，但测试 mock 了错误的请求体 |
-| 503 | 下游服务（MongoDB/Milvus/Redis）不可达，被熔断器降级 |
+| 503 | 下游服务（MongoDB/Qdrant/Redis）不可达，被熔断器降级 |
 
 #### 6.3 检查基础设施服务错误
 
@@ -168,9 +168,9 @@ cat ./ci-logs-full/*.log \
   | grep -iE "(mongo|mongodb)" \
   | grep -iE "(error|fail|timeout|refused)"
 
-# Milvus: collection 未加载、搜索超时、连接断开
+# Qdrant: collection 未加载、搜索超时、连接断开
 cat ./ci-logs-full/*.log \
-  | grep -iE "(milvus)" \
+  | grep -iE "(qdrant)" \
   | grep -iE "(error|fail|timeout|not found|not loaded)"
 
 # Redis: 连接池耗尽、命令失败
@@ -187,7 +187,7 @@ cat ./ci-logs-full/*.log \
 | 服务 | 常见假性成功 |
 |------|-------------|
 | MongoDB | 连接超时被自动重试掩盖，集合不存在返回空结果 |
-| Milvus | Collection 未加载，搜索返回空但无报错 |
+| Qdrant | Collection 未加载，搜索返回空但无报错 |
 | Redis | 连接池耗尽时 fallback 到直接 DB 查询，性能降级但不报错 |
 | SeaweedFS | 上传失败但 fileID 为空，后续操作静默跳过 |
 | SonarQube | 扫描超时或项目未创建，CI 步骤 marked as warning |

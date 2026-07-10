@@ -27,7 +27,7 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 | 后端语言 | Go | 1.22+ |
 | Agent 框架 | google.golang.org/adk | latest |
 | 业务数据库 | MongoDB | 7.0+ |
-| 向量数据库 | Milvus | 2.4+ |
+| 向量数据库 | Qdrant | 2.4+ |
 | 对象存储 | SeaweedFS | RELEASE.2024+ |
 | 缓存与消息队列 | Redis | 7.2+ |
 | 密钥管理 | HashiCorp Vault | 1.18+ |
@@ -52,7 +52,7 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 | 存储 | 用途 |
 |-------|------|
 | MongoDB | 全部业务实体（用户、会话、任务、报告、产物、审计日志） |
-| Milvus | 知识库语义搜索的向量嵌入 |
+| Qdrant | 知识库语义搜索的向量嵌入 |
 | SeaweedFS | 二进制文件（会话工作区、产物文件内容） |
 | Redis | 查询缓存、消息队列（Stream）、会话数据 |
 | Mem0 | 多粒度记忆管理 |
@@ -89,7 +89,7 @@ data-agent/
 │   ├── worker/               # 异步任务 Worker Pool
 │   ├── queue/                # Redis Stream 任务队列 + 死信队列
 │   ├── scheduler/            # Cron 调度器
-│   ├── infra/                # 基础设施（MongoDB/Milvus/Redis/SeaweedFS）
+│   ├── infra/                # 基础设施（MongoDB/Qdrant/Redis/SeaweedFS）
 │   └── config/               # 配置管理
 ├── skills/                   # Skill 实现
 ├── frontend/                 # React/Next.js 前端

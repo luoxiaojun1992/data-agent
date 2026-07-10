@@ -4,7 +4,7 @@
 
 ## 目标
 
-搭建项目脚手架（Go Module、目录结构）、Docker Compose 开发环境、中间件（JWT/RBAC/审计/安全过滤）、数据库连接层（MongoDB/Redis/Milvus/SeaweedFS）、Mem0 记忆系统、Vault 密钥管理、系统管理员账号自动生成、模型配置优先级。
+搭建项目脚手架（Go Module、目录结构）、Docker Compose 开发环境、中间件（JWT/RBAC/审计/安全过滤）、数据库连接层（MongoDB/Redis/Qdrant/SeaweedFS）、Mem0 记忆系统、Vault 密钥管理、系统管理员账号自动生成、模型配置优先级。
 
 ## 前置依赖检查
 
@@ -24,7 +24,7 @@ Roadmap Phase 1 (Week 1-2)，P1-01 ~ P1-16，总计 ~50h。
 - Makefile：`build`, `test`, `lint`, `docker-up`, `docker-down`
 
 ### 2. Docker Compose 开发环境
-- MongoDB 7.0, Milvus 2.4, SeaweedFS, Redis 7.2, Vault 1.18, Mem0
+- MongoDB 7.0, Qdrant 2.4, SeaweedFS, Redis 7.2, Vault 1.18, Mem0
 - 健康检查 + 依赖顺序
 
 ### 3. 配置管理
@@ -38,7 +38,7 @@ Roadmap Phase 1 (Week 1-2)，P1-01 ~ P1-16，总计 ~50h。
 ### 5. 数据库连接层
 - MongoDB: Repository Pattern 封装，幂等 upsert/delete
 - Redis: 缓存 + Stream 操作封装
-- Milvus: Collection 管理 + 向量搜索
+- Qdrant: Collection 管理 + 向量搜索
 - SeaweedFS: Bucket CRUD + 文件操作
 
 ### 6. 认证与授权

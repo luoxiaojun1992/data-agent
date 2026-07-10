@@ -27,7 +27,7 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 | Backend Language | Go | 1.22+ |
 | Agent Framework | google.golang.org/adk | latest |
 | Business Database | MongoDB | 7.0+ |
-| Vector Database | Milvus | 2.4+ |
+| Vector Database | Qdrant | 2.4+ |
 | Object Storage | SeaweedFS | RELEASE.2024+ |
 | Cache & Message Queue | Redis | 7.2+ |
 | Secrets Management | HashiCorp Vault | 1.18+ |
@@ -52,7 +52,7 @@ Client → API Gateway (JWT + RBAC + Rate Limit + Security Filter)
 | Store | Purpose |
 |-------|---------|
 | MongoDB | All business entities (users, sessions, tasks, reports, artifacts, audit logs) |
-| Milvus | Vector embeddings for knowledge base semantic search |
+| Qdrant | Vector embeddings for knowledge base semantic search |
 | SeaweedFS | Binary files (session workspace, artifact content) |
 | Redis | Query cache, message queue (Stream), session data |
 | Mem0 | Multi-granularity memory management |
@@ -84,7 +84,7 @@ data-agent/
 │   ├── worker/               # Async task worker pool
 │   ├── queue/                # Redis Stream task queue + dead letter
 │   ├── scheduler/            # Cron scheduler
-│   ├── infra/                # Infrastructure (MongoDB/Milvus/Redis/SeaweedFS)
+│   ├── infra/                # Infrastructure (MongoDB/Qdrant/Redis/SeaweedFS)
 │   └── config/               # Configuration management
 ├── skills/                   # Skill implementations
 ├── frontend/                 # React/Next.js frontend

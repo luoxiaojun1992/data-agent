@@ -64,13 +64,13 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | P1-01 | Go 项目初始化（Module、目录结构、Makefile） | 2h | - |
 | P1-01a | E2E 框架就绪（Playwright 配置 + UI-000 占位用例） | 2h | P1-01 |
 | P1-01b | CI Pipeline 配置（GitHub Actions: sonar-check → ui-tests，与 game-dev-studio 一致） | 3h | P1-01 |
-| P1-02 | Docker Compose 开发环境（MongoDB/Milvus/SeaweedFS/Redis） | 4h | - |
+| P1-02 | Docker Compose 开发环境（MongoDB/Qdrant/SeaweedFS/Redis） | 4h | - |
 | P1-03 | 配置管理系统（Viper/YAML + 环境变量覆盖） | 3h | P1-01 |
 | P1-04 | 统一日志系统（slog 结构化日志） | 2h | P1-01 |
 | P1-05 | MongoDB 连接层（Repository Pattern） | 4h | P1-02 |
 | P1-06 | Redis 连接层（缓存 + Stream 操作） | 3h | P1-02 |
 | P1-07 | SeaweedFS 连接层（Bucket CRUD + 文件操作） | 3h | P1-02 |
-| P1-08 | Milvus 连接层（Collection 管理 + 向量搜索） | 4h | P1-02 |
+| P1-08 | Qdrant 连接层（Collection 管理 + 向量搜索） | 4h | P1-02 |
 
 ### Week 2: 中间件与认证
 
@@ -134,7 +134,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 | P3-01 | 文档解析引擎（PDF/Word/Excel/MD/TXT） | 6h | - |
 | P3-02 | LLM 语义分片引擎（模型自行判断语义段落边界） | 4h | P3-01, P2-01 |
 | P3-03 | LLM Embedding 生成（复用当前 LLM，不引入专用向量模型） | 3h | P3-02 |
-| P3-04 | Milvus Collection 创建与写入（doc_id 绑定） | 4h | P3-03, P1-08 |
+| P3-04 | Qdrant Collection 创建与写入（doc_id 绑定） | 4h | P3-03, P1-08 |
 | P3-05 | 异步 Agent 索引任务（复用 Agent Task Queue） | 4h | P2-12 |
 | P3-06 | MongoDB 全文搜索索引建立 | 2h | P1-05 |
 
@@ -142,7 +142,7 @@ W1── W2 ── W3 ── W4 ── W5 ── W6 ── W7 ── W8 ── W
 
 | ID | 任务 | 工时 | 依赖 |
 |----|------|:---:|------|
-| P3-07 | Milvus 向量相似度搜索 | 3h | P3-04 |
+| P3-07 | Qdrant 向量相似度搜索 | 3h | P3-04 |
 | P3-08 | 混合搜索（Semantic + Fulltext + 重排序） | 5h | P3-07, P3-06 |
 | P3-09 | 权限过滤（搜索结果按用户权限裁剪） | 3h | P3-08, P1-10 |
 | P3-10 | 分析结果智能解读（KB 检索 + 上下文注入） | 6h | P3-08 |

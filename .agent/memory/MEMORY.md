@@ -7,12 +7,12 @@
 - **上下文**: docker-compose 中残留 MinIO/etcd 服务，与架构设计不符（对象存储已统一为 SeaweedFS）；前后端应用服务未在 compose 中定义
 - **决策**:
   1. 从 `docker-compose.yml` 和 `docker-compose.ui-test.yml` 移除 `minio` 和 `etcd` 服务块
-  2. Milvus v2.5.9 standalone 改用嵌入式存储（本地卷 `milvus-data:/var/lib/milvus`），不依赖外部 etcd
+  2. Qdrant v2.5.9 standalone 改用嵌入式存储（本地卷 `qdrant-data:/var/lib/qdrant`），不依赖外部 etcd
   3. 在两个 compose 中添加 `data-agent`（Go 后端，:8080）和 `frontend`（Next.js，:3000）服务
   4. 新建 `frontend/Dockerfile`（standalone 多阶段构建）
 - **理由**: 
   - SeaweedFS 已统一对象存储（SPEC-003/005），MinIO 是历史残留
-  - Milvus standalone 自 v2.4+ 默认嵌入式 etcd，不再需要外部依赖
+  - Qdrant standalone 自 v2.4+ 默认嵌入式 etcd，不再需要外部依赖
   - 开发者需要 `docker compose up` 一键启动完整技术栈
 - **影响**: 
   - 启动时间减少 ~15s（无需 minio/etcd 健康检查）

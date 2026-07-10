@@ -51,7 +51,7 @@ services:
     build: .
     environment: [所有数据库/服务 URL, SONARQUBE_HOST, SONARQUBE_USER, SONARQUBE_PASSWORD]
     ports: ["8080:8080"]
-    depends_on: [mongodb, redis, milvus, seaweedfs, sonarqube]
+    depends_on: [mongodb, redis, qdrant, seaweedfs, sonarqube]
     healthcheck: curl http://localhost:8080/health
 
   mongodb:
@@ -64,8 +64,8 @@ services:
     ports: ["6379:6379"]
     healthcheck: redis-cli ping
 
-  milvus:
-    image: milvusdb/milvus:v2.4
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
     ...
   seaweedfs:
     image: chrislusf/seaweedfs

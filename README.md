@@ -18,7 +18,7 @@
 | Backend Language | Go 1.22+ |
 | Agent Framework | google.golang.org/adk |
 | Business Database | MongoDB 7.0+ |
-| Vector Database | Milvus 2.4+ |
+| Vector Database | Qdrant 2.4+ |
 | Object Storage | SeaweedFS |
 | Cache & Message Queue | Redis 7.2+ |
 | Secrets Management | HashiCorp Vault 1.18+ |
@@ -49,7 +49,7 @@ make build
 |----------|---------|-------------|
 | `MONGO_URI` | `mongodb://localhost:27017` | MongoDB connection string |
 | `REDIS_ADDR` | `localhost:6379` | Redis address |
-| `MILVUS_ADDR` | `localhost:19530` | Milvus address |
+| `QDRANT_URL` | `localhost:6334` | Qdrant address |
 | `SEAWEEDFS_MASTER` | `localhost:9333` | SeaweedFS master address |
 | `VAULT_ADDR` | `http://localhost:8200` | Vault address |
 | `JWT_SECRET` | (required) | JWT signing secret |
@@ -75,7 +75,7 @@ data-agent/
 │   ├── worker/           # Worker pool + task runner
 │   ├── queue/            # Redis Stream task queue + dead letter
 │   ├── scheduler/        # Cron scheduler (robfig/cron)
-│   ├── infra/            # Infrastructure (MongoDB/Milvus/Redis/SeaweedFS)
+│   ├── infra/            # Infrastructure (MongoDB/Qdrant/Redis/SeaweedFS)
 │   └── config/           # Configuration management
 ├── skills/               # Skill definitions (SQL/Stats/Email/Knowledge/Workspace)
 ├── frontend/             # React/Next.js frontend

@@ -14,7 +14,7 @@ DataAgent 是一个企业级智能数据分析平台，基于 Go 语言构建。
 | 后端语言 | Go | 1.22+ |
 | Agent 框架 | google.golang.org/adk | latest |
 | 业务数据库 | MongoDB | 7.0+ |
-| 向量数据库 | Milvus | 2.4+ |
+| 向量数据库 | Qdrant | 2.4+ |
 | 对象存储 | SeaweedFS | RELEASE.2024+ |
 | 缓存/消息队列 | Redis | 7.2+ |
 | 密钥管理 | HashiCorp Vault | 1.18+ |
@@ -170,8 +170,8 @@ cd tests && npx playwright test
 - 检查 Worker 是否存活: 查看 Worker goroutine 日志
 - 检查 MongoDB 连接: `docker-compose logs mongodb`
 
-### Milvus 搜索返回空结果
-- 检查 Collection 是否存在: Python 脚本 `scripts/check_milvus.py`
+### Qdrant 搜索返回空结果
+- 检查 Collection 是否存在: Python 脚本 `scripts/check_qdrant.py`
 - 检查 embedding 模型是否配置正确
 - 检查 `doc_id` 过滤条件是否正确
 

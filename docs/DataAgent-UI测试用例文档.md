@@ -1781,7 +1781,7 @@ modal-delete-confirm — 删除确认弹窗
 - **预期结果**:
   - 弹出确认弹窗
   - 确认后文档从列表中移除
-  - 对应 Milvus 向量数据级联删除（doc_id 级联清理 — SPEC-006）
+  - 对应 Qdrant 向量数据级联删除（doc_id 级联清理 — SPEC-006）
   - `data-testid`: `kb-doc-delete-{docId}`, `kb-delete-confirm-modal`
 
 ### UI-124: KB — 文档分页

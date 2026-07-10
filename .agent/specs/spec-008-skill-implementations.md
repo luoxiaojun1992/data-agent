@@ -16,7 +16,7 @@
 | SPEC-003 | ✅/❌ | 基础设施可用 |
 | SPEC-004 | ✅/❌ | Skill 接口 + 注册中心可用 |
 | SPEC-007 | ✅/❌ | 数据分析 Logic 层可用 |
-| SPEC-006 | ✅/❌ | GridFS + Milvus Collection 可用（knowledge_search 依赖） |
+| SPEC-006 | ✅/❌ | GridFS + Qdrant Collection 可用（knowledge_search 依赖） |
 | SPEC-005 | ✅/❌ | Artifact 存储 + 工作区管理可用（save_artifact / workspace_* 依赖） |
 
 ## 背景
