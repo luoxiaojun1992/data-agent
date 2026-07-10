@@ -117,6 +117,16 @@ test.describe('CHAT — Complete', () => {
   });
 
   // === PROMPT MODAL ===
+  test('[UI-029] Chat loading/progress animation', async ({ page }) => {
+    await page.route('**/api/v1/chat', async r => {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      mockSSE(r, 'Done');
+    });
+    await page.locator('[data-testid="chat-input"]').fill('慢查询');
+    await page.locator('[data-testid="chat-send-btn"]').click();
+    await expect(page.locator('[data-testid="chat-loading-indicator"]')).toBeVisible({ timeout: 5000 });
+  });
+
   test('[UI-035] Chat — prompt modal opens', async ({ page }) => {
     await page.locator('[data-testid="prompt-btn"]').click();
     await expect(page.locator('[data-testid="prompt-modal"]')).toBeVisible();
