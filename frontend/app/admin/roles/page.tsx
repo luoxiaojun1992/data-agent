@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import AppLayout from '../../../providers';
+import AppLayout from '../../providers';
 export default function rolesPage() {
   return (<AppLayout><div className="animate-fade-in">
     <div className="mb-8" data-testid="admin-roles-header"><h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="admin-roles-title">权限管理</h2></div>

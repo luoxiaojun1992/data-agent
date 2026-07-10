@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import AppLayout from '../../../providers';
+import AppLayout from '../../providers';
 export default function UsersPage() {
   return (
     <AppLayout>

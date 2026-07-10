@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import AppLayout from '../../../providers';
+import AppLayout from '../../providers';
 export default function api_reviewPage() {
   return (<AppLayout><div className="animate-fade-in">
     <div className="mb-8" data-testid="admin-api-review-header"><h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="admin-api-review-title">API 转换审核</h2></div>

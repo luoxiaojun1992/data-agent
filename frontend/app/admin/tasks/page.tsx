@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import AppLayout from '../../../providers';
+import AppLayout from '../../providers';
 export default function tasksPage() {
   return (<AppLayout><div className="animate-fade-in">
     <div className="mb-8" data-testid="admin-tasks-header"><h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="admin-tasks-title">任务管理</h2></div>
