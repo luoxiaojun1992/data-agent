@@ -8,8 +8,8 @@ export default function MainPage() {
     <AppLayout>
       <div className="animate-fade-in">
         {/* Header */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">仪表盘</h2>
+        <div className="mb-8" data-testid="page-header">
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="page-title">仪表盘</h2>
           <p className="text-sm text-[var(--text-secondary)] mt-1">系统概览与快速访问</p>
         </div>
 
