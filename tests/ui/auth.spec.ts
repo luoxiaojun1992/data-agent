@@ -90,7 +90,7 @@ test.describe('AUTH - Login Page', () => {
   // UI-004: Login button interaction and state
   test('[UI-004] Login button interaction and state', async ({ page }) => {
     // Mock successful login
-    await page.route('/\/auth\/login/', async (route) => {
+    await page.route('(url) => url.includes('/auth/login')', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -162,7 +162,7 @@ test.describe('AUTH - Login Page', () => {
   // UI-008: Wrong credentials handling
   test('[UI-008] Wrong credentials shows error toast', async ({ page }) => {
     // Mock failed login
-    await page.route('/\/auth\/login/', async (route) => {
+    await page.route('(url) => url.includes('/auth/login')', async (route) => {
       await route.fulfill({
         status: 401,
         contentType: 'application/json',
@@ -198,7 +198,7 @@ test.describe('AUTH - Login Page', () => {
   // UI-010: Logout flow
   test('[UI-010] Logout clears session and redirects to login', async ({ page }) => {
     // Mock successful login
-    await page.route('/\/auth\/login/', async (route) => {
+    await page.route('(url) => url.includes('/auth/login')', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -212,7 +212,7 @@ test.describe('AUTH - Login Page', () => {
     });
 
     // Mock all other API calls (after login redirect)
-    await page.route(/^(?!.*\/auth\/login).*$/, async (route) => {
+    await page.route((url) => !url.includes('/auth/login'), async (route) => {
       await route.fulfill({ status: 200, body: '{}' });
     });
 
