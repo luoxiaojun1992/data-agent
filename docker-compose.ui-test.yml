@@ -67,7 +67,6 @@ services:
       - "9091"
     volumes:
       - milvus-data:/var/lib/milvus
-      - ./milvus.yaml:/milvus/configs/milvus.yaml:ro
     depends_on:
       etcd:
         condition: service_healthy
