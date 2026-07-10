@@ -218,14 +218,15 @@ test.describe('AUTH - Login Page', () => {
 
     // Wait for redirect after login
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
 
     // Verify token is in localStorage (from mock login)
     const token = await page.evaluate(() => localStorage.getItem('token'));
     expect(token).toBeTruthy();
 
     // User card and logout button should be visible
-    await expect(page.locator('[data-testid="nav-user-card"]')).toBeVisible();
-    await expect(page.locator('[data-testid="nav-logout-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="nav-user-card"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="nav-logout-btn"]')).toBeVisible({ timeout: 5000 });
 
     // Click logout
     await page.locator('[data-testid="nav-logout-btn"]').click();
