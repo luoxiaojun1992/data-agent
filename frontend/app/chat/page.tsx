@@ -65,11 +65,17 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
+  const streamingRef = useRef<string>('');
+  const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => () => {
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+  }, []);
 
   const createSession = async () => {
     try {
@@ -110,7 +116,7 @@ export default function ChatPage() {
   const sendMessage = async () => {
     if (!input.trim() || streaming) return;
     const userMsg: Message = { role: 'user', content: input, timestamp: new Date() };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages(prev => [...prev.slice(-199), userMsg]); // cap at 200
     setInput('');
     setStreaming(true);
 
@@ -119,15 +125,27 @@ export default function ChatPage() {
     if (!sid) { setStreaming(false); return; }
 
     const assistantMsg: Message = { role: 'assistant', content: '', timestamp: new Date() };
-    setMessages((prev) => [...prev, assistantMsg]);
+    setMessages(prev => [...prev.slice(-199), assistantMsg]);
+
+    streamingRef.current = '';
+    const FLUSH_INTERVAL = 80; // ms — batch updates to avoid excessive renders
+
+    const flushToState = () => {
+      const content = streamingRef.current;
+      setMessages(prev => {
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (last && last.role === 'assistant') {
+          copy[copy.length - 1] = { ...last, content };
+        }
+        return copy;
+      });
+    };
 
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${auth.token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
         body: JSON.stringify({ session_id: sid, message: userMsg.content }),
       });
       if (!res.ok) throw new Error('Chat request failed');
@@ -135,6 +153,7 @@ export default function ChatPage() {
       if (!reader) throw new Error('No response stream');
       const decoder = new TextDecoder();
       let buffer = '';
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -148,28 +167,19 @@ export default function ChatPage() {
             try {
               const parsed = JSON.parse(data);
               const chunk = parsed.content || parsed.choices?.[0]?.delta?.content || '';
-              if (chunk) {
-                setMessages((prev) =>
-                  prev.map((m, i) =>
-                    i === prev.length - 1 && m.role === 'assistant'
-                      ? { ...m, content: m.content + chunk }
-                      : m
-                  )
-                );
-              }
+              if (chunk) streamingRef.current += chunk;
             } catch { /* skip */ }
           }
         }
+        // Batch flush
+        if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = setTimeout(flushToState, FLUSH_INTERVAL);
       }
     } catch {
-      setMessages((prev) =>
-        prev.map((m, i) =>
-          i === prev.length - 1 && m.role === 'assistant'
-            ? { ...m, content: 'Error: Failed to get response from server.' }
-            : m
-        )
-      );
+      streamingRef.current = 'Error: Failed to get response from server.';
     } finally {
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushToState(); // final flush
       setStreaming(false);
     }
   };
