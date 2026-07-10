@@ -5,7 +5,12 @@ const uid = Date.now();
 const U = { username: `e2e-chat2-${uid}@test.local`, password: 'E2eTest123!' };
 
 function mockSSE(route, content: string) {
-  const chunks = content.match(/.{1,15}/g) || [content];
+  // Use larger chunks to avoid splitting markdown/code blocks
+  const size = Math.max(50, Math.ceil(content.length / 5));
+  const chunks: string[] = [];
+  for (let i = 0; i < content.length; i += size) {
+    chunks.push(content.slice(i, i + size));
+  }
   route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' },
     body: chunks.map(c => `data: ${JSON.stringify({ content: c })}\n`).join('') + 'data: [DONE]\n' });
 }
