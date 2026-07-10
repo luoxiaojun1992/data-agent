@@ -1,0 +1,11 @@
+# Milvus standalone with local storage (no MinIO required)
+# Used for CI and local development
+
+etcd:
+  endpoints:
+    - etcd:2379
+
+minio:
+  address: localhost:9000  # required key but not used with local storage
+
+storageType: local
