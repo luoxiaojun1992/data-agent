@@ -42,8 +42,6 @@ services:
     image: milvusdb/milvus:v2.5.9
     command: milvus run standalone
     restart: always
-    sysctls:
-      - vm.overcommit_memory=1
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -52,9 +50,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
 
   seaweedfs:
     image: chrislusf/seaweedfs
