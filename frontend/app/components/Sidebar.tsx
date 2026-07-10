@@ -57,7 +57,7 @@ export default function Sidebar({ username, role, onLogout }: SidebarProps) {
       </nav>
 
       {/* User section */}
-      <div className="p-4 border-t border-[var(--border-glass)]">
+      <div className="p-4 border-t border-[var(--border-glass)]" data-testid="nav-user-card">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-8 h-8 rounded-full bg-[var(--accent)] flex items-center justify-center text-sm font-semibold">
             {username?.[0]?.toUpperCase() || '?'}
@@ -72,6 +72,7 @@ export default function Sidebar({ username, role, onLogout }: SidebarProps) {
         <button
           onClick={onLogout}
           className="w-full py-2 text-sm text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+          data-testid="nav-logout-btn"
         >
           退出登录
         </button>

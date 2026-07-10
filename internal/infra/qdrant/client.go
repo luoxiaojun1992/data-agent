@@ -1,15 +1,15 @@
-package milvus
+package qdrant
 
 import (
 	"fmt"
 )
 
-// Client provides access to Milvus vector database (stub for MVP).
+// Client provides access to Qdrant vector database (stub for MVP).
 type Client struct {
 	addr string
 }
 
-// NewClient creates a Milvus client.
+// NewClient creates a Qdrant client (gRPC, port 6334).
 func NewClient(addr string) *Client {
 	return &Client{addr: addr}
 }
@@ -19,13 +19,12 @@ func (c *Client) Search(collection string, vector []float64, topK int) ([]Search
 	_ = collection
 	_ = vector
 	_ = topK
-	// Placeholder — full Milvus integration in SPEC-009
-	return nil, fmt.Errorf("milvus not yet integrated (SPEC-009)")
+	return nil, fmt.Errorf("qdrant not yet integrated")
 }
 
 // SearchHit represents a vector search result.
 type SearchHit struct {
-	ID     int64   `json:"id"`
-	Score  float32 `json:"score"`
+	ID     int64                  `json:"id"`
+	Score  float32                `json:"score"`
 	Fields map[string]interface{} `json:"fields"`
 }
