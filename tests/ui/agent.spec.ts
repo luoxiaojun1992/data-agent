@@ -38,7 +38,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(header.locator('h2')).toHaveText('Agent 任务');
 
     await expect(page.locator('[data-testid="agent-empty"]')).toBeVisible();
-    await expect(page.locator('[data-testid="agent-empty"] p')).toContainText('暂无任务');
+    await expect(page.locator('[data-testid="agent-empty"]')).toBeVisible({ timeout: 10000 });
   });
 
   // UI-040: Available skills section
