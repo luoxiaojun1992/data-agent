@@ -20,7 +20,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-001: Brand elements rendering
-  test('UI-001: Login page brand elements rendering', async ({ page }) => {
+  test('[UI-001] Login page brand elements rendering', async ({ page }) => {
     await expect(page.locator('[data-testid="login-card"]')).toBeVisible();
 
     // Black background
@@ -45,7 +45,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-002: Email input interaction and validation
-  test('UI-002: Email input interaction and validation', async ({ page }) => {
+  test('[UI-002] Email input interaction and validation', async ({ page }) => {
     // Label
     await expect(page.locator('[data-testid="login-email-label"]')).toHaveText('邮箱地址');
 
@@ -74,7 +74,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-003: Password input interaction
-  test('UI-003: Password input interaction', async ({ page }) => {
+  test('[UI-003] Password input interaction', async ({ page }) => {
     // Label
     await expect(page.locator('[data-testid="login-password-label"]')).toHaveText('密码');
 
@@ -88,7 +88,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-004: Login button interaction and state
-  test('UI-004: Login button interaction and state', async ({ page }) => {
+  test('[UI-004] Login button interaction and state', async ({ page }) => {
     // Mock successful login
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
@@ -123,7 +123,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-005: SSO button
-  test('UI-005: SSO button presence and interaction', async ({ page }) => {
+  test('[UI-005] SSO button presence and interaction', async ({ page }) => {
     // Divider visible
     await expect(page.locator('[data-testid="login-divider"]')).toBeVisible();
 
@@ -138,7 +138,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-006: Email format validation
-  test('UI-006: Email format validation on submit', async ({ page }) => {
+  test('[UI-006] Email format validation on submit', async ({ page }) => {
     await page.locator('[data-testid="login-email-input"]').fill('notanemail');
     await page.locator('[data-testid="login-password-input"]').fill('password123');
     await page.locator('[data-testid="login-btn"]').click();
@@ -151,7 +151,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-007: Empty field validation
-  test('UI-007: Empty field validation', async ({ page }) => {
+  test('[UI-007] Empty field validation', async ({ page }) => {
     // Click login with empty fields
     await page.locator('[data-testid="login-btn"]').click();
 
@@ -163,7 +163,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-008: Wrong credentials handling
-  test('UI-008: Wrong credentials shows error toast', async ({ page }) => {
+  test('[UI-008] Wrong credentials shows error toast', async ({ page }) => {
     // Mock failed login
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
@@ -189,7 +189,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-009: JWT Token expired redirect
-  test('UI-009: JWT Token expired shows session-expired toast', async ({ page }) => {
+  test('[UI-009] JWT Token expired shows session-expired toast', async ({ page }) => {
     // Navigate to login with expired=true param
     await page.goto('/login?expired=true');
 
@@ -199,7 +199,7 @@ test.describe('AUTH - Login Page', () => {
   });
 
   // UI-010: Logout flow
-  test('UI-010: Logout clears session and redirects to login', async ({ page }) => {
+  test('[UI-010] Logout clears session and redirects to login', async ({ page }) => {
     // Mock successful login
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({

@@ -2,8 +2,6 @@
 # Stage 1: Build
 FROM golang:1.25-alpine AS builder
 
-ENV GOPROXY=https://proxy.golang.org,direct
-
 WORKDIR /app
 COPY go.mod ./
 RUN go mod download

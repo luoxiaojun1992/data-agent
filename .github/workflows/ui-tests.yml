@@ -43,11 +43,29 @@ jobs:
         run: |
           docker compose -f docker-compose.ui-test.yml down --remove-orphans --volumes 2>/dev/null || true
 
-      - name: Upload Allure Report
+      - name: Upload Allure Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: allure-results
           path: tests/ui/artifacts/allure-results/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: tests/ui/artifacts/ui-coverage-summary.json
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload Test Results JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: tests/ui/artifacts/playwright-report/results.json
           retention-days: 7
           if-no-files-found: warn

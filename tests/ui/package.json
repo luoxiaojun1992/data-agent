@@ -5,7 +5,9 @@
   "scripts": {
     "test": "npx playwright test",
     "test:headed": "npx playwright test --headed",
-    "test:debug": "npx playwright test --debug"
+    "test:debug": "npx playwright test --debug",
+    "test:ci": "bash scripts/test-ui-ci.sh",
+    "test:coverage": "node scripts/check-ui-coverage.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

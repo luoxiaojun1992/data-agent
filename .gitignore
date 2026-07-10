@@ -52,6 +52,7 @@ docker-data/
 tests/ui/allure-results/
 tests/ui/artifacts/
 tests/ui/coverage/
+!tests/ui/coverage/cases.json
 
 # Temp
 tmp/
