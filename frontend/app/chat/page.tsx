@@ -357,7 +357,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
             </div>
           );
         }
-        if (block.type === 'kpi' && (block as any).items) {
+        if ((block as any).type === 'kpi' && (block as any).items) {
           const items = (block as any).items as { label: string; value: string }[];
           return (
             <div key={i} className="flex flex-wrap gap-3 p-3 rounded-lg bg-white/5" data-testid="chat-inline-kpi">
