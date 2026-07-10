@@ -14,7 +14,9 @@ FROM alpine:3.19
 RUN apk add --no-cache ca-certificates curl
 
 COPY --from=builder /data-agent /usr/local/bin/data-agent
+COPY --from=builder /app/configs ./configs
 
+WORKDIR /
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
