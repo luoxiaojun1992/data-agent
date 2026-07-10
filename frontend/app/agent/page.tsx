@@ -56,7 +56,7 @@ export default function AgentPage() {
   return (
     <AppLayout>
       <div className="animate-fade-in">
-        <div className="mb-8" data-testid="agent-page-header">
+        <div className="mb-8">
           <h2 className="text-2xl font-bold text-[var(--text-primary)]">Agent 任务</h2>
           <p className="text-sm text-[var(--text-secondary)] mt-1">批量数据分析任务管理与执行</p>
         </div>
@@ -78,9 +78,9 @@ export default function AgentPage() {
 
         {/* Task list */}
         {loading ? (
-          <div className="text-center py-12 text-[var(--text-secondary)]" data-testid="agent-loading">加载中...</div>
+          <div className="text-center py-12 text-[var(--text-secondary)]">加载中...</div>
         ) : tasks.length === 0 ? (
-          <div className="glass p-12 text-center" data-testid="agent-empty">
+          <div className="glass p-12 text-center">
             <span className="text-5xl block mb-4">⚡</span>
             <p className="text-lg text-[var(--text-primary)] mb-2">暂无任务</p>
             <p className="text-sm text-[var(--text-secondary)] mb-6">
@@ -88,7 +88,7 @@ export default function AgentPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3" data-testid="agent-task-table">
+          <div className="space-y-3">
             {tasks.map((task) => (
               <div key={task.task_id} className="glass p-4 glass-hover">
                 <div className="flex items-center justify-between">
