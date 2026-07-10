@@ -7,6 +7,8 @@ RUN npm ci
 
 COPY . .
 
+# Ensure chromium browser is available
+RUN npx playwright install --with-deps chromium 2>/dev/null || true
 RUN mkdir -p artifacts/allure-results artifacts/coverage
 
 CMD ["npx", "playwright", "test", "-c", "playwright.config.ts"]
