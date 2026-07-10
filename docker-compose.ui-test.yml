@@ -114,7 +114,7 @@ services:
       redis:
         condition: service_healthy
       milvus:
-        condition: service_healthy
+        condition: service_started
       seaweedfs:
         condition: service_healthy
       sonarqube:
