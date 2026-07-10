@@ -375,6 +375,22 @@ func main() {
 		})
 	})
 
+	// List user sessions
+	sessionRoutes.GET("", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		sessions := sessionManager.ListByUser(userID.(string))
+		c.JSON(http.StatusOK, gin.H{"sessions": sessions})
+	})
+
+	// Delete session
+	sessionRoutes.DELETE("/:id", func(c *gin.Context) {
+		if err := sessionManager.Delete(c.Param("id")); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+	})
+
 	// ── SPEC-005: Artifact routes ──
 	artifactRoutes := router.Group("/api/v1/artifacts")
 	artifactRoutes.Use(jwtManager.AuthMiddleware())

@@ -96,3 +96,28 @@ func (m *Manager) Cleanup(ctx context.Context) {
 		}
 	}
 }
+
+// ListByUser returns active sessions for a user.
+func (m *Manager) ListByUser(userID string) []*Session {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var result []*Session
+	now := time.Now()
+	for _, s := range m.sessions {
+		if s.UserID == userID && !now.After(s.ExpiresAt) {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+// Delete removes a session by ID.
+func (m *Manager) Delete(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.sessions[id]; !exists {
+		return fmt.Errorf("session %q not found", id)
+	}
+	delete(m.sessions, id)
+	return nil
+}
