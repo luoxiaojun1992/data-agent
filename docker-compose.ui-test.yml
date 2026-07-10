@@ -62,9 +62,9 @@ services:
     restart: always
     environment:
       ETCD_ENDPOINTS: etcd:2379
-    ports:
-      - "19530:19530"
-      - "9091:9091"
+    expose:
+      - "19530"
+      - "9091"
     volumes:
       - milvus-data:/var/lib/milvus
       - ./milvus.yaml:/milvus/configs/milvus.yaml:ro
