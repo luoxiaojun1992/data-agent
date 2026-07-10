@@ -131,15 +131,15 @@ export default function ChatPage() {
     <AppLayout>
       <div className="flex flex-col h-[calc(100vh-64px)] animate-fade-in">
         {/* Header */}
-        <div className="mb-4">
+        <div className="mb-4" data-testid="chat-header">
           <h2 className="text-2xl font-bold text-[var(--text-primary)]">Chat 对话</h2>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">
+          <p className="text-sm text-[var(--text-secondary)] mt-1" data-testid="chat-session-info">
             {sessionId ? `Session: ${sessionId.slice(0, 8)}...` : '创建新会话'}
           </p>
         </div>
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto mb-4 space-y-4">
+        <div className="flex-1 overflow-y-auto mb-4 space-y-4" data-testid="chat-messages">
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
@@ -148,7 +148,7 @@ export default function ChatPage() {
                 <p className="text-sm text-[var(--text-secondary)] mt-2">
                   输入你的数据分析需求，AI 将为你提供帮助
                 </p>
-                <div className="flex flex-wrap justify-center gap-2 mt-4">
+                <div className="flex flex-wrap justify-center gap-2 mt-4" data-testid="chat-prompt-row">
                   {['统计最近一周的销售数据', '分析客户流失原因', '生成月度分析报告'].map((hint) => (
                     <button
                       key={hint}
@@ -192,12 +192,14 @@ export default function ChatPage() {
               placeholder="输入你的数据分析需求..."
               rows={2}
               className="flex-1 px-4 py-3 rounded-xl bg-transparent border-0 text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none"
+              data-testid="chat-input"
               disabled={streaming}
             />
             <button
               onClick={sendMessage}
               disabled={streaming || !input.trim()}
               className="px-6 py-2 bg-[var(--accent)] text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all self-end"
+              data-testid="chat-send-btn"
             >
               {streaming ? '发送中...' : '发送'}
             </button>
