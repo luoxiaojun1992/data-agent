@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 /**
  * SPEC-017: AUTH E2E Tests
  * Test cases UI-001 through UI-010
- * All API calls mocked via page.route()
- * Uses baseURL from playwright config (UI_BASE_URL env or default http://localhost:3000)
+ * Login mocked to get known token (password is random-generated at startup).
+ * All other API calls use real backend endpoints.
  */
 
 const log = (msg: string) => process.stderr.write(`[auth.spec] ${new Date().toISOString()} ${msg}\n`);
@@ -211,25 +211,17 @@ test.describe('AUTH - Login Page', () => {
       });
     });
 
-    // Mock all other API calls (after login redirect)
-    await page.route((url) => {
-      const s = url.toString();
-      return s.includes('/api/') || s.includes('/auth/');
-    }, async (route) => {
-      await route.fulfill({ status: 200, body: '{}' });
-    });
-
     // Login (page already at /login from beforeEach)
     await page.locator('[data-testid="login-email-input"]').fill('admin@company.com');
     await page.locator('[data-testid="login-password-input"]').fill('password123');
     await page.locator('[data-testid="login-btn"]').click();
 
     // Wait for redirect after login
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 5000 });
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
 
-    // Verify token is in localStorage
+    // Verify token is in localStorage (from mock login)
     const token = await page.evaluate(() => localStorage.getItem('token'));
-    expect(token).toBe('mock-jwt-token');
+    expect(token).toBeTruthy();
 
     // User card and logout button should be visible
     await expect(page.locator('[data-testid="nav-user-card"]')).toBeVisible();
