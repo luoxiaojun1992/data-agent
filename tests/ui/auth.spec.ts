@@ -212,12 +212,14 @@ test.describe('AUTH - Login Page', () => {
     });
 
     // Mock all other API calls (after login redirect)
-    await page.route((url) => !url.toString().includes('/auth/login'), async (route) => {
+    await page.route((url) => {
+      const s = url.toString();
+      return s.includes('/api/') || s.includes('/auth/');
+    }, async (route) => {
       await route.fulfill({ status: 200, body: '{}' });
     });
 
-    // Login first
-    await page.goto('/login');
+    // Login (page already at /login from beforeEach)
     await page.locator('[data-testid="login-email-input"]').fill('admin@company.com');
     await page.locator('[data-testid="login-password-input"]').fill('password123');
     await page.locator('[data-testid="login-btn"]').click();
