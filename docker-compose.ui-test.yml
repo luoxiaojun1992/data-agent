@@ -106,11 +106,14 @@ services:
     image: nousresearch/hermes-agent:latest
     expose:
       - "8642"
+    volumes:
+      - hermes-data:/opt/data
     environment:
       HERMES_HOME: /opt/data
       HERMES_LLM_BASE_URL: http://mockllm:8082
       HERMES_LLM_API_KEY: test-key
       HERMES_LLM_MODEL: mock-gpt-4o
+      HERMES_SKIP_CONFIG_MIGRATION: "1"
     command: ["gateway", "run"]
     depends_on:
       mockllm:
@@ -119,8 +122,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8642/health"]
       interval: 10s
       timeout: 5s
-      retries: 20
-      start_period: 30s
+      retries: 30
+      start_period: 60s
 
   data-agent:
     build:
@@ -196,3 +199,4 @@ volumes:
   mongodb-data:
   qdrant-data:
   seaweedfs-data:
+  hermes-data:
