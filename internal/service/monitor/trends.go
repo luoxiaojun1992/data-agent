@@ -107,7 +107,7 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 	}
 
 	// Token trend — estimate from task count (real token tracking needs model integration)
-	for i, p := range t.CallTrend {
+	for _, p := range t.CallTrend {
 		t.TokenTrend = append(t.TokenTrend, TrendPoint{Label: p.Label, Value: p.Value * 500})
 	}
 
