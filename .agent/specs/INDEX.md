@@ -33,7 +33,7 @@
 | SPEC-017 | UI E2E — 登录与认证 (AUTH) | **P8** | [spec-017-ui-auth.md](spec-017-ui-auth.md) | ✅ 已实现 |
 | SPEC-018 | UI E2E — 布局与导航 (LAYOUT) | **P8** | [spec-018-ui-layout.md](spec-018-ui-layout.md) | ✅ 已实现 |
 | SPEC-019 | UI E2E — Chat 模式 (CHAT) | **P8** | [spec-019-ui-chat.md](spec-019-ui-chat.md) | ✅ 已实现 |
-| SPEC-020 | UI E2E — Agent 模式 (AGENT) | **P8** | [spec-020-ui-agent.md](spec-020-ui-agent.md) | 🟡 部分 (16/18) — UI-048,UI-054 CI超时待修复 |
+| SPEC-020 | UI E2E — Agent 模式 (AGENT) | **P8** | [spec-020-ui-agent.md](spec-020-ui-agent.md) | ✅ 已实现
 | SPEC-021 | UI E2E — Hermes 自由探索 (HERMES) | **P8** | [spec-021-ui-hermes.md](spec-021-ui-hermes.md) | 🟡 部分 (1/5) |
 | SPEC-022 | UI E2E — 数据看板 (DASH) | **P8** | [spec-022-ui-dashboard.md](spec-022-ui-dashboard.md) | 🟡 部分 (2/13) |
 | SPEC-023 | UI E2E — 用户管理 (USER) | **P8** | [spec-023-ui-user.md](spec-023-ui-user.md) | 📐 设计中 |
