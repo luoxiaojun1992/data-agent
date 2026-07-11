@@ -53,7 +53,7 @@ export default function AgentPage() {
       if (res.ok) {
         await loadTasks();
         setShowModal(false);
-        setNewTask({ title: '', description: '', skills: 'sql_executor', async: false });
+        setNewTask({ title: '', description: '', skills: 'sql_executor', async: false, cron: '', cronEnabled: false });
       }
     } catch { /* ignore */ }
   };
