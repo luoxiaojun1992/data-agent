@@ -103,25 +103,24 @@ services:
       start_period: 5s
 
   hermes:
-    build:
-      context: .
-      dockerfile: Dockerfile.hermes
+    image: nousresearch/hermes-agent:latest
     expose:
-      - "8083"
+      - "8642"
     environment:
-      - HERMES_PORT=8083
-      - LLM_BASE_URL=http://mockllm:8082
-      - LLM_API_KEY=test-key
-      - LLM_MODEL=mock-gpt-4o
+      HERMES_HOME: /opt/data
+      HERMES_LLM_BASE_URL: http://mockllm:8082
+      HERMES_LLM_API_KEY: test-key
+      HERMES_LLM_MODEL: mock-gpt-4o
+    command: ["gateway", "run"]
     depends_on:
       mockllm:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8642/health"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 5s
+      retries: 20
+      start_period: 30s
 
   data-agent:
     build:
@@ -138,7 +137,7 @@ services:
       - LLM_BASE_URL=http://mockllm:8082
       - LLM_API_KEY=test-key
       - LLM_MODEL=mock-gpt-4o
-      - HERMES_URL=http://hermes:8083
+      - HERMES_URL=http://hermes:8642
     depends_on:
       mongodb:
         condition: service_healthy

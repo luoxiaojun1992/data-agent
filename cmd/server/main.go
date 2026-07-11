@@ -255,19 +255,13 @@ func main() {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
 
-	// ── SPEC-012: Hermes Free Explore Proxy ──
+	// ── SPEC-012: Hermes Agent Proxy (nousresearch/hermes-agent) ──
 	hermesURL := os.Getenv("HERMES_URL")
 	if hermesURL != "" {
-		// Redirect hermes path to the standalone Hermes service
 		router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
-			// Rebuild proxy URL for each request
 			target, _ := url.Parse(hermesURL)
 			p := httputil.NewSingleHostReverseProxy(target)
-			// Rewrite path: strip /api/v1/hermes prefix, replace with /api/v1
-			c.Request.URL.Path = "/api/v1" + c.Param("path")
-			if c.Param("path") == "" || c.Param("path") == "/" {
-				c.Request.URL.Path = "/api/v1/chat"
-			}
+			c.Request.URL.Path = c.Param("path")
 			p.ServeHTTP(c.Writer, c.Request)
 		})
 		logger.Info("Hermes proxy enabled", zap.String("hermes_url", hermesURL))
