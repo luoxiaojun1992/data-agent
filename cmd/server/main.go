@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -253,14 +255,23 @@ func main() {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
 
-	// ── SPEC-012: Hermes Free Explore (独立服务，不再路由到主二进制) ──
-	// Hermes 现在是独立二进制 cmd/hermes/main.go，通过 Docker Compose 独立部署
-	// 如果需要代理模式，设置 HERMES_URL 环境变量后取消下方注释
-	// hermesURL := os.Getenv("HERMES_URL")
-	// hermesSvc := hermes.NewService(hermesURL)
-	// router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
-	// 	hermesSvc.Proxy(c.Writer, c.Request)
-	// })
+	// ── SPEC-012: Hermes Free Explore Proxy ──
+	hermesURL := os.Getenv("HERMES_URL")
+	if hermesURL != "" {
+		// Redirect hermes path to the standalone Hermes service
+		router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
+			// Rebuild proxy URL for each request
+			target, _ := url.Parse(hermesURL)
+			p := httputil.NewSingleHostReverseProxy(target)
+			// Rewrite path: strip /api/v1/hermes prefix, replace with /api/v1
+			c.Request.URL.Path = "/api/v1" + c.Param("path")
+			if c.Param("path") == "" || c.Param("path") == "/" {
+				c.Request.URL.Path = "/api/v1/chat"
+			}
+			p.ServeHTTP(c.Writer, c.Request)
+		})
+		logger.Info("Hermes proxy enabled", zap.String("hermes_url", hermesURL))
+	}
 
 	// ── SPEC-010: System Monitoring ──
 	router.GET("/api/v1/system/stats", monitor.Handler())
