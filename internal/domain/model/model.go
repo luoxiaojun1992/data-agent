@@ -15,12 +15,21 @@ const (
 	RoleUser        UserRole = "user"
 )
 
+// UserStatus defines whether a user is enabled or disabled.
+type UserStatus string
+
+const (
+	StatusEnabled  UserStatus = "enabled"
+	StatusDisabled UserStatus = "disabled"
+)
+
 // User represents a system user.
 type User struct {
 	ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Username        string             `bson:"username" json:"username"`
 	PasswordHash    string             `bson:"password_hash" json:"-"`
 	Role            UserRole           `bson:"role" json:"role"`
+	Status          UserStatus         `bson:"status" json:"status"`
 	PasswordChanged bool               `bson:"password_changed" json:"password_changed"`
 	CreatedAt       time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`

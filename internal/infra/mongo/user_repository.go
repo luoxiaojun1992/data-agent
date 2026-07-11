@@ -96,6 +96,57 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID string, pass
 	return nil
 }
 
+// UpdateRole updates a user's role.
+func (r *UserRepository) UpdateRole(ctx context.Context, userID string, newRole model.UserRole) error {
+	oid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	result, err := r.coll.UpdateOne(ctx,
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{"role": newRole, "updated_at": time.Now()}},
+	)
+	if err != nil {
+		return fmt.Errorf("update user role: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+// UpdateStatus enables or disables a user.
+func (r *UserRepository) UpdateStatus(ctx context.Context, userID string, status model.UserStatus) error {
+	oid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	result, err := r.coll.UpdateOne(ctx,
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}},
+	)
+	if err != nil {
+		return fmt.Errorf("update user status: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+// Delete removes a user by ID.
+func (r *UserRepository) Delete(ctx context.Context, userID string) error {
+	oid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	_, err = r.coll.DeleteOne(ctx, bson.M{"_id": oid})
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
 // List returns paginated users. Admins can only see non-system_admin users.
 func (r *UserRepository) List(ctx context.Context, role string, skip, limit int64) ([]model.User, int64, error) {
 	filter := bson.M{}

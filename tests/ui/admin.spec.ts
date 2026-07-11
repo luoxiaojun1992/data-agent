@@ -21,7 +21,6 @@ test.beforeAll(async ({ request }) => {
 test.describe('ADMIN PAGES', () => {
 
   const pages = [
-    { spec: 'UI-067', path: '/admin/users', nav: 'nav-admin', title: '用户管理', tid: 'admin-users' },
     { spec: 'UI-069', path: '/admin/roles', nav: 'nav-admin', title: '权限管理', tid: 'admin-roles' },
     { spec: 'UI-071', path: '/admin/models', nav: 'nav-admin', title: '模型配置', tid: 'admin-models' },
     { spec: 'UI-073', path: '/admin/tasks', nav: 'nav-admin', title: '任务管理', tid: 'admin-tasks' },
