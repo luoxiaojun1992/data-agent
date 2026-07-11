@@ -102,6 +102,27 @@ services:
       retries: 10
       start_period: 5s
 
+  hermes:
+    build:
+      context: .
+      dockerfile: Dockerfile.hermes
+    expose:
+      - "8083"
+    environment:
+      - HERMES_PORT=8083
+      - LLM_BASE_URL=http://mockllm:8082
+      - LLM_API_KEY=test-key
+      - LLM_MODEL=mock-gpt-4o
+    depends_on:
+      mockllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
   data-agent:
     build:
       context: .
