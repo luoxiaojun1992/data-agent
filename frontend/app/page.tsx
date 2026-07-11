@@ -57,12 +57,14 @@ export default function MainPage() {
   const { apiFetch } = useAuth();
   const [timeFilter, setTimeFilter] = useState('today');
   const [stats, setStats] = useState<any>(null);
+  const [trends, setTrends] = useState<any>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiFetch('/dashboard');
-        setStats(await res.json());
+        const [sr, tr] = await Promise.all([apiFetch('/dashboard'), apiFetch('/dashboard/trends')]);
+        setStats(await sr.json());
+        setTrends(await tr.json());
       } catch { /* ignore */ }
     })();
   }, []);
@@ -140,7 +142,7 @@ export default function MainPage() {
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           <Chart testid="chart-call-trend" title="Agent 调用量趋势">
-            {emptyChart('24h 调用量')}
+            <SimpleBar data={(trends?.call_trend || []).map((p: any) => ({ label: p.label, value: p.value }))} />
           </Chart>
           <Chart testid="chart-status-pie" title="任务状态分布">
             <SimpleBar data={statusDist} />
@@ -150,27 +152,30 @@ export default function MainPage() {
         {/* Charts Row 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           <Chart testid="chart-duration-dist" title="任务耗时分布">
-            {emptyChart('耗时分布')}
+            <SimpleBar data={(trends?.duration_dist || []).map((p: any) => ({ label: p.label, value: p.value }))} />
           </Chart>
           <Chart testid="chart-req-dist" title="24h 请求量分布">
-            {emptyChart('请求分布')}
+            <SimpleBar data={(trends?.req_dist || []).map((p: any) => ({ label: p.label, value: p.value }))} />
           </Chart>
         </div>
 
         {/* Charts Row 3 */}
         <div className="mb-6">
           <Chart testid="chart-success-trend" title="成功率趋势">
-            {emptyChart('成功率')}
+            <SimpleBar data={(trends?.success_trend || []).map((p: any) => ({ label: p.label, value: p.value, color: '#34D399' }))} />
           </Chart>
         </div>
 
         {/* Token / ROI Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {['Token 消耗', 'AI 产出', 'ROI'].map((label, i) => (
-            <div key={label} className="glass p-5" data-testid={`dashboard-token-kpi-${i}`}>
-              <p className="text-xs text-[var(--text-secondary)] uppercase mb-1">{label}</p>
-              <span className="text-2xl font-bold text-[var(--text-primary)]" data-testid={`dashboard-token-value-${i}`}>—</span>
-              <p className="text-xs text-[var(--text-secondary)] mt-1">时间序列端点待建</p>
+          {[
+            { label: 'Token 消耗', value: trends?.token_trend ? trends.token_trend.reduce((a: number,b: any) => a+b.value, 0) : '—' },
+            { label: 'AI 产出', value: trends?.output_stats ? trends.output_stats.reduce((a: number,b: any) => a+b.value, 0) : '—' },
+            { label: 'ROI', value: trends?.roi_trend && trends.roi_trend.length > 0 ? `${(trends.roi_trend[trends.roi_trend.length-1]?.value || 0) / Math.max(1, taskStats.total)}x` : '—' },
+          ].map((kpi, i) => (
+            <div key={kpi.label} className="glass p-5" data-testid={`dashboard-token-kpi-${i}`}>
+              <p className="text-xs text-[var(--text-secondary)] uppercase mb-1">{kpi.label}</p>
+              <span className="text-2xl font-bold text-[var(--text-primary)]" data-testid={`dashboard-token-value-${i}`}>{String(kpi.value)}</span>
             </div>
           ))}
         </div>
@@ -178,13 +183,13 @@ export default function MainPage() {
         {/* Charts Row 4 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           <Chart testid="chart-token-trend" title="Token 消耗趋势">
-            {emptyChart('Token 消耗')}
+            <SimpleBar data={(trends?.token_trend || []).map((p: any) => ({ label: p.label, value: p.value, color: '#60A5FA' }))} />
           </Chart>
           <Chart testid="chart-output-stats" title="产出统计">
-            {emptyChart('产出统计')}
+            <SimpleBar data={(trends?.output_stats || []).map((p: any) => ({ label: p.label, value: p.value, color: '#34D399' }))} />
           </Chart>
           <Chart testid="chart-roi-dual" title="AI Agent ROI">
-            {emptyChart('ROI 分析')}
+            <SimpleBar data={(trends?.roi_trend || []).map((p: any) => ({ label: p.label, value: p.value, color: '#F472B6' }))} />
           </Chart>
         </div>
 

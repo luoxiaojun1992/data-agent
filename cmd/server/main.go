@@ -481,6 +481,28 @@ func main() {
 		c.JSON(http.StatusOK, stats)
 	})
 
+	// ── Dashboard trends (time-series) endpoint ──
+	router.GET("/api/v1/dashboard/trends", jwtManager.AuthMiddleware(), func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		var allTasks []task.Task
+
+		if taskService != nil {
+			allTasks, _ = taskService.ListTasks(userID.(string))
+		}
+
+		var docs int
+		userSessions := sessionManager.ListByUser(userID.(string))
+		if kbService != nil {
+			d, err := kbService.ListDocs(userID.(string))
+			if err == nil {
+				docs = len(d)
+			}
+		}
+
+		trends := monitor.ComputeTrends(allTasks, make([]interface{}, len(userSessions)), docs)
+		c.JSON(http.StatusOK, trends)
+	})
+
 	// Start server
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
