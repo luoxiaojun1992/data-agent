@@ -29,17 +29,9 @@ func NewService(db *mongo.Database, stream *queue.Stream) *Service {
 }
 
 // CreateTask creates a new task, persists it, and enqueues it.
-func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, cronExpr string) (*task.Task, error) {
+func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) (*task.Task, error) {
 	t := task.NewTask(sessionID, userID, taskType, skillChain, params)
 	t.Status = task.StatusQueued
-
-	// Store cron expression
-	if cronExpr != "" {
-		if t.Params == nil {
-			t.Params = make(map[string]interface{})
-		}
-		t.Params["cron_expr"] = cronExpr
-	}
 
 	// Persist to MongoDB
 	_, err := s.coll.InsertOne(context.Background(), t)

@@ -33,7 +33,16 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 
 	userID, _ := c.Get("user_id")
 
-	t, err := h.svc.CreateTask(req.SessionID, userID.(string), req.Type, req.SkillChain, req.Params, req.CronExpr)
+	// Inject cron_expr into params
+	params := req.Params
+	if req.CronExpr != "" {
+		if params == nil {
+			params = make(map[string]interface{})
+		}
+		params["cron_expr"] = req.CronExpr
+	}
+
+	t, err := h.svc.CreateTask(req.SessionID, userID.(string), req.Type, req.SkillChain, params)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
