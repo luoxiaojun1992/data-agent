@@ -91,9 +91,6 @@ export default function MainPage() {
     </div>
   );
 
-    </div>
-  );
-
   return (
     <AppLayout>
       <div className="animate-fade-in">
