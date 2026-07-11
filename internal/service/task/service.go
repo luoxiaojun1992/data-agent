@@ -29,9 +29,17 @@ func NewService(db *mongo.Database, stream *queue.Stream) *Service {
 }
 
 // CreateTask creates a new task, persists it, and enqueues it.
-func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) (*task.Task, error) {
+func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, cronExpr string) (*task.Task, error) {
 	t := task.NewTask(sessionID, userID, taskType, skillChain, params)
 	t.Status = task.StatusQueued
+
+	// Store cron expression
+	if cronExpr != "" {
+		if t.Params == nil {
+			t.Params = make(map[string]interface{})
+		}
+		t.Params["cron_expr"] = cronExpr
+	}
 
 	// Persist to MongoDB
 	_, err := s.coll.InsertOne(context.Background(), t)
@@ -111,5 +119,14 @@ func (s *Service) UpdateTaskResult(taskID string, status task.Status, result map
 		},
 	}
 	_, err := s.coll.UpdateOne(context.Background(), bson.M{"_id": taskID}, update)
+	return err
+}
+
+// UpdateStatus updates only the task status (for pause/resume).
+func (s *Service) UpdateStatus(taskID, status string) error {
+	_, err := s.coll.UpdateOne(context.Background(),
+		bson.M{"_id": taskID},
+		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}},
+	)
 	return err
 }
