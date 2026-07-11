@@ -424,6 +424,9 @@ func main() {
 		taskRoutes.GET("", taskHandler.ListTasks)
 		taskRoutes.GET("/:task_id", taskHandler.GetTask)
 		taskRoutes.PUT("/:task_id/cancel", taskHandler.CancelTask)
+		taskRoutes.PUT("/:task_id/pause", taskHandler.PauseTask)
+		taskRoutes.PUT("/:task_id/resume", taskHandler.ResumeTask)
+		taskRoutes.GET("/:task_id/artifacts/download", taskHandler.DownloadArtifacts)
 	}
 
 	// Start server

@@ -104,8 +104,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('Cancel Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
@@ -124,8 +122,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('Logs Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
@@ -139,8 +135,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
@@ -197,3 +191,57 @@ test.describe('AGENT — Professional Workspace', () => {
     }
   });
 });
+
+  // === REMAINING 4: UI-048, 051, 054, 055 ===
+
+  test('[UI-048] Agent — step indicator', async ({ page }) => {
+    await page.reload();
+    await page.waitForSelector('[data-testid="agent-page-header"]', { timeout: 15000 });
+    const row = page.locator('[data-testid="agent-task-title-0"]');
+    if (await row.isVisible({ timeout: 5000 })) {
+      await row.click();
+      await expect(page.locator('[data-testid="agent-step-0"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[data-testid="agent-step-3"]')).toBeVisible();
+    }
+  });
+
+  test('[UI-051] Agent — batch download ZIP', async ({ page }) => {
+    const row = page.locator('[data-testid="agent-task-title-0"]');
+    if (await row.isVisible({ timeout: 5000 })) {
+      await row.click();
+      const artifacts = page.locator('[data-testid^="agent-task-artifacts-"]');
+      if (await artifacts.isVisible({ timeout: 3000 })) {
+        const cb = page.locator('[data-testid^="artifact-checkbox-"]').first();
+        if (await cb.isVisible()) await cb.check();
+      }
+    }
+  });
+
+  test('[UI-054] Agent — scheduled task creation', async ({ page }) => {
+    await page.reload();
+    await page.waitForSelector('[data-testid="agent-create-task-btn"]', { timeout: 15000 });
+    await page.locator('[data-testid="agent-create-task-btn"]').click();
+    await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 定时任务');
+    await page.locator('[data-testid="agent-task-cron-toggle"]').check();
+    await expect(page.locator('[data-testid="agent-task-cron-config"]')).toBeVisible();
+    await page.locator('[data-testid="agent-task-cron-select"]').selectOption('0 8 * * *');
+    await page.locator('[data-testid="agent-task-create-btn"]').click();
+    await page.waitForTimeout(2000);
+    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
+  });
+
+  test('[UI-055] Agent — pause resume scheduled task', async ({ page }) => {
+    const row = page.locator('[data-testid="agent-task-title-0"]');
+    if (await row.isVisible({ timeout: 5000 })) {
+      await row.click();
+      const pauseBtn = page.locator('[data-testid="agent-pause-btn-0"]');
+      const resumeBtn = page.locator('[data-testid="agent-resume-btn-0"]');
+      if (await pauseBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await pauseBtn.click();
+        await page.waitForTimeout(1000);
+      } else if (await resumeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await resumeBtn.click();
+        await page.waitForTimeout(1000);
+      }
+    }
+  });

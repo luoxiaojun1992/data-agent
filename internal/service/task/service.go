@@ -113,3 +113,12 @@ func (s *Service) UpdateTaskResult(taskID string, status task.Status, result map
 	_, err := s.coll.UpdateOne(context.Background(), bson.M{"_id": taskID}, update)
 	return err
 }
+
+// UpdateStatus updates only the task status (for pause/resume).
+func (s *Service) UpdateStatus(taskID, status string) error {
+	_, err := s.coll.UpdateOne(context.Background(),
+		bson.M{"_id": taskID},
+		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}},
+	)
+	return err
+}
