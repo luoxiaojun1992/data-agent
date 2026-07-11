@@ -71,15 +71,13 @@ test.describe('AGENT — Professional Workspace', () => {
 
   // UI-044: Status pill rendering
   test('[UI-044] Agent — status pill rendering', async ({ page }) => {
-    // Create task then reload to check status
-    await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('Pill Test');
-    await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
-    // Check filters are visible (status pills exist in filter bar)
-    await expect(page.locator('[data-testid="agent-filter-pending"]')).toBeVisible({ timeout: 5000 });
+    // Filters should be visible on page load
+    await page.waitForSelector('[data-testid="agent-page-header"]', { timeout: 10000 });
+    // All filter buttons should render
+    await expect(page.locator('[data-testid="agent-task-filters"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="agent-filter-all"]')).toBeVisible();
+    await expect(page.locator('[data-testid="agent-filter-pending"]')).toBeVisible();
+    await expect(page.locator('[data-testid="agent-filter-completed"]')).toBeVisible();
   });
 
   // UI-045: Task detail expand
