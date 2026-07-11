@@ -120,14 +120,14 @@ export default function MainPage() {
 
         {/* Stats cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {stats.map((stat, i) => (
-            <div key={stat.label} className="glass p-5 glass-hover" data-testid={`dashboard-stat-${i}`}>
+          {kpis.map((kpi: any, i: number) => (
+            <div key={kpi.label} className="glass p-5 glass-hover" data-testid={`dashboard-stat-${i}`}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-2xl">{stat.icon}</span>
-                <span className="text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">{stat.trend}</span>
+                <span className="text-2xl">{kpi.icon}</span>
+                <span className="text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">{kpi.trend}</span>
               </div>
-              <p className="text-2xl font-bold text-[var(--text-primary)]">{stat.value}</p>
-              <p className="text-sm text-[var(--text-secondary)] mt-1">{stat.label}</p>
+              <p className="text-2xl font-bold text-[var(--text-primary)]">{kpi.value}</p>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">{kpi.label}</p>
             </div>
           ))}
         </div>
