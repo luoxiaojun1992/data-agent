@@ -119,7 +119,7 @@ export default function AgentPage() {
               className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                 filter === f ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border-glass)] text-[var(--text-secondary)]'
               }`}
-              data-testid={`agent-filter-${f}`}>{f === 'all' ? '全部' : statusPill(f).props.children}</button>
+              data-testid={`agent-filter-${f}`}>{f === 'all' ? '全部' : {pending:'等待中',running:'运行中',completed:'已完成',failed:'失败'}[f as string]}</button>
           ))}
         </div>
 
