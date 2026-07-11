@@ -54,12 +54,13 @@ function SimpleLine({ data }: { data: { label: string; value: number }[] }) {
 }
 
 export default function MainPage() {
-  const { apiFetch } = useAuth();
+  const { apiFetch, auth } = useAuth();
   const [timeFilter, setTimeFilter] = useState('today');
   const [stats, setStats] = useState<any>(null);
   const [trends, setTrends] = useState<any>(null);
 
   useEffect(() => {
+    if (!auth.token) return;
     (async () => {
       try {
         const [sr, tr] = await Promise.all([apiFetch('/dashboard'), apiFetch('/dashboard/trends')]);
@@ -67,7 +68,7 @@ export default function MainPage() {
         setTrends(await tr.json());
       } catch { /* ignore */ }
     })();
-  }, []);
+  }, [auth.token]);
 
   const kpis = stats?.kpis || [
     { label: '活跃 Chat 会话', value: '—', icon: '💬', trend: '—' },

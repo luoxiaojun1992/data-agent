@@ -28,6 +28,8 @@ export function useAuth() {
     const role = localStorage.getItem('role');
     if (token) {
       setAuth({ token, userId, username, role, hydrated: true });
+    } else {
+      setAuth({ token: null, userId: null, username: null, role: null, hydrated: true });
     }
   }, []);
 
@@ -73,7 +75,7 @@ export function useAuth() {
       headers['Authorization'] = `Bearer ${auth.token}`;
     }
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-    if (res.status === 401) {
+    if (res.status === 401 && auth.token) {
       logout();
       throw new Error('Session expired');
     }
