@@ -190,7 +190,6 @@ test.describe('AGENT — Professional Workspace', () => {
       await page.waitForTimeout(1000);
     }
   });
-});
 
   // === REMAINING 4: UI-048, 051, 054, 055 ===
 
@@ -245,3 +244,4 @@ test.describe('AGENT — Professional Workspace', () => {
       }
     }
   });
+});
