@@ -102,27 +102,6 @@ services:
       retries: 10
       start_period: 5s
 
-  hermes:
-    image: nousresearch/hermes-agent:latest
-    expose:
-      - "8642"
-    volumes:
-      - ./configs/hermes:/opt/data
-    environment:
-      HERMES_HOME: /opt/data
-      OPENAI_API_KEY: test-key
-      OPENAI_BASE_URL: http://mockllm:8082
-    command: ["gateway", "run"]
-    depends_on:
-      mockllm:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8642/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-
   data-agent:
     build:
       context: .
@@ -138,7 +117,6 @@ services:
       - LLM_BASE_URL=http://mockllm:8082
       - LLM_API_KEY=test-key
       - LLM_MODEL=mock-gpt-4o
-      - HERMES_URL=http://hermes:8642
     depends_on:
       mongodb:
         condition: service_healthy
