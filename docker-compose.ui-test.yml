@@ -117,6 +117,7 @@ services:
       - LLM_BASE_URL=http://mockllm:8082
       - LLM_API_KEY=test-key
       - LLM_MODEL=mock-gpt-4o
+      - HERMES_URL=http://hermes:8083
     depends_on:
       mongodb:
         condition: service_healthy
@@ -130,12 +131,33 @@ services:
         condition: service_healthy
       mockllm:
         condition: service_healthy
+      hermes:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 15
       start_period: 20s
+
+  hermes:
+    image: ghcr.io/nousresearch/hermes-agent:latest
+    expose:
+      - "8083"
+    environment:
+      HERMES_PORT: "8083"
+      LLM_BASE_URL: http://mockllm:8082
+      LLM_API_KEY: test-key
+      LLM_MODEL: mock-gpt-4o
+    depends_on:
+      mockllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   frontend:
     build:

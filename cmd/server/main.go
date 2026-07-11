@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -253,14 +255,23 @@ func main() {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
 
-	// ── SPEC-012: Hermes Free Explore (独立服务，不再路由到主二进制) ──
-	// Hermes 现在是独立二进制 cmd/hermes/main.go，通过 Docker Compose 独立部署
-	// 如果需要代理模式，设置 HERMES_URL 环境变量后取消下方注释
-	// hermesURL := os.Getenv("HERMES_URL")
-	// hermesSvc := hermes.NewService(hermesURL)
-	// router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
-	// 	hermesSvc.Proxy(c.Writer, c.Request)
-	// })
+	// ── SPEC-012: Hermes Free Explore Proxy ──
+	hermesURL := os.Getenv("HERMES_URL")
+	if hermesURL != "" {
+		// Redirect hermes path to the standalone Hermes service
+		router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
+			// Rebuild proxy URL for each request
+			target, _ := url.Parse(hermesURL)
+			p := httputil.NewSingleHostReverseProxy(target)
+			// Rewrite path: strip /api/v1/hermes prefix, replace with /api/v1
+			c.Request.URL.Path = "/api/v1" + c.Param("path")
+			if c.Param("path") == "" || c.Param("path") == "/" {
+				c.Request.URL.Path = "/api/v1/chat"
+			}
+			p.ServeHTTP(c.Writer, c.Request)
+		})
+		logger.Info("Hermes proxy enabled", zap.String("hermes_url", hermesURL))
+	}
 
 	// ── SPEC-010: System Monitoring ──
 	router.GET("/api/v1/system/stats", monitor.Handler())
@@ -428,6 +439,80 @@ func main() {
 		taskRoutes.PUT("/:task_id/resume", taskHandler.ResumeTask)
 		taskRoutes.GET("/:task_id/artifacts/download", taskHandler.DownloadArtifacts)
 	}
+
+	// ── Dashboard stats endpoint ──
+	router.GET("/api/v1/dashboard", jwtManager.AuthMiddleware(), func(c *gin.Context) {
+		stats := monitor.SystemStats()
+		userID, _ := c.Get("user_id")
+
+		// Query real task data
+		taskStats := map[string]int{"total": 0, "pending": 0, "running": 0, "completed": 0, "failed": 0}
+		sessionCount := 0
+		docCount := 0
+
+		if taskHandler != nil {
+			userIDStr := userID.(string)
+			// Task counts by status
+			if taskService != nil {
+				tasks, err := taskService.ListTasks(userIDStr)
+				if err == nil {
+					for _, t := range tasks {
+						taskStats["total"]++
+						switch string(t.Status) {
+						case "pending": taskStats["pending"]++
+						case "running": taskStats["running"]++
+						case "completed": taskStats["completed"]++
+						case "failed": taskStats["failed"]++
+						}
+					}
+				}
+			}
+		}
+
+		// Session count
+		userSessions := sessionManager.ListByUser(userID.(string))
+		sessionCount = len(userSessions)
+
+		// KB doc count
+		if kbService != nil {
+			docs, err := kbService.ListDocs(userID.(string))
+			if err == nil {
+				docCount = len(docs)
+			}
+		}
+
+		stats["kpis"] = []map[string]interface{}{
+			{"label": "活跃 Chat 会话", "value": sessionCount, "icon": "💬", "trend": "实时"},
+			{"label": "Agent 任务", "value": taskStats["total"], "icon": "⚡", "trend": "实时"},
+			{"label": "知识库文档", "value": docCount, "icon": "📚", "trend": "实时"},
+			{"label": "系统可用率", "value": "99.9%", "icon": "🟢", "trend": "稳定"},
+		}
+		stats["task_stats"] = taskStats
+
+		c.JSON(http.StatusOK, stats)
+	})
+
+	// ── Dashboard trends (time-series) endpoint ──
+	router.GET("/api/v1/dashboard/trends", jwtManager.AuthMiddleware(), func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		var allTasks []task.Task
+
+		if taskService != nil {
+			allTasks, _ = taskService.ListTasks(userID.(string))
+		}
+
+		var docs int
+		userSessions := sessionManager.ListByUser(userID.(string))
+		if kbService != nil {
+			d, err := kbService.ListDocs(userID.(string))
+			if err == nil {
+				docs = len(d)
+			}
+		}
+
+		trends := monitor.ComputeTrends(allTasks, make([]interface{}, len(userSessions)), docs)
+		c.JSON(http.StatusOK, trends)
+	})
 
 	// Start server
 	srv := &http.Server{
