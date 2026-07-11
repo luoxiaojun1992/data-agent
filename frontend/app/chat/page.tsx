@@ -55,6 +55,8 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [mode, setMode] = useState<'analysis' | 'hermes'>('analysis');
+  const [hermesOnline, setHermesOnline] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -76,6 +78,21 @@ export default function ChatPage() {
   useEffect(() => () => {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
   }, []);
+
+  // Check Hermes online status when mode changes
+  const checkHermesOnline = async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/hermes/health`);
+      setHermesOnline(res.ok);
+    } catch { setHermesOnline(false); }
+  };
+
+  const switchMode = async (m: 'analysis' | 'hermes') => {
+    setMode(m);
+    setMessages([]);
+    setSessionId(null);
+    if (m === 'hermes') await checkHermesOnline();
+  };
 
   const createSession = async () => {
     try {
@@ -143,7 +160,9 @@ export default function ChatPage() {
     };
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/chat`, {
+      const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+      const endpoint = mode === 'hermes' ? `${base}/hermes/chat` : `${base}/chat`;
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
         body: JSON.stringify({ session_id: sid, message: userMsg.content }),
@@ -193,12 +212,29 @@ export default function ChatPage() {
       <div className="flex h-[calc(100vh-64px)] animate-fade-in">
         {/* Main chat area */}
         <div className="flex-1 flex flex-col min-w-0">
+          {/* Mode Toggle */}
+          <div className="flex gap-1 mb-4" data-testid="mode-toggle">
+            <button
+              onClick={() => switchMode('analysis')}
+              className={`flex-1 py-2 text-xs rounded-lg transition-colors font-medium ${
+                mode === 'analysis' ? 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30' : 'text-[var(--text-secondary)] border border-transparent'
+              }`}
+              data-testid="mode-toggle-analysis"
+            >📊 分析模式</button>
+            <button
+              onClick={() => switchMode('hermes')}
+              className={`flex-1 py-2 text-xs rounded-lg transition-colors font-medium ${
+                mode === 'hermes' ? 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30' : 'text-[var(--text-secondary)] border border-transparent'
+              }`}
+              data-testid="mode-toggle-hermes"
+            >🔍 探索模式</button>
+          </div>
           {/* Header */}
           <div className="mb-4 flex items-center justify-between" data-testid="chat-header">
             <div>
-              <h2 className="text-2xl font-bold text-[var(--text-primary)]">Chat 对话</h2>
+              <h2 className="text-2xl font-bold text-[var(--text-primary)]">{mode === 'hermes' ? 'Hermes 探索' : 'Chat 对话'}</h2>
               <p className="text-sm text-[var(--text-secondary)] mt-1" data-testid="chat-session-info">
-                {sessionId ? `Session: ${sessionId.slice(0, 8)}...` : '创建新会话'}
+                {mode === 'hermes' ? (hermesOnline ? 'Hermes Online' : 'Hermes Offline') : sessionId ? `Session: ${sessionId.slice(0, 8)}...` : '创建新会话'}
               </p>
             </div>
             <div className="flex items-center gap-3">

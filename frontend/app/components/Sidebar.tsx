@@ -14,7 +14,6 @@ const navItems = [
   { href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard' },
   { href: '/chat', label: 'Chat 对话', icon: '💬', testid: 'nav-chat' },
   { href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent' },
-  { href: '/hermes', label: 'Hermes 探索', icon: '🔍', testid: 'nav-hermes' },
   { href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt' },
   { href: '/docs', label: '文档', icon: '📄', testid: 'nav-docs' },
   { href: '/admin', label: '管理后台', icon: '⚙', testid: 'nav-admin' },
