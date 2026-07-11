@@ -1,21 +1,4 @@
 services:
-  sonarqube:
-    image: sonarqube:community
-    ports:
-      - "9002:9000"
-    environment:
-      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
-    volumes:
-      - sonarqube-data:/opt/sonarqube/data
-      - sonarqube-logs:/opt/sonarqube/logs
-      - sonarqube-extensions:/opt/sonarqube/extensions
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-
   mongodb:
     image: mongo:7.0
     ports:
@@ -126,8 +109,6 @@ services:
         condition: service_healthy
       seaweedfs:
         condition: service_healthy
-      sonarqube:
-        condition: service_healthy
       mockllm:
         condition: service_healthy
     healthcheck:
@@ -167,9 +148,6 @@ services:
         condition: service_started
 
 volumes:
-  sonarqube-data:
-  sonarqube-logs:
-  sonarqube-extensions:
   mongodb-data:
   qdrant-data:
   seaweedfs-data:
