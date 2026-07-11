@@ -104,8 +104,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('Cancel Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
@@ -124,8 +122,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('Logs Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
@@ -139,8 +135,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
@@ -205,8 +199,6 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('Step Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
