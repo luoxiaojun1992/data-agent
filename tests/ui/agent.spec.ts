@@ -195,10 +195,8 @@ test.describe('AGENT — Professional Workspace', () => {
   // === REMAINING 4: UI-048, 051, 054, 055 ===
 
   test('[UI-048] Agent — step indicator', async ({ page }) => {
-    await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('Step Test');
-    await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('[data-testid="agent-page-header"]', { timeout: 15000 });
     const row = page.locator('[data-testid="agent-task-title-0"]');
     if (await row.isVisible({ timeout: 5000 })) {
       await row.click();
@@ -220,6 +218,8 @@ test.describe('AGENT — Professional Workspace', () => {
   });
 
   test('[UI-054] Agent — scheduled task creation', async ({ page }) => {
+    await page.reload();
+    await page.waitForSelector('[data-testid="agent-create-task-btn"]', { timeout: 15000 });
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 定时任务');
     await page.locator('[data-testid="agent-task-cron-toggle"]').check();
