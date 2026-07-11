@@ -339,7 +339,173 @@ func main() {
 			"id":       user.ID.Hex(),
 			"username": user.Username,
 			"role":     user.Role,
+			"status":   user.Status,
 		})
+	})
+
+	// POST /users — Create user (system_admin or admin)
+	api.POST("/users", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if userRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		var req struct {
+			Username string          `json:"username"`
+			Password string          `json:"password"`
+			Role     model.UserRole  `json:"role"`
+			Status   model.UserStatus `json:"status"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+			return
+		}
+		if req.Username == "" || req.Password == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+			return
+		}
+		if req.Role == "" {
+			req.Role = model.RoleUser
+		}
+		if req.Status == "" {
+			req.Status = model.StatusEnabled
+		}
+
+		// System admin uniqueness check
+		if req.Role == model.RoleSystemAdmin {
+			hasAdmin, err := userRepo.HasSystemAdmin(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if hasAdmin {
+				c.JSON(http.StatusConflict, gin.H{"error": "系统管理员已存在，无法创建"})
+				return
+			}
+		}
+
+		// Email uniqueness check
+		existing, err := userRepo.FindByUsername(c.Request.Context(), req.Username)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if existing != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "该邮箱已被注册"})
+			return
+		}
+
+		hash, err := middleware.HashPassword(req.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+			return
+		}
+
+		user := &model.User{
+			Username:     req.Username,
+			PasswordHash: hash,
+			Role:         req.Role,
+			Status:       req.Status,
+		}
+		if err := userRepo.Create(c.Request.Context(), user); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{
+			"id":       user.ID.Hex(),
+			"username": user.Username,
+			"role":     user.Role,
+			"status":   user.Status,
+		})
+	})
+
+	// PUT /users/:id — Update user role
+	api.PUT("/users/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if userRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		userID := c.Param("id")
+		user, err := userRepo.FindByID(c.Request.Context(), userID)
+		if err != nil || user == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		// Prevent downgrading system_admin
+		if user.Role == model.RoleSystemAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "不能修改系统管理员的角色"})
+			return
+		}
+		var req struct {
+			Role model.UserRole `json:"role"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+		if req.Role != model.RoleSystemAdmin && req.Role != model.RoleAdmin && req.Role != model.RoleUser {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
+			return
+		}
+		if err := userRepo.UpdateRole(c.Request.Context(), userID, req.Role); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+
+	// PATCH /users/:id/status — Toggle user enable/disable
+	api.PATCH("/users/:id/status", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if userRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		userID := c.Param("id")
+		user, err := userRepo.FindByID(c.Request.Context(), userID)
+		if err != nil || user == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		// Prevent disabling system_admin
+		if user.Role == model.RoleSystemAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "不能停用系统管理员"})
+			return
+		}
+		var req struct {
+			Status model.UserStatus `json:"status"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+		if err := userRepo.UpdateStatus(c.Request.Context(), userID, req.Status); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+
+	// DELETE /users/:id — Delete user
+	api.DELETE("/users/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if userRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		userID := c.Param("id")
+		user, err := userRepo.FindByID(c.Request.Context(), userID)
+		if err != nil || user == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		// Prevent deleting system_admin
+		if user.Role == model.RoleSystemAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "不可删除系统管理员"})
+			return
+		}
+		if err := userRepo.Delete(c.Request.Context(), userID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
 	})
 
 	// Admin-only routes
