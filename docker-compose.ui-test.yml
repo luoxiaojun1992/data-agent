@@ -107,13 +107,11 @@ services:
     expose:
       - "8642"
     volumes:
-      - hermes-data:/opt/data
+      - ./configs/hermes:/opt/data
     environment:
       HERMES_HOME: /opt/data
-      HERMES_LLM_BASE_URL: http://mockllm:8082
-      HERMES_LLM_API_KEY: test-key
-      HERMES_LLM_MODEL: mock-gpt-4o
-      HERMES_SKIP_CONFIG_MIGRATION: "1"
+      OPENAI_API_KEY: test-key
+      OPENAI_BASE_URL: http://mockllm:8082
     command: ["gateway", "run"]
     depends_on:
       mockllm:
