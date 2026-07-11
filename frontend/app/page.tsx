@@ -82,12 +82,6 @@ export default function MainPage() {
     { label: '运行', value: taskStats.running, color: '#60A5FA' },
     { label: '失败', value: taskStats.failed, color: '#F87171' },
     { label: '等待', value: taskStats.pending, color: '#FBBF24' },
-  // Status distribution from real task data
-  const statusDist = [
-    { label: '完成', value: taskStats.completed, color: '#34D399' },
-    { label: '运行', value: taskStats.running, color: '#60A5FA' },
-    { label: '失败', value: taskStats.failed, color: '#F87171' },
-    { label: '等待', value: taskStats.pending, color: '#FBBF24' },
   ];
 
   // Time-series charts placeholder — needs /api/v1/dashboard/trends endpoint
