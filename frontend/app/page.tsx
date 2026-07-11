@@ -98,9 +98,12 @@ export default function MainPage() {
     <AppLayout>
       <div className="animate-fade-in">
         {/* Greeting + Time Filter */}
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between" data-testid="page-header">
           <div>
-            <p className="text-lg font-semibold text-[var(--text-primary)]" data-testid="dashboard-greeting">
+            <p className="text-lg font-semibold text-[var(--text-primary)]" data-testid="page-title">
+              仪表盘
+            </p>
+            <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-greeting">
               {getGreeting()}，欢迎回来 👋
             </p>
             <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-date">
