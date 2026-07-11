@@ -1,6 +1,6 @@
 # UI E2E 测试设计 — 用户管理 (USER)
 
-> **SPEC-023** | Status: 设计中 | Date: 2026-07-09 | Phase: P8
+> **SPEC-023** | Status: 已实现 | Date: 2026-07-09 | Phase: P8
 
 ## 1. 目标
 
