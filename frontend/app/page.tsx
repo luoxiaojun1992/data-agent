@@ -76,6 +76,8 @@ export default function MainPage() {
     { label: '系统可用率', value: '99.9%', icon: '🟢', trend: '稳定' },
   ];
 
+  const taskStats = stats?.task_stats || { total: 0, pending: 0, running: 0, completed: 0, failed: 0 };
+
   // Status distribution from real task data
   const statusDist = [
     { label: '完成', value: taskStats.completed, color: '#34D399' },
@@ -197,4 +199,3 @@ export default function MainPage() {
     </AppLayout>
   );
 }
-// force CI rebuild
