@@ -1,6 +1,6 @@
 # UI E2E 测试设计 — 模型配置 (MODEL)
 
-> **SPEC-025** | Status: 设计中 | Date: 2026-07-09 | Phase: P8
+> **SPEC-025** | Status: 已实现 | Date: 2026-07-09 | Phase: P8
 
 ## 1. 目标
 
