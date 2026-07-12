@@ -70,6 +70,8 @@ func main() {
 	var mongoClient *mongoinfra.Client
 	var userRepo *mongoinfra.UserRepository
 	var roleRepo *mongoinfra.RoleRepository
+	var systemConfigRepo *mongoinfra.SystemConfigRepository
+	var vaultManager *agent.Manager
 	mongoClient, err = mongoinfra.NewClient(ctx, cfg.Mongo.URI, cfg.Mongo.Database)
 	if err != nil {
 		logger.Warn("Failed to connect to MongoDB — server will start without database",
@@ -97,6 +99,9 @@ func main() {
 
 		// Initialize role repo
 		roleRepo = mongoinfra.NewRoleRepository(mongoClient.DB())
+
+		// Initialize system config repo
+		systemConfigRepo = mongoinfra.NewSystemConfigRepository(mongoClient.DB())
 	}
 
 	// Initialize JWT manager
@@ -125,6 +130,13 @@ func main() {
 			Temperature: 0.7,
 			IsDefault:   true,
 		})
+	}
+
+	// Initialize Vault Manager (AES-256-GCM encryption for API keys)
+	vaultKey := getEnvOrDefault("VAULT_MASTER_KEY", "data-agent-default-master-key-32b!")
+	vaultManager, err = agent.NewManager(vaultKey)
+	if err != nil {
+		logger.Warn("Failed to initialize vault manager", zap.Error(err))
 	}
 
 	// Initialize Security Auditor
@@ -624,6 +636,113 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+
+	// ── Model Config & Vault ──
+
+	// GET /model-config — Get current model configuration
+	api.GET("/model-config", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		configs := gin.H{
+			"api_url":        "https://api.openai.com/v1",
+			"api_key_exists": false,
+			"model_name":     "gpt-4o",
+			"context_len":    128000,
+			"max_output":     16000,
+			"temperature":    0.7,
+			"top_p":          0.95,
+			"hermes_url":     "http://hermes:8081",
+			"hermes_model":   "hermes-3-70b",
+		}
+		if systemConfigRepo != nil {
+			dbConfigs, _ := systemConfigRepo.GetAll(c.Request.Context(), "model")
+			result := gin.H{}
+			for _, cfg := range dbConfigs {
+				if cfg.Key == "api_key" || cfg.Key == "hermes_api_key" {
+					result[cfg.Key] = cfg.Value // encrypted, only decrypted via /vault/decrypt
+					result["api_key_exists"] = true
+				} else {
+					result[cfg.Key] = cfg.Value
+				}
+			}
+			// Defaults
+			if result["api_url"] == nil {
+				result["api_url"] = "https://api.openai.com/v1"
+			}
+			if result["model_name"] == nil {
+				result["model_name"] = "gpt-4o"
+			}
+			if result["context_len"] == nil {
+				result["context_len"] = "128000"
+			}
+			if result["max_output"] == nil {
+				result["max_output"] = "16000"
+			}
+			if result["temperature"] == nil {
+				result["temperature"] = "0.7"
+			}
+			if result["top_p"] == nil {
+				result["top_p"] = "0.95"
+			}
+			if result["hermes_url"] == nil {
+				result["hermes_url"] = "http://hermes:8081"
+			}
+			if result["hermes_model"] == nil {
+				result["hermes_model"] = "hermes-3-70b"
+			}
+			result["api_key_exists"] = result["api_key"] != nil && result["api_key"] != ""
+			c.JSON(http.StatusOK, result)
+			return
+		}
+		c.JSON(http.StatusOK, configs)
+	})
+
+	// PUT /model-config — Save model configuration
+	api.PUT("/model-config", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if systemConfigRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		var body map[string]interface{}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+		for key, val := range body {
+			if valStr, ok := val.(string); ok {
+				if key == "api_key" && valStr != "" && vaultManager != nil {
+					encrypted, err := vaultManager.Encrypt(valStr)
+					if err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "encrypt failed"})
+						return
+					}
+					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, encrypted)
+				} else {
+					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, valStr)
+				}
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+
+	// POST /vault/decrypt — Decrypt API key (for eye-toggle)
+	api.POST("/vault/decrypt", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if vaultManager == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault not available"})
+			return
+		}
+		var req struct {
+			Value string `json:"value"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+		plaintext, err := vaultManager.Decrypt(req.Value)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "decrypt failed"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"plaintext": plaintext})
 	})
 
 	// Admin-only routes

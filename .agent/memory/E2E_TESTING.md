@@ -36,8 +36,19 @@
 | UI-090 | Role — 编辑角色权限 | ✅ 已实现 |
 | UI-091 | Role — 删除自定义角色 | ✅ 已实现 |
 | UI-092 | Role — 不可删除固定角色 | ✅ 已实现 |
+| UI-093 | Model — 模型配置页渲染 | ✅ 已实现 |
+| UI-094 | Model — OpenAI 兼容 API URL 配置 | ✅ 已实现 |
+| UI-095 | Model — API Key 输入与 Vault 加密 | ✅ 已实现 |
+| UI-096 | Model — 眼睛按钮切换 API Key | ✅ 已实现 |
+| UI-097 | Model — Model Name 下拉选择 | ✅ 已实现 |
+| UI-098 | Model — 上下文长度配置 (Stepper) | ✅ 已实现 |
+| UI-099 | Model — 最大输出长度配置 | ✅ 已实现 |
+| UI-100 | Model — Temperature 配置 | ✅ 已实现 |
+| UI-101 | Model — Top-P 配置 | ✅ 已实现 |
+| UI-102 | Model — Hermes 配置区域 | ✅ 已实现 |
+| UI-103 | Model — 仅 admin 可访问 | ✅ 已实现 |
 
-**合计**: 18 个真实用例 + 1 个占位用例（SPEC-024 阶段）
+**合计**: 29 个真实用例 + 1 个占位用例（SPEC-025 阶段）
 
 ## data-testid 命名规范
 
