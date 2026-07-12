@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -766,6 +768,68 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"plaintext": plaintext, "masked": vaultinfra.MaskValue(plaintext)})
 	})
 
+	// ── System Config ──
+
+	// GET /sysconfig — Get all system configuration
+	api.GET("/sysconfig", middleware.RequirePermission("system:config"), func(c *gin.Context) {
+		if systemConfigRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		dbConfigs, _ := systemConfigRepo.GetAll(c.Request.Context(), "sys")
+		result := gin.H{
+			"session_recovery_hours":    24,
+			"audit_retention_days":      90,
+			"notification_ttl_days":     90,
+			"email_whitelist":           []string{},
+			"report_retry_count":        3,
+		}
+		for _, cfg := range dbConfigs {
+			result[cfg.Key] = cfg.Value
+		}
+		// Parse email_whitelist if stored as comma-separated string
+		if s, ok := result["email_whitelist"].(string); ok && s != "" {
+			result["email_whitelist"] = strings.Split(s, ",")
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	// PUT /sysconfig — Save system configuration values
+	api.PUT("/sysconfig", middleware.RequirePermission("system:config"), func(c *gin.Context) {
+		if systemConfigRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		var body map[string]interface{}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+
+		// Validation: session recovery hours max 168
+		if hours, ok := body["session_recovery_hours"]; ok {
+			if h, ok := toFloat64(hours); ok && (h < 1 || h > 168) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "缓冲期最长 1 周（168 小时）"})
+				return
+			}
+		}
+
+		// Store each key-value pair
+		for key, val := range body {
+			if list, ok := val.([]interface{}); ok {
+				// Join list as comma-separated string for email_whitelist
+				parts := make([]string, len(list))
+				for i, v := range list {
+					parts[i] = fmt.Sprintf("%v", v)
+				}
+				_ = systemConfigRepo.Upsert(c.Request.Context(), "sys", key, strings.Join(parts, ","))
+			} else {
+				_ = systemConfigRepo.Upsert(c.Request.Context(), "sys", key, fmt.Sprintf("%v", val))
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+
 	// Admin-only routes
 	admin := router.Group("/api/v1/admin")
 	admin.Use(jwtManager.AuthMiddleware())
@@ -1035,6 +1099,24 @@ func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, log
 }
 
 // getEnvOrDefault returns the env var value or a default.
+// toFloat64 tries to convert an interface{} to float64.
+func toFloat64(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case float32:
+		return float64(val), true
+	case int:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case json.Number:
+		f, err := val.Float64()
+		return f, err == nil
+	}
+	return 0, false
+}
+
 func getEnvOrDefault(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

@@ -47,8 +47,13 @@
 | UI-101 | Model — Top-P 配置 | ✅ 已实现 |
 | UI-102 | Model — Hermes 配置区域 | ✅ 已实现 |
 | UI-103 | Model — 仅 admin 可访问 | ✅ 已实现 |
+| UI-104 | SysConfig — 系统配置页渲染 | ✅ 已实现 |
+| UI-105 | SysConfig — 修改保存全局参数 | ✅ 已实现 |
+| UI-106 | SysConfig — 仅 system_admin 可访问 | ✅ 已实现 |
+| UI-107 | SysConfig — 缓冲期上限校验 | ✅ 已实现 |
+| UI-108 | SysConfig — 配置优先级验证 | ✅ 已实现 |
 
-**合计**: 29 个真实用例 + 1 个占位用例（SPEC-025 阶段）
+**合计**: 34 个真实用例 + 1 个占位用例（SPEC-026 阶段）
 
 ## data-testid 命名规范
 
