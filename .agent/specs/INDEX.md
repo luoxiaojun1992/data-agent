@@ -39,7 +39,7 @@
 | SPEC-023 | UI E2E — 用户管理 (USER) | **P8** | [spec-023-ui-user.md](spec-023-ui-user.md) | ✅ 已实现 |
 | SPEC-024 | UI E2E — 权限管理 (ROLE) | **P8** | [spec-024-ui-role.md](spec-024-ui-role.md) | ✅ 已实现 |
 | SPEC-025 | UI E2E — 模型配置 (MODEL) | **P8** | [spec-025-ui-model.md](spec-025-ui-model.md) | ✅ 已实现 |
-| SPEC-026 | UI E2E — 系统配置 (SYSCONFIG) | **P8** | [spec-026-ui-sysconfig.md](spec-026-ui-sysconfig.md) | 📐 设计中 |
+| SPEC-026 | UI E2E — 系统配置 (SYSCONFIG) | **P8** | [spec-026-ui-sysconfig.md](spec-026-ui-sysconfig.md) | ✅ 已实现 |
 | SPEC-027 | UI E2E — 任务管理 (TASK) | **P8** | [spec-027-ui-task.md](spec-027-ui-task.md) | 📐 设计中 |
 | SPEC-028 | UI E2E — 知识库管理 (KB) | **P8** | [spec-028-ui-kb.md](spec-028-ui-kb.md) | 📐 设计中 |
 | SPEC-029 | UI E2E — 审计日志 (AUDIT) | **P8** | [spec-029-ui-audit.md](spec-029-ui-audit.md) | 📐 设计中 |
