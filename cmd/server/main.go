@@ -140,11 +140,10 @@ func main() {
 			zap.Error(err),
 			zap.String("VAULT_ADDR", vaultinfra.GetAddr()),
 		)
-	} else if vaultClient.IsAvailable(context.Background()) {
-		logger.Info("HashiCorp Vault connected", zap.String("addr", vaultinfra.GetAddr()))
 	} else {
-		logger.Warn("HashiCorp Vault is not available — API key encryption disabled")
-		vaultClient = nil
+		logger.Info("HashiCorp Vault client initialized",
+			zap.String("addr", vaultinfra.GetAddr()),
+		)
 	}
 
 	// Initialize Security Auditor
@@ -742,7 +741,11 @@ func main() {
 	// POST /vault/decrypt — Retrieve API key from HashiCorp Vault
 	api.POST("/vault/decrypt", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
 		if vaultClient == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault not configured"})
+			return
+		}
+		if !vaultClient.IsAvailable(c.Request.Context()) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault service unavailable"})
 			return
 		}
 		var req struct {
