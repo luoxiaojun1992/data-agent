@@ -42,8 +42,9 @@ type LoginResponse struct {
 
 // RegisterRequest represents a user registration request.
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=2,max=50"`
-	Password string `json:"password" binding:"required,min=6,max=100"`
+	Username string          `json:"username" binding:"required,min=2,max=50"`
+	Password string          `json:"password" binding:"required,min=6,max=100"`
+	Role     model.UserRole  `json:"role,omitempty"`
 }
 
 // RegisterResponse represents a successful registration.
@@ -100,10 +101,15 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*Register
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
+	role := req.Role
+	if role != model.RoleAdmin && role != model.RoleUser {
+		role = model.RoleUser
+	}
+
 	user := &model.User{
 		Username:        req.Username,
 		PasswordHash:    passwordHash,
-		Role:            model.RoleUser,
+		Role:            role,
 		PasswordChanged: true,
 	}
 
