@@ -114,3 +114,40 @@ func (h *TaskHandler) DownloadArtifacts(c *gin.Context) {
 	c.Header("Content-Disposition", `attachment; filename="task_`+taskID+`_artifacts.zip"`)
 	c.Data(http.StatusOK, "application/zip", []byte{0x50, 0x4B, 0x03, 0x04}) // minimal ZIP stub
 }
+
+// ListAllTasks returns all tasks globally (admin only, filter by ?status=).
+func (h *TaskHandler) ListAllTasks(c *gin.Context) {
+	status := c.Query("status")
+	tasks, err := h.svc.ListAllTasks(status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, tasks)
+}
+
+// RetryTask retries a failed task.
+func (h *TaskHandler) RetryTask(c *gin.Context) {
+	taskID := c.Param("task_id")
+	if err := h.svc.RetryTask(taskID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "retried", "task_id": taskID})
+}
+
+// BatchCancelTasks cancels multiple tasks.
+func (h *TaskHandler) BatchCancelTasks(c *gin.Context) {
+	var req struct {
+		TaskIDs []string `json:"task_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.svc.BatchCancelTasks(req.TaskIDs); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cancelled": len(req.TaskIDs)})
+}

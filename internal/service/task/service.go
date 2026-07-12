@@ -122,3 +122,63 @@ func (s *Service) UpdateStatus(taskID, status string) error {
 	)
 	return err
 }
+
+// ListAllTasks returns all tasks globally (for admin view), with optional status filter.
+func (s *Service) ListAllTasks(statusFilter string) ([]task.Task, error) {
+	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(100)
+	filter := bson.M{}
+	if statusFilter != "" && statusFilter != "all" {
+		filter["status"] = statusFilter
+	}
+	cursor, err := s.coll.Find(context.Background(), filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(context.Background())
+
+	var tasks []task.Task
+	if err := cursor.All(context.Background(), &tasks); err != nil {
+		return nil, err
+	}
+	if tasks == nil {
+		tasks = []task.Task{}
+	}
+	return tasks, nil
+}
+
+// RetryTask re-enqueues a failed task.
+func (s *Service) RetryTask(taskID string) error {
+	t, err := s.GetTask(taskID)
+	if err != nil {
+		return err
+	}
+	if t.Status != task.StatusFailed {
+		return fmt.Errorf("only failed tasks can be retried")
+	}
+
+	t.Status = task.StatusQueued
+	t.RetryCount++
+	t.UpdatedAt = time.Now()
+
+	_, err = s.coll.ReplaceOne(context.Background(), bson.M{"_id": taskID}, t)
+	if err != nil {
+		return fmt.Errorf("update task for retry: %w", err)
+	}
+
+	if err := s.stream.Enqueue(context.Background(), t); err != nil {
+		return fmt.Errorf("enqueue retry: %w", err)
+	}
+	return nil
+}
+
+// BatchCancelTasks cancels multiple tasks by their IDs.
+func (s *Service) BatchCancelTasks(taskIDs []string) error {
+	_, err := s.coll.UpdateMany(context.Background(),
+		bson.M{"_id": bson.M{"$in": taskIDs}, "status": bson.M{"$in": []string{"queued", "running"}}},
+		bson.M{"$set": bson.M{"status": task.StatusCancelled, "updated_at": time.Now()}},
+	)
+	if err != nil {
+		return fmt.Errorf("batch cancel: %w", err)
+	}
+	return nil
+}

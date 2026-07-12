@@ -920,6 +920,13 @@ func main() {
 		taskRoutes.PUT("/:task_id/pause", taskHandler.PauseTask)
 		taskRoutes.PUT("/:task_id/resume", taskHandler.ResumeTask)
 		taskRoutes.GET("/:task_id/artifacts/download", taskHandler.DownloadArtifacts)
+
+		// Admin task management (global view)
+		adminTasks := router.Group("/api/v1/admin/tasks")
+		adminTasks.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("user:manage"))
+		adminTasks.GET("", taskHandler.ListAllTasks)
+		adminTasks.PUT("/:task_id/retry", taskHandler.RetryTask)
+		adminTasks.POST("/batch-cancel", taskHandler.BatchCancelTasks)
 	}
 
 	// ── Dashboard stats endpoint ──
