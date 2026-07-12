@@ -1,6 +1,6 @@
 # UI E2E 测试设计 — 权限管理 (ROLE)
 
-> **SPEC-024** | Status: 设计中 | Date: 2026-07-09 | Phase: P8
+> **SPEC-024** | Status: 已实现 | Date: 2026-07-09 | Phase: P8
 
 ## 1. 目标
 
