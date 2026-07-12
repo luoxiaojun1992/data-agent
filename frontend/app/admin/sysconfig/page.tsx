@@ -83,21 +83,6 @@ export default function SysConfigPage() {
     );
   }
 
-  if (error) {
-    return (
-      <AppLayout>
-        <div className="animate-fade-in" data-testid="sysconfig-page-header">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-[var(--text-primary)]">系统配置</h2>
-          </div>
-          <div className="glass p-12 text-center">
-            <p className="text-lg text-[var(--text-primary)]">{error}</p>
-          </div>
-        </div>
-      </AppLayout>
-    );
-  }
-
   return (
     <AppLayout>
       <div className="animate-fade-in" data-testid="sysconfig-page-header">
