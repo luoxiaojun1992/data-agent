@@ -63,16 +63,17 @@ export default function KnowledgePage() {
 
   const handleUpload = async () => {
     setUploading(true);
-    // Create a document record via API (real file upload via SeaweedFS is SPEC-036)
     try {
+      const formData = new FormData();
+      formData.append('title', 'test-doc-' + Date.now());
+      formData.append('file_name', 'test.pdf');
+      formData.append('file_type', 'pdf');
+      formData.append('size_bytes', '1024');
+
       const res = await apiFetch('/knowledge/docs', {
         method: 'POST',
-        body: JSON.stringify({
-          title: 'test-doc-' + Date.now(),
-          file_name: 'test.pdf',
-          file_type: 'pdf',
-          size_bytes: 1024,
-        }),
+        body: formData,
+        // Don't set Content-Type header — browser auto-sets boundary for multipart
       });
       if (res.ok) {
         showToast('上传成功', 'success');

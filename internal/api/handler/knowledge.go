@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 	fileType := c.PostForm("file_type")
 	sizeBytes := int64(0)
 	if s := c.PostForm("size_bytes"); s != "" {
-		_ = s // Parse in production
+		_, _ = fmt.Sscanf(s, "%d", &sizeBytes)
 	}
 
 	doc, err := h.svc.CreateDoc(userID.(string), title, fileName, fileType, sizeBytes)

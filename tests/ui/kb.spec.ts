@@ -6,11 +6,16 @@ const uid = Date.now();
 const ADMIN = { username: `e2e-kb-admin-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
 let adminToken = '';
 
-// Helper: create a doc via API
+// Helper: create a doc via multipart/form-data (real upload protocol)
 async function createDoc(request: any, token: string, title = 'test-doc') {
   const res = await request.post(`${API_BASE}/knowledge/docs`, {
-    data: { title, file_name: `${title}.pdf`, file_type: 'pdf', size_bytes: 2400000 },
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    multipart: {
+      title,
+      file_name: `${title}.pdf`,
+      file_type: 'pdf',
+      size_bytes: '2400000',
+    },
+    headers: { Authorization: `Bearer ${token}` },
   });
   return res.ok() ? res.json() : null;
 }
