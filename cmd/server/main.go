@@ -69,6 +69,7 @@ func main() {
 
 	var mongoClient *mongoinfra.Client
 	var userRepo *mongoinfra.UserRepository
+	var roleRepo *mongoinfra.RoleRepository
 	mongoClient, err = mongoinfra.NewClient(ctx, cfg.Mongo.URI, cfg.Mongo.Database)
 	if err != nil {
 		logger.Warn("Failed to connect to MongoDB — server will start without database",
@@ -93,6 +94,9 @@ func main() {
 		if err := ensureSystemAdmin(ctx, userRepo, logger); err != nil {
 			logger.Warn("Failed to ensure system admin", zap.Error(err))
 		}
+
+		// Initialize role repo
+		roleRepo = mongoinfra.NewRoleRepository(mongoClient.DB())
 	}
 
 	// Initialize JWT manager
@@ -502,6 +506,120 @@ func main() {
 			return
 		}
 		if err := userRepo.Delete(c.Request.Context(), userID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+
+	// ── Role management ──
+
+	// GET /roles — List all roles (fixed + custom)
+	api.GET("/roles", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		customRoles := []model.Role{}
+		if roleRepo != nil {
+			var err error
+			customRoles, err = roleRepo.List(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+		// Merge fixed roles (from code) with custom roles (from DB)
+		fixedRoles := model.FixedRoles()
+		allRoles := append(fixedRoles, customRoles...)
+		c.JSON(http.StatusOK, gin.H{"roles": allRoles, "total": len(allRoles)})
+	})
+
+	// GET /permissions — List all available permissions with metadata
+	api.GET("/permissions", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"permissions": model.GetAllPermissions()})
+	})
+
+	// POST /roles — Create custom role
+	api.POST("/roles", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if roleRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		var req struct {
+			Name        string   `json:"name"`
+			DisplayName string   `json:"display_name"`
+			Permissions []string `json:"permissions"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+		if req.Name == "" || req.DisplayName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name and display_name are required"})
+			return
+		}
+		role := &model.Role{
+			Name:        req.Name,
+			DisplayName: req.DisplayName,
+			Permissions: req.Permissions,
+			Type:        "custom",
+		}
+		if len(role.Permissions) == 0 {
+			role.Permissions = []string{}
+		}
+		if err := roleRepo.Create(c.Request.Context(), role); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{
+			"id":          role.ID.Hex(),
+			"name":        role.Name,
+			"display_name": role.DisplayName,
+			"permissions": role.Permissions,
+			"type":        role.Type,
+		})
+	})
+
+	// PUT /roles/:id — Update custom role permissions
+	api.PUT("/roles/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if roleRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		roleID := c.Param("id")
+		role, err := roleRepo.FindByID(c.Request.Context(), roleID)
+		if err != nil || role == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "role not found"})
+			return
+		}
+		var req struct {
+			Permissions []string `json:"permissions"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+		if err := roleRepo.Update(c.Request.Context(), roleID, req.Permissions); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+
+	// DELETE /roles/:id — Delete custom role (fixed roles blocked)
+	api.DELETE("/roles/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+		if roleRepo == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			return
+		}
+		roleID := c.Param("id")
+		role, err := roleRepo.FindByID(c.Request.Context(), roleID)
+		if err != nil || role == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "role not found"})
+			return
+		}
+		if role.Type == "fixed" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "不可删除固定角色"})
+			return
+		}
+		if err := roleRepo.Delete(c.Request.Context(), roleID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
