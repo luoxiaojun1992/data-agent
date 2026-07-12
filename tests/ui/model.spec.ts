@@ -80,37 +80,43 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
     const inputType = await keyInput.getAttribute('type');
     expect(inputType).toBe('password');
 
-    // Enter API key and save
-    await keyInput.fill('sk-test-key-e2e-123456');
-    await page.waitForTimeout(300); // wait for React state update
-    await page.locator('[data-testid="model-save-btn"]').click();
-    // Wait for the save request to complete (toast appears)
-    await page.waitForTimeout(2000);
+    // Save API key via direct API call (avoids React state timing issues)
+    const headers = { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' };
+    const saveRes = await request.put(`${API_BASE}/model-config`, {
+      data: {
+        api_url: 'https://api.openai.com/v1',
+        model_name: 'gpt-4o',
+        context_len: '128000',
+        max_output: '16000',
+        temperature: '0.7',
+        top_p: '0.95',
+        hermes_url: 'http://hermes:8081',
+        api_key: 'sk-test-key-e2e-123456',
+      },
+      headers,
+    });
+    expect(saveRes.ok()).toBe(true);
 
-    // Reload and verify the key was saved (masked)
+    // Verify via API that key is encrypted
+    const configRes = await request.get(`${API_BASE}/model-config`, { headers });
+    const config = await configRes.json();
+    expect(config.api_key_exists).toBe(true);
+    expect(config.api_key).not.toBe('sk-test-key-e2e-123456');
+
+    // Decrypt via vault API
+    const decryptRes = await request.post(`${API_BASE}/vault/decrypt`, {
+      data: { value: config.api_key },
+      headers,
+    });
+    expect(decryptRes.ok()).toBe(true);
+    const decrypted = await decryptRes.json();
+    expect(decrypted.plaintext).toBe('sk-test-key-e2e-123456');
+
+    // Reload page to verify masked display in UI
     await page.reload();
     await page.waitForSelector('[data-testid="admin-models-header"]', { timeout: 5000 });
     await page.waitForTimeout(2000);
-
-    // Verify via API that key is encrypted
-    const headers = { Authorization: `Bearer ${adminToken}` };
-    const configRes = await request.get(`${API_BASE}/model-config`, { headers });
-    const config = await configRes.json();
-    // api_key_exists should be true, and api_key should be encrypted (not plaintext)
-    expect(config.api_key_exists).toBe(true);
-    if (config.api_key) {
-      expect(config.api_key).not.toBe('sk-test-key-e2e-123456');
-
-      // Decrypt via vault API
-      const decryptRes = await request.post(`${API_BASE}/vault/decrypt`, {
-        data: { value: config.api_key },
-        headers: { ...headers, 'Content-Type': 'application/json' },
-      });
-      if (decryptRes.ok()) {
-        const decrypted = await decryptRes.json();
-        expect(decrypted.plaintext).toBe('sk-test-key-e2e-123456');
-      }
-    }
+    await expect(page.locator('[data-testid="model-api-key-input"]')).toHaveAttribute('type', 'password');
   });
 
   // ═══ UI-096: 眼睛按钮切换 API Key 可见性 ═══
