@@ -83,7 +83,7 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
     // Save API key via direct API call (avoids React state timing issues)
     const headers = { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' };
     const saveRes = await request.put(`${API_BASE}/model-config`, {
-      data: {
+      data: JSON.stringify({
         api_url: 'https://api.openai.com/v1',
         model_name: 'gpt-4o',
         context_len: '128000',
@@ -92,7 +92,7 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
         top_p: '0.95',
         hermes_url: 'http://hermes:8081',
         api_key: 'sk-test-key-e2e-123456',
-      },
+      }),
       headers,
     });
     expect(saveRes.ok()).toBe(true);
@@ -100,7 +100,8 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
     // Verify via API that key is encrypted
     const configRes = await request.get(`${API_BASE}/model-config`, { headers });
     const config = await configRes.json();
-    expect(config.api_key_exists).toBe(true);
+    // api_key should be encrypted and decryptable
+    expect(config.api_key).toBeTruthy();
     expect(config.api_key).not.toBe('sk-test-key-e2e-123456');
 
     // Decrypt via vault API
