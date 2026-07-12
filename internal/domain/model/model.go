@@ -117,12 +117,22 @@ type Notification struct {
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 }
 
+// SystemConfig represents a system-wide configuration entry.
+type SystemConfig struct {
+	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Namespace string             `bson:"namespace" json:"namespace"`
+	Key       string             `bson:"key" json:"key"`
+	Value     string             `bson:"value" json:"value"`
+	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
+}
+
 const (
 	// MongoDB collections
-	CollUsers         = "users"
-	CollRoles         = "roles"
-	CollAuditLogs     = "audit_logs"
-	CollNotifications = "notifications"
+	CollUsers          = "users"
+	CollRoles          = "roles"
+	CollAuditLogs      = "audit_logs"
+	CollNotifications  = "notifications"
+	CollSystemConfigs  = "system_configs"
 )
 
 // GetAllPermissions returns metadata for all defined permissions.
