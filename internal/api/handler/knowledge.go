@@ -103,3 +103,13 @@ func (h *KnowledgeHandler) AddChunks(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "indexed", "doc_id": docID, "chunk_count": len(req.Chunks)})
 }
+
+// ListAllDocs returns all knowledge documents globally (admin view).
+func (h *KnowledgeHandler) ListAllDocs(c *gin.Context) {
+	docs, err := h.svc.ListAllDocs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, docs)
+}
