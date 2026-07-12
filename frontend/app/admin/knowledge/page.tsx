@@ -74,7 +74,7 @@ export default function KnowledgePage() {
         method: 'POST',
         body: formData,
         // Don't set Content-Type header — browser auto-sets boundary for multipart
-      });      });
+      });
       if (res.ok) {
         showToast('上传成功', 'success');
         fetchDocs();
