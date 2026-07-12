@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import AppLayout from '../../../providers';
-import { useAuth } from '../../../../lib/api';
+import AppLayout from '../../providers';
+import { useAuth } from '../../../lib/api';
 
 interface Doc {
   id: string;
