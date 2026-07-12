@@ -38,9 +38,20 @@ type User struct {
 // Role defines permissions for a role.
 type Role struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name        UserRole           `bson:"name" json:"name"`
+	Name        string             `bson:"name" json:"name"`
+	DisplayName string             `bson:"display_name" json:"display_name"`
+	Description string             `bson:"description" json:"description"`
 	Permissions []string           `bson:"permissions" json:"permissions"`
+	Type        string             `bson:"type" json:"type"` // "fixed" or "custom"
 	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
+}
+
+// PermissionInfo defines display metadata for a permission.
+type PermissionInfo struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // Permission constants.
@@ -113,3 +124,78 @@ const (
 	CollAuditLogs     = "audit_logs"
 	CollNotifications = "notifications"
 )
+
+// GetAllPermissions returns metadata for all defined permissions.
+func GetAllPermissions() []PermissionInfo {
+	return []PermissionInfo{
+		{Key: "user:manage_all", Name: "用户管理（全部）", Description: "管理所有用户，含 system_admin"},
+		{Key: "user:manage", Name: "用户管理", Description: "管理普通用户和 admin"},
+		{Key: "model:config", Name: "模型配置", Description: "管理 LLM 模型配置与参数"},
+		{Key: "system:config", Name: "系统配置", Description: "全局系统参数配置"},
+		{Key: "kb:manage_all", Name: "知识库管理（全部）", Description: "管理所有知识库文档"},
+		{Key: "kb:manage_own", Name: "知识库管理（个人）", Description: "管理个人知识库文档"},
+		{Key: "task:manage", Name: "任务管理", Description: "创建、查看、终止分析任务"},
+		{Key: "audit:view", Name: "审计日志查看", Description: "查看系统操作审计记录"},
+		{Key: "password:change", Name: "密码修改", Description: "修改个人登录密码"},
+		{Key: "api:convert", Name: "API 转换", Description: "将外部 API 转换为 MCP 工具"},
+		{Key: "notify:all", Name: "通知管理（全部）", Description: "发送全站通知"},
+		{Key: "notify:group", Name: "通知管理（分组）", Description: "发送分组通知"},
+	}
+}
+
+// FixedRoles returns the predefined fixed role definitions.
+func FixedRoles() []Role {
+	now := time.Now()
+	return []Role{
+		{
+			ID:          primitive.NewObjectID(),
+			Name:        "system_admin",
+			DisplayName: "系统管理员",
+			Description: "全部系统权限",
+			Permissions: GetAllPermissionKeys(),
+			Type:        "fixed",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          primitive.NewObjectID(),
+			Name:        "data_analyst",
+			DisplayName: "数据分析师",
+			Description: "发起批量分析、创建定时任务、使用全部 MCP 工具",
+			Permissions: []string{"user:manage", "model:config", "kb:manage_own", "task:manage", "audit:view", "password:change", "api:convert"},
+			Type:        "fixed",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          primitive.NewObjectID(),
+			Name:        "kb_admin",
+			DisplayName: "知识管理员",
+			Description: "管理知识库文档、审核 API→MCP 转换",
+			Permissions: []string{"kb:manage_all", "audit:view", "api:convert", "password:change"},
+			Type:        "fixed",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          primitive.NewObjectID(),
+			Name:        "auditor",
+			DisplayName: "审计员",
+			Description: "只读查看所有审计日志",
+			Permissions: []string{"audit:view", "password:change"},
+			Type:        "fixed",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+	}
+}
+
+// GetAllPermissionKeys returns all permission key strings.
+func GetAllPermissionKeys() []string {
+	all := GetAllPermissions()
+	keys := make([]string, len(all))
+	for i, p := range all {
+		keys[i] = p.Key
+	}
+	return keys
+}
