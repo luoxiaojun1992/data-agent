@@ -79,6 +79,24 @@ func (s *Service) ListDocs(userID string) ([]knowledge.KnowledgeDoc, error) {
 	return docs, nil
 }
 
+// ListAllDocs returns all documents globally (admin view).
+func (s *Service) ListAllDocs() ([]knowledge.KnowledgeDoc, error) {
+	cursor, err := s.db.Collection("knowledge_docs").Find(context.Background(), bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(context.Background())
+
+	var docs []knowledge.KnowledgeDoc
+	if err := cursor.All(context.Background(), &docs); err != nil {
+		return nil, err
+	}
+	if docs == nil {
+		docs = []knowledge.KnowledgeDoc{}
+	}
+	return docs, nil
+}
+
 // AddChunks inserts semantic chunks for a document.
 func (s *Service) AddChunks(docID string, chunks []string) error {
 	for i, content := range chunks {

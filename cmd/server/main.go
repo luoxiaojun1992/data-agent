@@ -909,6 +909,11 @@ func main() {
 	kbRoutes.POST("/docs/:id/chunks", kbHandler.AddChunks)
 	kbRoutes.GET("/search", kbHandler.Search)
 
+	// Admin KB management (global view)
+	adminKB := router.Group("/api/v1/admin/knowledge")
+	adminKB.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("user:manage"))
+	adminKB.GET("/docs", kbHandler.ListAllDocs)
+
 	// ── SPEC-009: Task routes ──
 	if taskHandler != nil {
 		taskRoutes := router.Group("/api/v1/tasks")
