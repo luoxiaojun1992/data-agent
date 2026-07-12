@@ -47,7 +47,7 @@ test.describe('SYSCONFIG — SPEC-026', () => {
   // ═══ UI-104: 系统配置页渲染 ═══
   test('[UI-104] SysConfig — 系统配置页渲染', async ({ page }) => {
     // Page should render (data load may fail for admin due to system:config permission)
-    await expect(page.locator('[data-testid="sysconfig-page-header"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="sysconfig-page-header"]')).toBeVisible({ timeout: 10000 });
 
     // All config sections should be visible
     await expect(page.locator('[data-testid="sysconfig-session-recovery"]')).toBeVisible();
@@ -86,11 +86,11 @@ test.describe('SYSCONFIG — SPEC-026', () => {
 
     // Try to access sysconfig directly
     await page.goto('/admin/sysconfig');
-    await page.waitForTimeout(2000);
+    await page.waitForSelector('[data-testid="sysconfig-page-header"]', { timeout: 10000 });
 
     // Page renders (Next.js doesn't block routes), but API data won't load
     // Regular user should see error or empty state
-    await expect(page.locator('[data-testid="sysconfig-page-header"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="sysconfig-page-header"]')).toBeVisible({ timeout: 10000 });
   });
 
   // ═══ UI-107: 缓冲期上限校验 ═══

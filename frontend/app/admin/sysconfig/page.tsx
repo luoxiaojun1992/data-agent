@@ -71,8 +71,13 @@ export default function SysConfigPage() {
   if (loading) {
     return (
       <AppLayout>
-        <div className="glass p-12 text-center">
-          <p className="text-sm text-[var(--text-secondary)]">加载中...</p>
+        <div className="animate-fade-in" data-testid="sysconfig-page-header">
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-[var(--text-primary)]">系统配置</h2>
+          </div>
+          <div className="glass p-12 text-center">
+            <p className="text-sm text-[var(--text-secondary)]">加载中...</p>
+          </div>
         </div>
       </AppLayout>
     );
@@ -81,8 +86,8 @@ export default function SysConfigPage() {
   if (error) {
     return (
       <AppLayout>
-        <div className="animate-fade-in">
-          <div className="mb-8" data-testid="admin-sysconfig-header">
+        <div className="animate-fade-in" data-testid="sysconfig-page-header">
+          <div className="mb-8">
             <h2 className="text-2xl font-bold text-[var(--text-primary)]">系统配置</h2>
           </div>
           <div className="glass p-12 text-center">
