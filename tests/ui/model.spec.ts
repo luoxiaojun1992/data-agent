@@ -82,8 +82,10 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
 
     // Enter API key and save
     await keyInput.fill('sk-test-key-e2e-123456');
+    await page.waitForTimeout(300); // wait for React state update
     await page.locator('[data-testid="model-save-btn"]').click();
-    await page.waitForTimeout(1000);
+    // Wait for the save request to complete (toast appears)
+    await page.waitForTimeout(2000);
 
     // Reload and verify the key was saved (masked)
     await page.reload();
