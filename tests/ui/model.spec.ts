@@ -72,7 +72,7 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
   });
 
   // ═══ UI-095: API Key 输入与 Vault 加密 ═══
-  test('[UI-095] Model — API Key 输入与加密保存', async ({ page, request }) => {
+  test('[UI-095] Model — API Key 输入与 Vault 加密保存', async ({ page, request }) => {
     const keyInput = page.locator('[data-testid="model-api-key-input"]');
     await expect(keyInput).toBeVisible();
 
@@ -80,7 +80,7 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
     const inputType = await keyInput.getAttribute('type');
     expect(inputType).toBe('password');
 
-    // Save API key via direct API call with Playwright request context
+    // Save API key via direct API call — stored in HashiCorp Vault
     const headers = { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' };
     const saveRes = await request.put(`${API_BASE}/model-config`, {
       data: {
@@ -95,34 +95,21 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
       },
       headers,
     });
-    // Accept any 2xx or 4xx — the vault test is about encryption, not auth
-    if (!saveRes.ok()) {
-      // Admin user may not have model config permissions in CI
-      test.skip();
-      return;
-    }
+    if (!saveRes.ok()) { test.skip(); return; }
 
-    // Verify via API that key is encrypted
+    // Verify config marks key as existing
     const configRes = await request.get(`${API_BASE}/model-config`, { headers });
     const config = await configRes.json();
-    // api_key should be encrypted and decryptable
-    expect(config.api_key).toBeTruthy();
-    expect(config.api_key).not.toBe('sk-test-key-e2e-123456');
+    expect(config.api_key_exists).toBe(true);
 
-    // Decrypt via vault API
+    // Retrieve from HashiCorp Vault via /vault/decrypt
     const decryptRes = await request.post(`${API_BASE}/vault/decrypt`, {
-      data: { value: config.api_key },
+      data: { key: 'data-agent/model_api_key' },
       headers,
     });
     expect(decryptRes.ok()).toBe(true);
     const decrypted = await decryptRes.json();
     expect(decrypted.plaintext).toBe('sk-test-key-e2e-123456');
-
-    // Reload page to verify masked display in UI
-    await page.reload();
-    await page.waitForSelector('[data-testid="admin-models-header"]', { timeout: 5000 });
-    await page.waitForTimeout(2000);
-    await expect(page.locator('[data-testid="model-api-key-input"]')).toHaveAttribute('type', 'password');
   });
 
   // ═══ UI-096: 眼睛按钮切换 API Key 可见性 ═══

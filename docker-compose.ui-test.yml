@@ -61,6 +61,22 @@ services:
       retries: 10
       start_period: 10s
 
+  vault:
+    image: hashicorp/vault:1.18
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=dev-root-token
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD-SHELL", "VAULT_ADDR=http://127.0.0.1:8200 vault status"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
   mockllm:
     build:
       context: mockllm
@@ -100,6 +116,8 @@ services:
       - LLM_BASE_URL=http://mockllm:8082
       - LLM_API_KEY=test-key
       - LLM_MODEL=mock-gpt-4o
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=dev-root-token
     depends_on:
       mongodb:
         condition: service_healthy
@@ -108,6 +126,8 @@ services:
       qdrant:
         condition: service_healthy
       seaweedfs:
+        condition: service_healthy
+      vault:
         condition: service_healthy
       mockllm:
         condition: service_healthy

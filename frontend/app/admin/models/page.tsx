@@ -96,7 +96,7 @@ export default function ModelsPage() {
       setApiKey('••••••••••');
       return;
     }
-    // Fetch decrypted key from vault
+    // Fetch decrypted key from HashiCorp Vault
     try {
       const res = await apiFetch('/model-config');
       if (res.ok) {
@@ -105,7 +105,7 @@ export default function ModelsPage() {
           try {
             const decryptRes = await apiFetch('/vault/decrypt', {
               method: 'POST',
-              body: JSON.stringify({ value: data.api_key || '' }),
+              body: JSON.stringify({ key: 'data-agent/model_api_key' }),
             });
             if (decryptRes.ok) {
               const d = await decryptRes.json();
