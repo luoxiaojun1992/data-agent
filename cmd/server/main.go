@@ -36,6 +36,7 @@ import (
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
+	vaultinfra "github.com/luoxiaojun1992/data-agent/internal/infra/vault"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/scheduler"
@@ -71,7 +72,7 @@ func main() {
 	var userRepo *mongoinfra.UserRepository
 	var roleRepo *mongoinfra.RoleRepository
 	var systemConfigRepo *mongoinfra.SystemConfigRepository
-	var vaultManager *agent.Manager
+	var vaultClient *vaultinfra.Client
 	mongoClient, err = mongoinfra.NewClient(ctx, cfg.Mongo.URI, cfg.Mongo.Database)
 	if err != nil {
 		logger.Warn("Failed to connect to MongoDB — server will start without database",
@@ -132,11 +133,18 @@ func main() {
 		})
 	}
 
-	// Initialize Vault Manager (AES-256-GCM encryption for API keys)
-	vaultKey := getEnvOrDefault("VAULT_MASTER_KEY", "data-agent-default-master-key-32b!")
-	vaultManager, err = agent.NewManager(vaultKey)
+	// Initialize HashiCorp Vault client
+	vaultClient, err = vaultinfra.NewClient()
 	if err != nil {
-		logger.Warn("Failed to initialize vault manager", zap.Error(err))
+		logger.Warn("Failed to initialize HashiCorp Vault client — API key encryption disabled",
+			zap.Error(err),
+			zap.String("VAULT_ADDR", vaultinfra.GetAddr()),
+		)
+	} else if vaultClient.IsAvailable(context.Background()) {
+		logger.Info("HashiCorp Vault connected", zap.String("addr", vaultinfra.GetAddr()))
+	} else {
+		logger.Warn("HashiCorp Vault is not available — API key encryption disabled")
+		vaultClient = nil
 	}
 
 	// Initialize Security Auditor
@@ -709,13 +717,20 @@ func main() {
 		}
 		for key, val := range body {
 			if valStr, ok := val.(string); ok {
-				if key == "api_key" && valStr != "" && vaultManager != nil {
-					encrypted, err := vaultManager.Encrypt(valStr)
-					if err != nil {
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "encrypt failed"})
-						return
+				// API keys go to HashiCorp Vault, not DB
+				if (key == "api_key" || key == "hermes_api_key") && valStr != "" {
+					if vaultClient != nil {
+						vaultPath := vaultinfra.APIKeyPath("data-agent")
+						if key == "hermes_api_key" {
+							vaultPath = vaultinfra.HermesAPIKeyPath("data-agent")
+						}
+						if err := vaultClient.Store(c.Request.Context(), vaultPath, valStr); err != nil {
+							c.JSON(http.StatusInternalServerError, gin.H{"error": "vault store failed"})
+							return
+						}
 					}
-					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, encrypted)
+					// Store marker in DB to indicate key exists
+					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, "vault://data-agent/"+key)
 				} else {
 					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, valStr)
 				}
@@ -724,25 +739,28 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
 	})
 
-	// POST /vault/decrypt — Decrypt API key (for eye-toggle)
+	// POST /vault/decrypt — Retrieve API key from HashiCorp Vault
 	api.POST("/vault/decrypt", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
-		if vaultManager == nil {
+		if vaultClient == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault not available"})
 			return
 		}
 		var req struct {
-			Value string `json:"value"`
+			Key string `json:"key"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 			return
 		}
-		plaintext, err := vaultManager.Decrypt(req.Value)
+		if req.Key == "" {
+			req.Key = vaultinfra.APIKeyPath("data-agent")
+		}
+		plaintext, err := vaultClient.Retrieve(c.Request.Context(), req.Key)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "decrypt failed"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "vault retrieve failed"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"plaintext": plaintext})
+		c.JSON(http.StatusOK, gin.H{"plaintext": plaintext, "masked": vaultinfra.MaskValue(plaintext)})
 	})
 
 	// Admin-only routes
