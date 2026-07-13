@@ -5,18 +5,24 @@ const uid = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
 const FRESH = { username: `e2e-pwd-fresh-${uid}@test.local`, password: 'TempPass1', role: 'admin' };
 const USER = { username: `e2e-pwd-user-${uid}@test.local`, password: 'UserTest1' };
+// Cleaner user: password never changes, used only for cleanup
+const CLEANER = { username: `e2e-pwd-cleaner-${uid}@test.local`, password: 'CleanPass1', role: 'admin' };
 
 test.describe.serial('PASSWORD — SPEC-032', () => {
   test.beforeAll(async ({ request }) => {
-    let res = await request.post(`${API_BASE}/auth/register`, { data: FRESH });
+    let res = await request.post(`${API_BASE}/auth/register`, { data: CLEANER });
+    expect(res.status()).toBe(201);
+    res = await request.post(`${API_BASE}/auth/register`, { data: FRESH });
     expect(res.status()).toBe(201);
     res = await request.post(`${API_BASE}/auth/register`, { data: USER });
     expect(res.status()).toBe(201);
   });
 
   test.afterAll(async ({ request }) => {
-    const loginRes = await request.post(`${API_BASE}/auth/login`, { data: { username: FRESH.username, password: FRESH.password } });
-    const token = loginRes.ok() ? (await loginRes.json()).access_token : '';
+    // Use cleaner (never changed password) to delete all test users
+    const loginRes = await request.post(`${API_BASE}/auth/login`, { data: { username: CLEANER.username, password: CLEANER.password } });
+    if (!loginRes.ok()) return;
+    const token = (await loginRes.json()).access_token;
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     const listRes = await request.get(`${API_BASE}/users?skip=0&limit=100`, { headers });
     if (listRes.ok()) {
