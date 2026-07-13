@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -64,6 +66,7 @@ export default function ChatPage() {
     try { return JSON.parse(localStorage.getItem('customPrompts') || '[]'); } catch { return []; }
   });
   const [newPromptText, setNewPromptText] = useState('');
+  const [enhancing, setEnhancing] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
@@ -128,6 +131,24 @@ export default function ChatPage() {
       await apiFetch(`/sessions/${id}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.id !== id));
     } catch { /* ignore */ }
+  };
+
+  const handleEnhance = async () => {
+    if (!input.trim() || enhancing) return;
+    setEnhancing(true);
+    try {
+      const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+      if (auth.token) headers['Authorization'] = `Bearer ${auth.token}`;
+      const res = await fetch(`${API_BASE}/chat/enhance`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ prompt: input }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInput(data.enhanced || input);
+      }
+    } catch { /* enhancement failed silently */ }
+    setEnhancing(false);
   };
 
   const sendMessage = async () => {
@@ -321,6 +342,12 @@ export default function ChatPage() {
                 data-testid="prompt-btn"
                 onClick={() => setShowPromptModal(true)}
               >📋 提示词</button>
+              <button
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                data-testid="chat-enhance-btn"
+                onClick={handleEnhance}
+                disabled={enhancing}
+              >{enhancing ? '⏳ 增强中...' : '✨ 增强'}</button>
             </div>
             <div className="flex gap-3">
               <textarea
