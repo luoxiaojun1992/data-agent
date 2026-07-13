@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -890,10 +891,9 @@ func main() {
 		userID, _ := c.Get("user_id")
 		sessions := sessionManager.ListByUser(userID.(string))
 		c.JSON(http.StatusOK, gin.H{"sessions": sessions})
+	})
 
 	// ── Chat Enhance ──
-	chatRoutes := router.Group("/api/v1/chat")
-	chatRoutes.Use(jwtManager.AuthMiddleware())
 	chatRoutes.POST("/enhance", func(c *gin.Context) {
 		var req struct {
 			Prompt string `json:"prompt" binding:"required"`
@@ -902,11 +902,51 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
 			return
 		}
-		// In production, this calls LLM to enhance the prompt.
-		// For MVP, return the prompt with a standard enhancement prefix.
-		enhanced := req.Prompt + " (优化后，请提供详细的分析报告，包含数据表格和可视化图表。)"
-		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
-	})
+		model := os.Getenv("LLM_MODEL")
+		if model == "" { model = "default" }
+		baseURL := os.Getenv("LLM_BASE_URL")
+		if baseURL == "" { baseURL = "https://api.openai.com" }
+		apiKey := os.Getenv("LLM_API_KEY")
+
+		llmReq := map[string]interface{}{
+			"model": model,
+			"messages": []map[string]string{
+				{"role": "system", "content": "你是一个提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"},
+				{"role": "user", "content": req.Prompt},
+			},
+			"temperature": 0.3,
+			"max_tokens":  512,
+		}
+		body, _ := json.Marshal(llmReq)
+		httpReq, err := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "增强服务不可用"})
+			return
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if apiKey != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+		}
+
+		resp, err := http.DefaultClient.Do(httpReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "增强服务不可用"})
+			return
+		}
+		defer resp.Body.Close()
+
+		var result struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Choices) == 0 {
+			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"enhanced": result.Choices[0].Message.Content})
 	})
 
 	// Delete session
