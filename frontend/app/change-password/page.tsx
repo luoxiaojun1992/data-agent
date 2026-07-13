@@ -15,7 +15,7 @@ export default function ChangePasswordPage() {
   const [confirmError, setConfirmError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const handleSubmit = async () => {
+  const showBanner = auth.needChangePw;
     setError('');
     setConfirmError('');
 
@@ -53,6 +53,14 @@ export default function ChangePasswordPage() {
           <div data-testid="pwd-change-success-toast" style={{ padding: '12px 16px', marginBottom: '20px',
             background: 'rgba(16,185,129,0.1)', borderRadius: '10px', color: '#10b981', fontSize: '13px' }}>
             {success}
+          </div>
+        )}
+
+        {/* Initial password banner */}
+        {showBanner && (
+          <div data-testid="pwd-initial-banner" style={{ padding: '12px 16px', marginBottom: '20px',
+            background: 'rgba(251,191,36,0.1)', borderRadius: '10px', color: '#FBBF24', fontSize: '13px' }}>
+            ⚠️ 您正在使用系统初始密码，请尽快修改
           </div>
         )}
 
