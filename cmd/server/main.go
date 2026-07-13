@@ -46,6 +46,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/scheduler"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
+	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
 	"go.uber.org/zap"
 )
@@ -213,6 +214,10 @@ func main() {
 	// ── API Review Service ──
 	apiReviewSvc := apireview.NewService(mongoClient.DB())
 	apiReviewHandler := handler.NewAPIReviewHandler(apiReviewSvc)
+
+	// ── Notification Service ──
+	notifSvc := notifsvc.NewService(mongoClient.DB())
+	notifHandler := handler.NewNotificationHandler(notifSvc)
 
 	// ── SPEC-009: Task Queue & Worker Pool ──
 
@@ -937,6 +942,16 @@ func main() {
 	apiRevRoutes.POST("", apiReviewHandler.CreateAPIReview)
 	apiRevRoutes.PUT("/:id/approve", apiReviewHandler.ApproveAPIReview)
 	apiRevRoutes.PUT("/:id/reject", apiReviewHandler.RejectAPIReview)
+
+	// ── Notification routes ──
+	notifRoutes := router.Group("/api/v1/notifications")
+	notifRoutes.Use(jwtManager.AuthMiddleware())
+	notifRoutes.GET("", notifHandler.ListNotifications)
+	notifRoutes.GET("/unread-count", notifHandler.UnreadCount)
+	notifRoutes.PUT("/:id/read", notifHandler.MarkRead)
+	notifRoutes.PUT("/read-all", notifHandler.MarkAllRead)
+	notifRoutes.POST("", notifHandler.SendNotification)
+	notifRoutes.POST("/broadcast", notifHandler.BroadcastNotification)
 
 	// ── SPEC-009: Task routes ──
 	if taskHandler != nil {
