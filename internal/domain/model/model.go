@@ -81,7 +81,7 @@ func GetDefaultPermissions(role UserRole) []string {
 	case RoleAdmin:
 		return []string{
 			PermUserManage, PermKBManageOwn, PermPasswordChange,
-			PermAPIConvert, PermNotifyGroup,
+			PermAPIConvert, PermNotifyGroup, PermAuditLogView,
 		}
 	case RoleUser:
 		return []string{
