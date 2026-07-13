@@ -8,7 +8,7 @@ const USER = { username: `e2e-pwd-user-${uid}@test.local`, password: 'UserTest1'
 let freshToken = '';
 let adminToken = '';
 
-test.describe('PASSWORD — SPEC-032', () => {
+test.describe.serial('PASSWORD — SPEC-032', () => {
   test.beforeAll(async ({ request }) => {
     // Create a fresh user (password_changed=false) for UI-149
     let res = await request.post(`${API_BASE}/auth/register`, { data: FRESH });
