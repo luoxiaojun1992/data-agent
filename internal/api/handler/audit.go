@@ -75,10 +75,10 @@ func (h *AuditHandler) ExportAuditLogs(c *gin.Context) {
 
 	writer := csv.NewWriter(c.Writer)
 	// BOM for Excel UTF-8
-	c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
-	writer.Write([]string{"时间", "操作人", "操作类型", "详情", "IP", "状态码"})
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+	_ = writer.Write([]string{"时间", "操作人", "操作类型", "详情", "IP", "状态码"})
 	for _, log := range result.Logs {
-		writer.Write([]string{
+		_ = writer.Write([]string{
 			log.CreatedAt.Format("2006-01-02 15:04:05"),
 			log.UserID,
 			log.Action,
