@@ -16,6 +16,8 @@ export default function ChangePasswordPage() {
   const [success, setSuccess] = useState('');
 
   const showBanner = auth.needChangePw;
+
+  const handleSubmit = async () => {
     setError('');
     setConfirmError('');
 
