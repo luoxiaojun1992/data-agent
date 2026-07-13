@@ -49,6 +49,7 @@ import (
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 )
 
@@ -981,9 +982,14 @@ func main() {
 		}
 
 		// Get user from MongoDB
+		objID, err := primitive.ObjectIDFromHex(userID.(string))
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+			return
+		}
 		var user model.User
 		coll := mongoClient.DB().Collection(model.CollUsers)
-		err := coll.FindOne(c.Request.Context(), bson.M{"_id": userID}).Decode(&user)
+		err = coll.FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&user)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 			return
@@ -999,7 +1005,7 @@ func main() {
 			return
 		}
 		_, err = coll.UpdateOne(c.Request.Context(),
-			bson.M{"_id": userID},
+			bson.M{"_id": objID},
 			bson.M{"$set": bson.M{"password_hash": newHash, "password_changed": true}},
 		)
 		if err != nil {
