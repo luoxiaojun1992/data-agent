@@ -46,7 +46,7 @@
 | SPEC-030 | UI E2E — API 转换审核 (API) | **P8** | [spec-030-ui-api.md](spec-030-ui-api.md) | ✅ 已实现 |
 | SPEC-031 | UI E2E — 站内信系统 (NOTIF) | **P8** | [spec-031-ui-notif.md](spec-031-ui-notif.md) | ✅ 已实现 |
 | SPEC-032 | UI E2E — 密码管理 (PWD) | **P8** | [spec-032-ui-pwd.md](spec-032-ui-pwd.md) | ✅ 已实现 |
-| SPEC-033 | UI E2E — 增强提示词 (PROMPT) | **P8** | [spec-033-ui-prompt.md](spec-033-ui-prompt.md) | 📐 设计中 |
+| SPEC-033 | UI E2E — 增强提示词 (PROMPT) | **P8** | [spec-033-ui-prompt.md](spec-033-ui-prompt.md) | ✅ 已实现 |
 | SPEC-034 | UI E2E — IM 集成飞书 (IM) | **P8** | [spec-034-ui-im.md](spec-034-ui-im.md) | 📐 设计中 |
 | SPEC-035 | UI E2E — 列表管理通用规范 (LIST) | **P8** | [spec-035-ui-list.md](spec-035-ui-list.md) | 📐 设计中 |
 | SPEC-036 | UI E2E — 批量文件上传 (UPLOAD) | **P8** | [spec-036-ui-upload.md](spec-036-ui-upload.md) | 📐 设计中 |
