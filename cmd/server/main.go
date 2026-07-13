@@ -921,7 +921,7 @@ func main() {
 
 	// ── Audit Log routes (admin only) ──
 	auditRoutes := router.Group("/api/v1/admin/audit")
-	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("user:manage"))
+	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("audit:view"))
 	auditRoutes.GET("/logs", auditHandler.ListAuditLogs)
 	auditRoutes.POST("/export", auditHandler.ExportAuditLogs)
 
