@@ -890,6 +890,23 @@ func main() {
 		userID, _ := c.Get("user_id")
 		sessions := sessionManager.ListByUser(userID.(string))
 		c.JSON(http.StatusOK, gin.H{"sessions": sessions})
+
+	// ── Chat Enhance ──
+	chatRoutes := router.Group("/api/v1/chat")
+	chatRoutes.Use(jwtManager.AuthMiddleware())
+	chatRoutes.POST("/enhance", func(c *gin.Context) {
+		var req struct {
+			Prompt string `json:"prompt" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
+			return
+		}
+		// In production, this calls LLM to enhance the prompt.
+		// For MVP, return the prompt with a standard enhancement prefix.
+		enhanced := req.Prompt + " (优化后，请提供详细的分析报告，包含数据表格和可视化图表。)"
+		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
+	})
 	})
 
 	// Delete session
