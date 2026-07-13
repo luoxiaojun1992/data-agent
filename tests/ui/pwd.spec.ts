@@ -6,7 +6,7 @@ const uid = Date.now();
 const FRESH = { username: `e2e-pwd-fresh-${uid}@test.local`, password: 'TempPass1', role: 'admin' };
 const USER = { username: `e2e-pwd-user-${uid}@test.local`, password: 'UserTest1' };
 
-test.describe('PASSWORD — SPEC-032', () => {
+test.describe.serial('PASSWORD — SPEC-032', () => {
   test.beforeAll(async ({ request }) => {
     await request.post(`${API_BASE}/auth/register`, { data: FRESH });
     await request.post(`${API_BASE}/auth/register`, { data: USER });
