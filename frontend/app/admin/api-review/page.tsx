@@ -82,7 +82,7 @@ export default function APIReviewPage() {
     } catch { notify('操作失败', 'error'); }
   };
 
-  const currentUserID = auth.user?.user_id || '';
+  const currentUserID = auth.userId || '';
 
   return (
     <AppLayout>
