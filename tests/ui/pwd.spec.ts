@@ -1,15 +1,17 @@
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
-const uid = Date.now();
+const uid = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
 const FRESH = { username: `e2e-pwd-fresh-${uid}@test.local`, password: 'TempPass1', role: 'admin' };
 const USER = { username: `e2e-pwd-user-${uid}@test.local`, password: 'UserTest1' };
 
 test.describe.serial('PASSWORD — SPEC-032', () => {
   test.beforeAll(async ({ request }) => {
-    await request.post(`${API_BASE}/auth/register`, { data: FRESH });
-    await request.post(`${API_BASE}/auth/register`, { data: USER });
+    let res = await request.post(`${API_BASE}/auth/register`, { data: FRESH });
+    expect(res.status()).toBe(201);
+    res = await request.post(`${API_BASE}/auth/register`, { data: USER });
+    expect(res.status()).toBe(201);
   });
 
   test.afterAll(async ({ request }) => {
