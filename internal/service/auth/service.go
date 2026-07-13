@@ -110,7 +110,7 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*Register
 		Username:        req.Username,
 		PasswordHash:    passwordHash,
 		Role:            role,
-		PasswordChanged: true,
+		PasswordChanged: false,
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {

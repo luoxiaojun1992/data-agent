@@ -48,6 +48,8 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 )
 
@@ -952,6 +954,66 @@ func main() {
 	notifRoutes.PUT("/read-all", notifHandler.MarkAllRead)
 	notifRoutes.POST("", notifHandler.SendNotification)
 	notifRoutes.POST("/broadcast", notifHandler.BroadcastNotification)
+
+	// ── Change Password ──
+	api.POST("/change-password", jwtManager.AuthMiddleware(), func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		var req struct {
+			OldPassword string `json:"old_password" binding:"required"`
+			NewPassword string `json:"new_password" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码和新密码不能为空"})
+			return
+		}
+		if len(req.NewPassword) < 8 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 8 位，需包含大小写字母和数字"})
+			return
+		}
+		hasUpper, hasLower, hasDigit := false, false, false
+		for _, ch := range req.NewPassword {
+			if ch >= 'A' && ch <= 'Z' { hasUpper = true }
+			if ch >= 'a' && ch <= 'z' { hasLower = true }
+			if ch >= '0' && ch <= '9' { hasDigit = true }
+		}
+		if !hasUpper || !hasLower || !hasDigit {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 8 位，需包含大小写字母和数字"})
+			return
+		}
+
+		// Get user from MongoDB
+		objID, err := primitive.ObjectIDFromHex(userID.(string))
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+			return
+		}
+		var user model.User
+		coll := mongoClient.DB().Collection(model.CollUsers)
+		err = coll.FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&user)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+			return
+		}
+		if middleware.CheckPassword(user.PasswordHash, req.OldPassword) != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码不正确"})
+			return
+		}
+
+		newHash, err := middleware.HashPassword(req.NewPassword)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})
+			return
+		}
+		_, err = coll.UpdateOne(c.Request.Context(),
+			bson.M{"_id": objID},
+			bson.M{"$set": bson.M{"password_hash": newHash, "password_changed": true}},
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "修改失败"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+	})
 
 	// ── SPEC-009: Task routes ──
 	if taskHandler != nil {

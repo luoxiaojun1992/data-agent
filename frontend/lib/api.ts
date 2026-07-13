@@ -7,10 +7,15 @@ export interface AuthState {
   userId: string | null;
   username: string | null;
   role: string | null;
+  needChangePw: boolean;
   hydrated: boolean;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+
+function boolLS(key: string): boolean {
+  return localStorage.getItem(key) === 'true';
+}
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthState>({
@@ -18,6 +23,7 @@ export function useAuth() {
     userId: null,
     username: null,
     role: null,
+    needChangePw: false,
     hydrated: false,
   });
 
@@ -26,10 +32,11 @@ export function useAuth() {
     const userId = localStorage.getItem('userId');
     const username = localStorage.getItem('username');
     const role = localStorage.getItem('role');
+    const needChangePw = boolLS('needChangePw');
     if (token) {
-      setAuth({ token, userId, username, role, hydrated: true });
+      setAuth({ token, userId, username, role, needChangePw, hydrated: true });
     } else {
-      setAuth({ token: null, userId: null, username: null, role: null, hydrated: true });
+      setAuth({ token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: true });
     }
   }, []);
 
@@ -48,11 +55,13 @@ export function useAuth() {
     localStorage.setItem('userId', data.user_id);
     localStorage.setItem('username', data.username);
     localStorage.setItem('role', data.role);
+    localStorage.setItem('needChangePw', String(!!data.need_change_pw));
     setAuth({
       token: data.access_token,
       userId: data.user_id,
       username: data.username,
       role: data.role,
+      needChangePw: !!data.need_change_pw,
       hydrated: true,
     });
     return data;
@@ -63,7 +72,8 @@ export function useAuth() {
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
     localStorage.removeItem('role');
-    setAuth({ token: null, userId: null, username: null, role: null, hydrated: true });
+    localStorage.removeItem('needChangePw');
+    setAuth({ token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: true });
   }, []);
 
   const apiFetch = useCallback(async (path: string, options: RequestInit = {}) => {
