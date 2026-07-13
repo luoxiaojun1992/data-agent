@@ -30,6 +30,7 @@ import (
 	statsskill "github.com/luoxiaojun1992/data-agent/skills/stats_engine"
 	agent_svc "github.com/luoxiaojun1992/data-agent/internal/service/agent"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
@@ -203,6 +204,10 @@ func main() {
 	if err := skillRegistry.Register(kbskill.NewKnowledgeSearch(kbService)); err != nil {
 		logger.Warn("Failed to register knowledge_search skill", zap.Error(err))
 	}
+
+	// ── Audit Log Service ──
+	auditService := auditsvc.NewService(mongoClient.DB())
+	auditHandler := handler.NewAuditHandler(auditService)
 
 	// ── SPEC-009: Task Queue & Worker Pool ──
 
@@ -913,6 +918,12 @@ func main() {
 	adminKB := router.Group("/api/v1/admin/knowledge")
 	adminKB.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("user:manage"))
 	adminKB.GET("/docs", kbHandler.ListAllDocs)
+
+	// ── Audit Log routes (admin only) ──
+	auditRoutes := router.Group("/api/v1/admin/audit")
+	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("user:manage"))
+	auditRoutes.GET("/logs", auditHandler.ListAuditLogs)
+	auditRoutes.POST("/export", auditHandler.ExportAuditLogs)
 
 	// ── SPEC-009: Task routes ──
 	if taskHandler != nil {
