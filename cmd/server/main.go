@@ -29,6 +29,7 @@ import (
 	sqlskill "github.com/luoxiaojun1992/data-agent/skills/sql_executor"
 	statsskill "github.com/luoxiaojun1992/data-agent/skills/stats_engine"
 	agent_svc "github.com/luoxiaojun1992/data-agent/internal/service/agent"
+	apireview "github.com/luoxiaojun1992/data-agent/internal/service/apireview"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
@@ -208,6 +209,10 @@ func main() {
 	// ── Audit Log Service ──
 	auditService := auditsvc.NewService(mongoClient.DB())
 	auditHandler := handler.NewAuditHandler(auditService)
+
+	// ── API Review Service ──
+	apiReviewSvc := apireview.NewService(mongoClient.DB())
+	apiReviewHandler := handler.NewAPIReviewHandler(apiReviewSvc)
 
 	// ── SPEC-009: Task Queue & Worker Pool ──
 
@@ -924,6 +929,14 @@ func main() {
 	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("audit:view"))
 	auditRoutes.GET("/logs", auditHandler.ListAuditLogs)
 	auditRoutes.POST("/export", auditHandler.ExportAuditLogs)
+
+	// ── API Review routes (admin only) ──
+	apiRevRoutes := router.Group("/api/v1/admin/api-reviews")
+	apiRevRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("api:convert"))
+	apiRevRoutes.GET("", apiReviewHandler.ListAPIReviews)
+	apiRevRoutes.POST("", apiReviewHandler.CreateAPIReview)
+	apiRevRoutes.PUT("/:id/approve", apiReviewHandler.ApproveAPIReview)
+	apiRevRoutes.PUT("/:id/reject", apiReviewHandler.RejectAPIReview)
 
 	// ── SPEC-009: Task routes ──
 	if taskHandler != nil {

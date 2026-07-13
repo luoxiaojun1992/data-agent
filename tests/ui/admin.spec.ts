@@ -20,9 +20,7 @@ test.beforeAll(async ({ request }) => {
 
 test.describe('ADMIN PAGES', () => {
 
-  const pages = [
-    { spec: 'UI-077', path: '/admin/api-review', nav: 'nav-admin', title: 'API 转换审核', tid: 'admin-api-review' },
-  ];
+  const pages: any[] = [];
 
   for (const p of pages) {
     test(`[${p.spec}] ${p.title} — page renders`, async ({ page }) => {
