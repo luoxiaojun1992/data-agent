@@ -25,7 +25,7 @@ type Artifact struct {
 func NewArtifact(userID, sessionID, taskID, name, mimeType, storagePath string, size int64, persistent bool) *Artifact {
 	now := time.Now()
 	return &Artifact{
-		ID:          "artifact_" + uuid.New().String()[:8],
+		ID:          "artifact_" + uuid.New().String(),
 		UserID:      userID,
 		SessionID:   sessionID,
 		TaskID:      taskID,

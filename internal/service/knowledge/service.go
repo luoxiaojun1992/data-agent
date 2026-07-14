@@ -255,4 +255,4 @@ func (s *Service) UploadFile(filename, contentType string, reader io.Reader) (st
 	return fileID, nil
 }
 
-func genShortID() string { return uuid.New().String()[:12] }
+func genShortID() string { return uuid.New().String() }

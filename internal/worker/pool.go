@@ -145,7 +145,7 @@ func (p *Pool) runWorker(ctx context.Context, consumerID string) {
 // heartbeat periodically updates worker health status in Redis.
 func (p *Pool) heartbeat(ctx context.Context) {
 	defer p.wg.Done()
-	workerID := "worker-" + uuid.New().String()[:8]
+	workerID := "worker-" + uuid.New().String()
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()

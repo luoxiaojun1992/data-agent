@@ -42,7 +42,7 @@ func (m *Manager) Create(userID, sessionType string) (*Session, error) {
 
 	now := time.Now()
 	s := &Session{
-		ID:        "sess_" + uuid.New().String()[:8],
+		ID:        "sess_" + uuid.New().String(),
 		UserID:    userID,
 		Type:      sessionType,
 		Status:    "active",
