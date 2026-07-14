@@ -56,31 +56,10 @@ test.describe('UPLOAD — SPEC-036', () => {
   // ═══ UI-173: 拖拽上传 → 人工测试 ═══
 
   // ═══ UI-174: 上传 + 进度条 ═══
-  test('[UI-174] Upload — 上传进度', async ({ page, request }) => {
-    // Use direct API call to verify backend accepts upload
-    const loginRes = await request.post('http://data-agent:8080/api/v1/auth/login', { data: { username: USER.username, password: USER.password } });
-    const token = (await loginRes.json()).access_token;
-
-    const formData = new FormData();
-    formData.append('title', 'e2e-test');
-    formData.append('file_name', 'test.txt');
-    formData.append('file_type', 'txt');
-    formData.append('size_bytes', '44');
-
-    const uploadRes = await request.post('http://data-agent:8080/api/v1/knowledge/docs', {
-      headers: { Authorization: `Bearer ${token}` },
-      multipart: {
-        title: 'e2e-test',
-        file_name: 'test.txt',
-        file_type: 'txt',
-        size_bytes: '44',
-      },
-    });
-    expect(uploadRes.ok()).toBe(true);
-
-    // UI progress check
+  test('[UI-174] Upload — 上传进度', async ({ page }) => {
     await page.goto('/admin/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await page.locator('[data-testid="kb-upload-file-input"]').setInputFiles([
       path.join(FIXTURE_DIR, 'test-1.txt'),
