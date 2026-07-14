@@ -298,6 +298,44 @@ func main() {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
 
+	// ── IM per-user bind ──
+	imBindGroup := router.Group("/api/v1/im/bind")
+	imBindGroup.Use(jwtManager.AuthMiddleware())
+	imBindGroup.GET("", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		objID, _ := primitive.ObjectIDFromHex(userID.(string))
+		var user model.User
+		if err := mongoClient.DB().Collection(model.CollUsers).FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&user); err != nil {
+			c.JSON(http.StatusOK, gin.H{})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"feishu_app_id":     user.FeishuAppID,
+			"feishu_app_secret": user.FeishuAppSecret,
+		})
+	})
+	imBindGroup.PUT("", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		objID, _ := primitive.ObjectIDFromHex(userID.(string))
+		var req struct {
+			FeishuAppID     string `json:"feishu_app_id"`
+			FeishuAppSecret string `json:"feishu_app_secret"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.FeishuAppID == "" || req.FeishuAppSecret == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "App ID and App Secret are required"})
+			return
+		}
+		_, err := mongoClient.DB().Collection(model.CollUsers).UpdateOne(c.Request.Context(),
+			bson.M{"_id": objID},
+			bson.M{"$set": bson.M{"feishu_app_id": req.FeishuAppID, "feishu_app_secret": req.FeishuAppSecret}},
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "绑定成功"})
+	})
+
 	// ── SPEC-012: Hermes Agent Proxy (nousresearch/hermes-agent) ──
 	hermesURL := os.Getenv("HERMES_URL")
 	if hermesURL != "" {
