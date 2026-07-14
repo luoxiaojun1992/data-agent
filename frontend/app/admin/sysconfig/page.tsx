@@ -13,6 +13,8 @@ export default function SysConfigPage() {
   const [emailWhitelist, setEmailWhitelist] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
   const [reportRetry, setReportRetry] = useState(3);
+  const [feishuAppId, setFeishuAppId] = useState('');
+  const [feishuAppSecret, setFeishuAppSecret] = useState('');
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -31,6 +33,8 @@ export default function SysConfigPage() {
         if (data.notification_ttl_days !== undefined) setNotifTTL(Number(data.notification_ttl_days));
         if (data.report_retry_count !== undefined) setReportRetry(Number(data.report_retry_count));
         if (Array.isArray(data.email_whitelist)) setEmailWhitelist(data.email_whitelist);
+        if (data.feishu_app_id) setFeishuAppId(data.feishu_app_id);
+        if (data.feishu_app_secret) setFeishuAppSecret(data.feishu_app_secret);
         setError('');
       } else {
         setError('加载配置失败');
@@ -171,6 +175,24 @@ export default function SysConfigPage() {
               }
             }} style={btnStyle}>添加</button>
           </div>
+        </div>
+
+        {/* Feishu IM Integration */}
+        <div className="glass" data-testid="sysconfig-im-feishu" style={cardStyle}>
+          <h3 style={titleStyle}>飞书 IM 集成</h3>
+          <p style={{ ...descStyle, marginBottom: '12px' }}>在飞书开放平台获取 App ID 和 App Secret 后填入</p>
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '10px' }}>
+            <input data-testid="im-feishu-app-id" placeholder="App ID"
+              value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={inputStyle} />
+          </div>
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '10px' }}>
+            <input data-testid="im-feishu-app-secret" type="password" placeholder="App Secret"
+              value={feishuAppSecret} onChange={(e) => setFeishuAppSecret(e.target.value)} style={inputStyle} />
+          </div>
+          <button data-testid="im-feishu-save" onClick={() => {
+            save('feishu_app_id', feishuAppId);
+            save('feishu_app_secret', feishuAppSecret);
+          }} style={{ ...btnStyle, marginTop: '4px' }}>保存飞书配置</button>
         </div>
 
         {/* Report Retry */}
