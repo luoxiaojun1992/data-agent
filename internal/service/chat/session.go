@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,7 +25,6 @@ type Session struct {
 
 // Manager handles session lifecycle with MongoDB persistence.
 type Manager struct {
-	mu       sync.RWMutex
 	coll     *mongo.Collection
 	ttl      time.Duration
 }
@@ -95,7 +93,7 @@ func (m *Manager) Renew(id string) error {
 func (m *Manager) Cleanup(ctx context.Context) {
 	now := time.Now()
 	// Remove sessions expired over 1 hour ago, or past recovery window
-	m.coll.DeleteMany(ctx, bson.M{
+	_, _ = m.coll.DeleteMany(ctx, bson.M{
 		"$or": []bson.M{
 			{"expires_at": bson.M{"$lt": now.Add(-1 * time.Hour)}},
 			{"recovery_until": bson.M{"$lt": now}},
