@@ -78,9 +78,12 @@ export function useAuth() {
 
   const apiFetch = useCallback(async (path: string, options: RequestInit = {}) => {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     };
+    // Only set Content-Type if not already set by caller and not FormData (browser auto-sets multipart boundary)
+    if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
     if (auth.token) {
       headers['Authorization'] = `Bearer ${auth.token}`;
     }
