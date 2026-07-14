@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"go.mongodb.org/mongo-driver/bson"
@@ -255,9 +256,11 @@ func (s *Service) UploadFile(filename, contentType string, reader io.Reader) (st
 }
 
 func genShortID() string {
-	return fmt.Sprintf("%x", []byte(fmt.Sprintf("%d", timeNowNano())))[:8]
+	h := fmt.Sprintf("%x", time.Now().UnixNano())
+	if len(h) < 8 {
+		return h + "00000000"[:8-len(h)]
+	}
+	return h[:8]
 }
 
-func timeNowNano() int64 {
-	return int64(len("knowledge_base"))
-}
+func timeNowNano() int64 { return time.Now().UnixNano() }
