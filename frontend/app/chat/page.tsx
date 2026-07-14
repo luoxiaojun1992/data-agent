@@ -122,7 +122,7 @@ export default function ChatPage() {
   const toggleSessions = () => {
     const next = !showSessions;
     setShowSessions(next);
-    if (next) fetchSessions();
+    if (next) { fetchSessions(); fetchDeletedSessions(); }
   };
 
   const deleteSession = async (id: string, e: React.MouseEvent) => {
@@ -130,6 +130,26 @@ export default function ChatPage() {
     try {
       await apiFetch(`/sessions/${id}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.id !== id));
+      // Refresh deleted list
+      fetchDeletedSessions();
+    } catch { /* ignore */ }
+  };
+
+  const [deletedSessions, setDeletedSessions] = useState<any[]>([]);
+
+  const fetchDeletedSessions = async () => {
+    try {
+      const res = await apiFetch('/sessions/deleted');
+      const data = await res.json();
+      setDeletedSessions(data.sessions || []);
+    } catch { /* ignore */ }
+  };
+
+  const restoreSession = async (id: string) => {
+    try {
+      await apiFetch(`/sessions/${id}/restore`, { method: 'POST' });
+      setDeletedSessions(prev => prev.filter(s => s.id !== id));
+      fetchSessions();
     } catch { /* ignore */ }
   };
 
@@ -382,8 +402,24 @@ export default function ChatPage() {
                 value={sessionSearch} onChange={e => setSessionSearch(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none mb-2"
                 data-testid="session-search" />
-              <div className="max-h-48 overflow-y-auto" data-testid="session-list">
-                {sessions.filter(s => !sessionSearch || s.id.includes(sessionSearch)).map(s => (
+            <div className="max-h-48 overflow-y-auto" data-testid="session-list">
+              {/* Recovery banner for deleted sessions */}
+              {deletedSessions.length > 0 && (
+                <div data-testid="session-recovery-banner"
+                  className="mb-2 p-2 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20">
+                  <p className="text-xs text-[var(--text-secondary)] mb-1">
+                    已删除 {deletedSessions.length} 个会话，可在 24 小时内恢复
+                  </p>
+                  {deletedSessions.map(s => (
+                    <button key={s.id} onClick={() => restoreSession(s.id)}
+                      data-testid="session-recovery-restore-btn"
+                      className="text-xs text-[var(--accent)] hover:underline">
+                      恢复 Session {s.id.slice(-8)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {sessions.filter(s => !sessionSearch || s.id.includes(sessionSearch)).map(s => (
                   <button key={s.id} onClick={() => { setSessionId(s.id); setMessages([]); }}
                     className={`w-full text-left px-2 py-1.5 text-xs hover:bg-white/5 rounded transition-colors ${s.id === sessionId ? 'bg-[var(--accent)]/10' : ''}`}
                     data-testid={`session-item-${s.id}`}>

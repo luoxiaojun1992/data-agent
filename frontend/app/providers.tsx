@@ -4,6 +4,7 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from './components/Sidebar';
 import NotificationBell from './components/NotificationBell';
+import IdleTimeout, { SESSION_IDLE_SECONDS } from './components/IdleTimeout';
 import { useAuth } from '@/lib/api';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <Sidebar username={auth.username} role={auth.role} onLogout={logout} />
+      <IdleTimeout idleSeconds={SESSION_IDLE_SECONDS} countdownSeconds={10} onLogout={() => {
+        logout();
+        router.push('/login?expired=true');
+      }} />
       <main className="flex-1 ml-60" data-testid="main-content">
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 24px 0 24px' }}>
           <NotificationBell />
