@@ -161,7 +161,7 @@ func main() {
 	cbRegistry := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
 
 	// Initialize Session Manager (24h TTL)
-	sessionManager := chat.NewManager(24 * time.Hour)
+	sessionManager := chat.NewManager(mongoClient.DB(), 24*time.Hour)
 
 	// Initialize Skill Registry — all skills are registered at startup
 	skillRegistry := skill.NewRegistry()
@@ -937,6 +937,40 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"sessions": sessions})
 	})
 
+	// Soft-delete session
+	sessionRoutes.DELETE("/:id", func(c *gin.Context) {
+		if err := sessionManager.Delete(c.Param("id")); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	})
+
+	// Restore soft-deleted session
+	sessionRoutes.POST("/:id/restore", func(c *gin.Context) {
+		if err := sessionManager.Restore(c.Param("id")); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "restored"})
+	})
+
+	// List deleted (recoverable) sessions
+	sessionRoutes.GET("/deleted", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		sessions := sessionManager.ListDeleted(userID.(string))
+		c.JSON(http.StatusOK, gin.H{"sessions": sessions})
+	})
+
+	// Renew session
+	sessionRoutes.POST("/:id/renew", func(c *gin.Context) {
+		if err := sessionManager.Renew(c.Param("id")); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "renewed"})
+	})
+
 	// ── Chat Enhance ──
 	chatRoutes.POST("/enhance", func(c *gin.Context) {
 		var req struct {
@@ -991,15 +1025,6 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"enhanced": result.Choices[0].Message.Content})
-	})
-
-	// Delete session
-	sessionRoutes.DELETE("/:id", func(c *gin.Context) {
-		if err := sessionManager.Delete(c.Param("id")); err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 	})
 
 	// ── SPEC-005: Artifact routes ──
