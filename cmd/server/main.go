@@ -395,9 +395,9 @@ func main() {
 		}
 		role, _ := c.Get("role")
 		skip := int64(0)
-		if s := c.Query("skip"); s != "" { fmt.Sscanf(s, "%d", &skip) }
+		if s := c.Query("skip"); s != "" { _, _ = fmt.Sscanf(s, "%d", &skip) }
 		limit := int64(20)
-		if l := c.Query("limit"); l != "" { fmt.Sscanf(l, "%d", &limit) }
+		if l := c.Query("limit"); l != "" { _, _ = fmt.Sscanf(l, "%d", &limit) }
 		sortBy := c.DefaultQuery("sort_by", "created_at")
 		sortOrder := c.DefaultQuery("sort_order", "desc")
 		users, total, err := userRepo.ListSorted(c.Request.Context(), role.(string), skip, limit, sortBy, sortOrder)
