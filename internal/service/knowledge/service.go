@@ -3,12 +3,14 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/gridfs"
 )
 
 // Service handles knowledge base operations.
@@ -22,15 +24,16 @@ func NewService(db *mongo.Database) *Service {
 }
 
 // CreateDoc creates a new knowledge document record.
-func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes int64) (*knowledge.KnowledgeDoc, error) {
+func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes int64, gridFSFileID string) (*knowledge.KnowledgeDoc, error) {
 	doc := &knowledge.KnowledgeDoc{
-		ID:       "kbdoc_" + genShortID(),
-		UserID:   userID,
-		Title:    title,
-		FileName: fileName,
-		FileType: fileType,
-		SizeBytes: sizeBytes,
-		Status:  knowledge.StatusUploaded,
+		ID:           "kbdoc_" + genShortID(),
+		UserID:       userID,
+		Title:        title,
+		FileName:     fileName,
+		FileType:     fileType,
+		SizeBytes:    sizeBytes,
+		GridFSFileID: gridFSFileID,
+		Status:       knowledge.StatusUploaded,
 	}
 	_, err := s.db.Collection("knowledge_docs").InsertOne(context.Background(), doc)
 	if err != nil {
@@ -231,6 +234,24 @@ func (s *Service) filterByRole(results []knowledge.SearchResult, role string) []
 	}
 	// Placeholder: filter by user_id in production
 	return results
+}
+
+// UploadFile stores file content in MongoDB GridFS and returns the file ID.
+func (s *Service) UploadFile(filename, contentType string, reader io.Reader) (string, error) {
+	bucket, err := gridfs.NewBucket(s.db)
+	if err != nil {
+		return "", fmt.Errorf("gridfs bucket: %w", err)
+	}
+	fileID := "gridfs_" + genShortID()
+	uploadStream, err := bucket.OpenUploadStream(fileID)
+	if err != nil {
+		return "", fmt.Errorf("gridfs open upload: %w", err)
+	}
+	defer uploadStream.Close()
+	if _, err := io.Copy(uploadStream, reader); err != nil {
+		return "", fmt.Errorf("gridfs write: %w", err)
+	}
+	return fileID, nil
 }
 
 func genShortID() string {
