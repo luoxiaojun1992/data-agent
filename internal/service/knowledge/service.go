@@ -262,5 +262,3 @@ func genShortID() string {
 	}
 	return h[:8]
 }
-
-func timeNowNano() int64 { return time.Now().UnixNano() }
