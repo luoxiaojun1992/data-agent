@@ -50,7 +50,7 @@
 | SPEC-034 | UI E2E — IM 集成飞书 (IM) | **P8** | [spec-034-ui-im.md](spec-034-ui-im.md) | ✅ 已实现 |
 | SPEC-035 | UI E2E — 列表管理通用规范 (LIST) | **P8** | [spec-035-ui-list.md](spec-035-ui-list.md) | ✅ 已实现 |
 | SPEC-036 | UI E2E — 批量文件上传 (UPLOAD) | **P8** | [spec-036-ui-upload.md](spec-036-ui-upload.md) | ✅ 已实现 |
-| SPEC-037 | UI E2E — Session 管理 (SESSION) | **P8** | [spec-037-ui-session.md](spec-037-ui-session.md) | 📐 设计中 |
+| SPEC-037 | UI E2E — Session 管理 (SESSION) | **P8** | [spec-037-ui-session.md](spec-037-ui-session.md) | ✅ 已实现 |
 | SPEC-038 | UI E2E — 安全审查层 (SEC) | **P8** | [spec-038-ui-security.md](spec-038-ui-security.md) | 📐 设计中 |
 | SPEC-039 | UI E2E — 角色权限访问控制 (RBAC) | **P8** | [spec-039-ui-rbac.md](spec-039-ui-rbac.md) | 📐 设计中 |
 | SPEC-040 | UI E2E — 响应式设计 (RESP) | **P8** | [spec-040-ui-responsive.md](spec-040-ui-responsive.md) | 📐 设计中 |
