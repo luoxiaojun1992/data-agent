@@ -352,27 +352,6 @@ func main() {
 		delete(bindTokens, req.Token)
 		c.JSON(http.StatusOK, gin.H{"message": "绑定成功"})
 	})
-	// Helper: generate a bind token (for tests / internal use)
-	router.POST("/api/v1/im/bind/generate-token", jwtManager.AuthMiddleware(), func(c *gin.Context) {
-		var req struct {
-			FeishuUserID string `json:"feishu_user_id" binding:"required"`
-			TTLSeconds   int    `json:"ttl_seconds"` // 0 = 24h default; negative = already expired
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "feishu_user_id is required"})
-			return
-		}
-		ttl := 86400 // 24 hours
-		if req.TTLSeconds != 0 {
-			ttl = req.TTLSeconds
-		}
-		token := fmt.Sprintf("bind_%d_%s", time.Now().UnixNano(), req.FeishuUserID[:min(6, len(req.FeishuUserID))])
-		bindTokens[token] = bindTokenInfo{
-			FeishuUserID: req.FeishuUserID,
-			ExpiresAt:    time.Now().Add(time.Duration(ttl) * time.Second),
-		}
-		c.JSON(http.StatusOK, gin.H{"token": token})
-	})
 
 	// ── SPEC-012: Hermes Agent Proxy (nousresearch/hermes-agent) ──
 	hermesURL := os.Getenv("HERMES_URL")
