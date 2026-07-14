@@ -76,6 +76,7 @@ export default function KnowledgePage() {
       const formData = new FormData();
       formData.append('title', file.name);
       formData.append('file', file);
+      formData.append('session_id', 'kb-upload-' + Date.now());
       formData.append('file_name', file.name);
       formData.append('file_type', file.name.split('.').pop() || 'unknown');
       formData.append('size_bytes', String(file.size));
