@@ -21,21 +21,14 @@ jobs:
           go-version: '1.25'
 
       - name: golangci-lint
-        run: |
-          for i in 1 2 3; do
-            go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && break
-            echo "golangci-lint install attempt $i failed, retrying..."
-            sleep 5
-          done
-          golangci-lint run ./... --timeout=5m
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.61.0
+          args: --timeout=5m
 
       - name: govulncheck
         run: |
-          for i in 1 2 3; do
-            go install golang.org/x/vuln/cmd/govulncheck@latest && break
-            echo "govulncheck install attempt $i failed, retrying..."
-            sleep 5
-          done
+          go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck -show verbose ./... || echo "::warning::govulncheck found indirect dependency vulns (e.g., quic-go/http3 from gin). These do not affect current HTTP usage. Will address in dependency cleanup task."
         continue-on-error: true
 
