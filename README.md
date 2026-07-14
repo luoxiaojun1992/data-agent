@@ -110,7 +110,33 @@ data-agent/
 | SPEC-014 | **P6** | Testing | ✅ Done |
 | SPEC-015 | **P7** | Code Audit Fix | ✅ Done |
 | SPEC-016 | **P7** | Docker Compose Fix | ✅ Done |
-| SPEC-017 ~ SPEC-043 | **P8** | UI E2E Tests (AUTH ~ MockModel) | ✅ Done (27 specs) |
+| SPEC-017 | **P8** | UI E2E — Auth (AUTH) | ✅ Done |
+| SPEC-018 | **P8** | UI E2E — Layout & Nav (LAYOUT) | ✅ Done |
+| SPEC-019 | **P8** | UI E2E — Chat (CHAT) | ✅ Done |
+| SPEC-020 | **P8** | UI E2E — Agent (AGENT) | ✅ Done |
+| SPEC-021 | **P8** | UI E2E — Hermes (HERMES) | ✅ Done |
+| SPEC-022 | **P8** | UI E2E — Dashboard (DASH) | ✅ Done |
+| SPEC-023 | **P8** | UI E2E — User Mgmt (USER) | ✅ Done |
+| SPEC-024 | **P8** | UI E2E — Role Mgmt (ROLE) | ✅ Done |
+| SPEC-025 | **P8** | UI E2E — Model Config (MODEL) | ✅ Done |
+| SPEC-026 | **P8** | UI E2E — System Config (SYSCONFIG) | ✅ Done |
+| SPEC-027 | **P8** | UI E2E — Task Mgmt (TASK) | ✅ Done |
+| SPEC-028 | **P8** | UI E2E — KB (KB) | ✅ Done |
+| SPEC-029 | **P8** | UI E2E — Audit Log (AUDIT) | ✅ Done |
+| SPEC-030 | **P8** | UI E2E — API Review (API) | ✅ Done |
+| SPEC-031 | **P8** | UI E2E — Notifications (NOTIF) | ✅ Done |
+| SPEC-032 | **P8** | UI E2E — Password (PWD) | ✅ Done |
+| SPEC-033 | **P8** | UI E2E — Prompt Enhance (PROMPT) | ✅ Done |
+| SPEC-034 | **P8** | UI E2E — IM Feishu (IM) | ✅ Done |
+| SPEC-035 | **P8** | UI E2E — List Mgmt (LIST) | ✅ Done |
+| SPEC-036 | **P8** | UI E2E — File Upload (UPLOAD) | ✅ Done |
+| SPEC-037 | **P8** | UI E2E — Session Mgmt (SESSION) | 🚧 Designing |
+| SPEC-038 | **P8** | UI E2E — Security (SEC) | 🚧 Designing |
+| SPEC-039 | **P8** | UI E2E — RBAC (RBAC) | 🚧 Designing |
+| SPEC-040 | **P8** | UI E2E — Responsive (RESP) | 🚧 Designing |
+| SPEC-041 | **P8** | UI E2E — Error States (ERR) | 🚧 Designing |
+| SPEC-042 | **P8** | UI E2E — E2E Scenarios (E2E) | 🚧 Designing |
+| SPEC-043 | **P8 前置** | Mock Model Service | ✅ Done |
 
 > Full roadmap details: [Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 
