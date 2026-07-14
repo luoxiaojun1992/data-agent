@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const uid = Date.now().toString(36);
+const uid = crypto.randomUUID().slice(0, 8);
 const MOCKLLM = 'http://mockllm:8082';
 const MOCK_ADMIN_TOKEN = 'test-admin-token';
 const USER = { username: `e2e-prompt-${uid}@test.local`, password: 'PromptTest1' };

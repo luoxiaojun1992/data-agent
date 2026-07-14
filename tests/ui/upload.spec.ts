@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-const uid = Date.now().toString(36);
+const uid = crypto.randomUUID().slice(0, 8);
 const USER = { username: `e2e-upload-${uid}@test.local`, password: 'UploadTest1', role: 'admin' };
 const FIXTURE_DIR = path.resolve(__dirname, 'fixtures', 'files');
 

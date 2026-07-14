@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const uid = Date.now().toString(36);
+const uid = crypto.randomUUID().slice(0, 8);
 const USER = { username: `e2e-im-${uid}@test.local`, password: 'ImTestPass1' };
 
 /**
