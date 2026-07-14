@@ -75,6 +75,7 @@ export default function KnowledgePage() {
       const file = selectedFiles[i];
       const formData = new FormData();
       formData.append('title', file.name);
+      formData.append('file', file);
       formData.append('file_name', file.name);
       formData.append('file_type', file.name.split('.').pop() || 'unknown');
       formData.append('size_bytes', String(file.size));
