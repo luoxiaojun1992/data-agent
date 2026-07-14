@@ -56,16 +56,17 @@ test.describe('IM — SPEC-034', () => {
 
   // ═══ UI-162: 绑定 Token 过期 ═══
   test('[UI-162] IM — 绑定 Token 过期', async ({ page, request }) => {
-    // Mock the check endpoint to return expired
-    await page.route('**/api/v1/im/bind/check/**', async (route) => {
-      await route.fulfill({
-        status: 410,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: '绑定链接已过期' }),
-      });
+    // Generate an already-expired token via ttl_seconds: -1
+    const loginRes = await request.post(`${API_BASE}/auth/login`, { data: { username: USER.username, password: USER.password } });
+    const authToken = (await loginRes.json()).access_token;
+    const genRes = await request.post(`${API_BASE}/im/bind/generate-token`, {
+      data: { feishu_user_id: 'ou_test_002', ttl_seconds: -1 },
+      headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
     });
+    expect(genRes.ok()).toBe(true);
+    const { token: expiredToken } = await genRes.json();
 
-    await page.goto('/im/bind?token=EXPIRED_TOKEN');
+    await page.goto(`/im/bind?token=${expiredToken}`);
     await page.waitForSelector('[data-testid="im-bind-expired"]', { timeout: 10000 });
 
     await expect(page.locator('[data-testid="im-bind-expired"]')).toContainText('已过期');
