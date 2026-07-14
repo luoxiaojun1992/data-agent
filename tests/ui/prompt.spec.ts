@@ -68,10 +68,11 @@ test.describe.serial('PROMPT — SPEC-033', () => {
     await expect(input).toHaveValue('');
   });
 
-  // ═══ UI-158: 点击增强按钮（有输入 → mockllm wildcard）═══
+  // ═══ UI-158: 点击增强按钮（有输入 → mockllm exact match）═══
   test('[UI-158] Prompt — 点击增强按钮（有输入）', async ({ page, request }) => {
     await clearMocks(request);
-    await seedMock(request, 'enh158',
+    // Use SHA256 hash of the user input as key (mockllm exact match, not wildcard)
+    await seedMock(request, '26762c4f', // SHA256("看看这个月的销售")[:8]
       '请分析本月销售数据：按地区、产品类别、月度对比维度，生成趋势图和数据汇总表。');
 
     const input = page.locator('[data-testid="chat-input"]');
@@ -91,7 +92,7 @@ test.describe.serial('PROMPT — SPEC-033', () => {
   // ═══ UI-159: 增强后手动编辑再发送 ═══
   test('[UI-159] Prompt — 增强后手动编辑再发送', async ({ page, request }) => {
     await clearMocks(request);
-    await seedMock(request, 'enh159', '优化后的查询文本');
+    await seedMock(request, 'ec2f1532', '优化后的查询文本'); // SHA256("原始查询")[:8]
 
     const input = page.locator('[data-testid="chat-input"]');
     await input.fill('原始查询');
@@ -106,7 +107,7 @@ test.describe.serial('PROMPT — SPEC-033', () => {
   // ═══ UI-160: 增强调用不计入 Token 统计 ═══
   test('[UI-160] Prompt — 增强调用不计入 Token 统计', async ({ page, request }) => {
     await clearMocks(request);
-    await seedMock(request, 'enh160', '增强后的测试内容');
+    await seedMock(request, '7b274e01', '增强后的测试内容'); // SHA256("test token")[:8]
 
     const input = page.locator('[data-testid="chat-input"]');
     await input.fill('test token');
