@@ -95,19 +95,22 @@ data-agent/
 | Spec | Phase | Feature | Status |
 |------|:-----:|---------|--------|
 | SPEC-001 | — | Project Initialization & Doc Architecture | ✅ Done |
-| SPEC-002 | Pre | CI/CD Environment & Toolchain | 🚧 Designing |
-| SPEC-003 | **P1** | Infrastructure & Auth | 🚧 Designing |
-| SPEC-004 | **P2** | Agent Core Engine (incl. Security) | 🚧 Designing |
-| SPEC-005 | **P2** | Artifact Storage & Workspace | 🚧 Designing |
-| SPEC-006 | **P3** | Knowledge Base System | 🚧 Designing |
-| SPEC-007 | **P3** | Data Analysis Logic Layer | 🚧 Designing |
-| SPEC-008 | **P4** | Skill Implementations | 🚧 Designing |
-| SPEC-009 | **P4** | Task Queue & Scheduler Infrastructure | 🚧 Designing |
-| SPEC-010 | **P4** | System Monitoring (Redis Stats) | 🚧 Designing |
-| SPEC-011 | **P4** | IM Integration (Feishu Bot) | 🚧 Designing |
-| SPEC-012 | **P5** | Hermes Explore Mode | 🚧 Designing |
-| SPEC-013 | **P5** | Admin Dashboard | 🚧 Designing |
-| SPEC-014 | **P6** | Testing | 🚧 Designing |
+| SPEC-002 | Pre | CI/CD Environment & Toolchain | ✅ Done |
+| SPEC-003 | **P1** | Infrastructure & Auth | ✅ Done |
+| SPEC-004 | **P2** | Agent Core Engine (incl. Security) | ✅ Done |
+| SPEC-005 | **P2** | Artifact Storage & Workspace | ✅ Done |
+| SPEC-006 | **P3** | Knowledge Base System | ✅ Done |
+| SPEC-007 | **P3** | Data Analysis Logic Layer | ✅ Done |
+| SPEC-008 | **P4** | Skill Implementations | ✅ Done |
+| SPEC-009 | **P4** | Task Queue & Scheduler Infrastructure | ✅ Done |
+| SPEC-010 | **P4** | System Monitoring (Redis Stats) | ✅ Done |
+| SPEC-011 | **P4** | IM Integration (Feishu Bot) | ✅ Done |
+| SPEC-012 | **P5** | Hermes Explore Mode | ✅ Done |
+| SPEC-013 | **P5** | Admin Dashboard | ✅ Done |
+| SPEC-014 | **P6** | Testing | ✅ Done |
+| SPEC-015 | **P7** | Code Audit Fix | ✅ Done |
+| SPEC-016 | **P7** | Docker Compose Fix | ✅ Done |
+| SPEC-017 ~ SPEC-043 | **P8** | UI E2E Tests (AUTH ~ MockModel) | ✅ Done (27 specs) |
 
 > Full roadmap details: [Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 
