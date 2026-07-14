@@ -55,7 +55,7 @@ func NewTask(sessionID, userID, taskType string, skillChain []string, params map
 		totalSteps = 1
 	}
 	return &Task{
-		ID:         "task_" + uuid.New().String()[:8],
+		ID:         "task_" + uuid.New().String(),
 		SessionID:  sessionID,
 		UserID:     userID,
 		Type:       taskType,

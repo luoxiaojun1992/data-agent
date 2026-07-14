@@ -27,7 +27,12 @@ export default function KnowledgePage() {
   const [tagFilter, setTagFilter] = useState('');
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<number[]>([]);
+  const [uploadComplete, setUploadComplete] = useState<boolean[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [uploadError, setUploadError] = useState('');
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
@@ -62,30 +67,48 @@ export default function KnowledgePage() {
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleUpload = async () => {
+    if (selectedFiles.length === 0) return;
     setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('title', 'test-doc-' + Date.now());
-      formData.append('file_name', 'test.pdf');
-      formData.append('file_type', 'pdf');
-      formData.append('size_bytes', '1024');
+    setUploadProgress(new Array(selectedFiles.length).fill(0));
+    setUploadComplete(new Array(selectedFiles.length).fill(false));
+    setUploadError('');
 
-      const res = await apiFetch('/knowledge/docs', {
-        method: 'POST',
-        body: formData,
-        // Don't set Content-Type header — browser auto-sets boundary for multipart
-      });
-      if (res.ok) {
-        showToast('上传成功', 'success');
-        fetchDocs();
-      } else {
-        showToast('上传失败', 'error');
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      const formData = new FormData();
+      formData.append('title', file.name);
+      formData.append('file', file);
+      formData.append('file_name', file.name);
+      formData.append('file_type', file.name.split('.').pop() || 'unknown');
+      formData.append('size_bytes', String(file.size));
+
+        try {
+          const res = await apiFetch('/knowledge/docs', {
+            method: 'POST',
+            body: formData,
+          });
+        if (res.ok) {
+          setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
+          setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
+        } else {
+          const d = await res.json().catch(() => ({}));
+          setUploadError(d.error || `上传失败 (${res.status})`);
+        }
+      } catch (e: any) {
+        setUploadError(e?.message || '网络错误');
       }
-    } catch {
-      showToast('上传失败', 'error');
     }
     setUploading(false);
-    setShowUpload(false);
+    fetchDocs();
+    showToast('上传完成', 'success');
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setSelectedFiles(files);
+      setShowUpload(true);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -148,25 +171,54 @@ export default function KnowledgePage() {
         {showUpload && (
           <div data-testid="kb-upload-modal" style={{ position: 'fixed', inset: 0, zIndex: 999,
             background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            onClick={(e) => { if (e.target === e.currentTarget) setShowUpload(false); }}>
+            onClick={(e) => { if (e.target === e.currentTarget) { setShowUpload(false); setSelectedFiles([]); } }}>
             <div className="glass" style={{ padding: '24px', maxWidth: '420px', width: '90%' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
                 上传文档
               </h3>
               <div data-testid="kb-drop-zone" style={{ padding: '40px', textAlign: 'center',
                 border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '12px', marginBottom: '16px',
-                color: '#7A7A7A', fontSize: '14px' }}>
+                color: '#7A7A7A', fontSize: '14px', cursor: 'pointer' }}
+                onClick={() => fileInputRef.current?.click()}>
                 📤 拖拽文件到此处或点击选择
               </div>
-              <button onClick={handleUpload} disabled={uploading}
+              {/* File list with progress */}
+              {selectedFiles.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  {selectedFiles.map((f, i) => (
+                    <div key={i} data-testid={`kb-file-item-${i}`}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '6px 8px', fontSize: '13px', color: 'var(--text-primary)',
+                        background: 'rgba(255,255,255,0.04)', borderRadius: '6px', marginBottom: '4px' }}>
+                      <span>{f.name}</span>
+                      {uploadComplete[i] ? (
+                        <span data-testid={`kb-file-done-${i}`}>✅</span>
+                      ) : uploadProgress[i] > 0 ? (
+                        <span data-testid={`kb-upload-progress-${i}`}
+                          style={{ fontSize: '12px', color: '#5c7cfa' }}>{uploadProgress[i]}%</span>
+                      ) : uploading ? (
+                        <span>⏳</span>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {uploadError && (
+                <div data-testid="kb-upload-error" style={{ color: '#ef4444', fontSize: '12px', marginBottom: '8px' }}>{uploadError}</div>
+              )}
+              <button onClick={handleUpload} disabled={uploading || selectedFiles.length === 0}
                 style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
                   color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
                 {uploading ? '上传中...' : '确认上传'}
               </button>
-              <div data-testid="kb-upload-progress" style={{ display: 'none' }} />
             </div>
           </div>
         )}
+
+        {/* Hidden file input */}
+        <input ref={fileInputRef} type="file" multiple data-testid="kb-upload-file-input"
+          accept=".txt,.pdf,.json,.csv,.bin,.png,.jpg"
+          style={{ display: 'none' }} onChange={handleFileSelect} />
 
         {/* Tag Filter */}
         {allTags.length > 0 && (

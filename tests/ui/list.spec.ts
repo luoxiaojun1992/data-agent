@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const uid = Date.now().toString(36);
+const uid = crypto.randomUUID().slice(0, 8);
 const ADMIN = { username: `e2e-list-${uid}@test.local`, password: 'ListAdmin1', role: 'admin' };
 const API_BASE = 'http://data-agent:8080/api/v1';
 

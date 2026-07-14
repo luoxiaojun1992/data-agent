@@ -25,6 +25,7 @@ type KnowledgeDoc struct {
 	SizeBytes   int64     `bson:"size_bytes" json:"size_bytes"`
 	Status      DocStatus `bson:"status" json:"status"`
 	ChunkCount  int       `bson:"chunk_count" json:"chunk_count"`
+	GridFSFileID string   `bson:"gridfs_file_id,omitempty" json:"gridfs_file_id,omitempty"`
 	CreatedAt   time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt   time.Time `bson:"updated_at" json:"updated_at"`
 }

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
-const uid = Date.now() + 9999; // unique user
+const uid = crypto.randomUUID().slice(0, 8); // unique user
 const U = { username: `e2e-agt2-${uid}@test.local`, password: 'E2eTest123!' };
 
 test.describe('AGENT — Steps & Cron', () => {

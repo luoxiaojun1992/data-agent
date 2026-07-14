@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test';
 const log = (msg: string) => process.stderr.write(`[layout.spec] ${new Date().toISOString()} ${msg}\n`);
 
 const API_BASE = 'http://data-agent:8080/api/v1';
-const uid = Date.now();
+const uid = crypto.randomUUID().slice(0, 8);
 const TEST_USER = {
   username: `e2e-layout-${uid}@test.local`,
   password: 'E2eTest123!',

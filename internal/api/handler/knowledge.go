@@ -18,7 +18,7 @@ func NewKnowledgeHandler(svc *knowledge.Service) *KnowledgeHandler {
 	return &KnowledgeHandler{svc: svc}
 }
 
-// UploadDoc creates a new knowledge document.
+// UploadDoc creates a new knowledge document with optional file upload to GridFS.
 func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	title := c.PostForm("title")
@@ -29,7 +29,22 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 		_, _ = fmt.Sscanf(s, "%d", &sizeBytes)
 	}
 
-	doc, err := h.svc.CreateDoc(userID.(string), title, fileName, fileType, sizeBytes)
+	// Upload file content to GridFS if a file was provided
+	file, header, err := c.Request.FormFile("file")
+	var gridFSFileID string
+	if err == nil {
+		defer file.Close()
+		gridFSFileID, err = h.svc.UploadFile(fileName+"_"+header.Filename, header.Header.Get("Content-Type"), file)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "GridFS upload failed: " + err.Error()})
+			return
+		}
+		if sizeBytes == 0 {
+			sizeBytes = header.Size
+		}
+	}
+
+	doc, err := h.svc.CreateDoc(userID.(string), title, fileName, fileType, sizeBytes, gridFSFileID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
