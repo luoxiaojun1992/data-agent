@@ -87,6 +87,13 @@ test.describe('UPLOAD — SPEC-036', () => {
     await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
     await expect(page.locator('[data-testid="kb-file-item-0"]')).toContainText('test-1.txt');
     await page.locator('button:has-text("确认上传")').click();
+    // Check if upload failed with backend error
+    const errorEl = page.locator('[data-testid="kb-upload-error"]');
+    await page.waitForTimeout(2000);
+    if (await errorEl.isVisible()) {
+      const msg = await errorEl.textContent();
+      console.log('Upload error:', msg);
+    }
     await expect(page.locator('[data-testid="kb-file-done-0"]')).toBeVisible({ timeout: 15000 });
   });
 

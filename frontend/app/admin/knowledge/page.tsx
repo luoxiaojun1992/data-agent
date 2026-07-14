@@ -32,6 +32,7 @@ export default function KnowledgePage() {
   const [uploadComplete, setUploadComplete] = useState<boolean[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [uploadError, setUploadError] = useState('');
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
@@ -70,6 +71,7 @@ export default function KnowledgePage() {
     setUploading(true);
     setUploadProgress(new Array(selectedFiles.length).fill(0));
     setUploadComplete(new Array(selectedFiles.length).fill(false));
+    setUploadError('');
 
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
@@ -88,9 +90,12 @@ export default function KnowledgePage() {
         if (res.ok) {
           setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
           setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
+        } else {
+          const d = await res.json().catch(() => ({}));
+          setUploadError(d.error || `上传失败 (${res.status})`);
         }
-      } catch {
-        // upload failed silently
+      } catch (e: any) {
+        setUploadError(e?.message || '网络错误');
       }
     }
     setUploading(false);
@@ -197,6 +202,9 @@ export default function KnowledgePage() {
                     </div>
                   ))}
                 </div>
+              )}
+              {uploadError && (
+                <div data-testid="kb-upload-error" style={{ color: '#ef4444', fontSize: '12px', marginBottom: '8px' }}>{uploadError}</div>
               )}
               <button onClick={handleUpload} disabled={uploading || selectedFiles.length === 0}
                 style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
