@@ -298,61 +298,6 @@ func main() {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
 
-	// ── IM Bind (no auth — public bind page) ──
-	type bindTokenInfo struct {
-		FeishuUserID string
-		ExpiresAt    time.Time
-	}
-	bindTokens := make(map[string]bindTokenInfo) // in-memory token store
-	// GET /api/v1/im/bind/check/:token — check token validity
-	router.GET("/api/v1/im/bind/check/:token", func(c *gin.Context) {
-		token := c.Param("token")
-		info, ok := bindTokens[token]
-		if !ok || time.Now().After(info.ExpiresAt) {
-			c.JSON(http.StatusGone, gin.H{"error": "绑定链接已过期"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"feishu_user_id": info.FeishuUserID})
-	})
-	// POST /api/v1/im/bind/confirm — confirm binding (standalone, no auth)
-	router.POST("/api/v1/im/bind/confirm", func(c *gin.Context) {
-		var req struct {
-			Token    string `json:"token" binding:"required"`
-			Email    string `json:"email" binding:"required"`
-			Password string `json:"password" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
-			return
-		}
-		info, ok := bindTokens[req.Token]
-		if !ok || time.Now().After(info.ExpiresAt) {
-			c.JSON(http.StatusGone, gin.H{"error": "绑定链接已过期"})
-			return
-		}
-		// Look up user by username (email)
-		user, err := userRepo.FindByUsername(c.Request.Context(), req.Email)
-		if err != nil || user == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "账号或密码错误"})
-			return
-		}
-		if middleware.CheckPassword(user.PasswordHash, req.Password) != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "账号或密码错误"})
-			return
-		}
-		// Bind Feishu user ID to the DataAgent user
-		_, err = mongoClient.DB().Collection(model.CollUsers).UpdateOne(c.Request.Context(),
-			bson.M{"_id": user.ID},
-			bson.M{"$set": bson.M{"feishu_user_id": info.FeishuUserID}},
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "绑定失败"})
-			return
-		}
-		delete(bindTokens, req.Token)
-		c.JSON(http.StatusOK, gin.H{"message": "绑定成功"})
-	})
-
 	// ── SPEC-012: Hermes Agent Proxy (nousresearch/hermes-agent) ──
 	hermesURL := os.Getenv("HERMES_URL")
 	if hermesURL != "" {
