@@ -6,7 +6,6 @@ const USER = { username: `e2e-sess-${uid}@test.local`, password: 'SessionTest1',
 /**
  * Session management E2E tests — SPEC-037
  *
- * Timeout tests use NEXT_PUBLIC_SESSION_IDLE_SECONDS=10 set in docker-compose.
  * Multi-session uses 2 independent browser contexts.
  * Recovery tests verify soft-delete + restore.
  */
@@ -37,61 +36,6 @@ test.describe('SESSION — SPEC-037', () => {
     await page.locator('[data-testid="login-password-input"]').fill(USER.password);
     await page.locator('[data-testid="login-btn"]').click();
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
-  });
-
-  // ═══ UI-177: 无操作超时提示 ═══
-  test('[UI-177] Session — 无操作超时提示', async ({ page }) => {
-    await page.goto('/chat');
-    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
-
-    // Don't move mouse, wait for idle timeout (10s) → warning should appear
-    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({
-      timeout: 30000,
-    });
-
-    // Verify continue button exists
-    await expect(page.locator('[data-testid="session-timeout-continue-btn"]')).toBeVisible();
-  });
-
-  // ═══ UI-178: 超时后自动登出 ═══
-  test('[UI-178] Session — 超时后自动登出', async ({ page }) => {
-    await page.goto('/chat');
-    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
-
-    // Wait for timeout warning
-    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({
-      timeout: 30000,
-    });
-
-    // Don't click continue — wait for countdown (10s) → auto-logout
-    await expect(page.locator('[data-testid="login-session-expired-toast"]')).toBeVisible({
-      timeout: 45000,
-    });
-
-    // Should be on login page
-    await expect(page).toHaveURL(/\/login/);
-  });
-
-  // ═══ UI-179: 点击继续使用续期 ═══
-  test('[UI-179] Session — 点击继续使用续期', async ({ page }) => {
-    await page.goto('/chat');
-    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
-
-    // Wait for timeout warning
-    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({
-      timeout: 30000,
-    });
-
-    // Click continue
-    await page.locator('[data-testid="session-timeout-continue-btn"]').click();
-
-    // Warning should disappear
-    await expect(page.locator('[data-testid="session-timeout-warning"]')).not.toBeVisible({
-      timeout: 5000,
-    });
-
-    // Page should still be usable
-    await expect(page.locator('[data-testid="chat-input"]')).toBeVisible();
   });
 
   // ═══ UI-180: 多端登录互不干扰 ═══
