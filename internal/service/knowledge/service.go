@@ -6,8 +6,8 @@ import (
 	"io"
 	"math"
 	"sort"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -255,10 +255,4 @@ func (s *Service) UploadFile(filename, contentType string, reader io.Reader) (st
 	return fileID, nil
 }
 
-func genShortID() string {
-	h := fmt.Sprintf("%x", time.Now().UnixNano())
-	if len(h) < 8 {
-		return h + "00000000"[:8-len(h)]
-	}
-	return h[:8]
-}
+func genShortID() string { return uuid.New().String()[:12] }
