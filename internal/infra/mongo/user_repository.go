@@ -8,6 +8,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -149,6 +150,10 @@ func (r *UserRepository) Delete(ctx context.Context, userID string) error {
 
 // List returns paginated users. Admins can only see non-system_admin users.
 func (r *UserRepository) List(ctx context.Context, role string, skip, limit int64) ([]model.User, int64, error) {
+	return r.ListSorted(ctx, role, skip, limit, "", "")
+}
+
+func (r *UserRepository) ListSorted(ctx context.Context, role string, skip, limit int64, sortBy, sortOrder string) ([]model.User, int64, error) {
 	filter := bson.M{}
 	if role == "admin" {
 		// Admins cannot see system_admin users
@@ -160,7 +165,16 @@ func (r *UserRepository) List(ctx context.Context, role string, skip, limit int6
 		return nil, 0, fmt.Errorf("count users: %w", err)
 	}
 
-	cursor, err := r.coll.Find(ctx, filter, nil)
+	opts := options.Find()
+	if skip > 0 { opts.SetSkip(skip) }
+	if limit > 0 { opts.SetLimit(limit) }
+	if sortBy != "" {
+		order := -1 // desc
+		if sortOrder == "asc" { order = 1 }
+		opts.SetSort(bson.D{{Key: sortBy, Value: order}})
+	}
+
+	cursor, err := r.coll.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list users: %w", err)
 	}
