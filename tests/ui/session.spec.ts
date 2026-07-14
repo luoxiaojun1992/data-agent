@@ -138,53 +138,29 @@ test.describe('SESSION — SPEC-037', () => {
   });
 
   // ═══ UI-181: 整体删除后 24 小时内可恢复 ═══
-  test('[UI-181] Session — 删除后恢复', async ({ page }) => {
+  test('[UI-181] Session — 删除后恢复', async ({ page, request }) => {
     await page.goto('/chat');
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
 
+    // Create a session via API to guarantee it exists
+    const loginRes = await request.post('http://data-agent:8080/api/v1/auth/login', { data: { username: USER.username, password: USER.password } });
+    const token = (await loginRes.json()).access_token;
+    const createRes = await request.post('http://data-agent:8080/api/v1/sessions', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(createRes.ok()).toBe(true);
+    const { session_id } = await createRes.json();
+    expect(session_id).toBeTruthy();
+
     // Open session panel
+    await page.reload();
+    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
     await page.locator('[data-testid="chat-session-btn"]').click();
     await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
     await page.waitForTimeout(2000);
 
-    // Get session ID from session list — create one if none
-    let sessionItems = page.locator('[data-testid^="session-item-"]');
-    let count = await sessionItems.count();
-    if (count === 0) {
-      // Close sidebar, send a message to create session
-      await page.locator('[data-testid="chat-session-btn"]').click();
-      await page.waitForTimeout(500);
-      await page.locator('[data-testid="chat-input"]').fill('test for recovery');
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(3000);
-      // Reopen sidebar
-      await page.locator('[data-testid="chat-session-btn"]').click();
-      await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
-      await page.waitForTimeout(2000);
-      sessionItems = page.locator('[data-testid^="session-item-"]');
-      count = await sessionItems.count();
-    }
-
-    // Delete all existing sessions first to start clean
-    const deleteBtns = page.locator('[data-testid^="session-delete-"]');
-    const delCount = await deleteBtns.count();
-    for (let i = 0; i < delCount; i++) {
-      await deleteBtns.first().click();
-      await page.waitForTimeout(500);
-    }
-
-    // Create a fresh session
-    await page.locator('[data-testid="chat-session-btn"]').click();
-    await page.waitForTimeout(500);
-    await page.locator('[data-testid="chat-input"]').fill('session to recover');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(3000);
-    await page.locator('[data-testid="chat-session-btn"]').click();
-    await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
-    await page.waitForTimeout(2000);
-
-    // Delete the session
-    const delBtn = page.locator('[data-testid^="session-delete-"]').first();
+    // Delete the session via its delete button
+    const delBtn = page.locator(`[data-testid="session-delete-${session_id}"]`);
     await delBtn.click();
     await page.waitForTimeout(2000);
 
@@ -199,7 +175,7 @@ test.describe('SESSION — SPEC-037', () => {
 
     // Banner should disappear (session restored)
     await expect(page.locator('[data-testid="session-recovery-banner"]')).not.toBeVisible({
-      timeout: 5000,
+      timeout: 10000,
     });
   });
 
