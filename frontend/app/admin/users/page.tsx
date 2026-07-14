@@ -22,6 +22,9 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc' | ''>('desc');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,7 +50,8 @@ export default function UsersPage() {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await apiFetch(`/users?skip=${(page - 1) * pageSize}&limit=${pageSize}`);
+      const sortParam = sortOrder ? `&sort_by=${sortBy}&sort_order=${sortOrder}` : '';
+      const res = await apiFetch(`/users?skip=${(page - 1) * pageSize}&limit=${pageSize}${sortParam}`);
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users || []);
@@ -58,7 +62,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, page, pageSize]);
+  }, [apiFetch, page, pageSize, sortBy, sortOrder]);
 
   useEffect(() => {
     if (auth.hydrated) {
@@ -216,6 +220,30 @@ export default function UsersPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+  const handleSort = (column: string) => {
+    if (sortBy !== column) { setSortBy(column); setSortOrder('desc'); }
+    else if (sortOrder === 'desc') setSortOrder('asc');
+    else if (sortOrder === 'asc') { setSortBy('created_at'); setSortOrder('desc'); }
+  };
+
+  const sortIndicator = (column: string) => {
+    if (sortBy !== column) return '';
+    return sortOrder === 'desc' ? ' ↓' : ' ↑';
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === users.length) { setSelected(new Set()); }
+    else { setSelected(new Set(users.map(u => u.id))); }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   return (
     <AppLayout>
       <div className="animate-fade-in">
@@ -269,10 +297,22 @@ export default function UsersPage() {
             <table data-testid="user-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-                  <th data-testid="user-table-header-name" style={thStyle}>姓名</th>
+                  <th style={{ ...thStyle, width: '40px' }}>
+                    <input type="checkbox" data-testid="user-select-all"
+                      checked={selected.size === users.length && users.length > 0}
+                      onChange={toggleSelectAll} />
+                  </th>
+                  <th data-testid="user-table-header-name" style={{ ...thStyle, cursor: 'pointer' }}
+                    onClick={() => handleSort('username')}>
+                    姓名<span data-testid="user-sort-name">{sortIndicator('username')}</span>
+                  </th>
                   <th data-testid="user-table-header-email" style={thStyle}>邮箱</th>
                   <th data-testid="user-table-header-role" style={thStyle}>角色</th>
                   <th data-testid="user-table-header-status" style={thStyle}>状态</th>
+                  <th data-testid="user-table-header-created" style={{ ...thStyle, cursor: 'pointer' }}
+                    onClick={() => handleSort('created_at')}>
+                    创建时间<span data-testid="user-sort-created">{sortIndicator('created_at')}</span>
+                  </th>
                   <th data-testid="user-table-header-actions" style={thStyle}>操作</th>
                 </tr>
               </thead>
@@ -288,6 +328,10 @@ export default function UsersPage() {
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   >
+                    <td style={tdStyle}>
+                      <input type="checkbox" data-testid={`user-select-${user.id}`}
+                        checked={selected.has(user.id)} onChange={() => toggleSelect(user.id)} />
+                    </td>
                     <td style={tdStyle}>{user.username.split('@')[0] || user.username}</td>
                     <td style={tdStyle}>{user.username}</td>
                     <td style={tdStyle}>{roleLabel(user.role)}</td>
@@ -364,7 +408,12 @@ export default function UsersPage() {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             marginTop: '16px', fontSize: '13px', color: 'var(--text-secondary)',
           }}>
-            <span>共{total}条</span>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {selected.size > 0 && (
+                <span data-testid="user-select-count" style={{ color: '#5c7cfa' }}>已选 {selected.size} 项</span>
+              )}
+              <span>共{total}条</span>
+            </div>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <select
                 data-testid="user-page-size-select"
@@ -381,6 +430,12 @@ export default function UsersPage() {
                 <option value={20}>20</option>
                 <option value={50}>50</option>
               </select>
+              <button data-testid="user-pagination-prev" onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'transparent', color: 'var(--text-secondary)', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: page === 1 ? 0.4 : 1 }}>
+                上一页
+              </button>
               {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => (
                 <button
                   key={i}
@@ -398,6 +453,12 @@ export default function UsersPage() {
                   {i + 1}
                 </button>
               ))}
+              <button data-testid="user-pagination-next" onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'transparent', color: 'var(--text-secondary)', cursor: page >= totalPages ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: page >= totalPages ? 0.4 : 1 }}>
+                下一页
+              </button>
             </div>
           </div>
         )}
