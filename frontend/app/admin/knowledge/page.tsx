@@ -80,11 +80,11 @@ export default function KnowledgePage() {
       formData.append('file_type', file.name.split('.').pop() || 'unknown');
       formData.append('size_bytes', String(file.size));
 
-      try {
-        const res = await apiFetch('/knowledge/docs', {
-          method: 'POST',
-          body: formData,
-        });
+        try {
+          const res = await apiFetch('/artifacts/upload', {
+            method: 'POST',
+            body: formData,
+          });
         if (res.ok) {
           setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
           setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
