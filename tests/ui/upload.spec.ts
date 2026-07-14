@@ -7,14 +7,21 @@ const USER = { username: `e2e-upload-${uid}@test.local`, password: 'UploadTest1'
 const FIXTURE_DIR = path.resolve(__dirname, 'fixtures', 'files');
 
 /**
- * File upload E2E tests — real upload to backend + SeaweedFS.
+ * File upload E2E tests — real upload to backend (GridFS).
  *
- * UI-172: Multi-file select → real upload, verify files in list
- * UI-173: Drag-and-drop → manual test only
- * UI-174: Per-file progress bars
- * UI-175: Cancel single file upload
- * UI-176: Upload doesn't block UI
+ * Uses page.waitForEvent('filechooser') to properly trigger React's
+ * onChange handler on the hidden file input.
  */
+
+/** Helper: open file chooser and select files, verify modal appears */
+async function selectFiles(page: any, filePaths: string[]) {
+  const fileChooserPromise = page.waitForEvent('filechooser');
+  // Click the drop zone to trigger the file input (onClick → fileInputRef.current?.click())
+  await page.locator('[data-testid="kb-upload-file-input"]').click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles(filePaths);
+  await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible({ timeout: 3000 });
+}
 
 test.describe('UPLOAD — SPEC-036', () => {
   test.beforeAll(async ({ request }) => {
@@ -50,24 +57,18 @@ test.describe('UPLOAD — SPEC-036', () => {
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
     await page.waitForTimeout(1000);
 
-    // Select 3 fixture files via hidden input
-    const fileInput = page.locator('[data-testid="kb-upload-file-input"]');
-    await fileInput.setInputFiles([
+    await selectFiles(page, [
       path.join(FIXTURE_DIR, 'test-1.txt'),
       path.join(FIXTURE_DIR, 'test-2.txt'),
       path.join(FIXTURE_DIR, 'test-3.json'),
     ]);
 
-    // Upload modal should appear with 3 file items
-    await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('[data-testid="kb-file-item-0"]')).toBeVisible();
     await expect(page.locator('[data-testid="kb-file-item-1"]')).toBeVisible();
     await expect(page.locator('[data-testid="kb-file-item-2"]')).toBeVisible();
 
-    // Click confirm upload
     await page.locator('button:has-text("确认上传")').click();
 
-    // Wait for upload complete — ✅ appears for each file
     await expect(page.locator('[data-testid="kb-file-done-0"]')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('[data-testid="kb-file-done-1"]')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-testid="kb-file-done-2"]')).toBeVisible({ timeout: 5000 });
@@ -79,36 +80,26 @@ test.describe('UPLOAD — SPEC-036', () => {
   test('[UI-174] Upload — 独立进度条', async ({ page }) => {
     await page.goto('/admin/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
-    await page.waitForTimeout(1000);
 
-    const fileInput = page.locator('[data-testid="kb-upload-file-input"]');
-    await fileInput.setInputFiles([
+    await selectFiles(page, [
       path.join(FIXTURE_DIR, 'test-1.txt'),
       path.join(FIXTURE_DIR, 'test-2.txt'),
     ]);
 
-    await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
     await page.locator('button:has-text("确认上传")').click();
 
-    // Each file should complete with ✅
     await expect(page.locator('[data-testid="kb-file-done-0"]')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('[data-testid="kb-file-done-1"]')).toBeVisible({ timeout: 5000 });
   });
 
-  // ═══ UI-175: 取消单个文件上传 ═══
-  // Note: No cancel button is implemented, so this test verifies
-  // that the upload modal can be closed and a single file still works.
+  // ═══ UI-175: 单文件上传 ═══
   test('[UI-175] Upload — 单文件上传', async ({ page }) => {
     await page.goto('/admin/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
-    await page.waitForTimeout(1000);
 
-    const fileInput = page.locator('[data-testid="kb-upload-file-input"]');
-    await fileInput.setInputFiles([path.join(FIXTURE_DIR, 'test-1.txt')]);
+    await selectFiles(page, [path.join(FIXTURE_DIR, 'test-1.txt')]);
 
-    await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
     await expect(page.locator('[data-testid="kb-file-item-0"]')).toBeVisible();
-
     await page.locator('button:has-text("确认上传")').click();
     await expect(page.locator('[data-testid="kb-file-done-0"]')).toBeVisible({ timeout: 15000 });
   });
@@ -117,21 +108,15 @@ test.describe('UPLOAD — SPEC-036', () => {
   test('[UI-176] Upload — 上传不阻塞 UI', async ({ page }) => {
     await page.goto('/admin/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
-    await page.waitForTimeout(1000);
 
-    const fileInput = page.locator('[data-testid="kb-upload-file-input"]');
-    await fileInput.setInputFiles([path.join(FIXTURE_DIR, 'test-1.txt')]);
+    await selectFiles(page, [path.join(FIXTURE_DIR, 'test-1.txt')]);
 
-    await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
     await page.locator('button:has-text("确认上传")').click();
 
-    // Upload modal should still be usable with close button
-    await page.waitForTimeout(1000);
-
-    // Close modal — UI should be responsive
+    // While uploading, close modal by clicking outside
     await page.locator('[data-testid="kb-upload-modal"]').click({ position: { x: 10, y: 10 } });
-    // Modal may stay open or close — but UI interaction shouldn't throw
     await page.waitForTimeout(500);
+    // KB page should still be responsive
     await expect(page.locator('[data-testid="kb-search-input"]')).toBeVisible();
   });
 });
