@@ -31,6 +31,8 @@ type User struct {
 	Role            UserRole           `bson:"role" json:"role"`
 	Status          UserStatus         `bson:"status" json:"status"`
 	PasswordChanged bool               `bson:"password_changed" json:"password_changed"`
+	FeishuAppID     string             `bson:"feishu_app_id,omitempty" json:"feishu_app_id,omitempty"`
+	FeishuAppSecret string             `bson:"feishu_app_secret,omitempty" json:"-"`
 	CreatedAt       time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`
 }
