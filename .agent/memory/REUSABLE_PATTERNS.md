@@ -217,3 +217,67 @@ Playwright `page.route()` 在 `test.describe` 内跨 `beforeEach` 残留。
 ```typescript
 await page.unrouteAll({ behavior: 'ignoreErrors' });
 ```
+
+## 调试方法论
+
+### 本地脚本验证（隔离复现）
+
+当怀疑某段逻辑在 CI 环境异常时，先用**独立 Go 脚本**在本地复现，**禁猜测**：
+
+```go
+// 最小可复现脚本：验证 regex 在含中文+数字字符串上的行为
+func main() {
+    input := "查询结果如下：用户手机：13812345678，身份证号：320123199001011234。"
+    phone := regexp.MustCompile(`1[3-9]\d{9}`)
+    matches := phone.FindAllString(input, -1)
+    fmt.Printf("matches: %v\n", matches)  // 应只有 [13812345678]，若有其他则是假阳性
+}
+```
+
+原则：
+1. 脚本必须使用与生产代码**完全相同**的输入数据和 regex pattern
+2. 若本地正常而 CI 异常，检查编译环境差异（`CGO_ENABLED`、基础镜像、Go 版本）
+3. 无法本地复现时不要断言"Go 有 bug"，先查代码逻辑（如 `Compile()` 是否调用）
+
+### 查资料定位环境差异
+
+regex 在本地 macOS 正常（21µs），在 CI alpine 容器中挂起 12 秒。排查路径：
+
+1. 检查 `Dockerfile` → 发现 `CGO_ENABLED=0`，排除 musl/glibc 差异
+2. `grep -rn "Compile"` → 发现仅 `UpdateRules` 中调用，`NewAuditor` 未调用
+3. 确认 `matchRule` 按值传参 → `rule.compiled = compiled` 只改副本 → 循环变量仍为 nil
+
+**结论**: 不是 Go regex 引擎 bug，是 `Compile()` 未预编译 + 按值传递导致 nil regex。
+
+### Panic 日志注入
+
+在怀疑 panic 的位置加 `defer/recover`，**同时打印 panic value 和关键的上下文变量**：
+
+```go
+func() {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf("PANIC in rule %s: %v, input_len=%d, compiled=%v",
+                rule.Name, r, len(result), rule.compiled != nil)
+        }
+    }()
+    result = rule.compiled.ReplaceAllStringFunc(result, func(s string) string {
+        return sanitizeByType(rule.Name, s)
+    })
+}()
+```
+
+注意 `defer/recover` 只捕获当前 goroutine 的 panic，且必须在直接调用链上。
+
+### Debug 日志分层
+
+按模块加前缀便于 grep 过滤：
+
+```
+[DEBUG chat]      — chat_service.go: handler 路由、RunStream 错误
+[DEBUG security]  — auditor.go: AuditOutput 每个规则、panic、耗时
+[DEBUG]           — engine.go: RunStream 内部（ChatStream 进入/退出、callback）
+[DEBUG]           — mockllm: responses POST/DELETE、chat request、popResponse
+```
+
+不要写 `fmt.Println` 或无前缀 `log.Printf`，统一用 `log.Printf("[DEBUG module] message")` 格式。
