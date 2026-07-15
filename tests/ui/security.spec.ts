@@ -10,6 +10,8 @@ const MOCK_TOKEN = 'test-admin-token';
 function mockKey(msg: string): string {
   return crypto.createHash('sha256').update(msg).digest('hex');
 }
+
+/**
  * Security layer E2E tests — SPEC-038
  *
  * Uses mock model service for all tests (no real LLM calls).
