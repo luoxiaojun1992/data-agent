@@ -63,6 +63,37 @@
 }
 ```
 
+**邀请链接域名配置**:
+
+`invite_url` 的 base URL 从系统配置读取，支持运行时变更：
+
+| 来源 | 优先级 | 说明 |
+|------|:---:|------|
+| 环境变量 `INVITE_BASE_URL` | 高 | Docker/K8s 部署时注入 |
+| 系统配置集合 `sys_config` | 中 | 管理后台「系统配置」页修改，热更新 |
+| 默认值 `http://localhost:3000` | 低 | 开发环境回退值 |
+
+读取逻辑：
+```go
+func GetInviteBaseURL() string {
+    // 1. 环境变量
+    if u := os.Getenv("INVITE_BASE_URL"); u != "" {
+        return strings.TrimRight(u, "/")
+    }
+    // 2. 系统配置（热更新，通过 UpdateRules 机制）
+    if cfg, _ := sysConfigRepo.Get("invite_base_url"); cfg != nil {
+        return strings.TrimRight(cfg.Value, "/")
+    }
+    // 3. 默认值
+    return "http://localhost:3000"
+}
+```
+
+拼接示例：
+```go
+inviteURL := fmt.Sprintf("%s/register?token=%s", GetInviteBaseURL(), token)
+```
+
 **Token 生成算法** (Go stdlib):
 ```go
 // payload = invite_id + ":" + expire_unix + ":" + email + ":" + role
