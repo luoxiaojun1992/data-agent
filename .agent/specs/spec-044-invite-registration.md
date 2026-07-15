@@ -45,11 +45,24 @@
 
 **权限**: `system_admin`, `admin`
 
+**角色邀请权限矩阵**:
+
+| 邀请人角色 | 可邀请 `user` | 可邀请 `admin` |
+|:---|:---:|:---:|
+| `system_admin` | ✅ | ✅ |
+| `admin` | ✅ | ❌ |
+| `user` | ❌ | ❌ |
+
+**规则**:
+- `system_admin` 可邀请任意角色（包括 `admin`），邀请 `admin` 时需额外确认
+- `admin` 只能邀请 `user` 角色，若指定 `role: "admin"` → `403 Cannot invite role higher than your own`
+- 两个角色都不能邀请 `system_admin` — 该角色仅通过系统初始化创建
+
 **请求体**:
 ```json
 {
     "email": "newuser@company.com",     // 可选，预填邮箱
-    "role": "user",                      // 默认 "user"，admin 可指定
+    "role": "user",                      // 默认 "user"，system_admin 可设 "admin"
     "expire_hours": 24                   // 默认 24h，可选 1-168（7天）
 }
 ```
@@ -218,6 +231,7 @@ type Invite struct {
 | 重放攻击 | `status: "used"` 后立即拒绝；used 状态不可逆 |
 | 密钥泄露 | 密钥存 Vault/环境变量；支持轮换（多密钥验证，新邀请用新密钥签） |
 | 注册绕过 | `/register` 无 token 直接返回 400；前端路由守卫 |
+| 权限越权 | `admin` 邀请 `admin` → 403；`user` 访问邀请 API → 403；禁止邀请 `system_admin` |
 
 ## 9. 用户模型变更
 
@@ -307,5 +321,8 @@ type User struct {
 | 注册使用已使用 token | 409 |
 | 非 admin 生成邀请 | 403 |
 | admin 生成邀请 | 201 + 返回 invite_url |
+| admin 尝试邀请 admin 角色 | 403 Cannot invite role higher than your own |
+| system_admin 邀请 admin 角色 | 201 + role=admin 的 invite_url |
+| system_admin 尝试邀请 system_admin | 400 Cannot invite system_admin role |
 | admin 撤销邀请 | 200 + status 变为 expired |
 | 同一 email 可多发邀请（不同的 token） | 每个独立有效 |
