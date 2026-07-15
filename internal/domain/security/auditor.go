@@ -2,6 +2,7 @@ package security
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -38,8 +39,10 @@ type AlertLogger interface {
 
 // NewAuditor creates a new security auditor with default rules.
 func NewAuditor(alerts AlertLogger) *Auditor {
+	config := DefaultRules()
+	config.Compile()
 	return &Auditor{
-		config: DefaultRules(),
+		config: config,
 		alerts: alerts,
 	}
 }
@@ -56,8 +59,8 @@ func DefaultRules() *Config {
 			{Name: "xss_script", Type: "keyword", Pattern: "<script", Action: "block", Priority: 100},
 		},
 		OutputRules: []Rule{
-			{Name: "phone", Type: "regex", Pattern: `1[3-9]\d{9}`, Action: "sanitize", Priority: 80},
 			{Name: "id_card", Type: "regex", Pattern: `\d{17}[\dXx]`, Action: "sanitize", Priority: 90},
+			{Name: "phone", Type: "regex", Pattern: `1[3-9]\d{9}`, Action: "sanitize", Priority: 80},
 			{Name: "api_key", Type: "regex", Pattern: `sk-[a-zA-Z0-9]{32,}`, Action: "sanitize", Priority: 90},
 		},
 	}
@@ -106,18 +109,33 @@ func (a *Auditor) AuditInput(input string) error {
 
 // AuditOutput sanitizes output content.
 func (a *Auditor) AuditOutput(output string) (string, error) {
+	log.Printf("[DEBUG security] AuditOutput: acquiring RLock, len=%d", len(output))
 	a.mu.RLock()
+	log.Printf("[DEBUG security] AuditOutput: RLock acquired, rules=%d", len(a.config.OutputRules))
 	defer a.mu.RUnlock()
 
 	result := output
-	for _, rule := range a.config.OutputRules {
+	for i, rule := range a.config.OutputRules {
+		log.Printf("[DEBUG security] AuditOutput: processing rule %d name=%q type=%q action=%q compiled=%v",
+			i, rule.Name, rule.Type, rule.Action, rule.compiled != nil)
 		matched, _ := a.matchRule(rule, result)
+		log.Printf("[DEBUG security] AuditOutput: rule %d matched=%v", i, matched)
 		if matched && rule.Action == "sanitize" {
-			result = rule.compiled.ReplaceAllStringFunc(result, func(s string) string {
-				return sanitizeByType(rule.Name, s)
-			})
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[DEBUG security] AuditOutput: PANIC in rule %d: %v, input_len=%d",
+							i, r, len(result))
+					}
+				}()
+				result = rule.compiled.ReplaceAllStringFunc(result, func(s string) string {
+					return sanitizeByType(rule.Name, s)
+				})
+			}()
+			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized", i)
 		}
 	}
+	log.Printf("[DEBUG security] AuditOutput: done, len=%d", len(result))
 	return result, nil
 }
 

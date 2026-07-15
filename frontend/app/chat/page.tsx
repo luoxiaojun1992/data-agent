@@ -206,7 +206,7 @@ export default function ChatPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify({ session_id: sid, message: userMsg.content }),
+        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true }),
       });
       if (!res.ok) throw new Error('Chat request failed');
       const reader = res.body?.getReader();
@@ -226,6 +226,10 @@ export default function ChatPage() {
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
+              if (parsed.error) {
+                streamingRef.current = `Error: ${parsed.error}`;
+                continue;
+              }
               const chunk = parsed.content || parsed.choices?.[0]?.delta?.content || '';
               if (chunk) streamingRef.current += chunk;
             } catch { /* skip */ }
@@ -235,8 +239,8 @@ export default function ChatPage() {
         if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
         flushTimerRef.current = setTimeout(flushToState, FLUSH_INTERVAL);
       }
-    } catch {
-      streamingRef.current = 'Error: Failed to get response from server.';
+    } catch (err: any) {
+      streamingRef.current = err?.message || 'Error: Failed to get response from server.';
     } finally {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       flushToState(); // final flush

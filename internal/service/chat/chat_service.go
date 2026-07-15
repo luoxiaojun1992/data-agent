@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -32,10 +33,11 @@ func NewService(engine *agent.Engine, sessions *Manager, auditor *security.Audit
 
 // ChatRequest represents an incoming chat request.
 type ChatRequest struct {
-	SessionID string           `json:"session_id,omitempty"`
-	Model     string           `json:"model,omitempty"`
-	Messages  []agent.Message  `json:"messages"`
-	Stream    bool             `json:"stream"`
+	SessionID string          `json:"session_id,omitempty"`
+	Model     string          `json:"model,omitempty"`
+	Messages  []agent.Message `json:"messages"`
+	Message   string          `json:"message,omitempty"` // legacy single-message field from frontend
+	Stream    bool            `json:"stream"`
 }
 
 // HandleChat handles a chat completion request with optional SSE streaming.
@@ -44,6 +46,11 @@ func (s *Service) HandleChat(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
+	}
+
+	// Convert legacy single message to messages array
+	if len(req.Messages) == 0 && req.Message != "" {
+		req.Messages = []agent.Message{{Role: "user", Content: req.Message}}
 	}
 
 	if len(req.Messages) == 0 {
@@ -78,10 +85,12 @@ func (s *Service) HandleChat(c *gin.Context) {
 
 	// Stream mode
 	if req.Stream {
+		log.Printf("[DEBUG chat] HandleChat: routing to handleStream, stream=%v", req.Stream)
 		s.handleStream(c, req)
 		return
 	}
 
+	log.Printf("[DEBUG chat] HandleChat: routing to non-stream, messages=%d", len(req.Messages))
 	// Non-stream mode
 	agentReq := agent.ChatRequest{
 		Model:    req.Model,
@@ -129,6 +138,10 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest) {
 		Messages: req.Messages,
 	}
 
+	log.Printf("[DEBUG chat] handleStream: model=%q messages=%d stream=%v first_msg=%q",
+		req.Model, len(req.Messages), req.Stream,
+		func() string { if len(req.Messages) > 0 { return req.Messages[0].Content }; return "" }())
+
 	err := s.engine.RunStream(c.Request.Context(), agentReq, func(chunk string) error {
 		data, _ := json.Marshal(map[string]string{"content": chunk})
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(data))
@@ -137,6 +150,7 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest) {
 	})
 
 	if err != nil {
+		log.Printf("[DEBUG chat] RunStream error: %v", err)
 		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(errData))
 		flusher.Flush()

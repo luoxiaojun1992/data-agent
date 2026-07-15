@@ -3,9 +3,18 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
 	"sync"
 	"time"
 )
+
+func firstN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
 
 // LLMProvider defines the interface for language model providers.
 type LLMProvider interface {
@@ -216,14 +225,51 @@ func (e *Engine) Run(ctx context.Context, req ChatRequest) (*ChatResponse, error
 	return resp, nil
 }
 
-// RunStream executes a streaming chat completion.
+// RunStream executes a streaming chat completion with security audit on I/O.
 func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(chunk string) error) error {
+	if e.security != nil {
+		// Security audit on input
+		for _, msg := range req.Messages {
+			if err := e.security.AuditInput(msg.Content); err != nil {
+				return fmt.Errorf("input audit failed: %w", err)
+			}
+		}
+		// Accumulate full response, then sanitize (regexes may span chunk boundaries)
+		var full strings.Builder
+		log.Printf("[DEBUG] RunStream: calling ChatStream for msg=%q", req.Messages[len(req.Messages)-1].Content)
+		err := e.router.ChatStream(ctx, req.Model, req, func(chunk string) error {
+			full.WriteString(chunk)
+			return nil
+		})
+		log.Printf("[DEBUG] RunStream: ChatStream returned, err=%v full_len=%d", err, full.Len())
+		if err != nil {
+			return err
+		}
+		log.Printf("[DEBUG] RunStream: calling AuditOutput on %d bytes", full.Len())
+		sanitized, auditErr := e.security.AuditOutput(full.String())
+		log.Printf("[DEBUG] RunStream: AuditOutput returned, sanitized_len=%d err=%v", len(sanitized), auditErr)
+		if auditErr != nil {
+			return fmt.Errorf("output audit failed: %w", auditErr)
+		}
+		log.Printf("[DEBUG] RunStream sanitized: full_len=%d sanitized_len=%d first_50=%q",
+			full.Len(), len(sanitized), firstN(sanitized, 50))
+		log.Printf("[DEBUG] RunStream: calling outer callback with %d bytes", len(sanitized))
+		err = callback(sanitized)
+		log.Printf("[DEBUG] RunStream: outer callback returned, err=%v", err)
+		return err
+	}
 	return e.router.ChatStream(ctx, req.Model, req, callback)
 }
 
 // Chat sends a chat completion through the router.
 func (r *Router) Chat(ctx context.Context, modelName string, req ChatRequest) (*ChatResponse, error) {
-	cfg, err := r.GetModel(modelName)
+	var cfg *ModelConfig
+	var err error
+	if modelName == "" {
+		cfg, err = r.GetDefaultModel()
+	} else {
+		cfg, err = r.GetModel(modelName)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +294,13 @@ func (r *Router) Chat(ctx context.Context, modelName string, req ChatRequest) (*
 
 // ChatStream sends a streaming chat completion through the router.
 func (r *Router) ChatStream(ctx context.Context, modelName string, req ChatRequest, callback func(chunk string) error) error {
-	cfg, err := r.GetModel(modelName)
+	var cfg *ModelConfig
+	var err error
+	if modelName == "" {
+		cfg, err = r.GetDefaultModel()
+	} else {
+		cfg, err = r.GetModel(modelName)
+	}
 	if err != nil {
 		return err
 	}
