@@ -32,10 +32,11 @@ func NewService(engine *agent.Engine, sessions *Manager, auditor *security.Audit
 
 // ChatRequest represents an incoming chat request.
 type ChatRequest struct {
-	SessionID string           `json:"session_id,omitempty"`
-	Model     string           `json:"model,omitempty"`
-	Messages  []agent.Message  `json:"messages"`
-	Stream    bool             `json:"stream"`
+	SessionID string          `json:"session_id,omitempty"`
+	Model     string          `json:"model,omitempty"`
+	Messages  []agent.Message `json:"messages"`
+	Message   string          `json:"message,omitempty"` // legacy single-message field from frontend
+	Stream    bool            `json:"stream"`
 }
 
 // HandleChat handles a chat completion request with optional SSE streaming.
@@ -44,6 +45,11 @@ func (s *Service) HandleChat(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
+	}
+
+	// Convert legacy single message to messages array
+	if len(req.Messages) == 0 && req.Message != "" {
+		req.Messages = []agent.Message{{Role: "user", Content: req.Message}}
 	}
 
 	if len(req.Messages) == 0 {
