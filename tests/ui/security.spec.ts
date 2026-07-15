@@ -77,6 +77,9 @@ test.describe('SEC — SPEC-038', () => {
 
   // ═══ UI-185: 输出敏感信息脱敏 ═══
   test('[UI-185] Sec — 输出敏感信息脱敏', async ({ page, request }) => {
+    // Clear any page.route() from previous tests
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+
     // Inject mock LLM response with unmasked data.
     // Backend RunStream security audit will sanitize: 13812345678→138****5678
     const msg = '查询用户信息';
@@ -115,6 +118,9 @@ test.describe('SEC — SPEC-038', () => {
 
   // ═══ UI-186: 越权工具调用被拦截 ═══
   test('[UI-186] Sec — 越权工具调用被拦截', async ({ page, request }) => {
+    // Clear any page.route() from previous tests
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+
     // Create a regular user (not admin)
     const regularUser = { username: `e2e-sec-reg-${uid}@test.local`, password: 'RegularTest1', role: 'user' };
     await request.post('http://data-agent:8080/api/v1/auth/register', { data: regularUser });
