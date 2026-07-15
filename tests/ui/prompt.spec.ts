@@ -83,7 +83,7 @@ test.describe.serial('PROMPT — SPEC-033', () => {
 
     // Button back to normal (skip transient "增强中" — too fast to catch reliably)
     await expect(page.locator('[data-testid="chat-enhance-btn"]')).toContainText('增强');
-  });  });
+  });
 
   // ═══ UI-159: 增强后手动编辑再发送 ═══
   test('[UI-159] Prompt — 增强后手动编辑再发送', async ({ page, request }) => {
