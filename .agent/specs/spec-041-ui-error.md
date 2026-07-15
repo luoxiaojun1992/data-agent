@@ -1,6 +1,6 @@
 # UI E2E 测试设计 — 错误状态与边界条件 (ERR)
 
-> **SPEC-041** | Status: 设计中 | Date: 2026-07-09 | Phase: P8
+> **SPEC-041** | Status: 已实现 | Date: 2026-07-09 | Phase: P8
 
 ## 1. 目标
 
