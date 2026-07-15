@@ -226,6 +226,10 @@ export default function ChatPage() {
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
+              if (parsed.error) {
+                streamingRef.current = `Error: ${parsed.error}`;
+                continue;
+              }
               const chunk = parsed.content || parsed.choices?.[0]?.delta?.content || '';
               if (chunk) streamingRef.current += chunk;
             } catch { /* skip */ }
