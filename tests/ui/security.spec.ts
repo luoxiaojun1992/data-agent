@@ -6,9 +6,9 @@ const USER = { username: `e2e-sec-${uid}@test.local`, password: 'SecurityTest1',
 const MOCKLLM_URL = 'http://mockllm:8082';
 const MOCK_TOKEN = 'test-admin-token';
 
-/** Compute mockllm lookup key: first 8 bytes of SHA256, as hex (matches Go's hash[:8]) */
+/** Compute mockllm lookup key: full SHA256 hex (matches Go's Sum256) */
 function mockKey(msg: string): string {
-  return crypto.createHash('sha256').update(msg).digest().slice(0, 8).toString('hex');
+  return crypto.createHash('sha256').update(msg).digest('hex');
 }
  * Security layer E2E tests — SPEC-038
  *

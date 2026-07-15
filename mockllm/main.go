@@ -133,10 +133,10 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 			return
 		}
 
-		// Generate lookup key from last message content
+		// Generate lookup key from last message content (full SHA256 hash)
 		lastContent := req.Messages[len(req.Messages)-1].Content
 		hash := sha256.Sum256([]byte(lastContent))
-		lookupKey := fmt.Sprintf("mock:resp:%x", hash[:8])
+		lookupKey := fmt.Sprintf("mock:resp:%x", hash)
 
 		// Look up response in Redis
 		ctx := context.Background()
