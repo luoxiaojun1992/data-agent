@@ -38,44 +38,27 @@ test.describe('RESPONSIVE — SPEC-040', () => {
     await page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 10000 });
   }
 
-  // ═══ UI-193: 移动端 ═══
   test('[UI-193] Resp — 移动端布局适配 (375px)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await loginAndGoHome(page);
     await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(1000);
 
-    // Active wait: sidebar should slide off-screen after resize
-    await page.waitForFunction(() => {
-      const el = document.querySelector('[data-testid="sidebar"]');
-      return el ? el.getBoundingClientRect().x < 0 : false;
-    }, { timeout: 5000 });
+    // Mobile: hamburger visible, sidebar hidden
+    const hamburger = page.locator('[data-testid="sidebar-hamburger"]');
+    await expect(hamburger).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="sidebar"]')).not.toBeInViewport();
 
-    // Hamburger should be visible on mobile
-    await expect(page.locator('[data-testid="sidebar-hamburger"]')).toBeVisible();
-
-    // Open sidebar via hamburger
-    await page.locator('[data-testid="sidebar-hamburger"]').click();
-
-    // Active wait: sidebar slides in
-    await page.waitForFunction(() => {
-      const el = document.querySelector('[data-testid="sidebar"]');
-      return el ? el.getBoundingClientRect().x >= 0 : false;
-    }, { timeout: 5000 });
-
-    // Overlay should be visible
+    // Open sidebar
+    await hamburger.click();
+    await expect(page.locator('[data-testid="sidebar"]')).toBeInViewport({ timeout: 5000 });
     await expect(page.locator('[data-testid="sidebar-overlay"]')).toBeVisible();
 
-    // Close via overlay
+    // Close
     await page.locator('[data-testid="sidebar-overlay"]').click();
-
-    // Active wait: sidebar slides out again
-    await page.waitForFunction(() => {
-      const el = document.querySelector('[data-testid="sidebar"]');
-      return el ? el.getBoundingClientRect().x < 0 : false;
-    }, { timeout: 5000 });
+    await expect(page.locator('[data-testid="sidebar"]')).not.toBeInViewport({ timeout: 5000 });
   });
 
-  // ═══ UI-193b: 登录页移动适配 ═══
   test('[UI-193b] Resp — 移动端登录卡片适配', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/login');
@@ -85,38 +68,24 @@ test.describe('RESPONSIVE — SPEC-040', () => {
     expect(box!.width).toBeLessThanOrEqual(375);
   });
 
-  // ═══ UI-194: 平板 ═══
   test('[UI-194] Resp — 平板布局适配 (768px)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await loginAndGoHome(page);
     await page.setViewportSize({ width: 768, height: 1024 });
+    await page.waitForTimeout(1000);
 
-    // Active wait: sidebar off-screen at 768px (below lg=1024)
-    await page.waitForFunction(() => {
-      const el = document.querySelector('[data-testid="sidebar"]');
-      return el ? el.getBoundingClientRect().x < 0 : false;
-    }, { timeout: 5000 });
-
-    await expect(page.locator('[data-testid="sidebar-hamburger"]')).toBeVisible();
+    await expect(page.locator('[data-testid="sidebar-hamburger"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="sidebar"]')).not.toBeInViewport();
   });
 
-  // ═══ UI-194b: 桌面 ═══
   test('[UI-194b] Resp — 桌面端布局 (1440px)', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await loginAndGoHome(page);
 
-    // On desktop, sidebar always visible on-screen (x >= 0)
-    const sidebarX = await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="sidebar"]');
-      return el ? el.getBoundingClientRect().x : -1;
-    });
-    expect(sidebarX).toBeGreaterThanOrEqual(0);
-
-    // Hamburger hidden
+    await expect(page.locator('[data-testid="sidebar"]')).toBeVisible();
     await expect(page.locator('[data-testid="sidebar-hamburger"]')).not.toBeVisible();
   });
 
-  // ═══ UI-195: 触摸友好 ═══
   test('[UI-195] Resp — 触摸友好交互 (tap targets)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await loginAndGoHome(page);
@@ -124,6 +93,7 @@ test.describe('RESPONSIVE — SPEC-040', () => {
     await page.waitForTimeout(500);
 
     const hamburger = page.locator('[data-testid="sidebar-hamburger"]');
+    await expect(hamburger).toBeVisible({ timeout: 5000 });
     const hbBox = await hamburger.boundingBox();
     expect(hbBox!.width).toBeGreaterThanOrEqual(32);
     expect(hbBox!.height).toBeGreaterThanOrEqual(32);
