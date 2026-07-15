@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -225,14 +226,20 @@ func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(c
 				return fmt.Errorf("input audit failed: %w", err)
 			}
 		}
-		// Stream with per-chunk output sanitization
-		return e.router.ChatStream(ctx, req.Model, req, func(chunk string) error {
-			sanitized, err := e.security.AuditOutput(chunk)
-			if err != nil {
-				return fmt.Errorf("output audit failed: %w", err)
-			}
-			return callback(sanitized)
+		// Accumulate full response, then sanitize (regexes may span chunk boundaries)
+		var full strings.Builder
+		err := e.router.ChatStream(ctx, req.Model, req, func(chunk string) error {
+			full.WriteString(chunk)
+			return nil
 		})
+		if err != nil {
+			return err
+		}
+		sanitized, auditErr := e.security.AuditOutput(full.String())
+		if auditErr != nil {
+			return fmt.Errorf("output audit failed: %w", auditErr)
+		}
+		return callback(sanitized)
 	}
 	return e.router.ChatStream(ctx, req.Model, req, callback)
 }
