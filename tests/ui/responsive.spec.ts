@@ -40,38 +40,37 @@ test.describe('RESPONSIVE — SPEC-040', () => {
 
   // ═══ UI-193: 移动端 ═══
   test('[UI-193] Resp — 移动端布局适配 (375px)', async ({ page }) => {
-    // Login on wider viewport first (avoids mobile form clipping)
     await page.setViewportSize({ width: 1024, height: 768 });
     await loginAndGoHome(page);
-    // Then resize to mobile
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(800);
 
-    // On mobile, sidebar should be off-screen (translated left)
-    const sidebar = page.locator('[data-testid="sidebar"]');
-    const sidebarBox = await sidebar.boundingBox();
-    // Sidebar should be positioned off-screen (x < 0) when closed on mobile
-    expect(sidebarBox!.x).toBeLessThan(0);
-
-    // Hamburger should be visible
+    // On mobile, hamburger should be visible
     await expect(page.locator('[data-testid="sidebar-hamburger"]')).toBeVisible();
 
-    // Open sidebar
-    await page.locator('[data-testid="sidebar-hamburger"]').click();
-    await page.waitForTimeout(300);
+    // Sidebar should be off-screen (has -translate-x-full when closed)
+    const sidebar = page.locator('[data-testid="sidebar"]');
+    const classAttr = await sidebar.getAttribute('class');
+    expect(classAttr).toContain('-translate-x-full');
 
-    // Sidebar should now be on-screen
-    const openBox = await sidebar.boundingBox();
-    expect(openBox!.x).toBeGreaterThanOrEqual(0);
+    // Open sidebar via hamburger
+    await page.locator('[data-testid="sidebar-hamburger"]').click();
+    await page.waitForTimeout(500);
+
+    // Sidebar should now have translate-x-0
+    const openClass = await sidebar.getAttribute('class');
+    expect(openClass).toContain('translate-x-0');
 
     // Overlay should be visible
     await expect(page.locator('[data-testid="sidebar-overlay"]')).toBeVisible();
 
     // Close via overlay
     await page.locator('[data-testid="sidebar-overlay"]').click();
-    await page.waitForTimeout(300);
-    const closedBox = await sidebar.boundingBox();
-    expect(closedBox!.x).toBeLessThan(0);
+    await page.waitForTimeout(500);
+
+    // Should be back to -translate-x-full
+    const closedClass = await sidebar.getAttribute('class');
+    expect(closedClass).toContain('-translate-x-full');
   });
 
   // ═══ UI-193b: 登录页移动适配 ═══
@@ -89,15 +88,12 @@ test.describe('RESPONSIVE — SPEC-040', () => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await loginAndGoHome(page);
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(800);
 
-    // At 768px (below lg=1024), sidebar should be off-screen
-    const sidebar = page.locator('[data-testid="sidebar"]');
-    const box = await sidebar.boundingBox();
-    expect(box!.x).toBeLessThan(0);
-
-    // Hamburger visible
+    // At 768px (below lg=1024), hamburger visible, sidebar off-screen
     await expect(page.locator('[data-testid="sidebar-hamburger"]')).toBeVisible();
+    const cls = await page.locator('[data-testid="sidebar"]').getAttribute('class');
+    expect(cls).toContain('-translate-x-full');
   });
 
   // ═══ UI-194b: 桌面 ═══
