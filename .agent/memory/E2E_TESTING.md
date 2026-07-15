@@ -122,8 +122,14 @@
 | UI-184 | Sec — SQL 注入被拦（input audit） | ✅ 已实现 |
 | UI-185 | Sec — 输出敏感信息脱敏（output sanitize） | ✅ 已实现 |
 | UI-186 | Sec — 越权工具调用被拦（RBAC） | ✅ 已实现 |
+| UI-187 | RBAC — user 可见导航项 | ✅ 已实现 |
+| UI-188 | RBAC — admin 可见导航项 | ✅ 已实现 |
+| UI-189 | RBAC — system_admin 可见全部 | ✅ 已实现 |
+| UI-190 | RBAC — user 无法访问 /admin | ✅ 已实现 |
+| UI-191 | RBAC — user 无法访问模型配置 | ✅ 已实现 |
+| UI-192 | RBAC — user 无法创建 Agent 任务 | ✅ 已实现 |
 
-**合计**: 102 个真实用例 + 7 个手动测试用例
+**合计**: 108 个真实用例 + 7 个手动测试用例
 
 ## data-testid 命名规范
 
