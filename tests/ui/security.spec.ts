@@ -93,7 +93,9 @@ test.describe('SEC — SPEC-038', () => {
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
 
     await page.locator('[data-testid="chat-input"]').fill(msg);
+    console.log('[UI-185] about to click send');
     await page.locator('[data-testid="chat-send-btn"]').click();
+    console.log('[UI-185] send clicked');
 
     // Wait for backend → mockllm → audit → UI
     const aiMsg = page.locator('[data-testid="chat-msg-ai-1"]');
