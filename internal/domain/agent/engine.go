@@ -236,10 +236,12 @@ func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(c
 		}
 		// Accumulate full response, then sanitize (regexes may span chunk boundaries)
 		var full strings.Builder
+		log.Printf("[DEBUG] RunStream: calling ChatStream for msg=%q", req.Messages[len(req.Messages)-1].Content)
 		err := e.router.ChatStream(ctx, req.Model, req, func(chunk string) error {
 			full.WriteString(chunk)
 			return nil
 		})
+		log.Printf("[DEBUG] RunStream: ChatStream returned, err=%v full_len=%d", err, full.Len())
 		if err != nil {
 			return err
 		}
