@@ -116,16 +116,23 @@ func (a *Auditor) AuditOutput(output string) (string, error) {
 
 	result := output
 	for i, rule := range a.config.OutputRules {
-		log.Printf("[DEBUG security] AuditOutput: processing rule %d name=%q type=%q action=%q", i, rule.Name, rule.Type, rule.Action)
+		log.Printf("[DEBUG security] AuditOutput: processing rule %d name=%q type=%q action=%q compiled=%v",
+			i, rule.Name, rule.Type, rule.Action, rule.compiled != nil)
 		matched, _ := a.matchRule(rule, result)
 		log.Printf("[DEBUG security] AuditOutput: rule %d matched=%v", i, matched)
 		if matched && rule.Action == "sanitize" {
-			matches := rule.compiled.FindAllString(result, -1)
-			for _, m := range matches {
-				// Skip if this match is inside a longer already-masked sequence
-				result = strings.Replace(result, m, sanitizeByType(rule.Name, m), 1)
-			}
-			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized (%d matches)", i, len(matches))
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[DEBUG security] AuditOutput: PANIC in rule %d: %v, input_len=%d",
+							i, r, len(result))
+					}
+				}()
+				result = rule.compiled.ReplaceAllStringFunc(result, func(s string) string {
+					return sanitizeByType(rule.Name, s)
+				})
+			}()
+			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized", i)
 		}
 	}
 	log.Printf("[DEBUG security] AuditOutput: done, len=%d", len(result))
