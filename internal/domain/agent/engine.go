@@ -216,8 +216,24 @@ func (e *Engine) Run(ctx context.Context, req ChatRequest) (*ChatResponse, error
 	return resp, nil
 }
 
-// RunStream executes a streaming chat completion.
+// RunStream executes a streaming chat completion with security audit on I/O.
 func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(chunk string) error) error {
+	if e.security != nil {
+		// Security audit on input
+		for _, msg := range req.Messages {
+			if err := e.security.AuditInput(msg.Content); err != nil {
+				return fmt.Errorf("input audit failed: %w", err)
+			}
+		}
+		// Stream with per-chunk output sanitization
+		return e.router.ChatStream(ctx, req.Model, req, func(chunk string) error {
+			sanitized, err := e.security.AuditOutput(chunk)
+			if err != nil {
+				return fmt.Errorf("output audit failed: %w", err)
+			}
+			return callback(sanitized)
+		})
+	}
 	return e.router.ChatStream(ctx, req.Model, req, callback)
 }
 

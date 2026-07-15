@@ -235,8 +235,8 @@ export default function ChatPage() {
         if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
         flushTimerRef.current = setTimeout(flushToState, FLUSH_INTERVAL);
       }
-    } catch {
-      streamingRef.current = 'Error: Failed to get response from server.';
+    } catch (err: any) {
+      streamingRef.current = err?.message || 'Error: Failed to get response from server.';
     } finally {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       flushToState(); // final flush
