@@ -39,8 +39,10 @@ type AlertLogger interface {
 
 // NewAuditor creates a new security auditor with default rules.
 func NewAuditor(alerts AlertLogger) *Auditor {
+	config := DefaultRules()
+	config.Compile()
 	return &Auditor{
-		config: DefaultRules(),
+		config: config,
 		alerts: alerts,
 	}
 }
