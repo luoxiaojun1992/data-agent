@@ -186,24 +186,6 @@ func (a *Auditor) logAlert(level, category, message string, details map[string]i
 	}
 }
 
-func sanitizeByType(ruleName, s string) string {
-	switch ruleName {
-	case "phone":
-		if len(s) == 11 {
-			return s[:3] + "****" + s[7:]
-		}
-	case "id_card":
-		if len(s) == 18 {
-			return s[:3] + "***********" + s[14:]
-		}
-	case "api_key":
-		if len(s) > 8 {
-			return s[:4] + "****"
-		}
-	}
-	return "***"
-}
-
 // sanitizeMatches applies rule-based sanitization without regexp to avoid
 // potential hangs on mixed UTF-8+digit content in certain Go runtime environments.
 func sanitizeMatches(s string, rule Rule) string {
