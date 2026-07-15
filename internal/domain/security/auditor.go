@@ -57,8 +57,8 @@ func DefaultRules() *Config {
 			{Name: "xss_script", Type: "keyword", Pattern: "<script", Action: "block", Priority: 100},
 		},
 		OutputRules: []Rule{
-			{Name: "phone", Type: "regex", Pattern: `1[3-9]\d{9}`, Action: "sanitize", Priority: 80},
 			{Name: "id_card", Type: "regex", Pattern: `\d{17}[\dXx]`, Action: "sanitize", Priority: 90},
+			{Name: "phone", Type: "regex", Pattern: `1[3-9]\d{9}`, Action: "sanitize", Priority: 80},
 			{Name: "api_key", Type: "regex", Pattern: `sk-[a-zA-Z0-9]{32,}`, Action: "sanitize", Priority: 90},
 		},
 	}
@@ -120,9 +120,10 @@ func (a *Auditor) AuditOutput(output string) (string, error) {
 		if matched && rule.Action == "sanitize" {
 			matches := rule.compiled.FindAllString(result, -1)
 			for _, m := range matches {
+				// Skip if this match is inside a longer already-masked sequence
 				result = strings.Replace(result, m, sanitizeByType(rule.Name, m), 1)
 			}
-			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized", i)
+			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized (%d matches)", i, len(matches))
 		}
 	}
 	log.Printf("[DEBUG security] AuditOutput: done, len=%d", len(result))
