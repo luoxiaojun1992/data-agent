@@ -137,6 +137,8 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 		lastContent := req.Messages[len(req.Messages)-1].Content
 		hash := sha256.Sum256([]byte(lastContent))
 		lookupKey := fmt.Sprintf("mock:resp:%x", hash)
+		log.Printf("[DEBUG] chat request: model=%s messages=%d last_msg_len=%d last_msg=%q hash=%x key=%s",
+			req.Model, len(req.Messages), len(lastContent), lastContent, hash, lookupKey)
 
 		// Look up response in Redis
 		ctx := context.Background()
@@ -152,14 +154,14 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 
 // popResponse tries exact match first, then returns default.
 func popResponse(ctx context.Context, rdb *redis.Client, exactKey, defaultReply string) string {
+	log.Printf("[DEBUG] popResponse: looking up key=%s", exactKey)
 	// Exact match
 	if val, err := rdb.LPop(ctx, exactKey).Result(); err == nil && val != "" {
-		log.Printf("response found: exact key=%s", exactKey)
+		log.Printf("[DEBUG] popResponse: FOUND exact match, val_len=%d", len(val))
 		return val
 	}
 
-	// Default reply
-	log.Printf("no response configured for key=%s, returning default", exactKey)
+	log.Printf("[DEBUG] popResponse: no exact match, returning default (len=%d)", len(defaultReply))
 	return defaultReply
 }
 
@@ -304,6 +306,8 @@ func responsesHandler(rdb *redis.Client, adminToken string) http.HandlerFunc {
 			// Hash key to match lookup format (SHA256 full hex)
 			keyHash := sha256.Sum256([]byte(payload.Key))
 			redisKey := "mock:resp:" + fmt.Sprintf("%x", keyHash)
+			log.Printf("[DEBUG] responses POST: raw_key=%q raw_key_len=%d hash=%x redis_key=%s response_len=%d",
+				payload.Key, len(payload.Key), keyHash, redisKey, len(payload.Response))
 			if err := rdb.LPush(ctx, redisKey, payload.Response).Err(); err != nil {
 				http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusInternalServerError)
 				return
@@ -334,6 +338,7 @@ func responsesHandler(rdb *redis.Client, adminToken string) http.HandlerFunc {
 			for _, key := range keys {
 				rdb.Del(ctx, key)
 			}
+			log.Printf("[DEBUG] responses DELETE: clearing %d keys: %v", len(keys), keys)
 			log.Printf("all responses cleared (%d keys)", len(keys))
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]interface{}{
