@@ -3,10 +3,18 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
 )
+
+func firstN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
 
 // LLMProvider defines the interface for language model providers.
 type LLMProvider interface {
@@ -239,6 +247,8 @@ func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(c
 		if auditErr != nil {
 			return fmt.Errorf("output audit failed: %w", auditErr)
 		}
+		log.Printf("[DEBUG] RunStream sanitized: full_len=%d sanitized_len=%d first_50=%q",
+			full.Len(), len(sanitized), firstN(sanitized, 50))
 		return callback(sanitized)
 	}
 	return e.router.ChatStream(ctx, req.Model, req, callback)
