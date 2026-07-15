@@ -126,6 +126,50 @@ func GenerateInviteToken(inviteID string, expireAt time.Time, email, role string
 - 验证时先查 HMAC 签名，再查 DB 状态（防止重放）
 - Token 在 URL 中使用 `base64.RawURLEncoding`（URL-safe，无填充）
 
+**签名密钥管理**:
+
+| 来源 | 优先级 | 说明 |
+|------|:---:|------|
+| 环境变量 `INVITE_HMAC_SECRET` | 高 | Docker/K8s 部署时注入，优先使用 |
+| Vault `secret/data/invite` | 中 | 运行时从 Vault 读取，system_admin 可通过管理后台修改 |
+| 错误 | — | 两者都没有 → 服务启动失败，Fatal log |
+
+特权操作限制：
+- **仅 `system_admin`** 可在管理后台修改 `INVITE_HMAC_SECRET`（写入 Vault）
+- `admin` 可查看邀请列表、生成/撤销邀请，但**不能**修改签名密钥
+- 密钥修改后，旧 token 不受影响（验证时使用签发时的密钥版本，见密钥轮换策略）
+
+**密钥轮换策略**:
+```
+密钥版本化存储格式（Vault）:
+{
+  "current": "v2_secret_xxx",
+  "previous": "v1_secret_yyy"     // 保留上一版，旧 token 仍可验证
+}
+```
+- 修改密钥时，旧密钥保留为 `previous`，新密钥写入 `current`
+- 验证 token 时：先用 `current` 验，失败再用 `previous` 验
+- `previous` 失效窗口 = 最长邀请有效期（168h = 7天），超期后可废弃
+
+**启动检查**:
+```go
+func LoadInviteHMACSecret(vaultClient *vault.Client) ([]byte, error) {
+    // 1. 环境变量优先
+    if s := os.Getenv("INVITE_HMAC_SECRET"); s != "" {
+        return []byte(s), nil
+    }
+    // 2. Vault 兜底
+    if vaultClient != nil {
+        secret, err := vaultClient.Read("secret/data/invite")
+        if err == nil && secret != nil {
+            return []byte(secret.Data["hmac_secret"].(string)), nil
+        }
+    }
+    // 3. 都没有 → fatal
+    return nil, fmt.Errorf("INVITE_HMAC_SECRET not set in env or Vault")
+}
+```
+
 ### 4.2 邀请链接验证
 
 **端点**: `GET /api/v1/auth/register?token=xxx`
@@ -209,6 +253,7 @@ type Invite struct {
 - 「生成邀请链接」按钮 → 显示链接 + 复制按钮
 - 邀请列表：邮箱、角色、状态（pending/used/expired）、创建时间、过期时间
 - 「撤销」按钮：将 pending 状态的邀请标记为 expired
+- **仅 system_admin 可见**: 签名密钥配置区（查看 Vault 中的密钥版本，输入新密钥滚动更新）
 
 ## 7. API 汇总
 
@@ -217,6 +262,7 @@ type Invite struct {
 | `POST` | `/api/v1/auth/invites` | JWT (admin) | 生成邀请 |
 | `GET` | `/api/v1/auth/invites` | JWT (admin) | 列出邀请 |
 | `DELETE` | `/api/v1/auth/invites/:id` | JWT (admin) | 撤销邀请 |
+| `PUT` | `/api/v1/auth/invites/hmac-secret` | JWT (system_admin) | 滚动更新签名密钥 |
 | `GET` | `/api/v1/auth/register?token=xxx` | 公开 | 验证 token，返回预填信息 |
 | `POST` | `/api/v1/auth/complete-registration` | 公开 | 完成注册 |
 | `DELETE` | `/api/v1/auth/register` | 公开 | 禁用端点（返回 410 Gone） |
