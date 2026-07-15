@@ -206,7 +206,7 @@ export default function ChatPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify({ session_id: sid, message: userMsg.content }),
+        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true }),
       });
       if (!res.ok) throw new Error('Chat request failed');
       const reader = res.body?.getReader();
