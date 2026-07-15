@@ -137,6 +137,7 @@ data-agent/
 | SPEC-041 | **P8** | UI E2E — Error States (ERR) | 🚧 Designing |
 | SPEC-042 | **P8** | UI E2E — E2E Scenarios (E2E) | 🚧 Designing |
 | SPEC-043 | **P8 前置** | Mock Model Service | ✅ Done |
+| SPEC-044 | **P9** | Invite-Only Registration | 🚧 Designing |
 
 > Full roadmap details: [Roadmap-企业数据分析Agent-MVP](docs/Roadmap-企业数据分析Agent-MVP.md)
 
