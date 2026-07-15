@@ -11,17 +11,20 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard' },
-  { href: '/chat', label: 'Chat 对话', icon: '💬', testid: 'nav-chat' },
-  { href: '/hermes', label: 'Hermes 探索', icon: '🔍', testid: 'nav-hermes' },
-  { href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent' },
-  { href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt' },
-  { href: '/docs', label: '文档', icon: '📄', testid: 'nav-docs' },
-  { href: '/admin', label: '管理后台', icon: '⚙', testid: 'nav-admin' },
+  { href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard', roles: ['user', 'admin', 'system_admin'] as string[] },
+  { href: '/chat', label: 'Chat 对话', icon: '💬', testid: 'nav-chat', roles: ['user', 'admin', 'system_admin'] },
+  { href: '/hermes', label: 'Hermes 探索', icon: '🔍', testid: 'nav-hermes', roles: ['user', 'admin', 'system_admin'] },
+  { href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent', roles: ['admin', 'system_admin'] },
+  { href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt', roles: ['user', 'admin', 'system_admin'] },
+  { href: '/docs', label: '文档', icon: '📄', testid: 'nav-docs', roles: ['user', 'admin', 'system_admin'] },
+  { href: '/admin', label: '管理后台', icon: '⚙', testid: 'nav-admin', roles: ['admin', 'system_admin'] },
 ];
 
 export default function Sidebar({ username, role, onLogout }: SidebarProps) {
   const pathname = usePathname();
+  const userRole = role || 'user';
+
+  const visibleItems = navItems.filter(item => item.roles.includes(userRole));
 
   return (
     <aside className="w-60 h-screen fixed left-0 top-0 flex flex-col border-r border-[var(--border-glass)] bg-[var(--bg-secondary)] z-40" data-testid="sidebar">
@@ -38,7 +41,7 @@ export default function Sidebar({ username, role, onLogout }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
