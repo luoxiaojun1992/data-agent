@@ -118,8 +118,12 @@ func (a *Auditor) AuditOutput(output string) (string, error) {
 		matched, _ := a.matchRule(rule, result)
 		log.Printf("[DEBUG security] AuditOutput: rule %d matched=%v", i, matched)
 		if matched && rule.Action == "sanitize" {
+			log.Printf("[DEBUG security] AuditOutput: about to call ReplaceAllStringFunc for rule %d", i)
 			result = rule.compiled.ReplaceAllStringFunc(result, func(s string) string {
-				return sanitizeByType(rule.Name, s)
+				log.Printf("[DEBUG security] AuditOutput: callback called with s=%q", s)
+				r := sanitizeByType(rule.Name, s)
+				log.Printf("[DEBUG security] AuditOutput: callback returning %q", r)
+				return r
 			})
 			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized", i)
 		}
