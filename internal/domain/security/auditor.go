@@ -118,7 +118,9 @@ func (a *Auditor) AuditOutput(output string) (string, error) {
 		matched, _ := a.matchRule(rule, result)
 		log.Printf("[DEBUG security] AuditOutput: rule %d matched=%v", i, matched)
 		if matched && rule.Action == "sanitize" {
+			log.Printf("[DEBUG security] AuditOutput: rule %d calling FindAllString", i)
 			matches := rule.compiled.FindAllString(result, -1)
+			log.Printf("[DEBUG security] AuditOutput: rule %d FindAllString returned %d matches", i, len(matches))
 			for _, m := range matches {
 				// Skip if this match is inside a longer already-masked sequence
 				result = strings.Replace(result, m, sanitizeByType(rule.Name, m), 1)
