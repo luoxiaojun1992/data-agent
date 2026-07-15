@@ -245,13 +245,18 @@ func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(c
 		if err != nil {
 			return err
 		}
+		log.Printf("[DEBUG] RunStream: calling AuditOutput on %d bytes", full.Len())
 		sanitized, auditErr := e.security.AuditOutput(full.String())
+		log.Printf("[DEBUG] RunStream: AuditOutput returned, sanitized_len=%d err=%v", len(sanitized), auditErr)
 		if auditErr != nil {
 			return fmt.Errorf("output audit failed: %w", auditErr)
 		}
 		log.Printf("[DEBUG] RunStream sanitized: full_len=%d sanitized_len=%d first_50=%q",
 			full.Len(), len(sanitized), firstN(sanitized, 50))
-		return callback(sanitized)
+		log.Printf("[DEBUG] RunStream: calling outer callback with %d bytes", len(sanitized))
+		err = callback(sanitized)
+		log.Printf("[DEBUG] RunStream: outer callback returned, err=%v", err)
+		return err
 	}
 	return e.router.ChatStream(ctx, req.Model, req, callback)
 }
