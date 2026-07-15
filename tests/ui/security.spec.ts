@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
-const USER = { username: `e2e-sec-${uid}@test.local`, password: 'SecurityTest1', role: 'admin' };}
+const USER = { username: `e2e-sec-${uid}@test.local`, password: 'SecurityTest1', role: 'admin' };
 
 /**
  * Security layer E2E tests — SPEC-038
