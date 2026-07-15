@@ -131,7 +131,7 @@ data-agent/
 | SPEC-035 | **P8** | UI E2E — List Mgmt (LIST) | ✅ Done |
 | SPEC-036 | **P8** | UI E2E — File Upload (UPLOAD) | ✅ Done |
 | SPEC-037 | **P8** | UI E2E — Session Mgmt (SESSION) | ✅ Done |
-| SPEC-038 | **P8** | UI E2E — Security (SEC) | 🚧 Designing |
+| SPEC-038 | **P8** | UI E2E — Security (SEC) | ✅ Done |
 | SPEC-039 | **P8** | UI E2E — RBAC (RBAC) | 🚧 Designing |
 | SPEC-040 | **P8** | UI E2E — Responsive (RESP) | 🚧 Designing |
 | SPEC-041 | **P8** | UI E2E — Error States (ERR) | 🚧 Designing |
