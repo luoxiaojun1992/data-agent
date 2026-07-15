@@ -150,26 +150,16 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 	}
 }
 
-// popResponse tries exact match first, then wildcard, then returns default.
+// popResponse tries exact match first, then returns default.
 func popResponse(ctx context.Context, rdb *redis.Client, exactKey, defaultReply string) string {
-	// 1. Exact match
+	// Exact match
 	if val, err := rdb.LPop(ctx, exactKey).Result(); err == nil && val != "" {
 		log.Printf("response found: exact key=%s", exactKey)
 		return val
 	}
 
-	// 2. Wildcard match — scan for any mock:resp:* key
-	iter := rdb.Scan(ctx, 0, "mock:resp:*", 10).Iterator()
-	for iter.Next(ctx) {
-		key := iter.Val()
-		if val, err := rdb.LPop(ctx, key).Result(); err == nil && val != "" {
-			log.Printf("response found: wildcard key=%s", key)
-			return val
-		}
-	}
-
-	// 3. Default reply
-	log.Printf("no response configured, returning default")
+	// Default reply
+	log.Printf("no response configured for key=%s, returning default", exactKey)
 	return defaultReply
 }
 
@@ -311,7 +301,9 @@ func responsesHandler(rdb *redis.Client, adminToken string) http.HandlerFunc {
 			}
 
 			ctx := context.Background()
-			redisKey := "mock:resp:" + payload.Key
+			// Hash key to match lookup format (SHA256 full hex)
+			keyHash := sha256.Sum256([]byte(payload.Key))
+			redisKey := "mock:resp:" + fmt.Sprintf("%x", keyHash)
 			if err := rdb.LPush(ctx, redisKey, payload.Response).Err(); err != nil {
 				http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusInternalServerError)
 				return
