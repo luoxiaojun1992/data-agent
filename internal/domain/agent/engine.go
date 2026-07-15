@@ -239,14 +239,13 @@ func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(c
 
 // Chat sends a chat completion through the router.
 func (r *Router) Chat(ctx context.Context, modelName string, req ChatRequest) (*ChatResponse, error) {
+	var cfg *ModelConfig
+	var err error
 	if modelName == "" {
-		def, err := r.GetDefaultModel()
-		if err != nil {
-			return nil, fmt.Errorf("no model configured: %w", err)
-		}
-		modelName = def.Model
+		cfg, err = r.GetDefaultModel()
+	} else {
+		cfg, err = r.GetModel(modelName)
 	}
-	cfg, err := r.GetModel(modelName)
 	if err != nil {
 		return nil, err
 	}
@@ -271,14 +270,13 @@ func (r *Router) Chat(ctx context.Context, modelName string, req ChatRequest) (*
 
 // ChatStream sends a streaming chat completion through the router.
 func (r *Router) ChatStream(ctx context.Context, modelName string, req ChatRequest, callback func(chunk string) error) error {
+	var cfg *ModelConfig
+	var err error
 	if modelName == "" {
-		def, err := r.GetDefaultModel()
-		if err != nil {
-			return fmt.Errorf("no model configured: %w", err)
-		}
-		modelName = def.Model
+		cfg, err = r.GetDefaultModel()
+	} else {
+		cfg, err = r.GetModel(modelName)
 	}
-	cfg, err := r.GetModel(modelName)
 	if err != nil {
 		return err
 	}
