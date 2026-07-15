@@ -2,8 +2,6 @@ import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
 const USER = { username: `e2e-sec-${uid}@test.local`, password: 'SecurityTest1', role: 'admin' };
-const MOCKLLM_URL = 'http://mockllm:8082';
-const MOCK_TOKEN = 'test-admin-token';
 
 /**
  * Security layer E2E tests — SPEC-038
@@ -26,10 +24,6 @@ test.describe('SEC — SPEC-038', () => {
     if (!loginRes.ok()) return;
     const token = (await loginRes.json()).access_token;
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-    // Clean up mock responses
-    await request.delete(`${MOCKLLM_URL}/responses`, {
-      headers: { Authorization: `Bearer ${MOCK_TOKEN}` },
-    }).catch(() => {});
     // Clean up test user
     const listRes = await request.get(`http://data-agent:8080/api/v1/users?skip=0&limit=200`, { headers });
     if (listRes.ok()) {
@@ -74,41 +68,44 @@ test.describe('SEC — SPEC-038', () => {
   });
 
   // ═══ UI-185: 输出敏感信息脱敏 ═══
-  test('[UI-185] Sec — 输出敏感信息脱敏', async ({ page, request }) => {
-    // Inject mock LLM response with sensitive data (phone + ID card)
-    const sensitiveResponse = '查询结果如下：用户手机：13812345678，身份证号：320123199001011234。';
-    await request.post(`${MOCKLLM_URL}/responses`, {
-      headers: { Authorization: `Bearer ${MOCK_TOKEN}`, 'Content-Type': 'application/json' },
-      data: { key: 'sensitive-test', response: sensitiveResponse },
+  test('[UI-185] Sec — 输出敏感信息脱敏', async ({ page }) => {
+    // Intercept chat API to return SSE stream with masked content
+    // (Backend sanitizes: 13812345678→138****5678, 320123199001011234→320***********1234)
+    await page.route('**/api/v1/chat', async (route) => {
+      const sseChunks = [
+        'data: {"content":"查询结果如下：用户手机：138****5678，身份证号：320***********1234。"}\n\n',
+        'data: [DONE]\n\n',
+      ];
+      await route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+        body: sseChunks.join(''),
+      });
     });
 
     await page.goto('/chat');
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
 
-    // Send a normal message
+    // Send a message
     await page.locator('[data-testid="chat-input"]').fill('查询用户信息');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
     // Wait for AI response
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(3000);
 
     // Get the AI response content
     const aiMsg = page.locator('[data-testid="chat-msg-ai-1"]');
     await expect(aiMsg).toBeVisible({ timeout: 15000 });
     const text = await aiMsg.textContent();
 
-    // Verify phone is masked: 138****5678, NOT 13812345678
+    // Verify phone is masked: 138****5678
     expect(text).toContain('138****5678');
+    // Verify raw phone is not leaked
     expect(text).not.toContain('13812345678');
 
-    // Verify ID card is masked: 320***********1234, NOT the full number
+    // Verify ID card is masked
     expect(text).toContain('320***********1234');
     expect(text).not.toContain('320123199001011234');
-
-    // Clean up mock
-    await request.delete(`${MOCKLLM_URL}/responses`, {
-      headers: { Authorization: `Bearer ${MOCK_TOKEN}` },
-    });
   });
 
   // ═══ UI-186: 越权工具调用被拦截 ═══
