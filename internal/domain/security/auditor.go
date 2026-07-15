@@ -118,10 +118,12 @@ func (a *Auditor) AuditOutput(output string) (string, error) {
 		matched, _ := a.matchRule(rule, result)
 		log.Printf("[DEBUG security] AuditOutput: rule %d matched=%v", i, matched)
 		if matched && rule.Action == "sanitize" {
-			// Use manual scan instead of regex ReplaceAllStringFunc/FindAllString
-			// which can hang on mixed UTF-8+digit strings in certain environments.
-			result = sanitizeMatches(result, rule)
-			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized", i)
+			matches := rule.compiled.FindAllString(result, -1)
+			for _, m := range matches {
+				// Skip if this match is inside a longer already-masked sequence
+				result = strings.Replace(result, m, sanitizeByType(rule.Name, m), 1)
+			}
+			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized (%d matches)", i, len(matches))
 		}
 	}
 	log.Printf("[DEBUG security] AuditOutput: done, len=%d", len(result))
@@ -186,106 +188,20 @@ func (a *Auditor) logAlert(level, category, message string, details map[string]i
 	}
 }
 
-// sanitizeMatches applies rule-based sanitization without regexp to avoid
-// potential hangs on mixed UTF-8+digit content in certain Go runtime environments.
-func sanitizeMatches(s string, rule Rule) string {
-	switch rule.Name {
+func sanitizeByType(ruleName, s string) string {
+	switch ruleName {
 	case "phone":
-		return sanitizePhone(s)
+		if len(s) == 11 {
+			return s[:3] + "****" + s[7:]
+		}
 	case "id_card":
-		return sanitizeIDCard(s)
+		if len(s) == 18 {
+			return s[:3] + "***********" + s[14:]
+		}
 	case "api_key":
-		return sanitizeAPIKey(s)
-	}
-	return s
-}
-
-func sanitizePhone(s string) string {
-	// Match 1[3-9] followed by exactly 9 digits (11 digits total)
-	// Scan byte-by-byte to avoid regex issues
-	runes := []rune(s)
-	var result []rune
-	i := 0
-	for i < len(runes) {
-		if i+10 < len(runes) &&
-			runes[i] == '1' &&
-			runes[i+1] >= '3' && runes[i+1] <= '9' &&
-			isAllDigits(runes[i+2:i+11]) &&
-			// Check boundaries: not preceded or followed by a digit
-			(i == 0 || !isDigit(runes[i-1])) &&
-			(i+11 >= len(runes) || !isDigit(runes[i+11])) {
-			// Mask: 138****5678
-			result = append(result, runes[i], runes[i+1], runes[i+2], '*', '*', '*', '*', runes[i+7], runes[i+8], runes[i+9], runes[i+10])
-			i += 11
-		} else {
-			result = append(result, runes[i])
-			i++
+		if len(s) > 8 {
+			return s[:4] + "****"
 		}
 	}
-	return string(result)
-}
-
-func sanitizeIDCard(s string) string {
-	// Match exactly 17 digits followed by a digit or X/x (18 chars total)
-	runes := []rune(s)
-	var result []rune
-	i := 0
-	for i < len(runes) {
-		if i+17 < len(runes) &&
-			isAllDigits(runes[i:i+17]) &&
-			(isDigit(runes[i+17]) || runes[i+17] == 'X' || runes[i+17] == 'x') &&
-			(i == 0 || !isDigit(runes[i-1])) &&
-			(i+18 >= len(runes) || !isDigit(runes[i+18])) {
-			// Mask: 320***********1234
-			result = append(result, runes[i], runes[i+1], runes[i+2])
-			for j := 0; j < 11; j++ {
-				result = append(result, '*')
-			}
-			result = append(result, runes[i+14], runes[i+15], runes[i+16], runes[i+17])
-			i += 18
-		} else {
-			result = append(result, runes[i])
-			i++
-		}
-	}
-	return string(result)
-}
-
-func sanitizeAPIKey(s string) string {
-	runes := []rune(s)
-	var result []rune
-	i := 0
-	for i < len(runes) {
-		if i+3 < len(runes) && runes[i] == 's' && runes[i+1] == 'k' && runes[i+2] == '-' {
-			end := i + 3
-			for end < len(runes) && isAlphaNumeric(runes[end]) {
-				end++
-			}
-			if end-i >= 3+32 { // "sk-" + at least 32 alphanumeric chars
-				result = append(result, runes[i], runes[i+1], runes[i+2], runes[i+3], '*', '*', '*', '*')
-				i = end
-				continue
-			}
-		}
-		result = append(result, runes[i])
-		i++
-	}
-	return string(result)
-}
-
-func isDigit(r rune) bool {
-	return r >= '0' && r <= '9'
-}
-
-func isAllDigits(runes []rune) bool {
-	for _, r := range runes {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func isAlphaNumeric(r rune) bool {
-	return (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+	return "***"
 }
