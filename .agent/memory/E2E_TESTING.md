@@ -133,6 +133,44 @@
 
 示例: `nav-login-btn`, `chart-revenue`, `input-query`
 
+## 测试用户 UUID 命名
+
+每个 `test.describe` 独立生成 UUID 前缀，确保并行执行时用户数据不冲突：
+
+```typescript
+const uid = crypto.randomUUID().slice(0, 8);
+const USER = {
+    username: `e2e-{module}-${uid}@test.local`,
+    password: '{Module}Test1',
+    role: 'admin',
+};
+```
+
+约定：
+- 用户名: `e2e-{模块缩写}-{8位uuid}@test.local`
+- 密码: `{模块名}Test1`（首字母大写，符合密码强度要求）
+- `beforeAll` 注册，`afterAll` 清理（遍历 `users?skip=0&limit=200` 匹配 uuid 删除）
+- `afterAll` 中同时清理 mockllm: `request.delete(${MOCKLLM}/responses)`
+
+## 测试原则
+
+### 测试目的不是通过，是发现真正的问题
+
+- **禁止 `test.skip()`**: 不得因数据不足跳过测试。用 API 在 `beforeAll` 或测试内部预创建所需数据。
+- **禁止 workaround**: 不要因为调试困难就写绕过代码（如 `/default-reply` API）。加 debug 日志，实证定位根因。
+- **禁止 `page.route()` 截获**: 只有真实后端链路 + mockllm 能保证测试有效性。`page.route()` 绕过整个 Handler→Service→Repository 栈，等于不测。
+- **断言必须严格**: 脱敏测试必须同时验证 `toContain(masked)` 和 `not.toContain(original)`，防止假阳性。
+
+### 加日志，不瞎猜
+
+```typescript
+console.log('[UI-XXX] sending:', msg);
+console.log('[UI-XXX] send clicked, waiting for response');
+console.log('[UI-XXX] received:', text?.substring(0, 100));
+```
+
+后端同理：在怀疑的每个环节加 `log.Printf("[DEBUG module] ...")`，用 CI log 下载+unzip+grep 精确复现。
+
 ## 运行 E2E
 
 ```bash
