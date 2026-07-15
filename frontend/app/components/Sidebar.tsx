@@ -8,6 +8,7 @@ interface SidebarProps {
   username?: string | null;
   role?: string | null;
   onLogout: () => void;
+  onToggle?: () => void;
 }
 
 const navItems = [
@@ -20,16 +21,16 @@ const navItems = [
   { href: '/admin', label: '管理后台', icon: '⚙', testid: 'nav-admin', roles: ['admin', 'system_admin'] },
 ];
 
-export default function Sidebar({ username, role, onLogout }: SidebarProps) {
+export default function Sidebar({ username, role, onLogout, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const userRole = role || 'user';
 
   const visibleItems = navItems.filter(item => item.roles.includes(userRole));
 
   return (
-    <aside className="w-60 h-screen fixed left-0 top-0 flex flex-col border-r border-[var(--border-glass)] bg-[var(--bg-secondary)] z-40" data-testid="sidebar">
+    <aside className="w-60 h-screen flex flex-col border-r border-[var(--border-glass)] bg-[var(--bg-secondary)] z-50" data-testid="sidebar">
       {/* Logo */}
-      <div className="p-5 border-b border-[var(--border-glass)]" data-testid="sidebar-logo">
+      <div className="p-5 border-b border-[var(--border-glass)] flex items-center justify-between" data-testid="sidebar-logo">
         <Link href="/" className="flex items-center gap-3 no-underline">
           <span className="text-2xl" data-testid="sidebar-logo-icon">🔮</span>
           <div>
@@ -37,6 +38,17 @@ export default function Sidebar({ username, role, onLogout }: SidebarProps) {
             <p className="text-xs text-[var(--text-secondary)]">企业数据分析平台</p>
           </div>
         </Link>
+        {/* Close button — visible only on mobile */}
+        {onToggle && (
+          <button
+            className="lg:hidden p-1.5 rounded-lg hover:bg-[var(--glass-hover)] text-[var(--text-secondary)]"
+            onClick={onToggle}
+            data-testid="sidebar-close"
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
