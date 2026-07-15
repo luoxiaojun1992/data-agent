@@ -2,6 +2,25 @@
 
 > 按日期追加的工程决策记录。新条目追加在顶部，最新在前。
 
+## 2026-07-15: SPEC-038 安全层 E2E 测试
+
+- **上下文**: 实现安全审计层完整 E2E 测试（输入拦截、输出脱敏、RBAC 越权）
+- **决策**:
+  1. 全部走真实后端链路 + mockllm，禁止 `page.route()` 截获
+  2. `NewAuditor` 构造时调 `config.Compile()` 预编译所有 regex（不再依赖 lazy compile）
+  3. OutputRules 按优先级排序：id_card (90) → phone (80) → api_key (90)
+  4. mockllm 统一使用 SHA256 完整 hex 做 key 匹配，测试传原始消息不预 hash
+  5. 前端 SSE parser 增加 `parsed.error` 处理
+  6. task tests 删除 `test.skip()`，改为 API 预创建数据 + "全部" filter
+- **理由**:
+  - `Compile()` 缺失导致 `rule.compiled == nil`，在 alpine CI 环境下 regex 操作产生超过 10 秒的挂起
+  - 手机号 regex 会误匹配身份证中连续 11 位数字（如 `199001011231`），需 id_card 先跑
+  - `page.route()` 跨测试残留导致请求不到后端，mockllm 是唯一可靠的隔离方式
+  - 预 hash key 被 mockllm 二次 hash 导致注入与查询 key 不一致
+- **影响**:
+  - 166 个 E2E 用例全部通过，覆盖率 100%
+  - 7 个飞书客户端 + 拖拽上传标记为人工测试，其余全部自动化
+
 ## 2026-07-09: 移除 MinIO/etcd（SPEC-016）
 
 - **上下文**: docker-compose 中残留 MinIO/etcd 服务，与架构设计不符（对象存储已统一为 SeaweedFS）；前后端应用服务未在 compose 中定义

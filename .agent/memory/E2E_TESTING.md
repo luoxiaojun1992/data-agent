@@ -119,12 +119,11 @@
 | UI-181 | Session — 删除后可恢复 | ✅ 已实现 |
 | UI-182 | Session — 部分删除无恢复 | ✅ 已实现 |
 | UI-183 | Session — 缓冲期可配置 | ✅ 已实现 |
+| UI-184 | Sec — SQL 注入被拦（input audit） | ✅ 已实现 |
+| UI-185 | Sec — 输出敏感信息脱敏（output sanitize） | ✅ 已实现 |
+| UI-186 | Sec — 越权工具调用被拦（RBAC） | ✅ 已实现 |
 
-**合计**: 99 个真实用例 + 7 个手动测试用例（SPEC-037 阶段）
-
-**合计**: 83 个真实用例 + 6 个手动测试用例（SPEC-034 阶段）
-
-**合计**: 81 个真实用例 + 2 个手动测试用例（SPEC-033 阶段）
+**合计**: 102 个真实用例 + 7 个手动测试用例
 
 ## data-testid 命名规范
 
@@ -138,15 +137,4 @@
 
 ```bash
 cd tests && npx playwright test
-```
-
-## 占位用例
-
-```typescript
-// tests/ui/placeholder.spec.ts
-import { test, expect } from '@playwright/test';
-
-test('UI-000: Placeholder — Always Pass', async ({ page }) => {
-  expect(true).toBe(true);
-});
 ```

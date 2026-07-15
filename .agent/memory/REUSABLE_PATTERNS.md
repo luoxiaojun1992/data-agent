@@ -148,3 +148,72 @@ func New(prefix string) string {
 4. 避免功能重复索引
 5. TTL 索引清理临时数据
 6. 每表索引数 ≤ 5
+
+## Security Auditor 模式
+
+### regex 必须预编译 + 规则按优先级排序
+
+```go
+func NewAuditor(alerts AlertLogger) *Auditor {
+    config := DefaultRules()
+    config.Compile()  // ← 必须！否则 rule.compiled == nil
+    return &Auditor{config: config, alerts: alerts}
+}
+```
+
+**陷阱**: 若不调 `Compile()`，`matchRule` 中按值传参的 `rule.compiled = compiled` 只改副本，
+循环变量仍为 nil，后续 `FindAllString`/`ReplaceAllStringFunc` 将 panic 或挂起。
+
+**OutputRules 顺序决定脱敏正确性**: ID 卡规则（priority 90）必须排在手机号（priority 80）之前，
+否则手机号 regex 会错误匹配身份证中的 11 位连续数字（如 `320123199001011234` 中的 `199001011231`）。
+
+```go
+OutputRules: []Rule{
+    {Name: "id_card", Pattern: `\d{17}[\dXx]`, Action: "sanitize", Priority: 90},
+    {Name: "phone",   Pattern: `1[3-9]\d{9}`,  Action: "sanitize", Priority: 80},
+    {Name: "api_key", Pattern: `sk-[a-zA-Z0-9]{32,}`, Action: "sanitize", Priority: 90},
+},
+```
+
+## MockLLM Hash 匹配协议
+
+mockllm 使用 **SHA256 完整 hex** 做 key 匹配，所有 E2E 测试必须统一遵守：
+
+**注入端** (`POST /responses`):
+```typescript
+// key 必须是原始用户消息内容，mockllm 自行 SHA256
+await request.post(`${MOCKLLM}/responses`, {
+    data: { key: '查询用户信息', response: 'mock 回复内容' },
+});
+```
+
+**查询端**（mockllm 内部）:
+```go
+lastContent := req.Messages[len(req.Messages)-1].Content
+hash := sha256.Sum256([]byte(lastContent))
+lookupKey := fmt.Sprintf("mock:resp:%x", hash)
+```
+
+**禁止**在测试中预计算 SHA256 前缀作为 key（会导致 mockllm 二次 hash 不匹配）。
+
+## SSE 前端解析 Error 处理
+
+前端 SSE 解析器必须处理 `parsed.error` 字段，否则后端审计拦截的错误消息不显示：
+
+```typescript
+const parsed = JSON.parse(data);
+if (parsed.error) {
+    streamingRef.current = `Error: ${parsed.error}`;
+    continue;
+}
+const chunk = parsed.content || parsed.choices?.[0]?.delta?.content || '';
+```
+
+## page.route() 跨测试清理
+
+Playwright `page.route()` 在 `test.describe` 内跨 `beforeEach` 残留。
+使用 mockllm 替代 `page.route()` 是根本解决方案。若必须用 `page.route()`，在每个测试开头调用：
+
+```typescript
+await page.unrouteAll({ behavior: 'ignoreErrors' });
+```
