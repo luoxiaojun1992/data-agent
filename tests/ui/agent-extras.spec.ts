@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
 const uid = crypto.randomUUID().slice(0, 8); // unique user
-const U = { username: `e2e-agt2-${uid}@test.local`, password: 'E2eTest123!' };
+const U = { username: `e2e-agt2-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
 
 test.describe('AGENT — Steps & Cron', () => {
   test.beforeAll(async ({ request }) => {

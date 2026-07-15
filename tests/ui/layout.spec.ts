@@ -13,7 +13,7 @@ const API_BASE = 'http://data-agent:8080/api/v1';
 const uid = crypto.randomUUID().slice(0, 8);
 const TEST_USER = {
   username: `e2e-layout-${uid}@test.local`,
-  password: 'E2eTest123!',
+  password: 'E2eTest123!', role: 'admin',
 };
 
 test.describe('LAYOUT — Sidebar & Navigation', () => {
