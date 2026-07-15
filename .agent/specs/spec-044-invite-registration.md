@@ -80,11 +80,11 @@
 
 `invite_url` 的 base URL 从系统配置读取，支持运行时变更：
 
-| 来源 | 优先级 | 说明 |
-|------|:---:|------|
-| 环境变量 `INVITE_BASE_URL` | 高 | Docker/K8s 部署时注入 |
-| 系统配置集合 `sys_config` | 中 | 管理后台「系统配置」页修改，热更新 |
-| 默认值 `http://localhost:3000` | 低 | 开发环境回退值 |
+| 来源 | 优先级 | 编辑权限 | 说明 |
+|------|:---:|:---:|------|
+| 环境变量 `INVITE_BASE_URL` | 高 | 运维 | Docker/K8s 部署时注入 |
+| 系统配置 `sys_config.invite_base_url` | 中 | **仅 `system_admin`** | 管理后台「系统配置」页修改（复用现有 SysConfig 机制），热更新 |
+| 默认值 `http://localhost:3000` | 低 | — | 开发环境回退值 |
 
 读取逻辑：
 ```go
