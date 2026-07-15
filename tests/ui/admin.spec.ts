@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
 const uid = crypto.randomUUID().slice(0, 8);
-const U = { username: `e2e-adm-${uid}@test.local`, password: 'E2eTest123!' };
+const U = { username: `e2e-adm-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
 
 function login(page) {
   return async () => {
