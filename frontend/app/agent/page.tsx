@@ -33,7 +33,8 @@ export default function AgentPage() {
     try {
       const res = await apiFetch('/tasks');
       const data = await res.json();
-      setTasks((data.tasks || []).map((t: AgentTask) => ({
+      const rawTasks = Array.isArray(data) ? data : (data.tasks || []);
+      setTasks(rawTasks.map((t: AgentTask) => ({
         ...t,
         title: t.title || t.type || '',
       })));
