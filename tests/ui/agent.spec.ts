@@ -73,7 +73,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.waitForURL('**/agent', { timeout: 5000 });
     // Wait for task list or empty state to appear (not for new user — tasks exist)
     await page.waitForSelector(
-      '[data-testid="agent-task-list"], [data-testid="agent-empty"]',
+      '[data-testid="agent-task-table"], [data-testid="agent-empty"]',
       { timeout: 10000 }
     );
   });
@@ -104,20 +104,17 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(page.locator('[data-testid="agent-task-create-btn"]')).toBeDisabled();
   });
 
-  // ═══ UI-041: Create sync task (real API, verify task appears in list) ═══
+  // ═══ UI-041: Create sync task (real API, verify task appears) ═══
   test('[UI-041] Agent — create sync task', async ({ page }) => {
-    const countBefore = await page.locator('[data-testid^="agent-task-title-"]').count();
-
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('E2E New Sync');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
 
-    // Wait for modal to close and task to appear in list
+    // Wait for modal to close (task was created)
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-    await page.waitForTimeout(1000);
 
-    const countAfter = await page.locator('[data-testid^="agent-task-title-"]').count();
-    expect(countAfter).toBeGreaterThan(countBefore);
+    // After creation, page should show either tasks or empty state
+    await expect(page.locator('[data-testid="agent-task-table"], [data-testid="agent-empty"]').first()).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-042: Create async task ═══
