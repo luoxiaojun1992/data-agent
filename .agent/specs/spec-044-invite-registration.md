@@ -1,6 +1,6 @@
 # 邀请注册系统设计
 
-> **SPEC-044** | Status: 设计中 | Date: 2026-07-15 | Phase: P9
+> **SPEC-044** | Status: 已实现 | Date: 2026-07-15 | Phase: P9
 
 ## 1. 目标
 

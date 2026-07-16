@@ -57,7 +57,7 @@
 | SPEC-041 | UI E2E — 错误状态与边界条件 (ERR) | **P8** | [spec-041-ui-error.md](spec-041-ui-error.md) | ✅ 已实现 |
 | SPEC-042 | UI E2E — 端到端场景测试 (E2E) | **P8** | [spec-042-ui-e2e-scenarios.md](spec-042-ui-e2e-scenarios.md) | ✅ 已实现 |
 | SPEC-043 | Mock Model Service — 测试用模型模拟服务 | **P8 前置** | [spec-043-mock-model-service.md](spec-043-mock-model-service.md) | ✅ 已实现 |
-| SPEC-044 | 邀请注册系统 — 移除自由注册，改为邀请制 | **P9** | [spec-044-invite-registration.md](spec-044-invite-registration.md) | 📐 设计中 |
+| SPEC-044 | 邀请注册系统 — 移除自由注册，改为邀请制 | **P9** | [spec-044-invite-registration.md](spec-044-invite-registration.md) | ✅ 已实现 |
 | SPEC-045 | Go Service 单元测试全覆盖 — 98% 底线，CI 门禁 | **P10** | [spec-045-go-service-ut.md](spec-045-go-service-ut.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
