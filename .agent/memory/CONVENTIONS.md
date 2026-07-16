@@ -99,6 +99,9 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 6 | 返回 404 给资源不存在的 DELETE | 违反删除幂等性 |
 | 7 | 在 Handler 层写业务逻辑 | Handler 仅做参数校验和响应格式化 |
 | 8 | 前端 `catch { /* ignore */ }` 静默吞异常 | 必须 `console.error` 记录错误，否则 API 失败无法排查 |
+| 9 | E2E 测试用条件断言（`if (visible) then test else skip`） | 条件断言 = 假通过，比不测更危险。不能确定性断言就删除测试 |
+| 10 | 测试非确定性 UI 状态（后端依赖的按钮、瞬时 toast、异步任务进度） | 只测试页面渲染、导航、表单、模态框等确定性 UI |
+| 11 | 有效测试只验证 "page header 存在" 而不验证实际行为 | 每个测试必须验证完整状态变更链（如创建→出现→取消→消失） |
 
 ## 开发工作流约定
 
@@ -122,3 +125,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 |---|------|---------------|-----------------|--------|
 | 1 | 2026-07-16 | 前端 `catch { /* ignore */ }` 静默吞异常 | `catch` 块至少 `console.error` 记录错误信息 | UI 测试超时 30s 无法定位根因 |
 | 2 | 2026-07-16 | 测试中用 `page.goto` + `page.reload` 连环重载等 task row | 利用组件自带的 `loadTasks()` 自刷新，modal 关闭即断言 | 测试不稳定，频繁 timeout |
+| 3 | 2026-07-16 | 条件断言 `if (await btn.isVisible().catch(() => false))` 静默跳过后端 API 故障 | 刚性 `expect().toBeVisible({ timeout })`，超时即 FAIL | 大量测试假通过，后端 bug 被掩盖 |
+| 4 | 2026-07-16 | 用 `.catch(() => {})` 吞掉 `not.toBeVisible()` 失败 | 移除 `.catch()`，改用刚性断言 | 权限测试可能假绿色 |
+| 5 | 2026-07-16 | 测试用 `page.route()` mock API 响应来测试 Chat 功能 | 使用 mockllm seed + 真实 SSE 流，走完整 Handler→Service→Repository 栈 | Chat 测试等于没测后端 |
+| 6 | 2026-07-16 | 测试只验证 `agent-page-header` 可见就当"测试了取消行为" | 必须验证完整链：创建→row 出现→展开→点击 cancel→row 消失 | 假性测试，取消行为从未被验证 |
