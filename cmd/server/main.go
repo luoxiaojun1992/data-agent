@@ -18,37 +18,38 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
-	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
-	kbskill "github.com/luoxiaojun1992/data-agent/skills/knowledge_search"
-	saveskill "github.com/luoxiaojun1992/data-agent/skills/save_report"
-	sqlskill "github.com/luoxiaojun1992/data-agent/skills/sql_executor"
-	statsskill "github.com/luoxiaojun1992/data-agent/skills/stats_engine"
-	agent_svc "github.com/luoxiaojun1992/data-agent/internal/service/agent"
-	apireview "github.com/luoxiaojun1992/data-agent/internal/service/apireview"
-	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
-	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
-	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
-	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
-	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
-	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	vaultinfra "github.com/luoxiaojun1992/data-agent/internal/infra/vault"
+	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/scheduler"
+	agent_svc "github.com/luoxiaojun1992/data-agent/internal/service/agent"
+	apireview "github.com/luoxiaojun1992/data-agent/internal/service/apireview"
+	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
+	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
+	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
+	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
+	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
+	kbskill "github.com/luoxiaojun1992/data-agent/skills/knowledge_search"
+	saveskill "github.com/luoxiaojun1992/data-agent/skills/save_report"
+	sqlskill "github.com/luoxiaojun1992/data-agent/skills/sql_executor"
+	statsskill "github.com/luoxiaojun1992/data-agent/skills/stats_engine"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
@@ -120,6 +121,22 @@ func main() {
 	var authHandler *handler.AuthHandler
 	if userRepo != nil {
 		authService := authsvc.NewService(userRepo, jwtManager)
+
+		// Initialize invite repository
+		inviteRepo := mongoinfra.NewInviteRepository(mongoClient.DB())
+		authService.SetInviteRepo(inviteRepo)
+
+		// Load invite HMAC secret
+		hmacSecret, err := logic.LoadInviteHMACSecret()
+		if err != nil {
+			logger.Warn("INVITE_HMAC_SECRET not set — invite system disabled",
+				zap.Error(err),
+			)
+		} else {
+			authService.SetHMACSecret(hmacSecret)
+			logger.Info("Invite HMAC secret loaded")
+		}
+
 		authHandler = handler.NewAuthHandler(authService)
 	}
 
@@ -237,27 +254,27 @@ func main() {
 		if streamErr != nil {
 			logger.Warn("Failed to create task stream", zap.Error(streamErr))
 		} else {
-		taskService = task_svc.NewService(mongoClient.DB(), taskStream)
-		taskHandler = handler.NewTaskHandler(taskService)
+			taskService = task_svc.NewService(mongoClient.DB(), taskStream)
+			taskHandler = handler.NewTaskHandler(taskService)
 
-		// Inject task service into agent service for Redis-backed async tasks
-		agentService.WithTaskService(taskService)
+			// Inject task service into agent service for Redis-backed async tasks
+			agentService.WithTaskService(taskService)
 
-		// Initialize Scheduler
-		sched := scheduler.New(scheduler.NewTaskCreatorFromService(taskService))
-		sched.Start(context.Background())
+			// Initialize Scheduler
+			sched := scheduler.New(scheduler.NewTaskCreatorFromService(taskService))
+			sched.Start(context.Background())
 
-		// Register default scheduled tasks
-		if err := sched.AddSchedule(&scheduler.Schedule{
-			Name:       "System Monitoring Stats",
-			CronExpr:   "every_5m",
-			Enabled:    true,
-			SkillChain: []string{"stats_engine"},
-			Params:     map[string]interface{}{"method": "descriptive"},
-		}); err != nil {
-			logger.Warn("Failed to add monitoring schedule", zap.Error(err))
-		}
-		logger.Info("Scheduler started with default tasks")
+			// Register default scheduled tasks
+			if err := sched.AddSchedule(&scheduler.Schedule{
+				Name:       "System Monitoring Stats",
+				CronExpr:   "every_5m",
+				Enabled:    true,
+				SkillChain: []string{"stats_engine"},
+				Params:     map[string]interface{}{"method": "descriptive"},
+			}); err != nil {
+				logger.Warn("Failed to add monitoring schedule", zap.Error(err))
+			}
+			logger.Info("Scheduler started with default tasks")
 
 			workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, &simpleExecutor{taskSvc: taskService})
 			workerPool.Start(context.Background())
@@ -356,6 +373,9 @@ func main() {
 	if authHandler != nil {
 		authGroup.POST("/login", authHandler.Login)
 		authGroup.POST("/register", authHandler.Register)
+		// Invite-based registration (public)
+		authGroup.GET("/register", authHandler.VerifyInvite)
+		authGroup.POST("/complete-registration", authHandler.CompleteRegistration)
 	} else {
 		authGroup.POST("/login", func(c *gin.Context) {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
@@ -395,9 +415,13 @@ func main() {
 		}
 		role, _ := c.Get("role")
 		skip := int64(0)
-		if s := c.Query("skip"); s != "" { _, _ = fmt.Sscanf(s, "%d", &skip) }
+		if s := c.Query("skip"); s != "" {
+			_, _ = fmt.Sscanf(s, "%d", &skip)
+		}
 		limit := int64(20)
-		if l := c.Query("limit"); l != "" { _, _ = fmt.Sscanf(l, "%d", &limit) }
+		if l := c.Query("limit"); l != "" {
+			_, _ = fmt.Sscanf(l, "%d", &limit)
+		}
 		sortBy := c.DefaultQuery("sort_by", "created_at")
 		sortOrder := c.DefaultQuery("sort_order", "desc")
 		users, total, err := userRepo.ListSorted(c.Request.Context(), role.(string), skip, limit, sortBy, sortOrder)
@@ -437,9 +461,9 @@ func main() {
 			return
 		}
 		var req struct {
-			Username string          `json:"username"`
-			Password string          `json:"password"`
-			Role     model.UserRole  `json:"role"`
+			Username string           `json:"username"`
+			Password string           `json:"password"`
+			Role     model.UserRole   `json:"role"`
 			Status   model.UserStatus `json:"status"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -652,11 +676,11 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusCreated, gin.H{
-			"id":          role.ID.Hex(),
-			"name":        role.Name,
+			"id":           role.ID.Hex(),
+			"name":         role.Name,
 			"display_name": role.DisplayName,
-			"permissions": role.Permissions,
-			"type":        role.Type,
+			"permissions":  role.Permissions,
+			"type":         role.Type,
 		})
 	})
 
@@ -840,11 +864,11 @@ func main() {
 		}
 		dbConfigs, _ := systemConfigRepo.GetAll(c.Request.Context(), "sys")
 		result := gin.H{
-			"session_recovery_hours":    24,
-			"audit_retention_days":      90,
-			"notification_ttl_days":     90,
-			"email_whitelist":           []string{},
-			"report_retry_count":        3,
+			"session_recovery_hours": 24,
+			"audit_retention_days":   90,
+			"notification_ttl_days":  90,
+			"email_whitelist":        []string{},
+			"report_retry_count":     3,
 		}
 		for _, cfg := range dbConfigs {
 			result[cfg.Key] = cfg.Value
@@ -899,6 +923,14 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "admin dashboard placeholder"})
 	})
 
+	// Invite management (admin)
+	if authHandler != nil {
+		admin.POST("/invites", middleware.RequirePermission("user:manage"), authHandler.CreateInvite)
+		admin.GET("/invites", middleware.RequirePermission("user:manage"), authHandler.ListInvites)
+		admin.DELETE("/invites/:id", middleware.RequirePermission("user:manage"), authHandler.RevokeInvite)
+		admin.PUT("/invites/hmac-secret", middleware.RequirePermission("system:config"), authHandler.UpdateHMACSecret)
+	}
+
 	// ── SPEC-004: Chat & Agent routes ──
 
 	// Chat endpoint (streaming SSE)
@@ -925,8 +957,8 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusCreated, gin.H{
-			"session_id":  sess.ID,
-			"expires_at":  sess.ExpiresAt,
+			"session_id": sess.ID,
+			"expires_at": sess.ExpiresAt,
 		})
 	})
 
@@ -981,9 +1013,13 @@ func main() {
 			return
 		}
 		model := os.Getenv("LLM_MODEL")
-		if model == "" { model = "default" }
+		if model == "" {
+			model = "default"
+		}
 		baseURL := os.Getenv("LLM_BASE_URL")
-		if baseURL == "" { baseURL = "https://api.openai.com" }
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
+		}
 		apiKey := os.Getenv("LLM_API_KEY")
 
 		llmReq := map[string]interface{}{
@@ -1098,9 +1134,15 @@ func main() {
 		}
 		hasUpper, hasLower, hasDigit := false, false, false
 		for _, ch := range req.NewPassword {
-			if ch >= 'A' && ch <= 'Z' { hasUpper = true }
-			if ch >= 'a' && ch <= 'z' { hasLower = true }
-			if ch >= '0' && ch <= '9' { hasDigit = true }
+			if ch >= 'A' && ch <= 'Z' {
+				hasUpper = true
+			}
+			if ch >= 'a' && ch <= 'z' {
+				hasLower = true
+			}
+			if ch >= '0' && ch <= '9' {
+				hasDigit = true
+			}
 		}
 		if !hasUpper || !hasLower || !hasDigit {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 8 位，需包含大小写字母和数字"})
@@ -1180,10 +1222,14 @@ func main() {
 					for _, t := range tasks {
 						taskStats["total"]++
 						switch string(t.Status) {
-						case "pending": taskStats["pending"]++
-						case "running": taskStats["running"]++
-						case "completed": taskStats["completed"]++
-						case "failed": taskStats["failed"]++
+						case "pending":
+							taskStats["pending"]++
+						case "running":
+							taskStats["running"]++
+						case "completed":
+							taskStats["completed"]++
+						case "failed":
+							taskStats["failed"]++
 						}
 					}
 				}

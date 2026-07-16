@@ -31,10 +31,38 @@ type User struct {
 	Role            UserRole           `bson:"role" json:"role"`
 	Status          UserStatus         `bson:"status" json:"status"`
 	PasswordChanged bool               `bson:"password_changed" json:"password_changed"`
+	DisplayName     string             `bson:"display_name,omitempty" json:"display_name,omitempty"`
+	InvitedBy       string             `bson:"invited_by,omitempty"   json:"invited_by,omitempty"`
+	InviteID        string             `bson:"invite_id,omitempty"    json:"-"`
 	FeishuAppID     string             `bson:"feishu_app_id,omitempty" json:"feishu_app_id,omitempty"`
 	FeishuAppSecret string             `bson:"feishu_app_secret,omitempty" json:"-"`
 	CreatedAt       time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`
+}
+
+// InviteStatus defines the lifecycle of an invite token.
+type InviteStatus string
+
+const (
+	InviteStatusPending  InviteStatus = "pending"
+	InviteStatusAccepted InviteStatus = "accepted"
+	InviteStatusExpired  InviteStatus = "expired"
+	InviteStatusRevoked  InviteStatus = "revoked"
+)
+
+// Invite represents an invitation to register in the system.
+type Invite struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty"    json:"id"`
+	InviteID   string             `bson:"invite_id"        json:"invite_id"`
+	Email      string             `bson:"email,omitempty"  json:"email,omitempty"`
+	Role       string             `bson:"role"             json:"role"`
+	Status     InviteStatus       `bson:"status"           json:"status"`
+	TokenHash  string             `bson:"token_hash"       json:"-"`
+	CreatedBy  string             `bson:"created_by"       json:"created_by"`
+	CreatedAt  time.Time          `bson:"created_at"       json:"created_at"`
+	ExpiresAt  time.Time          `bson:"expires_at"       json:"expires_at"`
+	AcceptedAt *time.Time         `bson:"accepted_at,omitempty" json:"accepted_at,omitempty"`
+	AcceptedBy string             `bson:"accepted_by,omitempty" json:"accepted_by,omitempty"`
 }
 
 // Role defines permissions for a role.
@@ -130,11 +158,12 @@ type SystemConfig struct {
 
 const (
 	// MongoDB collections
-	CollUsers          = "users"
-	CollRoles          = "roles"
-	CollAuditLogs      = "audit_logs"
-	CollNotifications  = "notifications"
-	CollSystemConfigs  = "system_configs"
+	CollUsers         = "users"
+	CollRoles         = "roles"
+	CollInvites       = "invites"
+	CollAuditLogs     = "audit_logs"
+	CollNotifications = "notifications"
+	CollSystemConfigs = "system_configs"
 )
 
 // GetAllPermissions returns metadata for all defined permissions.

@@ -12,7 +12,9 @@ import (
 // Service handles authentication and authorization business logic.
 type Service struct {
 	userRepo   *mongo.UserRepository
+	inviteRepo *mongo.InviteRepository
 	jwtManager *middleware.JWTManager
+	hmacSecret []byte
 }
 
 // NewService creates a new auth service.
@@ -42,9 +44,9 @@ type LoginResponse struct {
 
 // RegisterRequest represents a user registration request.
 type RegisterRequest struct {
-	Username string          `json:"username" binding:"required,min=2,max=50"`
-	Password string          `json:"password" binding:"required,min=6,max=100"`
-	Role     model.UserRole  `json:"role,omitempty"`
+	Username string         `json:"username" binding:"required,min=2,max=50"`
+	Password string         `json:"password" binding:"required,min=6,max=100"`
+	Role     model.UserRole `json:"role,omitempty"`
 }
 
 // RegisterResponse represents a successful registration.
