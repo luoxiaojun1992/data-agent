@@ -16,10 +16,7 @@ async function createTask(request: any, token: string, sessionID: string) {
     },
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   });
-  if (!res.ok()) {
-    console.log(`[task.e2e] createTask "${sessionID}" failed: ${res.status()} ${await res.text()}`);
-    return null;
-  }
+  expect(res.ok()).toBe(true);
   return (await res.json());
 }
 
@@ -29,13 +26,9 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
   test.beforeAll(async ({ request }) => {
     let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
     if (res.status() !== 201) {
-      res = await request.post(`${API_BASE}/auth/login`, {
-        data: { username: ADMIN.username, password: ADMIN.password },
-      });
+      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     } else {
-      res = await request.post(`${API_BASE}/auth/login`, {
-        data: { username: ADMIN.username, password: ADMIN.password },
-      });
+      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     }
     adminToken = (await res.json()).access_token;
   });
@@ -74,102 +67,67 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
   });
 
   // ═══ UI-110: 全局查看所有用户任务 ═══
-  test('[UI-110] Task — 全局查看所有用户任务', async ({ page, request }) => {
-    // Create a task so we have data to verify
-    const task = await createTask(request, adminToken, `e2e-task-${uid}-110`);
-    if (task?.task_id) createdTasks.push(task.task_id);
-
-    await page.reload();
-    await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
-    await page.waitForSelector('[data-testid="task-mgmt-table"]', { timeout: 15000 });
-
-    // Table should be visible regardless of whether tasks loaded
-    const rows = page.locator('[data-testid^="task-mgmt-row-"]');
-    const rowCount = await rows.count();
-    console.log(`[UI-110] task rows: ${rowCount}`);
-    // Verify table renders — row count depends on task processing speed
-    expect(rowCount).toBeGreaterThanOrEqual(0);
+  test('[UI-110] Task — 全局查看所有用户任务', async ({ page }) => {
+    await expect(page.locator('[data-testid="task-mgmt-table"]')).toBeVisible({ timeout: 10000 });
+    console.log(`[UI-110] table visible, rows: ${await page.locator('[data-testid^="task-mgmt-row-"]').count()}`);
   });
 
   // ═══ UI-111: 查看任务详情 ═══
   test('[UI-111] Task — 查看任务详情', async ({ page }) => {
-    const allTab = page.locator('[data-testid="task-mgmt-filter-tabs"] button', { hasText: '全部' });
-    if (await allTab.isVisible().catch(() => false)) {
-      await allTab.click();
-    }
-    // Verify table renders
     await expect(page.locator('[data-testid="task-mgmt-table"]')).toBeVisible({ timeout: 10000 });
   });
 
   // ═══ UI-112: 取消运行中任务 ═══
   test('[UI-112] Task — 取消运行中任务', async ({ page, request }) => {
     const task = await createTask(request, adminToken, `e2e-task-${uid}-cancel`);
-    if (task?.task_id) createdTasks.push(task.task_id);
-    expect(task).toBeTruthy();
+    createdTasks.push(task.task_id);
 
     await page.reload();
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
-    if (task?.task_id) {
-      const cancelBtn = page.locator(`[data-testid="task-mgmt-cancel-btn-${task.task_id}"]`);
-      await expect(cancelBtn).toBeVisible({ timeout: 20000 });
-      page.once('dialog', (d) => d.accept());
-      await cancelBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    const cancelBtn = page.locator(`[data-testid="task-mgmt-cancel-btn-${task.task_id}"]`);
+    await expect(cancelBtn).toBeVisible({ timeout: 20000 });
+    page.once('dialog', (d) => d.accept());
+    await cancelBtn.click();
   });
 
   // ═══ UI-113: 重试失败任务 ═══
   test('[UI-113] Task — 重试失败任务', async ({ page, request }) => {
     const task = await createTask(request, adminToken, `e2e-task-${uid}-retry`);
-    if (task?.task_id) {
-      createdTasks.push(task.task_id);
-      await request.put(`${API_BASE}/tasks/${task.task_id}/cancel`, undefined, {
-        headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      }).catch(() => {});
-    }
-    expect(task).toBeTruthy();
+    createdTasks.push(task.task_id);
+    await request.put(`${API_BASE}/tasks/${task.task_id}/cancel`, undefined, {
+      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+    });
 
     await page.reload();
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
-    if (task?.task_id) {
-      const retryBtn = page.locator(`[data-testid="task-mgmt-retry-btn-${task.task_id}"]`);
-      await expect(retryBtn).toBeVisible({ timeout: 20000 });
-      await retryBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    const retryBtn = page.locator(`[data-testid="task-mgmt-retry-btn-${task.task_id}"]`);
+    await expect(retryBtn).toBeVisible({ timeout: 20000 });
+    await retryBtn.click();
   });
 
   // ═══ UI-114: 批量取消任务 ═══
   test('[UI-114] Task — 批量取消任务', async ({ page, request }) => {
     for (let i = 0; i < 2; i++) {
       const task = await createTask(request, adminToken, `e2e-task-${uid}-batch-${i}`);
-      if (task?.task_id) createdTasks.push(task.task_id);
+      createdTasks.push(task.task_id);
     }
 
     await page.reload();
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
-    const allTab = page.locator('[data-testid="task-mgmt-filter-tabs"] button', { hasText: '全部' });
-    if (await allTab.isVisible().catch(() => false)) {
-      await allTab.click();
-    }
-
     const checkboxes = page.locator('[data-testid="task-mgmt-batch-select"]');
-    await expect(checkboxes.first()).toBeVisible({ timeout: 10000 });
+    await expect(checkboxes.first()).toBeVisible({ timeout: 15000 });
     const count = await checkboxes.count();
+    expect(count).toBeGreaterThanOrEqual(2);
 
-    if (count >= 2) {
-      await checkboxes.nth(0).check();
-      await checkboxes.nth(1).check();
-      await page.waitForTimeout(500);
+    await checkboxes.nth(0).check();
+    await checkboxes.nth(1).check();
 
-      const batchBtn = page.locator('[data-testid="task-mgmt-batch-cancel-btn"]');
-      await expect(batchBtn).toBeVisible({ timeout: 5000 });
-      page.once('dialog', (d) => d.accept());
-      await batchBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    const batchBtn = page.locator('[data-testid="task-mgmt-batch-cancel-btn"]');
+    await expect(batchBtn).toBeVisible({ timeout: 5000 });
+    page.once('dialog', (d) => d.accept());
+    await batchBtn.click();
   });
 });
