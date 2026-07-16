@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
@@ -226,25 +227,7 @@ func (h *AuthHandler) UpdateHMACSecret(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "hmac secret updated"})
 }
 
-func getString(c *gin.Context, key, defaultVal string) string {
-	val, ok := c.Get(key)
-	if !ok {
-		return defaultVal
-	}
-	s, ok := val.(string)
-	if !ok {
-		return defaultVal
-	}
-	return s
-}
-
+// parseInt64 parses a string to int64 safely.
 func parseInt64(s string) (int64, error) {
-	var n int64
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, nil
-		}
-		n = n*10 + int64(c-'0')
-	}
-	return n, nil
+	return strconv.ParseInt(s, 10, 64)
 }
