@@ -111,13 +111,11 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
     if (task?.task_id) {
-      await page.waitForSelector(`[data-testid="task-mgmt-row-${task.task_id}"]`, { timeout: 20000 });
       const cancelBtn = page.locator(`[data-testid="task-mgmt-cancel-btn-${task.task_id}"]`);
-      if (await cancelBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-        page.once('dialog', (d) => d.accept());
-        await cancelBtn.click();
-        await page.waitForTimeout(1000);
-      }
+      await expect(cancelBtn).toBeVisible({ timeout: 20000 });
+      page.once('dialog', (d) => d.accept());
+      await cancelBtn.click();
+      await page.waitForTimeout(1000);
     }
   });
 
@@ -136,12 +134,10 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
     if (task?.task_id) {
-      await page.waitForSelector(`[data-testid="task-mgmt-row-${task.task_id}"]`, { timeout: 20000 });
       const retryBtn = page.locator(`[data-testid="task-mgmt-retry-btn-${task.task_id}"]`);
-      if (await retryBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await retryBtn.click();
-        await page.waitForTimeout(1000);
-      }
+      await expect(retryBtn).toBeVisible({ timeout: 20000 });
+      await retryBtn.click();
+      await page.waitForTimeout(1000);
     }
   });
 
