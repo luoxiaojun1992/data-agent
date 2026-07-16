@@ -109,9 +109,6 @@ func (h *AuthHandler) CreateInvite(c *gin.Context) {
 	}
 
 	// Role-based invite restriction: admin can only invite user
-	if req.Role == string(getString(c, "role", "")) {
-		// Allow inviting same role
-	}
 	if userRole == "admin" && req.Role == "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot invite role higher than your own"})
 		return

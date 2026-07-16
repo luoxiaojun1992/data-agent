@@ -299,10 +299,8 @@ func (s *Service) CompleteRegistration(ctx context.Context, req *CompleteRegistr
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
-	// Mark invite as accepted
-	if err := s.inviteRepo.MarkAccepted(ctx, payload.InviteID, user.ID.Hex()); err != nil {
-		// Non-fatal: user is created, log or ignore
-	}
+	// Mark invite as accepted (non-fatal: user is already created)
+	_ = s.inviteRepo.MarkAccepted(ctx, payload.InviteID, user.ID.Hex())
 
 	// Generate JWT for auto-login
 	token, err := s.jwtManager.GenerateToken(user.ID.Hex(), user.Username, string(user.Role))
