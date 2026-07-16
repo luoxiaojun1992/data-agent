@@ -30,28 +30,28 @@ func (s CircuitState) String() string {
 
 // CircuitBreakerConfig defines configuration for a circuit breaker.
 type CircuitBreakerConfig struct {
-	MaxFailures  int           // Consecutive failures to open the circuit
-	CooldownSec  int           // Seconds before transitioning from open to half-open
-	TimeoutSec   int           // Timeout for half-open probe requests
+	MaxFailures int // Consecutive failures to open the circuit
+	CooldownSec int // Seconds before transitioning from open to half-open
+	TimeoutSec  int // Timeout for half-open probe requests
 }
 
 // DefaultCircuitBreakerConfig returns recommended defaults.
 func DefaultCircuitBreakerConfig() CircuitBreakerConfig {
 	return CircuitBreakerConfig{
-		MaxFailures:  5,
-		CooldownSec:  30,
-		TimeoutSec:   10,
+		MaxFailures: 5,
+		CooldownSec: 30,
+		TimeoutSec:  10,
 	}
 }
 
 // CircuitBreaker implements the circuit breaker pattern per skill.
 type CircuitBreaker struct {
-	mu         sync.Mutex
-	config     CircuitBreakerConfig
-	state      CircuitState
-	failures   int
-	lastFail   time.Time
-	lastState  time.Time
+	mu        sync.Mutex
+	config    CircuitBreakerConfig
+	state     CircuitState
+	failures  int
+	lastFail  time.Time
+	lastState time.Time
 }
 
 // NewCircuitBreaker creates a new circuit breaker.

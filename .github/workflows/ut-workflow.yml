@@ -25,18 +25,18 @@ jobs:
       # L1+L2: Pure logic and interface-mocked packages (no Docker required)
       - name: Run Unit Tests (L1+L2)
         run: |
-          go test -race -coverprofile=coverage-l1l2.out \
-            ./internal/... ./skills/...
+          go test -race -gcflags=all=-l -coverprofile=coverage-l1l2.out \
+            ./internal/... ./skills/... ./cmd/...
 
-      - name: Check L1+L2 Coverage Threshold
+      - name: Check Coverage Threshold
         run: |
           COVERAGE=$(go tool cover -func=coverage-l1l2.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "L1+L2 Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 10" | bc -l) )); then
-            echo "ERROR: Coverage ${COVERAGE}% below 10% minimum threshold"
+          echo "Coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 98" | bc -l) )); then
+            echo "ERROR: Coverage ${COVERAGE}% below 98% minimum threshold"
             exit 1
           fi
-          echo "L1+L2 Coverage check passed"
+          echo "Coverage check passed (>= 98%)"
 
       - name: Upload Coverage Report
         if: always()

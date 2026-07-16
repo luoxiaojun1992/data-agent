@@ -3,15 +3,17 @@ package skill
 import (
 	"fmt"
 
-	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	skilldomain "github.com/luoxiaojun1992/data-agent/internal/domain/skill"
+	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 )
 
 // SQLExecutor implements skill.Skill for SQL query execution.
 type SQLExecutor struct{}
 
-func (s *SQLExecutor) Name() string        { return "sql_executor" }
-func (s *SQLExecutor) Description() string { return "Executes validated SQL SELECT queries with safety checks" }
+func (s *SQLExecutor) Name() string { return "sql_executor" }
+func (s *SQLExecutor) Description() string {
+	return "Executes validated SQL SELECT queries with safety checks"
+}
 
 func (s *SQLExecutor) Parameters() []skilldomain.Parameter {
 	return []skilldomain.Parameter{

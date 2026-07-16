@@ -20,14 +20,14 @@ func NewTaskHandler(svc *task.Service) *TaskHandler {
 // CreateTask creates and enqueues a new async task.
 func (h *TaskHandler) CreateTask(c *gin.Context) {
 	var req struct {
-		Title      string                 `json:"title"`
-		Description string                `json:"description"`
-		SessionID  string                 `json:"session_id"`
-		Type       string                 `json:"type"`
-		Skills     []string               `json:"skills"`
-		SkillChain []string               `json:"skill_chain"`
-		Params     map[string]interface{} `json:"params"`
-		CronExpr   string                 `json:"cron_expr"`
+		Title       string                 `json:"title"`
+		Description string                 `json:"description"`
+		SessionID   string                 `json:"session_id"`
+		Type        string                 `json:"type"`
+		Skills      []string               `json:"skills"`
+		SkillChain  []string               `json:"skill_chain"`
+		Params      map[string]interface{} `json:"params"`
+		CronExpr    string                 `json:"cron_expr"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

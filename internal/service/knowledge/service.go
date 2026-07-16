@@ -105,10 +105,10 @@ func (s *Service) ListAllDocs() ([]knowledge.KnowledgeDoc, error) {
 func (s *Service) AddChunks(docID string, chunks []string) error {
 	for i, content := range chunks {
 		chunk := &knowledge.Chunk{
-			ID:       fmt.Sprintf("chunk_%s_%d", docID, i),
-			DocID:    docID,
-			Content:  content,
-			ChunkIdx: i,
+			ID:        fmt.Sprintf("chunk_%s_%d", docID, i),
+			DocID:     docID,
+			Content:   content,
+			ChunkIdx:  i,
 			CharCount: len([]rune(content)),
 		}
 		_, err := s.db.Collection("kb_chunks").InsertOne(context.Background(), chunk)

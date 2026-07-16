@@ -22,12 +22,12 @@ func NewService(db *mongo.Database) *Service {
 
 // ListParams are the filter parameters for listing audit logs.
 type ListParams struct {
-	Action  string
-	UserID  string
-	Start   string // ISO date
-	End     string // ISO date
-	Skip    int64
-	Limit   int64
+	Action string
+	UserID string
+	Start  string // ISO date
+	End    string // ISO date
+	Skip   int64
+	Limit  int64
 }
 
 // ListResult contains the audit log list and total count.

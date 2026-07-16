@@ -25,9 +25,9 @@ func RequirePermission(permission string) gin.HandlerFunc {
 		perms := getRolePermissions(roleStr)
 		if !hasPermission(perms, permission) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error":       "insufficient permissions",
-				"required":    permission,
-				"your_role":   roleStr,
+				"error":     "insufficient permissions",
+				"required":  permission,
+				"your_role": roleStr,
 			})
 			return
 		}

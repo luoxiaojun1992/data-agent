@@ -17,8 +17,8 @@ type Service struct {
 	chatSvc     *chat.Service
 	sessions    *chat.Manager
 	cbReg       *security.CircuitBreakerRegistry
-	taskService *task_svc.Service      // optional — requires Redis
-	skillReg    agent.SkillRegistry    // real skill registry
+	taskService *task_svc.Service   // optional — requires Redis
+	skillReg    agent.SkillRegistry // real skill registry
 }
 
 // NewService creates a new Agent Service.
@@ -51,10 +51,10 @@ func (s *Service) HandleChat(c *gin.Context) {
 // CreateAgentTask creates an async agent task via Redis Stream and returns immediately.
 func (s *Service) CreateAgentTask(c *gin.Context) {
 	var req struct {
-		Title      string          `json:"title"`
-		Model      string          `json:"model"`
-		Messages   []agent.Message `json:"messages"`
-		SkillChain []string        `json:"skill_chain"`
+		Title      string                 `json:"title"`
+		Model      string                 `json:"model"`
+		Messages   []agent.Message        `json:"messages"`
+		SkillChain []string               `json:"skill_chain"`
 		Params     map[string]interface{} `json:"params"`
 	}
 

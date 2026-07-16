@@ -26,11 +26,11 @@ type LLMProvider interface {
 
 // ChatRequest represents a chat completion request.
 type ChatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []Message     `json:"messages"`
-	Temperature float64       `json:"temperature,omitempty"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Tools       []ToolDef     `json:"tools,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Temperature float64   `json:"temperature,omitempty"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Tools       []ToolDef `json:"tools,omitempty"`
 }
 
 // Message represents a chat message.

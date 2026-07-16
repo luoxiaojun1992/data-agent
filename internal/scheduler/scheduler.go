@@ -13,16 +13,16 @@ import (
 
 // Schedule represents a recurring job configuration.
 type Schedule struct {
-	ID        string                 `json:"id" bson:"_id"`
-	Name      string                 `json:"name" bson:"name"`
-	CronExpr  string                 `json:"cron_expr" bson:"cron_expr"`   // simplified: "every_5m", "every_1h", "daily_09:00"
-	Interval  time.Duration          `json:"-" bson:"interval_sec"`         // parsed interval in seconds
-	Enabled   bool                   `json:"enabled" bson:"enabled"`
-	SkillChain []string              `json:"skill_chain" bson:"skill_chain"`
-	Params    map[string]interface{} `json:"params" bson:"params"`
-	LastRun   *time.Time             `json:"last_run" bson:"last_run"`
-	NextRun   time.Time              `json:"next_run" bson:"next_run"`
-	CreatedAt time.Time              `json:"created_at" bson:"created_at"`
+	ID         string                 `json:"id" bson:"_id"`
+	Name       string                 `json:"name" bson:"name"`
+	CronExpr   string                 `json:"cron_expr" bson:"cron_expr"` // simplified: "every_5m", "every_1h", "daily_09:00"
+	Interval   time.Duration          `json:"-" bson:"interval_sec"`      // parsed interval in seconds
+	Enabled    bool                   `json:"enabled" bson:"enabled"`
+	SkillChain []string               `json:"skill_chain" bson:"skill_chain"`
+	Params     map[string]interface{} `json:"params" bson:"params"`
+	LastRun    *time.Time             `json:"last_run" bson:"last_run"`
+	NextRun    time.Time              `json:"next_run" bson:"next_run"`
+	CreatedAt  time.Time              `json:"created_at" bson:"created_at"`
 }
 
 // TaskCreator is the interface Scheduler uses to create AgentTasks.
@@ -32,10 +32,10 @@ type TaskCreator interface {
 
 // Scheduler manages recurring task schedules.
 type Scheduler struct {
-	mu       sync.RWMutex
+	mu        sync.RWMutex
 	schedules map[string]*Schedule
-	creator  TaskCreator
-	stopCh   chan struct{}
+	creator   TaskCreator
+	stopCh    chan struct{}
 }
 
 // New creates a new Scheduler.

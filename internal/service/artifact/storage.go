@@ -15,8 +15,8 @@ const collArtifacts = "artifacts"
 
 // Storage combines SeaweedFS storage with MongoDB metadata.
 type Storage struct {
-	sw    *seaweedfs.Client
-	coll  *mongo.Collection
+	sw   *seaweedfs.Client
+	coll *mongo.Collection
 }
 
 // NewStorage creates a new artifact storage adapter.

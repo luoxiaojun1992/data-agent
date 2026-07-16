@@ -7,11 +7,11 @@ import (
 
 // AnalysisResult is the unified output structure for all stats functions.
 type AnalysisResult struct {
-	Method     string        `json:"method"`
+	Method     string                 `json:"method"`
 	Parameters map[string]interface{} `json:"parameters"`
-	Result     interface{}   `json:"result"`
-	Summary    string        `json:"summary"`
-	Warnings   []string      `json:"warnings"`
+	Result     interface{}            `json:"result"`
+	Summary    string                 `json:"summary"`
+	Warnings   []string               `json:"warnings"`
 }
 
 // Descriptive computes descriptive statistics for a slice of values.
@@ -99,7 +99,7 @@ func LinearRegression(x, y []float64) *AnalysisResult {
 	rSquared := 1 - safeDiv(ssRes, ssTot)
 
 	return &AnalysisResult{
-		Method: "linear_regression",
+		Method:     "linear_regression",
 		Parameters: map[string]interface{}{"data_points": len(x)},
 		Result: map[string]interface{}{
 			"slope":     slope,
@@ -147,10 +147,10 @@ func TimeSeriesDecompose(values []float64) *AnalysisResult {
 		Method:     "time_series",
 		Parameters: map[string]interface{}{"data_points": len(values), "window": window},
 		Result: map[string]interface{}{
-			"trend":      trend,
-			"residuals":  residuals,
-			"direction":  trendDirection,
-			"original":   values,
+			"trend":     trend,
+			"residuals": residuals,
+			"direction": trendDirection,
+			"original":  values,
 		},
 		Summary: "时间序列分解完成，趋势方向：" + trendDirection,
 	}
