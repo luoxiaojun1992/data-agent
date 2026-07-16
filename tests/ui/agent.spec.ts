@@ -83,13 +83,9 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
 
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
-    await page.reload();
-    await page.waitForSelector('[data-testid="agent-page-header"]', { timeout: 10000 });
-
+    // After modal closes, task should appear in the list (loadTasks() was called)
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 30000 });
+    await expect(row).toBeVisible({ timeout: 5000 });
     await row.click();
     await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
@@ -129,9 +125,9 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-    await page.goto('/agent');
-    await page.waitForURL('**/agent', { timeout: 5000 });
-    await expect(page.locator('[data-testid^="agent-task-title-"]').first()).toBeVisible({ timeout: 20000 });
+
+    // After modal closes, task should appear in the list
+    await expect(page.locator('[data-testid^="agent-task-title-"]').first()).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-053: Page renders ═══
