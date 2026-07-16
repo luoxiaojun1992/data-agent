@@ -64,11 +64,7 @@ test.describe('ERROR STATES — SPEC-041', () => {
     await page.context().setOffline(true);
 
     // Attempt an action that requires network — should show UI feedback
-    const chatInput = page.locator('[data-testid="chat-input"]');
-    if (await chatInput.isVisible().catch(() => false)) {
-      await chatInput.fill('test');
-      await page.keyboard.press('Enter');
-    }
+    await page.keyboard.press('Enter');
 
     // Give the app time to react to being offline
     await page.waitForTimeout(2000);

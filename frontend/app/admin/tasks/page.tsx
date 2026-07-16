@@ -36,7 +36,7 @@ export default function TasksPage() {
         const data = await res.json();
         setTasks(Array.isArray(data) ? data : []);
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[admin/tasks] fetchTasks failed:', e); }
   }, [apiFetch, filter]);
 
   useEffect(() => {

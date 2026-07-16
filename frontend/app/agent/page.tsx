@@ -33,7 +33,7 @@ export default function AgentPage() {
       const res = await apiFetch('/tasks');
       const data = await res.json();
       setTasks(data.tasks || []);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[agent] loadTasks failed:', e); }
     finally { setLoading(false); }
   };
 
@@ -55,7 +55,7 @@ export default function AgentPage() {
         setShowModal(false);
         setNewTask({ title: '', description: '', skills: 'sql_executor', async: false, cron: '', cronEnabled: false });
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[agent] loadTasks failed:', e); }
   };
 
   const cancelTask = async (taskId: string) => {
@@ -73,7 +73,7 @@ export default function AgentPage() {
         setTasks(prev => prev.map(t => t.task_id === taskId ? { ...t, ...data } : t));
         setExpandedTask(taskId);
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[agent] loadTasks failed:', e); }
   };
 
   const statusPill = (s: string) => {

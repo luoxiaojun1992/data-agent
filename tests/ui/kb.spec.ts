@@ -114,13 +114,12 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
 
     // Click on the document name or preview button
     const previewBtn = firstCard.locator('[data-testid="kb-doc-name"]');
-    if (await previewBtn.isVisible().catch(() => false)) {
-      await previewBtn.click();
-      await page.waitForTimeout(1000);
-      // Preview modal or detail panel should appear
-      // Verify either a preview panel or detail view
-      const detailPanel = page.locator('[data-testid="kb-doc-detail-panel"]');
-      const previewModal = page.locator('[data-testid="kb-preview-modal"]');
+    await expect(previewBtn).toBeVisible({ timeout: 5000 });
+    await previewBtn.click();
+    await page.waitForTimeout(1000);
+    // Verify either a preview panel or detail view
+    const detailPanel = page.locator('[data-testid="kb-doc-detail-panel"]');
+    const previewModal = page.locator('[data-testid="kb-preview-modal"]');
       const hasDetailOrPreview = (await detailPanel.isVisible({ timeout: 3000 }).catch(() => false)) ||
                                   (await previewModal.isVisible({ timeout: 3000 }).catch(() => false));
       if (hasDetailOrPreview) {
@@ -178,8 +177,8 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     if (hasTagFilter) {
       // Try clicking a tag to filter
       const firstTag = tagFilter.locator('[data-testid^="kb-tag-"]').first();
-      if (await firstTag.isVisible().catch(() => false)) {
-        await firstTag.click();
+    await expect(firstTag).toBeVisible({ timeout: 5000 });
+    await firstTag.click();
         await page.waitForTimeout(500);
         // Verify the filter is active (tag gets active style)
         await expect(firstTag).toBeVisible();

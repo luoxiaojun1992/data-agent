@@ -259,10 +259,8 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
     if (isOnModelPage) {
       // Page rendered but user cannot see data or save
       const saveBtn = page.locator('[data-testid="model-save-btn"]');
-      if (await saveBtn.isVisible().catch(() => false)) {
-        await saveBtn.click();
-        await page.waitForTimeout(1000);
-      }
+      await expect(saveBtn).toBeVisible({ timeout: 5000 });
+      await saveBtn.click();
     }
     // Regardless of outcome, user should not be able to see admin nav
     await expect(page.locator('[data-testid="nav-admin"]')).not.toBeVisible();

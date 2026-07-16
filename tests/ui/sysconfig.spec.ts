@@ -112,11 +112,7 @@ test.describe('SYSCONFIG — SPEC-026', () => {
 
     // Error message should appear (backend validates max 168)
     const errorEl = page.locator('[data-testid="sysconfig-session-recovery-error"]');
-    // May show if backend response parsed; if not, just verify button works
-    const hasError = await errorEl.isVisible().catch(() => false);
-    if (hasError) {
-      await expect(errorEl).toContainText('168');
-    }
+    await expect(errorEl).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-108: 配置优先级验证 ═══

@@ -149,9 +149,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
 
     // Security toast or page stays functional
     const blocked = page.locator('[data-testid="sec-input-blocked-toast"]');
-    if (await blocked.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await expect(blocked).toBeVisible();
-    }
+    await expect(page.locator('[data-testid="sec-input-blocked-toast"]').first()).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="sidebar"]')).toBeVisible();
   });
 
@@ -180,10 +178,9 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
 
     // Send message in Hermes mode
     const input = page.locator('[data-testid="chat-input"]');
-    if (await input.isVisible().catch(() => false)) {
-      await input.fill('什么是数据分析');
-      await page.keyboard.press('Enter');
-      await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
-    }
+    await expect(input).toBeVisible({ timeout: 10000 });
+    await input.fill('什么是数据分析');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
   });
 });
