@@ -36,6 +36,16 @@ test.describe('SESSION — SPEC-037', () => {
     await page.locator('[data-testid="login-password-input"]').fill(USER.password);
     await page.locator('[data-testid="login-btn"]').click();
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
+    // Clean up any leftover recovery banners from previous test runs
+    const recoveryBanner = page.locator('[data-testid="session-recovery-banner"]');
+    if (await recoveryBanner.isVisible({ timeout: 2000 }).catch(() => false)) {
+      const restoreBtns = page.locator('[data-testid="session-recovery-restore-btn"]');
+      const restoreCount = await restoreBtns.count();
+      for (let i = 0; i < restoreCount; i++) {
+        await restoreBtns.first().click();
+        await page.waitForTimeout(500);
+      }
+    }
   });
 
   // ═══ UI-180: 多端登录互不干扰 ═══
@@ -129,17 +139,6 @@ test.describe('SESSION — SPEC-037', () => {
     await page.goto('/chat');
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
 
-    // Clean up any leftover recovery banners from previous tests
-    const recoveryBanner = page.locator('[data-testid="session-recovery-banner"]');
-    if (await recoveryBanner.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const restoreBtns = page.locator('[data-testid="session-recovery-restore-btn"]');
-      const restoreCount = await restoreBtns.count();
-      for (let i = 0; i < restoreCount; i++) {
-        await restoreBtns.first().click();
-        await page.waitForTimeout(500);
-      }
-    }
-
     // Send a message to build session context
     await page.locator('[data-testid="chat-input"]').fill('hello');
     await page.keyboard.press('Enter');
@@ -181,7 +180,7 @@ test.describe('SESSION — SPEC-037', () => {
 
     // Error should not be visible
     const err = page.locator('[data-testid="sysconfig-session-recovery-error"]');
-    await expect(err).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+    await expect(err).not.toBeVisible({ timeout: 5000 });
 
     // Reload and verify value persisted
     await page.reload();
