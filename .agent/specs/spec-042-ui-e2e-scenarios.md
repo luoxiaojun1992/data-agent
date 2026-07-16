@@ -1,6 +1,6 @@
 # UI E2E 测试设计 — 端到端场景测试 (E2E)
 
-> **SPEC-042** | Status: 设计中 | Date: 2026-07-09 | Phase: P8
+> **SPEC-042** | Status: 已实现 | Date: 2026-07-09 | Phase: P8
 
 ## 1. 目标
 
