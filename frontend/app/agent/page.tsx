@@ -6,7 +6,8 @@ import { useAuth } from '@/lib/api';
 
 interface AgentTask {
   task_id: string;
-  title: string;
+  title?: string;
+  type?: string;
   status: string; // pending | running | completed | failed | cancelled
   progress?: number;
   created_at: string;
@@ -32,7 +33,10 @@ export default function AgentPage() {
     try {
       const res = await apiFetch('/tasks');
       const data = await res.json();
-      setTasks(data.tasks || []);
+      setTasks((data.tasks || []).map((t: AgentTask) => ({
+        ...t,
+        title: t.title || t.type || '',
+      })));
     } catch (e) { console.error('[agent] loadTasks failed:', e); }
     finally { setLoading(false); }
   };
@@ -143,7 +147,7 @@ export default function AgentPage() {
                   className="w-full text-left p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
                   data-testid={`agent-task-title-${idx}`}>
                   <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">{task.title || task.task_id?.slice(0, 12)}</p>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">{task.title || task.type || task.task_id?.slice(0, 12)}</p>
                     <p className="text-xs text-[var(--text-secondary)] mt-1">{new Date(task.created_at).toLocaleString()}</p>
                   </div>
                   <div className="flex items-center gap-2">

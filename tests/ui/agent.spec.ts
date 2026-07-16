@@ -116,15 +116,26 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
   });
 
-  // ═══ UI-052: Create task → modal flow ═══
+  // ═══ UI-052: Create task → expand → cancel → verify removed ═══
   test('[UI-052] Agent — cancel running task', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     // Modal must close after successful creation
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-    // Page must remain responsive
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 5000 });
+
+    // Step 1: task row appears (createTask → loadTasks → setTasks)
+    const row = page.locator('[data-testid^="agent-task-title-"]').first();
+    await expect(row).toBeVisible({ timeout: 10000 });
+    await row.click();
+
+    // Step 2: cancel button in detail panel
+    const cancelBtn = page.locator('[data-testid^="agent-cancel-btn-"]').first();
+    await expect(cancelBtn).toBeVisible({ timeout: 5000 });
+    await cancelBtn.click();
+
+    // Step 3: row disappears after cancel (cancelTask → loadTasks → setTasks)
+    await expect(row).not.toBeVisible({ timeout: 10000 });
   });
 
   // ═══ UI-053: Page renders ═══
