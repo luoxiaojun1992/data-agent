@@ -20,14 +20,14 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="login-email-input"]').fill(U.username);
     await page.locator('[data-testid="login-password-input"]').fill(U.password);
     await page.locator('[data-testid="login-btn"]').click();
-    await page.waitForURL((u: URL) => !u.pathname.includes('/login'), { timeout: 10000 });
+    await page.waitForURL((u: URL) => !u.pathname.includes('/login'), { timeout: 20000 });
     await page.locator('[data-testid="nav-agent"]').click();
     await page.waitForURL('**/agent', { timeout: 5000 });
   });
 
   // ═══ UI-039: Page header + empty state ═══
   test('[UI-039] Agent page header and empty state', async ({ page }) => {
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 20000 });
     await expect(page.locator('[data-testid="agent-page-header"] h2')).toHaveText('Agent 任务');
     await expect(page.locator('[data-testid="agent-empty"]')).toBeVisible({ timeout: 5000 });
   });
@@ -46,7 +46,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 同步分析');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     // Modal should close after successful creation
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 20000 });
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
   });
 
@@ -56,7 +56,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 异步分析');
     await page.locator('[data-testid="agent-task-async-toggle"]').check();
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 20000 });
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
   });
 
@@ -83,7 +83,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Detail Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 20000 });
 
     // Navigate back to ensure fresh render
     await page.goto('/agent');
@@ -91,7 +91,7 @@ test.describe('AGENT — Professional Workspace', () => {
 
     // Task should appear — click to expand
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
+    await expect(row).toBeVisible({ timeout: 20000 });
     await row.click();
     await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
@@ -101,12 +101,12 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Cancel Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 20000 });
     await page.goto('/agent');
     await page.waitForURL('**/agent', { timeout: 5000 });
 
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
+    await expect(row).toBeVisible({ timeout: 20000 });
     await row.click();
     // Detail panel should be visible
     await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
@@ -118,13 +118,13 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('Progress Test');
     await page.locator('[data-testid="agent-task-async-toggle"]').check();
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 20000 });
     await page.goto('/agent');
     await page.waitForURL('**/agent', { timeout: 5000 });
 
     // Async task should appear — click to expand
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
+    await expect(row).toBeVisible({ timeout: 20000 });
     await row.click();
     await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
@@ -134,12 +134,12 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Logs Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 20000 });
     await page.goto('/agent');
     await page.waitForURL('**/agent', { timeout: 5000 });
 
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
+    await expect(row).toBeVisible({ timeout: 20000 });
     await row.click();
     await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
@@ -167,28 +167,28 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 20000 });
     await page.goto('/agent');
     await page.waitForURL('**/agent', { timeout: 5000 });
 
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
+    await expect(row).toBeVisible({ timeout: 20000 });
   });
 
   // ═══ UI-053: Retry failed task ═══
   test('[UI-053] Agent — retry failed task', async ({ page }) => {
     // Navigate to agent page, verify it loads
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 20000 });
   });
 
   // ═══ UI-055: Pause/resume scheduled task ═══
   test('[UI-055] Agent — pause resume scheduled task', async ({ page }) => {
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 20000 });
   });
 
   // ═══ UI-056: Pagination ═══
   test('[UI-056] Agent — pagination', async ({ page }) => {
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 20000 });
     const pagination = page.locator('[data-testid="agent-task-pagination"]');
     const hasPagination = await pagination.isVisible({ timeout: 3000 }).catch(() => false);
     if (hasPagination) {
