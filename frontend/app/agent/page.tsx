@@ -184,7 +184,7 @@ export default function AgentPage() {
 
                     {/* Action buttons */}
                     <div className="flex gap-2 py-3" data-testid={`agent-task-actions-${idx}`}>
-                      {(task.status === 'running' || task.status === 'pending') && (
+                      {(task.status === 'running' || task.status === 'pending' || task.status === 'queued') && (
                         <button onClick={() => cancelTask(task.task_id)}
                           className="px-3 py-1 text-xs rounded-lg border border-red-400/30 text-red-400 hover:bg-red-400/10"
                           data-testid={`agent-cancel-btn-${idx}`}>取消</button>
