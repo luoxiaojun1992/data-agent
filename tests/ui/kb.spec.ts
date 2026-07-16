@@ -117,17 +117,9 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     await expect(previewBtn).toBeVisible({ timeout: 5000 });
     await previewBtn.click();
     await page.waitForTimeout(1000);
-    // Verify either a preview panel or detail view
-    const detailPanel = page.locator('[data-testid="kb-doc-detail-panel"]');
-    const previewModal = page.locator('[data-testid="kb-preview-modal"]');
-      const hasDetailOrPreview = (await detailPanel.isVisible({ timeout: 3000 }).catch(() => false)) ||
-                                  (await previewModal.isVisible({ timeout: 3000 }).catch(() => false));
-      if (hasDetailOrPreview) {
-        // Close preview/detail
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(300);
-      }
-    }
+    // Close preview/detail
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
   });
 
   // ═══ UI-120: 索引状态实时更新 ═══
@@ -175,14 +167,11 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     const tagFilter = page.locator('[data-testid="kb-tag-filter"]');
     const hasTagFilter = await tagFilter.isVisible({ timeout: 3000 }).catch(() => false);
     if (hasTagFilter) {
-      // Try clicking a tag to filter
       const firstTag = tagFilter.locator('[data-testid^="kb-tag-"]').first();
-    await expect(firstTag).toBeVisible({ timeout: 5000 });
-    await firstTag.click();
-        await page.waitForTimeout(500);
-        // Verify the filter is active (tag gets active style)
-        await expect(firstTag).toBeVisible();
-      }
+      await expect(firstTag).toBeVisible({ timeout: 5000 });
+      await firstTag.click();
+      await page.waitForTimeout(500);
+      await expect(firstTag).toBeVisible();
     }
   });
 

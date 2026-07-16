@@ -81,16 +81,15 @@ test.describe('USER MANAGEMENT — SPEC-023', () => {
     // If we have a table, check columns; if empty state, that's fine
     const table = page.locator('[data-testid="user-table"]');
     await expect(table).toBeVisible({ timeout: 5000 });
-      // Check header columns
-      await expect(page.locator('[data-testid="user-table-header-name"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-email"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-role"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-status"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-actions"]')).toBeVisible();
+    // Check header columns
+    await expect(page.locator('[data-testid="user-table-header-name"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-email"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-role"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-status"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-actions"]')).toBeVisible();
 
-      // Header style: uppercase
-      await expect(page.locator('[data-testid="user-table-header-name"]')).toHaveCSS('text-transform', 'uppercase');
-    }
+    // Header style: uppercase
+    await expect(page.locator('[data-testid="user-table-header-name"]')).toHaveCSS('text-transform', 'uppercase');
   });
 
   // ═══ UI-077: User — 添加用户 ═══
