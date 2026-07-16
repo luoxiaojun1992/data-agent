@@ -116,7 +116,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
   });
 
-  // ═══ UI-052: Create task → expand → cancel → verify removed ═══
+  // ═══ UI-052: Create → expand → cancel → verify status change ═══
   test('[UI-052] Agent — cancel running task', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
@@ -134,8 +134,10 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(cancelBtn).toBeVisible({ timeout: 5000 });
     await cancelBtn.click();
 
-    // Step 3: row disappears after cancel (cancelTask → loadTasks → setTasks)
-    await expect(row).not.toBeVisible({ timeout: 10000 });
+    // Step 3: status changes to cancelled (cancelTask → loadTasks)
+    // Task stays in list with "已取消" pill, cancel button gone
+    await expect(page.locator('[data-testid="task-status-cancelled"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(cancelBtn).not.toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-053: Page renders ═══
