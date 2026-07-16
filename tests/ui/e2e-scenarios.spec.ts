@@ -1,8 +1,7 @@
 import { test, expect } from '@playwright/test';
-import * as crypto from 'crypto';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
-const MOCKLLM = 'http://mock-model-service:8081';
+const MOCKLLM = 'http://mockllm:8082';
 const uid = crypto.randomUUID().slice(0, 8);
 
 // Admin user for most scenarios
