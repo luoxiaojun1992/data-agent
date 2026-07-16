@@ -64,7 +64,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
     await seedMock(request, '产品C表现怎么样', '产品C表现优异，销售额达1500万元，同比增长22.1%，华东华南市场为主要增长驱动力。');
 
     await pageLogin(page, ADMIN);
-    await page.goto('/chat');
+    await page.locator('[data-testid="nav-chat"]').click();
     await page.waitForTimeout(2000);
     await expect(page.locator('[data-testid="chat-input"]')).toBeVisible({ timeout: 5000 });
 
@@ -85,7 +85,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
     await seedMock(request, '今日数据概览', '今日数据概览：销售额1,200万元，同比增长12%，活跃用户3,500人。');
 
     await pageLogin(page, USER);
-    await page.goto('/chat');
+    await page.locator('[data-testid="nav-chat"]').click();
     await page.waitForTimeout(2000);
     await expect(page.locator('[data-testid="chat-input"]')).toBeVisible({ timeout: 5000 });
 
@@ -139,7 +139,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
   // ═══ UI-208: 安全拦截 + 审计联动 ═══
   test('[UI-208] E2E — 安全拦截与审计联动', async ({ page }) => {
     await pageLogin(page, USER);
-    await page.goto('/chat');
+    await page.locator('[data-testid="nav-chat"]').click();
     await page.waitForTimeout(1000);
 
     // SQL injection
