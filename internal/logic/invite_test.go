@@ -1,9 +1,12 @@
 package logic
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/agiledragon/gomonkey/v2"
 )
 
 func TestGenerateInviteToken(t *testing.T) {
@@ -119,6 +122,130 @@ func TestVerifyInviteToken(t *testing.T) {
 		_, err := VerifyInviteToken(badToken, [][]byte{secret})
 		if err == nil {
 			t.Error("malformed payload should reject")
+		}
+	})
+
+	t.Run("expired token still verifies but payload contains past timestamp", func(t *testing.T) {
+		pastExpiry := time.Now().Add(-1 * time.Hour)
+		token := GenerateInviteToken(inviteID, pastExpiry, email, role, secret)
+		payload, err := VerifyInviteToken(token, [][]byte{secret})
+		if err != nil {
+			t.Fatalf("expired token should still verify (expiry check is caller's responsibility): %v", err)
+		}
+		if payload.ExpireAt >= time.Now().Unix() {
+			t.Errorf("expired token ExpireAt should be in the past: got %d, now %d", payload.ExpireAt, time.Now().Unix())
+		}
+	})
+
+	t.Run("empty secrets list rejects", func(t *testing.T) {
+		token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+		_, err := VerifyInviteToken(token, [][]byte{})
+		if err == nil {
+			t.Error("empty secrets list should reject token")
+		}
+	})
+
+	t.Run("single secret works", func(t *testing.T) {
+		token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+		payload, err := VerifyInviteToken(token, [][]byte{secret})
+		if err != nil {
+			t.Fatalf("single secret verification failed: %v", err)
+		}
+		if payload.Email != email {
+			t.Errorf("payload.Email: got %s, want %s", payload.Email, email)
+		}
+	})
+
+	t.Run("empty secret in rotation is ignored", func(t *testing.T) {
+		token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+		payload, err := VerifyInviteToken(token, [][]byte{{}, secret, {}}) // empty secrets at start and end
+		if err != nil {
+			t.Fatalf("empty secrets in rotation should be ignored: %v", err)
+		}
+		if payload.InviteID != inviteID {
+			t.Errorf("payload.InviteID: got %s, want %s", payload.InviteID, inviteID)
+		}
+	})
+
+	t.Run("all empty secrets in rotation rejects", func(t *testing.T) {
+		token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+		_, err := VerifyInviteToken(token, [][]byte{{}, {}, {}})
+		if err == nil {
+			t.Error("all empty secrets should reject token")
+		}
+	})
+}
+
+func TestGenerateInviteToken_EdgeCases(t *testing.T) {
+	secret := []byte("edge-case-secret")
+
+	t.Run("special characters in email", func(t *testing.T) {
+		emails := []string{
+			"user+tag@example.com",
+			"user.name@sub.domain.com",
+			"test@example.co.uk",
+		}
+		for _, email := range emails {
+			token := GenerateInviteToken("inv_special", time.Now().Add(time.Hour), email, "user", secret)
+			if token == "" {
+				t.Errorf("token should not be empty for email %q", email)
+			}
+			parts := strings.Split(token, ".")
+			if len(parts) != 2 {
+				t.Errorf("token format should be payload.sig for email %q", email)
+			}
+		}
+	})
+
+	t.Run("very long inviteID", func(t *testing.T) {
+		longID := strings.Repeat("a", 1000)
+		token := GenerateInviteToken(longID, time.Now().Add(time.Hour), "test@example.com", "user", secret)
+		if token == "" {
+			t.Error("token should not be empty for very long inviteID")
+		}
+		parts := strings.Split(token, ".")
+		if len(parts) != 2 {
+			t.Error("token with long inviteID should have correct format")
+		}
+	})
+
+	t.Run("future expiry far ahead", func(t *testing.T) {
+		farFuture := time.Now().Add(365 * 24 * time.Hour) // 1 year
+		token := GenerateInviteToken("inv_future", farFuture, "test@example.com", "admin", secret)
+		if token == "" {
+			t.Error("token should not be empty for far future expiry")
+		}
+	})
+}
+
+func TestLoadInviteHMACSecret(t *testing.T) {
+	t.Run("env var set", func(t *testing.T) {
+		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
+			if key == "INVITE_HMAC_SECRET" {
+				return "my-test-secret"
+			}
+			return ""
+		})
+		defer patches.Reset()
+
+		secret, err := LoadInviteHMACSecret()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(secret) != "my-test-secret" {
+			t.Errorf("expected 'my-test-secret', got %q", string(secret))
+		}
+	})
+
+	t.Run("env var not set returns error", func(t *testing.T) {
+		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
+			return ""
+		})
+		defer patches.Reset()
+
+		_, err := LoadInviteHMACSecret()
+		if err == nil {
+			t.Error("expected error when INVITE_HMAC_SECRET is not set")
 		}
 	})
 }

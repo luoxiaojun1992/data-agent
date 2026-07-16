@@ -1,9 +1,17 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestNewJWTManager(t *testing.T) {
@@ -187,4 +195,252 @@ func TestGenerateTokenBase64(t *testing.T) {
 			t.Error("successive calls should produce different tokens")
 		}
 	})
+}
+
+// ── AuthMiddleware Tests ──
+
+func TestAuthMiddleware_ValidToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := NewJWTManager("test-secret", time.Hour)
+
+	patches := gomonkey.ApplyMethodReturn(m, "ValidateToken", &JWTClaims{
+		UserID:   "user-1",
+		Username: "testuser",
+		Role:     "user",
+	}, nil)
+	defer patches.Reset()
+
+	router := gin.New()
+	router.Use(m.AuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		username, _ := c.Get("username")
+		role, _ := c.Get("role")
+		c.JSON(200, gin.H{
+			"user_id":  userID,
+			"username": username,
+			"role":     role,
+		})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer any-token-here")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_MissingHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := NewJWTManager("test-secret", time.Hour)
+
+	router := gin.New()
+	router.Use(m.AuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_NotBearer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := NewJWTManager("test-secret", time.Hour)
+
+	router := gin.New()
+	router.Use(m.AuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Basic dGVzdDp0ZXN0")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for non-Bearer, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_InvalidFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := NewJWTManager("test-secret", time.Hour)
+
+	router := gin.New()
+	router.Use(m.AuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Invalid")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_InvalidToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := NewJWTManager("test-secret", time.Hour)
+
+	patches := gomonkey.ApplyMethodReturn(m, "ValidateToken", (*JWTClaims)(nil), fmt.Errorf("invalid token"))
+	defer patches.Reset()
+
+	router := gin.New()
+	router.Use(m.AuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer bad-token")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+// ── Token Generation with Different Roles ──
+
+func TestJWTManager_GenerateToken_Roles(t *testing.T) {
+	m := NewJWTManager("test-jwt-secret", 24*time.Hour)
+
+	roles := []string{"user", "admin", "system_admin"}
+	for _, role := range roles {
+		t.Run(role, func(t *testing.T) {
+			token, err := m.GenerateToken("user-id", "testuser", role)
+			if err != nil {
+				t.Fatalf("GenerateToken(%s) error: %v", role, err)
+			}
+			if token == "" {
+				t.Error("token should not be empty")
+			}
+
+			claims, err := m.ValidateToken(token)
+			if err != nil {
+				t.Fatalf("ValidateToken(%s) error: %v", role, err)
+			}
+			if claims.Role != role {
+				t.Errorf("role: got %s, want %s", claims.Role, role)
+			}
+		})
+	}
+}
+
+func TestJWTManager_ValidateToken_EmptyString(t *testing.T) {
+	m := NewJWTManager("test-secret", time.Hour)
+	_, err := m.ValidateToken("")
+	if err == nil {
+		t.Error("empty token should be rejected")
+	}
+}
+
+func TestJWTManager_ValidateToken_Malformed(t *testing.T) {
+	m := NewJWTManager("test-secret", time.Hour)
+	_, err := m.ValidateToken("not-a-jwt-token-at-all")
+	if err == nil {
+		t.Error("malformed token should be rejected")
+	}
+}
+
+func TestJWTManager_ValidateToken_WrongSecretPrefix(t *testing.T) {
+	m := NewJWTManager("test-secret", time.Hour)
+	// Generate with one secret, validate with different
+	m2 := NewJWTManager("different-secret", time.Hour)
+	token, _ := m.GenerateToken("user-1", "user", "user")
+
+	_, err := m2.ValidateToken(token)
+	if err == nil {
+		t.Error("token signed with different secret should be rejected")
+	}
+}
+
+// ── HashPassword & CheckPassword Edge Cases ──
+
+func TestHashPassword_Empty(t *testing.T) {
+	hash, err := HashPassword("")
+	if err != nil {
+		t.Fatalf("HashPassword empty: %v", err)
+	}
+	if hash == "" {
+		t.Error("even empty password should produce a hash")
+	}
+}
+
+func TestCheckPassword_EmptyHash(t *testing.T) {
+	err := CheckPassword("", "anything")
+	if err == nil {
+		t.Error("empty hash should fail")
+	}
+}
+
+// ── Coverage Gap Tests (error paths) ──
+
+func TestHashPassword_Error(t *testing.T) {
+	patches := gomonkey.ApplyFuncReturn(bcrypt.GenerateFromPassword, []byte{}, fmt.Errorf("bcrypt error"))
+	defer patches.Reset()
+
+	_, err := HashPassword("test")
+	if err == nil {
+		t.Error("expected error from HashPassword")
+	}
+}
+
+func TestGenerateRandomPassword_Error(t *testing.T) {
+	patches := gomonkey.ApplyFuncReturn(rand.Int, nil, fmt.Errorf("rand error"))
+	defer patches.Reset()
+
+	_, err := GenerateRandomPassword(16)
+	if err == nil {
+		t.Error("expected error from GenerateRandomPassword")
+	}
+}
+
+func TestGenerateTokenBase64_Error(t *testing.T) {
+	patches := gomonkey.ApplyFuncReturn(rand.Read, 0, fmt.Errorf("read error"))
+	defer patches.Reset()
+
+	_, err := GenerateTokenBase64(32)
+	if err == nil {
+		t.Error("expected error from GenerateTokenBase64")
+	}
+}
+
+func TestGenerateShortID_Error(t *testing.T) {
+	patches := gomonkey.ApplyFuncReturn(rand.Read, 0, fmt.Errorf("read error"))
+	defer patches.Reset()
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(RequestIDMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		requestID, _ := c.Get("request_id")
+		c.JSON(200, gin.H{"request_id": requestID})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 even when rand.Read fails, got %d", w.Code)
+	}
+	if got := w.Header().Get("X-Request-ID"); got != "unknown" {
+		t.Errorf("X-Request-ID: got %q, want 'unknown' when rand.Read fails", got)
+	}
 }

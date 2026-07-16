@@ -86,6 +86,44 @@ func TestLogin_InvalidRequest(t *testing.T) {
 	}
 }
 
+func TestLogin_EmptyBody(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	c, w := newGinContext("POST", "/auth/login", "")
+	h.Login(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestLogin_MissingPassword(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	body := `{"username": "testuser"}`
+	c, w := newGinContext("POST", "/auth/login", body)
+	h.Login(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestLogin_MissingUsername(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	body := `{"password": "test123456"}`
+	c, w := newGinContext("POST", "/auth/login", body)
+	h.Login(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
 func TestLogin_AuthFailure(t *testing.T) {
 	svc := &authsvc.Service{}
 	h := NewAuthHandler(svc)
@@ -117,6 +155,21 @@ func TestRegister_InviteEnabled(t *testing.T) {
 
 	if w.Code != http.StatusGone {
 		t.Errorf("expected 410, got %d", w.Code)
+	}
+}
+
+func TestRegister_InviteEnabledWithInvalidJSON(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", true)
+	defer patches.Reset()
+
+	c, w := newGinContext("POST", "/auth/register", "not-valid-json")
+	h.Register(c)
+
+	if w.Code != http.StatusGone {
+		t.Errorf("expected 410 for invite enabled regardless of JSON, got %d", w.Code)
 	}
 }
 
@@ -174,6 +227,53 @@ func TestRegister_Conflict(t *testing.T) {
 	patches.ApplyMethodReturn(svc, "Register", (*authsvc.RegisterResponse)(nil), fmt.Errorf("username already exists"))
 
 	body := `{"username": "existing", "password": "Pass123!"}`
+	c, w := newGinContext("POST", "/auth/register", body)
+	h.Register(c)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d", w.Code)
+	}
+}
+
+func TestRegister_WithAdminRole(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", false)
+	defer patches.Reset()
+	patches.ApplyMethodReturn(svc, "Register", &authsvc.RegisterResponse{
+		UserID:   "user789",
+		Username: "adminuser",
+		Role:     "admin",
+		Message:  "Registration successful",
+	}, nil)
+
+	body := `{"username": "adminuser", "password": "Pass123!", "role": "admin"}`
+	c, w := newGinContext("POST", "/auth/register", body)
+	h.Register(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp authsvc.RegisterResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Role != "admin" {
+		t.Errorf("role: got %s, want admin", resp.Role)
+	}
+}
+
+func TestRegister_ServiceError(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", false)
+	defer patches.Reset()
+	patches.ApplyMethodReturn(svc, "Register", (*authsvc.RegisterResponse)(nil), fmt.Errorf("internal error"))
+
+	body := `{"username": "newuser", "password": "Pass123!"}`
 	c, w := newGinContext("POST", "/auth/register", body)
 	h.Register(c)
 
@@ -383,6 +483,35 @@ func TestCreateInvite_InvalidJSON(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCreateInvite_SystemAdminCreatesAdminInvite(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", &authsvc.CreateInviteResponse{
+		InviteID:  "inv_admin001",
+		InviteURL: "https://example.com/register?token=admin-token",
+	}, nil)
+	defer patches.Reset()
+
+	body := `{"email": "newadmin@example.com", "role": "admin", "expire_hours": 48}`
+	c, w := newGinContext("POST", "/admin/invites", body)
+	c.Set("user_id", "sys-admin-1")
+	c.Set("role", "system_admin")
+	h.CreateInvite(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp authsvc.CreateInviteResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.InviteID != "inv_admin001" {
+		t.Errorf("invite_id: got %s", resp.InviteID)
 	}
 }
 
@@ -733,5 +862,249 @@ func TestParseInt64_Negative(t *testing.T) {
 	}
 	if v != -1 {
 		t.Errorf("got %d", v)
+	}
+}
+
+func TestParseInt64_Zero(t *testing.T) {
+	v, err := parseInt64("0")
+	if err != nil {
+		t.Fatalf("parseInt64: %v", err)
+	}
+	if v != 0 {
+		t.Errorf("got %d", v)
+	}
+}
+
+func TestParseInt64_LargeNumber(t *testing.T) {
+	v, err := parseInt64("9223372036854775807")
+	if err != nil {
+		t.Fatalf("parseInt64: %v", err)
+	}
+	if v != 9223372036854775807 {
+		t.Errorf("got %d", v)
+	}
+}
+
+func TestParseInt64_Overflow(t *testing.T) {
+	_, err := parseInt64("99999999999999999999")
+	if err == nil {
+		t.Error("should error on overflow")
+	}
+}
+
+// ── GetProfile Edge Cases ──
+
+func TestGetProfile_PartialValues(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	c, w := newGinContext("GET", "/auth/profile", "")
+	c.Set("user_id", "user456")
+	// Username and role not set (should be nil)
+	h.GetProfile(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["user_id"] != "user456" {
+		t.Errorf("user_id: got %v", resp["user_id"])
+	}
+}
+
+// ── CreateInvite Edge Cases ──
+
+func TestCreateInvite_DefaultRole(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", &authsvc.CreateInviteResponse{
+		InviteID:  "inv_user001",
+		InviteURL: "https://example.com/register?token=user-token",
+	}, nil)
+	defer patches.Reset()
+
+	// No role specified in request - service defaults to "user"
+	body := `{"email": "newuser@example.com", "expire_hours": 24}`
+	c, w := newGinContext("POST", "/admin/invites", body)
+	c.Set("user_id", "sys-admin-1")
+	c.Set("role", "system_admin")
+	h.CreateInvite(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateInvite_SystemAdminInvitesUser(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", &authsvc.CreateInviteResponse{
+		InviteID:  "inv_user002",
+		InviteURL: "https://example.com/register?token=user2-token",
+	}, nil)
+	defer patches.Reset()
+
+	body := `{"email": "user2@example.com", "role": "user"}`
+	c, w := newGinContext("POST", "/admin/invites", body)
+	c.Set("user_id", "sys-admin-1")
+	c.Set("role", "system_admin")
+	h.CreateInvite(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ── VerifyInvite Edge Cases ──
+
+func TestVerifyInvite_EmptyTokenValue(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	c, w := newGinContext("GET", "/auth/register?token=", "")
+	h.VerifyInvite(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty token value, got %d", w.Code)
+	}
+}
+
+func TestVerifyInvite_NoQueryParams(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	c, w := newGinContext("GET", "/auth/register", "")
+	h.VerifyInvite(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+// ── UpdateHMACSecret Edge Cases ──
+
+func TestUpdateHMACSecret_EmptyBody(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	c, w := newGinContext("PUT", "/admin/invites/hmac-secret", "")
+	h.UpdateHMACSecret(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateHMACSecret_ShortSecret(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	// "short" is less than min=16 chars - binding validation rejects before service call
+	body := `{"new_secret": "short"}`
+	c, w := newGinContext("PUT", "/admin/invites/hmac-secret", body)
+	h.UpdateHMACSecret(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 from binding validation, got %d", w.Code)
+	}
+}
+
+// ── ListInvites Edge Cases ──
+
+func TestListInvites_SystemAdminSeesAll(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+		Invites: []authsvc.ListInviteResponse{
+			{InviteID: "inv-1", Role: "user", Status: "pending"},
+			{InviteID: "inv-2", Role: "admin", Status: "accepted"},
+		},
+		Total: 2,
+		Page:  1,
+		Size:  20,
+	}, nil)
+	defer patches.Reset()
+
+	c, w := newGinContext("GET", "/admin/invites", "")
+	c.Set("user_id", "sys-admin-1")
+	c.Set("role", "system_admin")
+	h.ListInvites(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp authsvc.ListInvitesResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Total != 2 {
+		t.Errorf("total: got %d, want 2", resp.Total)
+	}
+}
+
+func TestListInvites_AdminSeesOwn(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+		Invites: []authsvc.ListInviteResponse{
+			{InviteID: "inv-3", Role: "user", Status: "pending"},
+		},
+		Total: 1,
+		Page:  1,
+		Size:  20,
+	}, nil)
+	defer patches.Reset()
+
+	c, w := newGinContext("GET", "/admin/invites", "")
+	c.Set("user_id", "admin-3")
+	c.Set("role", "admin")
+	h.ListInvites(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestListInvites_LargePageSize(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+		Invites: []authsvc.ListInviteResponse{},
+		Total:   0,
+		Page:    1,
+		Size:    100,
+	}, nil)
+	defer patches.Reset()
+
+	c, w := newGinContext("GET", "/admin/invites?page=1&size=100", "")
+	c.Set("user_id", "sys-admin-1")
+	c.Set("role", "system_admin")
+	h.ListInvites(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+// ── CompleteRegistration Edge Cases ──
+
+func TestCompleteRegistration_MissingToken(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	body := `{"username": "newuser", "password": "Pass123!", "display_name": "New User"}`
+	c, w := newGinContext("POST", "/auth/complete-registration", body)
+	h.CompleteRegistration(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing token, got %d", w.Code)
 	}
 }

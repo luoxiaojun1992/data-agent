@@ -665,3 +665,229 @@ func TestAddChunks_InsertError(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 }
+
+// ===== Enhanced rrfFusion tests =====
+
+func TestRRFFusion_ShuffledOrder(t *testing.T) {
+	// Items in random order from list1 should still get same rank-based scores
+	list1 := []knowledge.SearchResult{
+		{ChunkID: "c", DocTitle: "C"},
+		{ChunkID: "a", DocTitle: "A"},
+		{ChunkID: "b", DocTitle: "B"},
+	}
+	result := rrfFusion(list1, nil, 3, 60.0)
+	if len(result) != 3 {
+		t.Fatalf("got %d, want 3", len(result))
+	}
+	// c should be first (rank 1), a second (rank 2), b third (rank 3)
+	if result[0].ChunkID != "c" {
+		t.Errorf("top should be 'c', got %q", result[0].ChunkID)
+	}
+	if result[1].ChunkID != "a" {
+		t.Errorf("second should be 'a', got %q", result[1].ChunkID)
+	}
+	if result[2].ChunkID != "b" {
+		t.Errorf("third should be 'b', got %q", result[2].ChunkID)
+	}
+}
+
+func TestRRFFusion_ZeroK(t *testing.T) {
+	list1 := []knowledge.SearchResult{
+		{ChunkID: "a", Score: 0.9},
+		{ChunkID: "b", Score: 0.5},
+	}
+	result := rrfFusion(list1, nil, 10, 0)
+	if len(result) != 2 {
+		t.Fatalf("got %d, want 2", len(result))
+	}
+	// With K=0, score = 1/(0+rank) = 1/rank
+	// a: 1/1 = 1.0, b: 1/2 = 0.5
+	if result[0].ChunkID != "a" {
+		t.Errorf("top should be 'a', got %q", result[0].ChunkID)
+	}
+	if result[0].Score != 1.0 {
+		t.Errorf("score of a should be 1.0, got %v", result[0].Score)
+	}
+	if result[1].Score != 0.5 {
+		t.Errorf("score of b should be 0.5, got %v", result[1].Score)
+	}
+}
+
+func TestRRFFusion_NegativeK(t *testing.T) {
+	list1 := []knowledge.SearchResult{
+		{ChunkID: "a", Score: 0.9},
+	}
+	// Negative K: formula becomes 1/(K + rank), which could give negative or >1
+	result := rrfFusion(list1, nil, 10, -1)
+	if len(result) != 1 {
+		t.Fatalf("got %d, want 1", len(result))
+	}
+	// 1/(-1 + 1) = 1/0 = +Inf. But Go will compute this as +Inf.
+	// That's fine - just verify it doesn't crash
+}
+
+func TestRRFFusion_VeryLargeK(t *testing.T) {
+	list1 := []knowledge.SearchResult{
+		{ChunkID: "a", Score: 0.9},
+		{ChunkID: "b", Score: 0.5},
+	}
+	result := rrfFusion(list1, nil, 10, 1000000.0)
+	if len(result) != 2 {
+		t.Fatalf("got %d, want 2", len(result))
+	}
+	// With very large K, all scores are very close to 0
+	// But ordering should still be correct (a before b)
+	if result[0].ChunkID != "a" {
+		t.Errorf("top should be 'a', got %q", result[0].ChunkID)
+	}
+}
+
+func TestRRFFusion_TopKZero(t *testing.T) {
+	list1 := []knowledge.SearchResult{
+		{ChunkID: "a"}, {ChunkID: "b"}, {ChunkID: "c"},
+	}
+	result := rrfFusion(list1, nil, 0, 60.0)
+	// math.Min(0, 3) = 0, so loop runs 0 times
+	if len(result) != 0 {
+		t.Errorf("with topK=0, got %d results, want 0", len(result))
+	}
+}
+
+func TestRRFFusion_List2Only(t *testing.T) {
+	list2 := []knowledge.SearchResult{
+		{ChunkID: "x", DocTitle: "X"},
+		{ChunkID: "y", DocTitle: "Y"},
+	}
+	result := rrfFusion(nil, list2, 5, 60.0)
+	if len(result) != 2 {
+		t.Fatalf("got %d, want 2", len(result))
+	}
+	if result[0].ChunkID != "x" {
+		t.Errorf("top should be 'x', got %q", result[0].ChunkID)
+	}
+}
+
+func TestRRFFusion_BothListsOverlappingSort(t *testing.T) {
+	// list1: a(1st), b(2nd). list2: b(1st), c(2nd)
+	// a: 1/(60+1) = 0.01639
+	// b: 1/(60+2) + 1/(60+1) = 0.01613 + 0.01639 = 0.03252
+	// c: 1/(60+2) = 0.01613
+	list1 := []knowledge.SearchResult{
+		{ChunkID: "a"},
+		{ChunkID: "b"},
+	}
+	list2 := []knowledge.SearchResult{
+		{ChunkID: "b"},
+		{ChunkID: "c"},
+	}
+	result := rrfFusion(list1, list2, 10, 60.0)
+	if len(result) != 3 {
+		t.Fatalf("got %d, want 3", len(result))
+	}
+	// b should be top (highest fused score)
+	if result[0].ChunkID != "b" {
+		t.Errorf("top should be 'b', got %q", result[0].ChunkID)
+	}
+	// a and c should follow (a appears in only list1, c in only list2)
+	expectedSecond := "a"
+	if result[1].ChunkID != expectedSecond {
+		t.Errorf("second should be %q, got %q", expectedSecond, result[1].ChunkID)
+	}
+}
+
+// ===== filterByRole tests =====
+
+func TestFilterByRole_SystemAdminSeesAll(t *testing.T) {
+	s := NewService(&mongo.Database{})
+	results := []knowledge.SearchResult{
+		{ChunkID: "c1", DocID: "doc1"},
+		{ChunkID: "c2", DocID: "doc2"},
+		{ChunkID: "c3", DocID: "doc3"},
+	}
+	filtered := s.filterByRole(results, "system_admin")
+	if len(filtered) != 3 {
+		t.Errorf("system_admin should see all, got %d", len(filtered))
+	}
+}
+
+func TestFilterByRole_RegularUserSeesAll(t *testing.T) {
+	// In the current code, non-admin roles just return all results
+	// (placeholder for future user filtering)
+	s := NewService(&mongo.Database{})
+	results := []knowledge.SearchResult{
+		{ChunkID: "c1"},
+		{ChunkID: "c2"},
+	}
+	filtered := s.filterByRole(results, "user")
+	if len(filtered) != 2 {
+		t.Errorf("regular user should see all, got %d", len(filtered))
+	}
+}
+
+func TestFilterByRole_EmptyList(t *testing.T) {
+	s := NewService(&mongo.Database{})
+	results := []knowledge.SearchResult{}
+	filtered := s.filterByRole(results, "system_admin")
+	if len(filtered) != 0 {
+		t.Errorf("empty list should stay empty, got %d", len(filtered))
+	}
+
+	filtered = s.filterByRole([]knowledge.SearchResult{}, "user")
+	if len(filtered) != 0 {
+		t.Errorf("empty list should stay empty for user, got %d", len(filtered))
+	}
+}
+
+func TestFilterByRole_NilList(t *testing.T) {
+	s := NewService(&mongo.Database{})
+	filtered := s.filterByRole(nil, "system_admin")
+	if filtered != nil {
+		t.Errorf("nil input should return nil, got %v", filtered)
+	}
+}
+
+// ===== genShortID length test =====
+
+func TestGenShortID_Length(t *testing.T) {
+	id := genShortID()
+	// UUID v4 is 36 chars: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	if len(id) != 36 {
+		t.Errorf("genShortID length = %d, want 36 (UUID format)", len(id))
+	}
+}
+
+func TestGenShortID_Uniqueness(t *testing.T) {
+	ids := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		id := genShortID()
+		if ids[id] {
+			t.Errorf("duplicate ID generated: %s", id)
+		}
+		ids[id] = true
+	}
+}
+
+func TestGenShortID_HasHyphens(t *testing.T) {
+	id := genShortID()
+	if len(id) < 36 || id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' {
+		t.Errorf("genShortID should have UUID format with hyphens: %s", id)
+	}
+}
+
+// ===== NewService nil DB test (additional) =====
+
+func TestNewService_NilDB_FieldsCheck(t *testing.T) {
+	s := NewService(nil)
+	if s == nil {
+		t.Fatal("NewService(nil) should not return nil")
+	}
+	if s.db != nil {
+		t.Error("db field should be nil")
+	}
+	// The service is valid and won't panic on non-db methods
+	// filterByRole doesn't use db — verify it works
+	filtered := s.filterByRole([]knowledge.SearchResult{{ChunkID: "c1"}}, "system_admin")
+	if len(filtered) != 1 {
+		t.Errorf("filterByRole should work even with nil db, got %d", len(filtered))
+	}
+}
