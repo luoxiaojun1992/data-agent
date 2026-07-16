@@ -180,6 +180,37 @@ console.log('[UI-XXX] received:', text?.substring(0, 100));
 
 后端同理：在怀疑的每个环节加 `log.Printf("[DEBUG module] ...")`，用 CI log 下载+unzip+grep 精确复现。
 
+### 后端日志排查 — 测试超时但无前端错误时
+
+当测试持续超时（如 `waitForSelector` 等了 20-30s 仍找不到元素），前端看起来正常但测试失败：
+
+1. **下载 CI 失败 run 的完整日志**：
+   ```bash
+   bash scripts/get-logs.sh <run-id> --failed-only
+   ```
+
+2. **检查后端 HTTP 错误**：
+   ```bash
+   grep -E 'data-agent.*status.*[45][0-9]{2}' ci-logs-<id>/*.log | grep -v health
+   ```
+
+3. **检查前端是否静默吞异常**：
+   ```
+   → 搜索前端源码 `catch { /* ignore */ }` 或 `catch {}` 模式
+   → 常见位置：agent/page.tsx, admin/tasks/page.tsx 的 loadTasks/fetchTasks
+   → 如果前端吞了异常，API 会返回错误但页面显示空列表，测试永远等不到元素
+   ```
+
+4. **验证假设**：在可疑的 `catch` 块加 `console.error('[UI] fetch failed:', e)`，重新跑 CI 确认根因。
+
+5. **修复方向**：
+   - 前端：catch 块至少 `console.error` 记录错误
+   - 后端：确认 API 路由注册正确，数据返回格式与前端 `data.tasks` 解构一致
+   - 测试：不要 `page.goto` + `page.reload` 连环重载，利用前端自带的 `loadTasks()` 等自动刷新逻辑
+
+**已知案例**：
+- 2026-07-16 agent/task 测试持续超时：前端 `catch { /* ignore */ }` 吞了 API 错误，测试在空列表中永远等不到 `task-mgmt-row-*` 元素。修复后去掉冗余的 `page.goto`+`page.reload`，改为等待前端自刷新后的 DOM 更新。
+
 ## 运行 E2E
 
 ```bash

@@ -98,6 +98,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 5 | Skill 接受外部 session_id 参数 | Session 归属必须由 SkillContext 注入 |
 | 6 | 返回 404 给资源不存在的 DELETE | 违反删除幂等性 |
 | 7 | 在 Handler 层写业务逻辑 | Handler 仅做参数校验和响应格式化 |
+| 8 | 前端 `catch { /* ignore */ }` 静默吞异常 | 必须 `console.error` 记录错误，否则 API 失败无法排查 |
 
 ## 开发工作流约定
 
@@ -119,4 +120,5 @@ Types: feat, fix, docs, test, refactor, chore, style
 
 | # | 日期 | 错误做法 | 正确做法 | 影响 |
 |---|------|---------------|-----------------|--------|
-| 1 | - | (待记录) | - | - |
+| 1 | 2026-07-16 | 前端 `catch { /* ignore */ }` 静默吞异常 | `catch` 块至少 `console.error` 记录错误信息 | UI 测试超时 30s 无法定位根因 |
+| 2 | 2026-07-16 | 测试中用 `page.goto` + `page.reload` 连环重载等 task row | 利用组件自带的 `loadTasks()` 自刷新，modal 关闭即断言 | 测试不稳定，频繁 timeout |
