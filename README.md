@@ -135,7 +135,7 @@ data-agent/
 | SPEC-039 | **P8** | UI E2E — RBAC (RBAC) | ✅ Done |
 | SPEC-040 | **P8** | UI E2E — Responsive (RESP) | ✅ Done |
 | SPEC-041 | **P8** | UI E2E — Error States (ERR) | ✅ Done |
-| SPEC-042 | **P8** | UI E2E — E2E Scenarios (E2E) | 🚧 CI Pending |
+| SPEC-042 | **P8** | UI E2E — E2E Scenarios (E2E) | ✅ Done |
 | SPEC-043 | **P8 前置** | Mock Model Service | ✅ Done |
 | SPEC-044 | **P9** | Invite-Only Registration | 🚧 Designing |
 
