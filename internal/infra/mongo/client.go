@@ -93,6 +93,12 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 		"notifications": {
 			{Keys: bson.D{{Key: "created_at", Value: -1}}},
 		},
+		"invites": {
+			{Keys: bson.D{{Key: "invite_id", Value: 1}}, Options: options.Index().SetUnique(true)},
+			{Keys: bson.D{{Key: "token_hash", Value: 1}}},
+			{Keys: bson.D{{Key: "status", Value: 1}}},
+			{Keys: bson.D{{Key: "created_by", Value: 1}}},
+		},
 	}
 
 	for collName, idxs := range indexes {
