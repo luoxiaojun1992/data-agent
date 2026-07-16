@@ -1,4 +1,4 @@
-package apireview
+package notification
 
 import (
 	"testing"
@@ -6,16 +6,6 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"go.mongodb.org/mongo-driver/mongo"
 )
-
-func TestGenShortID(t *testing.T) {
-	id := genShortID()
-	if id == "" {
-		t.Error("genShortID should not be empty")
-	}
-	if len(id) != 12 {
-		t.Errorf("genShortID length: got %d, want 12", len(id))
-	}
-}
 
 func TestNewService(t *testing.T) {
 	db := &mongo.Database{}

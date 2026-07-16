@@ -1,4 +1,4 @@
-package apireview
+package task
 
 import (
 	"testing"
@@ -7,13 +7,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func TestGenShortID(t *testing.T) {
-	id := genShortID()
-	if id == "" {
-		t.Error("genShortID should not be empty")
-	}
-	if len(id) != 12 {
-		t.Errorf("genShortID length: got %d, want 12", len(id))
+func TestCollTasks(t *testing.T) {
+	if collTasks != "agent_tasks" {
+		t.Errorf("collTasks = %q", collTasks)
 	}
 }
 
@@ -23,7 +19,7 @@ func TestNewService(t *testing.T) {
 	patches := gomonkey.ApplyMethodReturn(db, "Collection", &coll)
 	defer patches.Reset()
 
-	s := NewService(db)
+	s := NewService(db, nil)
 	if s == nil {
 		t.Error("NewService should not return nil")
 	}
