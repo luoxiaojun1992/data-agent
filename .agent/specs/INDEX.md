@@ -58,6 +58,7 @@
 | SPEC-042 | UI E2E — 端到端场景测试 (E2E) | **P8** | [spec-042-ui-e2e-scenarios.md](spec-042-ui-e2e-scenarios.md) | ✅ 已实现 |
 | SPEC-043 | Mock Model Service — 测试用模型模拟服务 | **P8 前置** | [spec-043-mock-model-service.md](spec-043-mock-model-service.md) | ✅ 已实现 |
 | SPEC-044 | 邀请注册系统 — 移除自由注册，改为邀请制 | **P9** | [spec-044-invite-registration.md](spec-044-invite-registration.md) | 📐 设计中 |
+| SPEC-045 | Go Service 单元测试全覆盖 — 98% 底线，CI 门禁 | **P10** | [spec-045-go-service-ut.md](spec-045-go-service-ut.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -81,6 +82,7 @@
 | **P8 前置** | SPEC-043 | Mock Model Service | SPEC-004 (LLMProvider 接口) |
 | **P8** | SPEC-017 ~ SPEC-042 | UI E2E 测试设计 | SPEC-043 (Mock Model Service), SPEC-001 ~ SPEC-016 (全部已实现) |
 | **P9** | SPEC-044 | 邀请注册系统 | SPEC-003 (用户模型 + JWT), SPEC-023 (User Mgmt) |
+| **P10** | SPEC-045 | Go Service 单元测试全覆盖 | SPEC-002 (CI), SPEC-014 (原测试体系), SPEC-003~013 (待测服务) |
 
 ### 依赖流向（简化）
 
@@ -133,4 +135,7 @@ SPEC-006│               │
     │
     ▼
 [P7]   SPEC-015 ─── 审核修复（基于 SPEC-001~014 一致性审计）
+    │
+    ▼
+[P10]  SPEC-045 ─── Go UT 全覆盖（98% 底线，CI 门禁）
 ```
