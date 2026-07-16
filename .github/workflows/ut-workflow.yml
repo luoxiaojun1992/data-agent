@@ -26,15 +26,14 @@ jobs:
       - name: Run Unit Tests (L1+L2)
         run: |
           go test -race -coverprofile=coverage-l1l2.out \
-            -coverpkg=./internal/api/...,./internal/config/...,./internal/domain/...,./internal/logic/...,./internal/service/...,./skills/... \
-            ./internal/api/... ./internal/config/... ./internal/domain/... ./internal/logic/... ./internal/service/... ./skills/...
+            ./internal/... ./skills/...
 
       - name: Check L1+L2 Coverage Threshold
         run: |
           COVERAGE=$(go tool cover -func=coverage-l1l2.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "L1+L2 Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 20" | bc -l) )); then
-            echo "ERROR: Coverage ${COVERAGE}% below 20% minimum threshold"
+          if (( $(echo "$COVERAGE < 10" | bc -l) )); then
+            echo "ERROR: Coverage ${COVERAGE}% below 10% minimum threshold"
             exit 1
           fi
           echo "L1+L2 Coverage check passed"

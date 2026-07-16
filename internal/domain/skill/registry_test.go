@@ -46,7 +46,9 @@ func TestRegistry_Register(t *testing.T) {
 	t.Run("duplicate name returns error", func(t *testing.T) {
 		s1 := newMockSkill("dup-skill", "first")
 		s2 := newMockSkill("dup-skill", "second")
-		r.Register(s1)
+		if err := r.Register(s1); err != nil {
+			t.Fatalf("Register(s1): %v", err)
+		}
 		err := r.Register(s2)
 		if err == nil {
 			t.Error("Register() should return error for duplicate name")
@@ -56,7 +58,9 @@ func TestRegistry_Register(t *testing.T) {
 
 func TestRegistry_Get(t *testing.T) {
 	r := NewRegistry()
-	r.Register(newMockSkill("get-test", "test desc"))
+	if err := r.Register(newMockSkill("get-test", "test desc")); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
 
 	t.Run("found", func(t *testing.T) {
 		s, err := r.Get("get-test")
@@ -88,8 +92,12 @@ func TestRegistry_List(t *testing.T) {
 
 	t.Run("with skills", func(t *testing.T) {
 		r2 := NewRegistry()
-		r2.Register(newMockSkill("a", "Skill A"))
-		r2.Register(newMockSkill("b", "Skill B"))
+		if err := r2.Register(newMockSkill("a", "Skill A")); err != nil {
+			t.Fatalf("Register a: %v", err)
+		}
+		if err := r2.Register(newMockSkill("b", "Skill B")); err != nil {
+			t.Fatalf("Register b: %v", err)
+		}
 		names := r2.List()
 		if len(names) != 2 {
 			t.Errorf("List() len: got %d, want 2", len(names))
@@ -99,9 +107,15 @@ func TestRegistry_List(t *testing.T) {
 
 func TestRegistry_Search(t *testing.T) {
 	r := NewRegistry()
-	r.Register(newMockSkill("sql_executor", "Execute SQL queries"))
-	r.Register(newMockSkill("stats_engine", "Statistical analysis"))
-	r.Register(newMockSkill("email_sender", "Send emails"))
+	if err := r.Register(newMockSkill("sql_executor", "Execute SQL queries")); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := r.Register(newMockSkill("stats_engine", "Statistical analysis")); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := r.Register(newMockSkill("email_sender", "Send emails")); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
 
 	t.Run("exact name match", func(t *testing.T) {
 		results := r.Search("sql_executor")
@@ -144,7 +158,7 @@ func TestRegistry_ConcurrentRegistration(t *testing.T) {
 		wg.Add(1)
 		go func(n string) {
 			defer wg.Done()
-			r.Register(newMockSkill(n, "skill "+n))
+			_ = r.Register(newMockSkill(n, "skill "+n))
 		}(name)
 	}
 	wg.Wait()

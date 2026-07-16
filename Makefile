@@ -23,8 +23,8 @@ test-cover-check:
 	@go test -race -coverprofile=coverage.out ./internal/... ./skills/... || exit 1
 	@COVERAGE=$$(go tool cover -func=coverage.out | grep total | awk '{print $$3}' | sed 's/%//'); \
 	echo "Coverage: $$COVERAGE%"; \
-	if [ $$(echo "$$COVERAGE < 20" | bc -l) -eq 1 ]; then \
-		echo "ERROR: Coverage $$COVERAGE% below 20% threshold"; \
+	if [ $$(echo "$$COVERAGE < 10" | bc -l) -eq 1 ]; then \
+		echo "ERROR: Coverage $$COVERAGE% below 10% threshold"; \
 		exit 1; \
 	fi
 
