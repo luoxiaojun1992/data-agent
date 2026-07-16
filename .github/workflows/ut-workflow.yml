@@ -1,0 +1,49 @@
+name: Go Unit Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  go-ut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      # L1+L2: Pure logic and interface-mocked packages (no Docker required)
+      - name: Run Unit Tests (L1+L2)
+        run: |
+          go test -race -coverprofile=coverage-l1l2.out \
+            -coverpkg=./internal/api/...,./internal/config/...,./internal/domain/...,./internal/logic/...,./internal/service/...,./skills/... \
+            ./internal/api/... ./internal/config/... ./internal/domain/... ./internal/logic/... ./internal/service/... ./skills/...
+
+      - name: Check L1+L2 Coverage Threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage-l1l2.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "L1+L2 Coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 20" | bc -l) )); then
+            echo "ERROR: Coverage ${COVERAGE}% below 20% minimum threshold"
+            exit 1
+          fi
+          echo "L1+L2 Coverage check passed"
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-report
+          path: coverage-l1l2.out
+          retention-days: 7
+          if-no-files-found: warn
