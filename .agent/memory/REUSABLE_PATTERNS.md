@@ -281,3 +281,60 @@ func() {
 ```
 
 不要写 `fmt.Println` 或无前缀 `log.Printf`，统一用 `log.Printf("[DEBUG module] message")` 格式。
+
+### CI 测试失败：下载截图 + 日志定位
+
+tests 在 CI 失败时，**不要猜测原因**。先拉 failure screenshot 和 artifact：
+
+**1. 下载失败截图（Playwright 自动捕获）**
+
+```bash
+TOKEN=$(cat .github-pat)
+# 找到失败的 workflow run
+RUN_ID=$(curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/runs?branch=main&per_page=5" \
+  | python3 -c "import sys,json; runs=[r for r in json.load(sys.stdin).get('workflow_runs',[]) if r['name']=='UI Tests' and r['conclusion']=='failure']; print(runs[0]['id'])")
+
+# 下载 test-results artifact（含截图、trace）
+ARTIFACT_ID=$(curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/runs/${RUN_ID}/artifacts" \
+  | python3 -c "import sys,json; [print(a['id']) for a in json.load(sys.stdin).get('artifacts',[]) if a['name']=='test-results']")
+
+curl -sL -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/artifacts/${ARTIFACT_ID}/zip" \
+  -o /tmp/ci-results.zip
+
+unzip -l /tmp/ci-results.zip | grep test-failed
+```
+
+**2. 下载完整 CI 日志**
+
+```bash
+curl -sL -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/runs/${RUN_ID}/logs" \
+  -o /tmp/ci-logs.zip
+
+# 查 mockllm debug 日志
+unzip -p /tmp/ci-logs.zip "ui-tests/5_Run services + E2E tests.txt" \
+  | grep "mockllm.*chat request\|mockllm.*popResponse"
+
+# 查 backend debug 日志
+unzip -p /tmp/ci-logs.zip "ui-tests/5_Run services + E2E tests.txt" \
+  | grep "\[DEBUG\]"
+
+# 查失败用例列表
+unzip -p /tmp/ci-logs.zip "ui-tests/6_Show service logs (on failure).txt" \
+  | grep "✘"
+```
+
+**3. 分析顺序**
+
+1. **截图** — 最直观，看页面实际渲染了什么
+2. **mockllm 日志** — 验证请求到达 + key 是否匹配（`FOUND exact match` vs `no exact match`）
+3. **backend 日志** — 看 `RunStream` / `AuditOutput` 是否有错误
+4. **前端 code** — 对照 `data-testid` 确认断言正确
+
+**经验示例**：
+
+- SPEC-038: CI log 显示 `regex.Compile` 未调用 → 12s 挂起 → 看截图确认前端空白
+- SPEC-042: mockllm log 显示 `FOUND exact match` → 排除 mock 问题 → 聚焦前端 SSE 解析 / 导航方式
