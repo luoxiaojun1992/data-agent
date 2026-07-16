@@ -58,6 +58,8 @@ test.describe('RBAC — SPEC-039', () => {
   test('[UI-188] RBAC — admin 可见导航项', async ({ page }) => {
     await loginAs(page, ADMIN);
     await expect(page.locator('[data-testid="sidebar"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="nav-chat"]')).toBeVisible();
+    await expect(page.locator('[data-testid="nav-hermes"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-agent"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-admin"]')).toBeVisible();
   });
@@ -70,13 +72,14 @@ test.describe('RBAC — SPEC-039', () => {
     await expect(page.locator('[data-testid="nav-agent"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-admin"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-chat"]')).toBeVisible();
+    await expect(page.locator('[data-testid="nav-hermes"]')).toBeVisible();
   });
 
   test('[UI-190] RBAC — user 无法直接访问管理页面', async ({ page }) => {
     await loginAs(page, USER);
     await page.goto('/admin/users');
     await page.waitForTimeout(2000);
-    await expect(page.locator('[data-testid="admin-users-header"]')).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+    await expect(page.locator('[data-testid="admin-users-header"]')).not.toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-testid="nav-admin"]')).not.toBeVisible();
   });
 
@@ -92,6 +95,6 @@ test.describe('RBAC — SPEC-039', () => {
     await expect(page.locator('[data-testid="nav-agent"]')).not.toBeVisible();
     await page.goto('/agent');
     await page.waitForTimeout(2000);
-    await expect(page.locator('[data-testid="agent-page-header"]')).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+    await expect(page.locator('[data-testid="agent-page-header"]')).not.toBeVisible({ timeout: 5000 });
   });
 });

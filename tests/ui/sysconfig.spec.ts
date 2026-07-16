@@ -82,15 +82,17 @@ test.describe('SYSCONFIG — SPEC-026', () => {
     await page.locator('[data-testid="login-email-input"]').fill(REGULAR.username);
     await page.locator('[data-testid="login-password-input"]').fill(REGULAR.password);
     await page.locator('[data-testid="login-btn"]').click();
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
+    await page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 10000 });
+
+    // Regular user should not see sysconfig nav item
+    await expect(page.locator('[data-testid="nav-sysconfig"]')).not.toBeVisible({ timeout: 3000 });
 
     // Try to access sysconfig directly
     await page.goto('/admin/sysconfig');
-    await page.waitForSelector('[data-testid="sysconfig-page-header"]', { timeout: 10000 });
+    await page.waitForTimeout(2000);
 
-    // Page renders (Next.js doesn't block routes), but API data won't load
-    // Regular user should see error or empty state
-    await expect(page.locator('[data-testid="sysconfig-page-header"]')).toBeVisible({ timeout: 10000 });
+    // Regular user should be redirected or see sidebar without admin nav
+    await expect(page.locator('[data-testid="nav-admin"]')).not.toBeVisible({ timeout: 3000 });
   });
 
   // ═══ UI-107: 缓冲期上限校验 ═══

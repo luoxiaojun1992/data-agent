@@ -4,7 +4,9 @@ const API_BASE = 'http://data-agent:8080/api/v1';
 const uid = crypto.randomUUID().slice(0, 8);
 
 const ADMIN = { username: `e2e-api-admin-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
+const ADMIN2 = { username: `e2e-api-adm2-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
 let adminToken = '';
+let admin2Token = '';
 
 // Helper: create an API review via API
 async function createAPIReview(request: any, token: string, name = 'test-api') {
@@ -27,7 +29,16 @@ test.describe('API REVIEW — SPEC-030', () => {
     }
     adminToken = (await res.json()).access_token;
 
-    // Create a test review
+    // Register second admin for dual-review testing
+    res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN2 });
+    if (res.status() !== 201) {
+      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN2.username, password: ADMIN2.password } });
+    } else {
+      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN2.username, password: ADMIN2.password } });
+    }
+    admin2Token = (await res.json()).access_token;
+
+    // Create a test review (from ADMIN, so ADMIN2 can approve)
     const r = await createAPIReview(request, adminToken, 'CRM 客户查询 API');
     if (r) createdIDs.push(r.id);
   });
@@ -88,18 +99,36 @@ test.describe('API REVIEW — SPEC-030', () => {
 
   // ═══ UI-137: 批准 API 转换 ═══
   test('[UI-137] API — 批准 API 转换', async ({ page }) => {
+    // Login as ADMIN2 (different from the creator ADMIN) to see approve buttons
+    await page.goto('/login');
+    await page.locator('[data-testid="login-email-input"]').fill(ADMIN2.username);
+    await page.locator('[data-testid="login-password-input"]').fill(ADMIN2.password);
+    await page.locator('[data-testid="login-btn"]').click();
+    await page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 10000 });
+    await page.goto('/admin/api-review');
+    await page.waitForSelector('[data-testid="api-page-header"]', { timeout: 10000 });
+    await page.waitForTimeout(1500);
+
     const approveBtn = page.locator('[data-testid^="api-approve-btn-"]').first();
-    const hasApprove = await approveBtn.isVisible().catch(() => false);
-    if (!hasApprove) { test.skip(); return; }
+    await expect(approveBtn).toBeVisible({ timeout: 5000 });
     await approveBtn.click();
     await page.waitForTimeout(500);
   });
 
   // ═══ UI-138: 驳回 API 转换 ═══
   test('[UI-138] API — 驳回 API 转换', async ({ page }) => {
+    // Login as ADMIN2
+    await page.goto('/login');
+    await page.locator('[data-testid="login-email-input"]').fill(ADMIN2.username);
+    await page.locator('[data-testid="login-password-input"]').fill(ADMIN2.password);
+    await page.locator('[data-testid="login-btn"]').click();
+    await page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 10000 });
+    await page.goto('/admin/api-review');
+    await page.waitForSelector('[data-testid="api-page-header"]', { timeout: 10000 });
+    await page.waitForTimeout(1500);
+
     const rejectBtn = page.locator('[data-testid^="api-reject-btn-"]').first();
-    const hasReject = await rejectBtn.isVisible().catch(() => false);
-    if (!hasReject) { test.skip(); return; }
+    await expect(rejectBtn).toBeVisible({ timeout: 5000 });
     await rejectBtn.click();
     await expect(page.locator('[data-testid="api-reject-reason"]')).toBeVisible();
     await page.locator('[data-testid="api-reject-reason"]').fill('域名不在白名单中');
@@ -108,19 +137,28 @@ test.describe('API REVIEW — SPEC-030', () => {
 
   // ═══ UI-139: 双重审核校验 ═══
   test('[UI-139] API — 双重审核校验', async ({ page }) => {
-    // The test review was created by the same admin user,
-    // so approve/reject buttons should NOT appear
-    // (they are hidden via `isOwn` check)
+    // Login as ADMIN (the creator) — should see own submission without approve/reject
+    await page.goto('/login');
+    await page.locator('[data-testid="login-email-input"]').fill(ADMIN.username);
+    await page.locator('[data-testid="login-password-input"]').fill(ADMIN.password);
+    await page.locator('[data-testid="login-btn"]').click();
+    await page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 10000 });
+    await page.goto('/admin/api-review');
+    await page.waitForSelector('[data-testid="api-page-header"]', { timeout: 10000 });
+    await page.waitForTimeout(1500);
+
     const cards = page.locator('[data-testid^="api-card-"]');
     const count = await cards.count();
-    if (count > 0) {
-      // Own submission should show "等待审核" instead of buttons
-      const actions = page.locator('[data-testid^="api-card-actions-"]').first();
-      let text = '';
-      try { text = await actions.textContent() || ''; } catch { /* */ }
-      expect(text).not.toContain('批准');
-      expect(text).not.toContain('驳回');
-    }
+    expect(count).toBeGreaterThanOrEqual(1);
+
+    // Own submission should show status text, NOT approve/reject buttons
+    const firstCard = cards.first();
+    const cardText = (await firstCard.textContent()) || '';
+    // Should not contain action buttons for own submission
+    const approveBtns = firstCard.locator('[data-testid^="api-approve-btn-"]');
+    const rejectBtns = firstCard.locator('[data-testid^="api-reject-btn-"]');
+    expect(await approveBtns.count()).toBe(0);
+    expect(await rejectBtns.count()).toBe(0);
   });
 
   // ═══ UI-140: 批量上传 ═══

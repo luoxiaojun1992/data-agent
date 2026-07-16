@@ -46,7 +46,14 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 同步分析');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
+    // Task list should render (with or without the new task visible immediately)
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
+    // Verify at least the empty state or task list is present
+    const taskList = page.locator('[data-testid="agent-task-list"]');
+    const emptyState = page.locator('[data-testid="agent-empty"]');
+    const hasContent = (await taskList.isVisible({ timeout: 3000 }).catch(() => false)) ||
+                       (await emptyState.isVisible({ timeout: 3000 }).catch(() => false));
+    expect(hasContent).toBe(true);
   });
 
   // UI-042: Create async task
@@ -56,8 +63,10 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-async-toggle"]').check();
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.waitForTimeout(2000);
-    // Modal may stay open if API fails — that's OK for this test
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
+    // Modal should close after successful creation
+    const modal = page.locator('[data-testid="agent-task-modal"]');
+    expect(await modal.isVisible({ timeout: 3000 }).catch(() => false)).toBe(false);
   });
 
   // UI-043: Task filters

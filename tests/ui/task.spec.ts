@@ -81,8 +81,8 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
     // Tasks created in beforeAll should appear as rows
     const rows = page.locator('[data-testid^="task-mgmt-row-"]');
     const rowCount = await rows.count();
-    // At minimum the table should render; row count depends on task state
-    expect(rowCount).toBeGreaterThanOrEqual(0);
+    // At least some of the 5 tasks created in beforeAll should be visible
+    expect(rowCount).toBeGreaterThanOrEqual(1);
   });
 
   // ═══ UI-111: 查看任务详情 ═══
@@ -113,8 +113,9 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
     if (task) {
       const cancelBtn = page.locator(`[data-testid="task-mgmt-cancel-btn-${task.task_id}"]`);
       if (await cancelBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await cancelBtn.click();
+        // Register dialog listener BEFORE clicking
         page.once('dialog', (d) => d.accept());
+        await cancelBtn.click();
         await page.waitForTimeout(1000);
       }
     }
@@ -171,8 +172,9 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
 
       const batchBtn = page.locator('[data-testid="task-mgmt-batch-cancel-btn"]');
       await expect(batchBtn).toBeVisible({ timeout: 5000 });
-      await batchBtn.click();
+      // Register dialog listener BEFORE clicking
       page.once('dialog', (d) => d.accept());
+      await batchBtn.click();
       await page.waitForTimeout(1000);
     }
   });

@@ -124,25 +124,14 @@ test.describe('SESSION — SPEC-037', () => {
   });
 
   // ═══ UI-182: 删除部分上下文不可恢复 ═══
+  // ═══ UI-182: 部分删除（单条消息删除）无恢复入口 ═══
   test('[UI-182] Session — 部分删除无恢复', async ({ page }) => {
     await page.goto('/chat');
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
 
-    // Send a message to create context
-    await page.locator('[data-testid="chat-input"]').fill('hello');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(3000);
-
-    // Open session panel, verify it exists
-    await page.locator('[data-testid="chat-session-btn"]').click();
-    await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
-    await page.waitForTimeout(1000);
-
-    // Verify session items are shown (session exists and is NOT deleted)
-    // There should be no recovery banner since nothing was deleted
-    const banner = page.locator('[data-testid="session-recovery-banner"]');
-    if (await banner.isVisible()) {
-      // If banner exists from prior test, restore first
+    // Clean up any leftover recovery banners from previous tests
+    const recoveryBanner = page.locator('[data-testid="session-recovery-banner"]');
+    if (await recoveryBanner.isVisible({ timeout: 2000 }).catch(() => false)) {
       const restoreBtns = page.locator('[data-testid="session-recovery-restore-btn"]');
       const restoreCount = await restoreBtns.count();
       for (let i = 0; i < restoreCount; i++) {
@@ -151,8 +140,24 @@ test.describe('SESSION — SPEC-037', () => {
       }
     }
 
-    // Session panel should show active sessions without recovery banner
+    // Send a message to build session context
+    await page.locator('[data-testid="chat-input"]').fill('hello');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(3000);
+
+    // Open session panel
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
+    await page.waitForTimeout(1000);
+
+    // Verify session list is visible — no recovery banner should appear
+    // since we didn't delete anything partially yet
     await expect(page.locator('[data-testid="session-list"]')).toBeVisible();
+
+    // Verify there's NO recovery banner (since no partial deletion actually happened)
+    // If a recovery banner existed from previous tests, we already cleaned it up
+    const newBanner = page.locator('[data-testid="session-recovery-banner"]');
+    expect(await newBanner.isVisible({ timeout: 2000 }).catch(() => false)).toBe(false);
   });
 
   // ═══ UI-183: 恢复缓冲期可配置 ═══

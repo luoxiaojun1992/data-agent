@@ -78,7 +78,8 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     await page.waitForTimeout(2000);
     const cards = page.locator('[data-testid^="kb-doc-card-"]');
     const count = await cards.count();
-    if (count === 0) { test.skip(); return; }
+    // Docs are created in beforeAll — there should be at least 1
+    expect(count).toBeGreaterThanOrEqual(1);
 
     // Check a card structure
     const firstCard = cards.first();
@@ -105,14 +106,41 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     await page.keyboard.press('Escape');
   });
 
+  // ═══ UI-119: 文档预览 ═══
+  test('[UI-119] KB — 文档预览', async ({ page }) => {
+    await page.waitForTimeout(1000);
+    const firstCard = page.locator('[data-testid^="kb-doc-card-"]').first();
+    await expect(firstCard).toBeVisible({ timeout: 5000 });
+
+    // Click on the document name or preview button
+    const previewBtn = firstCard.locator('[data-testid="kb-doc-name"]');
+    if (await previewBtn.isVisible().catch(() => false)) {
+      await previewBtn.click();
+      await page.waitForTimeout(1000);
+      // Preview modal or detail panel should appear
+      // Verify either a preview panel or detail view
+      const detailPanel = page.locator('[data-testid="kb-doc-detail-panel"]');
+      const previewModal = page.locator('[data-testid="kb-preview-modal"]');
+      const hasDetailOrPreview = (await detailPanel.isVisible({ timeout: 3000 }).catch(() => false)) ||
+                                  (await previewModal.isVisible({ timeout: 3000 }).catch(() => false));
+      if (hasDetailOrPreview) {
+        // Close preview/detail
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+      }
+    }
+  });
+
   // ═══ UI-120: 索引状态实时更新 ═══
   test('[UI-120] KB — 索引状态实时更新', async ({ page }) => {
     await page.waitForTimeout(1000);
     const status = page.locator('[data-testid^="kb-doc-status-"]').first();
     const hasStatus = await status.isVisible().catch(() => false);
     if (hasStatus) {
-      const statusText = await status.textContent();
-      expect(statusText).toBeTruthy();
+      const statusText = (await status.textContent()) || '';
+      // Status should contain meaningful text (indexed, indexing, pending, etc.)
+      expect(statusText.length).toBeGreaterThanOrEqual(1);
+      expect(statusText).toMatch(/索引|index|已|待|中/i);
     }
   });
 
@@ -121,31 +149,68 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     const searchInput = page.locator('[data-testid="kb-search-input"]');
     await expect(searchInput).toBeVisible();
 
-    // Search for 销售
-    await searchInput.fill('销售');
-    await page.waitForTimeout(500);
+    // Count visible cards before search
+    const beforeCards = page.locator('[data-testid^="kb-doc-card-"]');
+    const beforeCount = await beforeCards.count();
+    expect(beforeCount).toBeGreaterThanOrEqual(1);
 
-    // Clear search
+    // Search for 销售 — should filter to matching doc
+    await searchInput.fill('销售');
+    await page.waitForTimeout(1000);
+
+    // After filtering, at least the matching doc should still be visible
+    const afterCards = page.locator('[data-testid^="kb-doc-card-"]');
+    const afterCount = await afterCards.count();
+    expect(afterCount).toBeGreaterThanOrEqual(1);
+
+    // Clear search — all docs should be back
     await searchInput.clear();
     await page.waitForTimeout(500);
+    const restoredCount = await beforeCards.count();
+    expect(restoredCount).toBe(beforeCount);
+  });
+
+  // ═══ UI-122: 按标签筛选 ═══
+  test('[UI-122] KB — 按标签筛选', async ({ page }) => {
+    // Check if tag filter UI exists
+    const tagFilter = page.locator('[data-testid="kb-tag-filter"]');
+    const hasTagFilter = await tagFilter.isVisible({ timeout: 3000 }).catch(() => false);
+    if (hasTagFilter) {
+      // Try clicking a tag to filter
+      const firstTag = tagFilter.locator('[data-testid^="kb-tag-"]').first();
+      if (await firstTag.isVisible().catch(() => false)) {
+        await firstTag.click();
+        await page.waitForTimeout(500);
+        // Verify the filter is active (tag gets active style)
+        await expect(firstTag).toBeVisible();
+      }
+    }
   });
 
   // ═══ UI-123: 删除知识库文档 ═══
   test('[UI-123] KB — 删除知识库文档', async ({ page }) => {
     await page.waitForTimeout(1000);
     const delBtn = page.locator('[data-testid^="kb-doc-delete-"]').first();
-    const hasDelBtn = await delBtn.isVisible().catch(() => false);
-    if (!hasDelBtn) { test.skip(); return; }
+    // Docs are created in beforeAll — delete button should exist
+    await expect(delBtn).toBeVisible({ timeout: 5000 });
 
+    // Register dialog listener BEFORE clicking
+    page.once('dialog', (d) => d.dismiss());
     await delBtn.click();
-    page.once('dialog', (d) => d.dismiss()); // dismiss for test safety
     await page.waitForTimeout(500);
   });
 
   // ═══ UI-124: 文档分页 ═══
   test('[UI-124] KB — 文档分页', async ({ page }) => {
-    // With 3 docs and PAGE_SIZE=10, no pagination needed
-    // But pagination component should exist in DOM
-    await page.waitForTimeout(500);
+    // With 3 docs and default PAGE_SIZE, pagination may or may not show
+    // Verify the pagination component exists in DOM (even if hidden)
+    const pagination = page.locator('[data-testid="kb-pagination"]');
+    const hasPagination = await pagination.isVisible({ timeout: 3000 }).catch(() => false);
+    if (hasPagination) {
+      await expect(pagination).toContainText('共');
+    }
+    // Docs should still be visible
+    const cards = page.locator('[data-testid^="kb-doc-card-"]');
+    expect(await cards.count()).toBeGreaterThanOrEqual(1);
   });
 });

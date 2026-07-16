@@ -95,7 +95,10 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
       },
       headers,
     });
-    if (!saveRes.ok()) { test.skip(); return; }
+    if (!saveRes.ok()) { expect(saveRes.ok()).toBe(true); return; }
+    // Note: If Vault is not available in this environment, the save may fail.
+    // This is a backend infrastructure dependency — not a test bug.
+    // The test continues to verify API key existence marking.
 
     // Verify config marks key as existing
     const configRes = await request.get(`${API_BASE}/model-config`, { headers });
@@ -129,6 +132,13 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
 
     // Initially type is password (masked)
     await expect(keyInput).toHaveAttribute('type', 'password');
+
+    // Click eye toggle to show key
+    await eyeToggle.click();
+    await page.waitForTimeout(300);
+
+    // After toggle, should be type text (unmasked)
+    await expect(keyInput).toHaveAttribute('type', 'text');
   });
 
   // ═══ UI-097: Model Name 下拉选择 ═══
@@ -236,19 +246,25 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
     await page.locator('[data-testid="login-btn"]').click();
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
 
-    // Try to access model config directly
+    // Regular user should not see model-config nav item
+    await expect(page.locator('[data-testid="nav-model-config"]')).not.toBeVisible();
+
+    // Try to access model config directly — should redirect or show denied
     await page.goto('/admin/models');
+    await page.waitForTimeout(2000);
 
-    // Should see error/denied state — the AppLayout wraps pages,
-    // and the backend API calls will fail with 401/403 for users without user:manage
-    // The page renders but API calls return errors
-    await page.waitForSelector('[data-testid="admin-models-header"]', { timeout: 5000 });
-
-    // Attempt to save config — should fail
-    await page.locator('[data-testid="model-save-btn"]').click();
-    await page.waitForTimeout(1000);
-
-    // Regular user should not see model config API data
-    // The page may show but without data loaded
+    // Regular user should be redirected away from model config page
+    // Either to dashboard or a denied page
+    const isOnModelPage = await page.locator('[data-testid="admin-models-header"]').isVisible({ timeout: 3000 }).catch(() => false);
+    if (isOnModelPage) {
+      // Page rendered but user cannot see data or save
+      const saveBtn = page.locator('[data-testid="model-save-btn"]');
+      if (await saveBtn.isVisible().catch(() => false)) {
+        await saveBtn.click();
+        await page.waitForTimeout(1000);
+      }
+    }
+    // Regardless of outcome, user should not be able to see admin nav
+    await expect(page.locator('[data-testid="nav-admin"]')).not.toBeVisible();
   });
 });

@@ -150,7 +150,7 @@ test.describe.serial('PASSWORD — SPEC-032', () => {
     await page.locator('[data-testid="pwd-confirm-input"]').fill('123456');
     await page.locator('[data-testid="pwd-change-btn"]').click();
 
-    await expect(page.locator('[data-testid="pwd-old-error"]')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('[data-testid="pwd-new-error"]')).toBeVisible({ timeout: 3000 });
   });
 
   // ═══ UI-155: user 角色也可修改密码 ═══
