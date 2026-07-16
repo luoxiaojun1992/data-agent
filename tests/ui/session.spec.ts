@@ -198,12 +198,11 @@ test.describe('SESSION — SPEC-037', () => {
 
   // ═══ UI-177: Session idle timeout warning ═══
   test('[UI-177] Session — 超时警告', async ({ page }) => {
-    // Inject short idle timeout via window global (3s idle, 5s countdown)
-    await page.evaluate(() => {
+    // Inject short idle timeout BEFORE page loads (init script runs before React)
+    await page.addInitScript(() => {
       (window as any).__IDLE_TIMEOUT__ = 3;
       (window as any).__COUNTDOWN__ = 5;
     });
-    // Navigate to a page that mounts AppLayout (and thus IdleTimer)
     await page.goto('/');
     await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
 
@@ -215,7 +214,7 @@ test.describe('SESSION — SPEC-037', () => {
 
   // ═══ UI-178: Session auto-logout after countdown ═══
   test('[UI-178] Session — 超时自动登出', async ({ page }) => {
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       (window as any).__IDLE_TIMEOUT__ = 3;
       (window as any).__COUNTDOWN__ = 3;
     });
@@ -232,7 +231,7 @@ test.describe('SESSION — SPEC-037', () => {
 
   // ═══ UI-179: Click continue extends session ═══
   test('[UI-179] Session — 继续使用续期', async ({ page }) => {
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       (window as any).__IDLE_TIMEOUT__ = 3;
       (window as any).__COUNTDOWN__ = 60;
     });
