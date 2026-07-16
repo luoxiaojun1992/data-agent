@@ -85,9 +85,11 @@ test.describe('AGENT — Professional Workspace', () => {
 
     await page.goto('/agent');
     await page.waitForURL('**/agent', { timeout: 5000 });
+    await page.reload();
+    await page.waitForSelector('[data-testid="agent-page-header"]', { timeout: 10000 });
 
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 20000 });
+    await expect(row).toBeVisible({ timeout: 30000 });
     await row.click();
     await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });

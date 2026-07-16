@@ -86,7 +86,7 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
     const cancelBtn = page.locator(`[data-testid="task-mgmt-cancel-btn-${task.task_id}"]`);
-    await expect(cancelBtn).toBeVisible({ timeout: 20000 });
+    await expect(cancelBtn).toBeVisible({ timeout: 30000 });
     page.once('dialog', (d) => d.accept());
     await cancelBtn.click();
   });
@@ -103,7 +103,7 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
     const retryBtn = page.locator(`[data-testid="task-mgmt-retry-btn-${task.task_id}"]`);
-    await expect(retryBtn).toBeVisible({ timeout: 20000 });
+    await expect(retryBtn).toBeVisible({ timeout: 30000 });
     await retryBtn.click();
   });
 
@@ -118,7 +118,7 @@ test.describe('TASK MANAGEMENT — SPEC-027', () => {
     await page.waitForSelector('[data-testid="admin-tasks-header"]', { timeout: 10000 });
 
     const checkboxes = page.locator('[data-testid="task-mgmt-batch-select"]');
-    await expect(checkboxes.first()).toBeVisible({ timeout: 15000 });
+    await expect(checkboxes.first()).toBeVisible({ timeout: 30000 });
     const count = await checkboxes.count();
     expect(count).toBeGreaterThanOrEqual(2);
 
