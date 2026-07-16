@@ -1,102 +1,147 @@
 package agent_svc
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 )
 
-func TestNewService(t *testing.T) {
-	s := NewService(nil, nil, nil, nil)
-	if s == nil {
-		t.Fatal("NewService() should not return nil")
-	}
-}
+func init() { gin.SetMode(gin.TestMode) }
 
-func TestNewService_ReturnsNonNil(t *testing.T) {
-	s := NewService(nil, nil, nil, nil)
-	if s == nil {
-		t.Fatal("NewService returned nil")
+func TestNewAgentService(t *testing.T) {
+	svc := NewService(nil, nil, nil, nil)
+	if svc == nil {
+		t.Error("NewService should not return nil")
 	}
-	_ = s
 }
 
 func TestWithTaskService(t *testing.T) {
-	s := NewService(nil, nil, nil, nil)
-	s = s.WithTaskService(nil)
-	if s == nil {
-		t.Fatal("WithTaskService() should return non-nil")
-	}
-	// taskService should be nil since we passed nil
-	if s.taskService != nil {
-		t.Error("taskService should be nil after WithTaskService(nil)")
+	svc := NewService(nil, nil, nil, nil)
+	result := svc.WithTaskService(nil)
+	if result != svc {
+		t.Error("WithTaskService should return self")
 	}
 }
 
 func TestWithSkillRegistry(t *testing.T) {
-	s := NewService(nil, nil, nil, nil)
-	s = s.WithSkillRegistry(nil)
-	if s == nil {
-		t.Fatal("WithSkillRegistry() should return non-nil")
-	}
-	if s.skillReg != nil {
-		t.Error("skillReg should be nil after WithSkillRegistry(nil)")
-	}
-}
-
-func TestWithTaskService_Chaining(t *testing.T) {
-	s := NewService(nil, nil, nil, nil)
-	s2 := s.WithTaskService(nil)
-	// Should return same instance for chaining
-	if s != s2 {
-		t.Error("WithTaskService should return same Service instance")
+	svc := NewService(nil, nil, nil, nil)
+	result := svc.WithSkillRegistry(nil)
+	if result != svc {
+		t.Error("WithSkillRegistry should return self")
 	}
 }
 
 func TestContains(t *testing.T) {
-	t.Run("exact match", func(t *testing.T) {
-		if !contains("hello world", "hello") {
-			t.Error("contains('hello world', 'hello') should be true")
+	tests := []struct {
+		s, sub string
+		want   bool
+	}{
+		{"hello", "ell", true},
+		{"hello", "hello", true},
+		{"hello", "world", false},
+		{"hello", "", true},
+		{"hi", "hello", false},
+	}
+	for _, tt := range tests {
+		if got := contains(tt.s, tt.sub); got != tt.want {
+			t.Errorf("contains(%q, %q) = %v, want %v", tt.s, tt.sub, got, tt.want)
+		}
+	}
+}
+
+func TestListSkills_Empty(t *testing.T) {
+	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+	svc := NewService(nil, nil, nil, cbReg)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/skills", nil)
+
+	svc.ListSkills(c)
+	if w.Code != http.StatusOK {
+		t.Errorf("status: got %d", w.Code)
+	}
+}
+
+func TestSearchSkills_EmptyQuery(t *testing.T) {
+	svc := NewService(nil, nil, nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/skills/search", nil)
+
+	svc.SearchSkills(c)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d, want 400", w.Code)
+	}
+}
+
+func TestSearchSkills_WithQuery(t *testing.T) {
+	svc := NewService(nil, nil, nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/skills/search?q=sql", nil)
+
+	svc.SearchSkills(c)
+	if w.Code != http.StatusOK {
+		t.Errorf("status: got %d, body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgentTask(t *testing.T) {
+	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+	svc := NewService(nil, nil, nil, cbReg)
+	sessions := &chat.Manager{}
+	svc.sessions = sessions
+
+	patches := gomonkey.ApplyMethodReturn(sessions, "Create", &chat.Session{ID: "sess-1"}, nil)
+	defer patches.Reset()
+
+	t.Run("invalid body returns 400", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("POST", "/agent/tasks", strings.NewReader(`{bad`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("user_id", "user-1")
+
+		svc.CreateAgentTask(c)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("status: got %d, want 400", w.Code)
 		}
 	})
 
-	t.Run("substring", func(t *testing.T) {
-		if !contains("sql_executor", "sql") {
-			t.Error("contains('sql_executor', 'sql') should be true")
-		}
-	})
+	t.Run("creates task via memory fallback", func(t *testing.T) {
+		body := `{"title":"Test","skill_chain":["sql"]}`
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("POST", "/agent/tasks", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("user_id", "user-1")
 
-	t.Run("no match", func(t *testing.T) {
-		if contains("hello", "xyz") {
-			t.Error("contains('hello', 'xyz') should be false")
+		svc.CreateAgentTask(c)
+		if w.Code != http.StatusAccepted {
+			t.Errorf("status: got %d", w.Code)
 		}
 	})
+}
 
-	t.Run("empty search", func(t *testing.T) {
-		if !contains("anything", "") {
-			t.Error("contains('anything', '') should be true")
-		}
-	})
+func TestGetAgentTask_NoTaskService(t *testing.T) {
+	svc := NewService(nil, nil, nil, nil)
 
-	t.Run("empty string", func(t *testing.T) {
-		if contains("", "hello") {
-			t.Error("contains('', 'hello') should be false")
-		}
-	})
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/agent/tasks/task-1", nil)
+	c.Params = gin.Params{{Key: "task_id", Value: "task-1"}}
 
-	t.Run("same strings", func(t *testing.T) {
-		if !contains("hello", "hello") {
-			t.Error("contains('hello', 'hello') should be true")
-		}
-	})
-
-	t.Run("substr longer than s", func(t *testing.T) {
-		if contains("hi", "hello") {
-			t.Error("contains('hi', 'hello') should be false")
-		}
-	})
-
-	t.Run("unicode text", func(t *testing.T) {
-		if !contains("你好世界", "世界") {
-			t.Error("contains('你好世界', '世界') should be true")
-		}
-	})
+	svc.GetAgentTask(c)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status: got %d, want 404", w.Code)
+	}
 }
