@@ -195,4 +195,58 @@ test.describe('SESSION — SPEC-037', () => {
     await page.locator('[data-testid="sysconfig-session-recovery-save"]').click();
     await page.waitForTimeout(1000);
   });
+
+  // ═══ UI-177: Session idle timeout warning ═══
+  test('[UI-177] Session — 超时警告', async ({ page }) => {
+    // Inject short idle timeout via window global (3s idle, 5s countdown)
+    await page.evaluate(() => {
+      (window as any).__IDLE_TIMEOUT__ = 3;
+      (window as any).__COUNTDOWN__ = 5;
+    });
+    // Navigate to a page that mounts AppLayout (and thus IdleTimer)
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
+
+    // Wait for idle timeout to trigger warning (3s idle + buffer)
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="session-timeout-continue-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="session-timeout-logout-btn"]')).toBeVisible();
+  });
+
+  // ═══ UI-178: Session auto-logout after countdown ═══
+  test('[UI-178] Session — 超时自动登出', async ({ page }) => {
+    await page.evaluate(() => {
+      (window as any).__IDLE_TIMEOUT__ = 3;
+      (window as any).__COUNTDOWN__ = 3;
+    });
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
+
+    // Wait for warning to appear
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({ timeout: 10000 });
+
+    // Wait for auto-logout (countdown 3s + buffer)
+    await page.waitForURL(/login/, { timeout: 15000 });
+    await expect(page.locator('[data-testid="login-session-expired-toast"]')).toBeVisible({ timeout: 5000 });
+  });
+
+  // ═══ UI-179: Click continue extends session ═══
+  test('[UI-179] Session — 继续使用续期', async ({ page }) => {
+    await page.evaluate(() => {
+      (window as any).__IDLE_TIMEOUT__ = 3;
+      (window as any).__COUNTDOWN__ = 60;
+    });
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
+
+    // Wait for warning
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({ timeout: 10000 });
+
+    // Click continue — warning should disappear
+    await page.locator('[data-testid="session-timeout-continue-btn"]').click();
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).not.toBeVisible({ timeout: 5000 });
+
+    // Page should still be logged in
+    await expect(page.locator('[data-testid="sidebar"]')).toBeVisible({ timeout: 5000 });
+  });
 });
