@@ -366,3 +366,158 @@ func TestListByTask_Error(t *testing.T) {
 // Ensure imports are used
 var _ = bson.M{}
 var _ = io.ReadAll
+
+// ===== Download tests =====
+
+func TestDownload_Success(t *testing.T) {
+	var sw seaweedfs.Client
+	var coll mongo.Collection
+	var db mongo.Database
+	var sr mongo.SingleResult
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	patches.ApplyMethodReturn(&db, "Collection", &coll)
+
+	// Mock FindByID (FindOne + Decode)
+	patches.ApplyMethodFunc(&coll, "FindOne", func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+		return &sr
+	})
+	patches.ApplyMethodFunc(&sr, "Decode", func(v interface{}) error {
+		art := v.(*artifact.Artifact)
+		art.ID = "artifact_test123"
+		art.Name = "test.txt"
+		art.StoragePath = "artifacts/user1/session1/test.txt"
+		return nil
+	})
+
+	// Mock seaweedfs Download
+	patches.ApplyMethodReturn(&sw, "Download", []byte("file content"), nil)
+
+	s := NewStorage(&sw, &db)
+	data, art, err := s.Download("artifact_test123")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(data) != "file content" {
+		t.Errorf("data = %q, want %q", string(data), "file content")
+	}
+	if art.ID != "artifact_test123" {
+		t.Errorf("art.ID = %q", art.ID)
+	}
+	if art.StoragePath != "artifacts/user1/session1/test.txt" {
+		t.Errorf("art.StoragePath = %q", art.StoragePath)
+	}
+}
+
+func TestDownload_FindByIDError(t *testing.T) {
+	var sw seaweedfs.Client
+	var coll mongo.Collection
+	var db mongo.Database
+	var sr mongo.SingleResult
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	patches.ApplyMethodReturn(&db, "Collection", &coll)
+	patches.ApplyMethodFunc(&coll, "FindOne", func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+		return &sr
+	})
+	patches.ApplyMethodReturn(&sr, "Decode", mongo.ErrNoDocuments)
+
+	s := NewStorage(&sw, &db)
+	data, art, err := s.Download("nonexistent")
+
+	if err == nil {
+		t.Fatal("expected error from FindByID, got nil")
+	}
+	if data != nil {
+		t.Error("data should be nil on error")
+	}
+	if art != nil {
+		t.Error("art should be nil on error")
+	}
+}
+
+func TestDownload_SeaweedfsError(t *testing.T) {
+	var sw seaweedfs.Client
+	var coll mongo.Collection
+	var db mongo.Database
+	var sr mongo.SingleResult
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	patches.ApplyMethodReturn(&db, "Collection", &coll)
+
+	// FindByID succeeds
+	patches.ApplyMethodFunc(&coll, "FindOne", func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+		return &sr
+	})
+	patches.ApplyMethodFunc(&sr, "Decode", func(v interface{}) error {
+		art := v.(*artifact.Artifact)
+		art.ID = "artifact_test123"
+		art.StoragePath = "artifacts/user1/session1/test.txt"
+		return nil
+	})
+
+	// seaweedfs Download fails
+	patches.ApplyMethodReturn(&sw, "Download", []byte(nil), errors.New("seaweedfs download: connection refused"))
+
+	s := NewStorage(&sw, &db)
+	data, art, err := s.Download("artifact_test123")
+
+	if err == nil {
+		t.Fatal("expected error from seaweedfs download, got nil")
+	}
+	if data != nil {
+		t.Error("data should be nil on error")
+	}
+	if art != nil {
+		t.Error("art should be nil on error")
+	}
+}
+
+// ===== ListBySession cursor All error =====
+
+func TestListBySession_CursorAllError(t *testing.T) {
+	var coll mongo.Collection
+	var cur mongo.Cursor
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
+		return errors.New("cursor decode error")
+	})
+
+	s := &Storage{coll: &coll}
+	_, err := s.ListBySession("session1")
+	if err == nil {
+		t.Fatal("expected error from cursor All, got nil")
+	}
+}
+
+// ===== ListByTask cursor All error =====
+
+func TestListByTask_CursorAllError(t *testing.T) {
+	var coll mongo.Collection
+	var cur mongo.Cursor
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
+		return errors.New("cursor decode error")
+	})
+
+	s := &Storage{coll: &coll}
+	_, err := s.ListByTask("task1")
+	if err == nil {
+		t.Fatal("expected error from cursor All, got nil")
+	}
+}

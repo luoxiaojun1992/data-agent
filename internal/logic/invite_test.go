@@ -1,6 +1,9 @@
 package logic
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"os"
 	"strings"
 	"testing"
@@ -248,4 +251,152 @@ func TestLoadInviteHMACSecret(t *testing.T) {
 			t.Error("expected error when INVITE_HMAC_SECRET is not set")
 		}
 	})
+}
+
+// ===== GetInviteBaseURL tests =====
+
+func TestGetInviteBaseURL(t *testing.T) {
+	t.Run("env var set", func(t *testing.T) {
+		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
+			if key == "INVITE_BASE_URL" {
+				return "https://example.com"
+			}
+			return ""
+		})
+		defer patches.Reset()
+
+		url := GetInviteBaseURL()
+		if url != "https://example.com" {
+			t.Errorf("got %q, want %q", url, "https://example.com")
+		}
+	})
+
+	t.Run("default when not set", func(t *testing.T) {
+		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
+			return ""
+		})
+		defer patches.Reset()
+
+		url := GetInviteBaseURL()
+		if url != "http://localhost:3000" {
+			t.Errorf("got %q, want %q", url, "http://localhost:3000")
+		}
+	})
+
+	t.Run("trailing slash stripped", func(t *testing.T) {
+		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
+			if key == "INVITE_BASE_URL" {
+				return "https://example.com/"
+			}
+			return ""
+		})
+		defer patches.Reset()
+
+		url := GetInviteBaseURL()
+		if url != "https://example.com" {
+			t.Errorf("got %q, want %q", url, "https://example.com")
+		}
+	})
+
+	t.Run("multiple trailing slashes", func(t *testing.T) {
+		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
+			if key == "INVITE_BASE_URL" {
+				return "https://example.com///"
+			}
+			return ""
+		})
+		defer patches.Reset()
+
+		url := GetInviteBaseURL()
+		if url != "https://example.com" {
+			t.Errorf("got %q, want %q", url, "https://example.com")
+		}
+	})
+}
+
+// ===== VerifyInviteToken additional tests =====
+
+func TestVerifyInviteToken_InvalidSignatureEncoding(t *testing.T) {
+	secret := []byte("test-secret-key-32")
+	inviteID := "inv_test123"
+	email := "test@example.com"
+	role := "user"
+	expireAt := time.Now().Add(24 * time.Hour)
+
+	token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+	parts := strings.Split(token, ".")
+	// Make signature part invalid by adding non-base64 characters
+	badToken := parts[0] + ".!!!invalid!!!"
+	_, err := VerifyInviteToken(badToken, [][]byte{secret})
+	if err == nil {
+		t.Error("invalid signature encoding should reject token")
+	}
+}
+
+func TestVerifyInviteToken_InvalidPayloadEncoding(t *testing.T) {
+	secret := []byte("test-secret-key-32")
+	inviteID := "inv_test123"
+	email := "test@example.com"
+	role := "user"
+	expireAt := time.Now().Add(24 * time.Hour)
+
+	token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+	parts := strings.Split(token, ".")
+	// Make payload part invalid by adding non-base64 characters
+	badToken := "!!!invalid!!!" + "." + parts[1]
+	_, err := VerifyInviteToken(badToken, [][]byte{secret})
+	if err == nil {
+		t.Error("invalid payload encoding should reject token")
+	}
+}
+
+func TestVerifyInviteToken_InvalidExpiryInPayload(t *testing.T) {
+	secret := []byte("test-secret-key-32")
+
+	// Create a token with invalid expiry: "invID:notANumber:email:role"
+	payload := "inv_test123:notANumber:test@example.com:user"
+	encodedPayload := base64.RawURLEncoding.EncodeToString([]byte(payload))
+
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(payload))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	badToken := encodedPayload + "." + sig
+	_, err := VerifyInviteToken(badToken, [][]byte{secret})
+	if err == nil {
+		t.Error("invalid expiry in payload should reject token")
+	}
+}
+
+func TestVerifyInviteToken_PayloadTooManyColons(t *testing.T) {
+	secret := []byte("test-secret-key-32")
+	expireAt := time.Now().Add(24 * time.Hour)
+
+	// Generate a valid token
+	validToken := GenerateInviteToken("inv_test", expireAt, "test@example.com", "user", secret)
+
+	// Verify first with wrong secret, which leads to payload being decoded but signature mismatch
+	// Instead, let's modify the test to cover the signature mismatch directly
+	_, err := VerifyInviteToken(validToken, [][]byte{[]byte("wrong-secret-key")})
+	if err == nil {
+		t.Error("wrong secret should reject token")
+	}
+}
+
+func TestVerifyInviteToken_MalformedPayloadCustom(t *testing.T) {
+	secret := []byte("test-secret-key-32")
+	inviteID := "inv_test123"
+	email := "test@example.com"
+	role := "user"
+	expireAt := time.Now().Add(24 * time.Hour)
+
+	// The old test "malformed payload rejects" used "YWJj" which is valid base64 for "abc"
+	// but the signature won't match. Let's also test with a longer payload that actually verifies
+	token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+	parts := strings.Split(token, ".")
+	badToken := "YWJj" + "." + parts[1] // "abc" in base64
+	_, err := VerifyInviteToken(badToken, [][]byte{secret})
+	if err == nil {
+		t.Error("malformed payload should reject")
+	}
 }

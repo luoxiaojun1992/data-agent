@@ -3,11 +3,15 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -889,5 +893,542 @@ func TestNewService_NilDB_FieldsCheck(t *testing.T) {
 	filtered := s.filterByRole([]knowledge.SearchResult{{ChunkID: "c1"}}, "system_admin")
 	if len(filtered) != 1 {
 		t.Errorf("filterByRole should work even with nil db, got %d", len(filtered))
+	}
+}
+
+// ===== UploadFile tests =====
+
+func TestUploadFile_Success(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+	patches.ApplyFunc(genShortID, func() string { return "fixed-id" })
+
+	// Mock gridfs.NewBucket
+	patches.ApplyFunc(gridfs.NewBucket, func(db *mongo.Database, opts ...*options.BucketOptions) (*gridfs.Bucket, error) {
+		return &gridfs.Bucket{}, nil
+	})
+
+	// Mock Bucket.OpenUploadStream
+	var bucket gridfs.Bucket
+	patches.ApplyMethodFunc(&bucket, "OpenUploadStream",
+		func(filename string, opts ...*options.UploadOptions) (*gridfs.UploadStream, error) {
+			return &gridfs.UploadStream{}, nil
+		})
+
+	// Mock UploadStream.Close
+	var us gridfs.UploadStream
+	patches.ApplyMethodFunc(&us, "Close", func() error {
+		return nil
+	})
+
+	// Mock io.Copy
+	patches.ApplyFunc(io.Copy, func(dst io.Writer, src io.Reader) (written int64, err error) {
+		return 42, nil
+	})
+
+	s := NewService(&mongo.Database{})
+	fileID, err := s.UploadFile("test.txt", "text/plain", strings.NewReader("test content"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fileID != "gridfs_fixed-id" {
+		t.Errorf("fileID = %q, want %q", fileID, "gridfs_fixed-id")
+	}
+}
+
+func TestUploadFile_NewBucketError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+	patches.ApplyFunc(genShortID, func() string { return "fixed-id" })
+
+	bucketErr := errors.New("gridfs bucket creation failed")
+	patches.ApplyFunc(gridfs.NewBucket, func(db *mongo.Database, opts ...*options.BucketOptions) (*gridfs.Bucket, error) {
+		return nil, bucketErr
+	})
+
+	s := NewService(&mongo.Database{})
+	fileID, err := s.UploadFile("test.txt", "text/plain", strings.NewReader("test content"))
+
+	if err == nil {
+		t.Fatal("expected error from NewBucket, got nil")
+	}
+	if fileID != "" {
+		t.Errorf("fileID should be empty on error, got %q", fileID)
+	}
+}
+
+func TestUploadFile_OpenUploadStreamError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+	patches.ApplyFunc(genShortID, func() string { return "fixed-id" })
+
+	patches.ApplyFunc(gridfs.NewBucket, func(db *mongo.Database, opts ...*options.BucketOptions) (*gridfs.Bucket, error) {
+		return &gridfs.Bucket{}, nil
+	})
+
+	var bucket gridfs.Bucket
+	openErr := errors.New("open upload stream failed")
+	patches.ApplyMethodFunc(&bucket, "OpenUploadStream",
+		func(filename string, opts ...*options.UploadOptions) (*gridfs.UploadStream, error) {
+			return nil, openErr
+		})
+
+	s := NewService(&mongo.Database{})
+	fileID, err := s.UploadFile("test.txt", "text/plain", strings.NewReader("test content"))
+
+	if err == nil {
+		t.Fatal("expected error from OpenUploadStream, got nil")
+	}
+	if fileID != "" {
+		t.Errorf("fileID should be empty on error, got %q", fileID)
+	}
+}
+
+func TestUploadFile_IOCopyError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+	patches.ApplyFunc(genShortID, func() string { return "fixed-id" })
+
+	patches.ApplyFunc(gridfs.NewBucket, func(db *mongo.Database, opts ...*options.BucketOptions) (*gridfs.Bucket, error) {
+		return &gridfs.Bucket{}, nil
+	})
+
+	var bucket gridfs.Bucket
+	patches.ApplyMethodFunc(&bucket, "OpenUploadStream",
+		func(filename string, opts ...*options.UploadOptions) (*gridfs.UploadStream, error) {
+			return &gridfs.UploadStream{}, nil
+		})
+
+	var us gridfs.UploadStream
+	patches.ApplyMethodFunc(&us, "Close", func() error {
+		return nil
+	})
+
+	copyErr := errors.New("io copy failed")
+	patches.ApplyFunc(io.Copy, func(dst io.Writer, src io.Reader) (written int64, err error) {
+		return 0, copyErr
+	})
+
+	s := NewService(&mongo.Database{})
+	fileID, err := s.UploadFile("test.txt", "text/plain", strings.NewReader("test content"))
+
+	if err == nil {
+		t.Fatal("expected error from io.Copy, got nil")
+	}
+	if fileID != "" {
+		t.Errorf("fileID should be empty on error, got %q", fileID)
+	}
+}
+
+// ===== Search tests =====
+
+func TestSearch_Success(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	// Mock private methods
+	var svc *Service
+	patches = patches.ApplyPrivateMethod(svc, "fullTextSearch",
+		func(_ *Service, query string, topK int) []knowledge.SearchResult {
+			return []knowledge.SearchResult{
+				{ChunkID: "c1", DocID: "doc1", DocTitle: "Doc 1", Content: "hello", Source: "fulltext"},
+				{ChunkID: "c2", DocID: "doc2", DocTitle: "Doc 2", Content: "world", Source: "fulltext"},
+			}
+		})
+	patches = patches.ApplyPrivateMethod(svc, "semanticSearch",
+		func(_ *Service, query string, topK int) []knowledge.SearchResult {
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	results, err := s.Search("user1", "test query", 10, "system_admin")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2", len(results))
+	}
+}
+
+func TestSearch_WithSemanticResults(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var svc *Service
+	patches = patches.ApplyPrivateMethod(svc, "fullTextSearch",
+		func(_ *Service, query string, topK int) []knowledge.SearchResult {
+			return []knowledge.SearchResult{
+				{ChunkID: "c1", DocTitle: "Text Result"},
+			}
+		})
+	patches = patches.ApplyPrivateMethod(svc, "semanticSearch",
+		func(_ *Service, query string, topK int) []knowledge.SearchResult {
+			return []knowledge.SearchResult{
+				{ChunkID: "c1", DocTitle: "Semantic Result"},
+				{ChunkID: "c2", DocTitle: "Another Result"},
+			}
+		})
+
+	s := NewService(&mongo.Database{})
+	results, err := s.Search("user1", "test", 10, "system_admin")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// c1 appears in both lists, c2 only in semantic
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2 (c1 merged, c2 from semantic)", len(results))
+	}
+}
+
+func TestSearch_FilterByRoleNonAdmin(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var svc *Service
+	patches = patches.ApplyPrivateMethod(svc, "fullTextSearch",
+		func(_ *Service, query string, topK int) []knowledge.SearchResult {
+			return []knowledge.SearchResult{
+				{ChunkID: "c1", DocTitle: "Doc 1"},
+			}
+		})
+	patches = patches.ApplyPrivateMethod(svc, "semanticSearch",
+		func(_ *Service, query string, topK int) []knowledge.SearchResult {
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	results, err := s.Search("user1", "test", 10, "user")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+}
+
+// ===== fullTextSearch tests =====
+
+func TestFullTextSearch_Success(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	var cursor mongo.Cursor
+	nextCount := 0
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return &cursor, nil
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Next",
+		func(ctx context.Context) bool {
+			nextCount++
+			return nextCount <= 2
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Decode",
+		func(val interface{}) error {
+			chunk := val.(*knowledge.Chunk)
+			chunk.ID = fmt.Sprintf("chunk_c%d", nextCount)
+			chunk.DocID = fmt.Sprintf("doc%d", nextCount)
+			chunk.Content = fmt.Sprintf("content %d", nextCount)
+			return nil
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Close",
+		func(ctx context.Context) error {
+			return nil
+		})
+
+	// Mock FindOne + Decode for doc title lookup
+	patches.ApplyMethodFunc(&mongo.Collection{}, "FindOne",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+			return &mongo.SingleResult{}
+		})
+
+	patches.ApplyMethodFunc(&mongo.SingleResult{}, "Decode",
+		func(val interface{}) error {
+			doc := val.(*knowledge.KnowledgeDoc)
+			doc.ID = "doc1"
+			doc.Title = "Test Document"
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	results := s.fullTextSearch("test query", 10)
+
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2", len(results))
+	}
+	if results[0].ChunkID != "chunk_c1" {
+		t.Errorf("results[0].ChunkID = %q", results[0].ChunkID)
+	}
+	if results[0].DocTitle != "Test Document" {
+		t.Errorf("results[0].DocTitle = %q", results[0].DocTitle)
+	}
+	if results[0].Source != "fulltext" {
+		t.Errorf("results[0].Source = %q, want \"fulltext\"", results[0].Source)
+	}
+}
+
+func TestFullTextSearch_TopKLimit(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	var cursor mongo.Cursor
+	nextCount := 0
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return &cursor, nil
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Next",
+		func(ctx context.Context) bool {
+			nextCount++
+			return nextCount <= 10
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Decode",
+		func(val interface{}) error {
+			chunk := val.(*knowledge.Chunk)
+			chunk.ID = fmt.Sprintf("chunk_%d", nextCount)
+			chunk.DocID = "doc1"
+			return nil
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Close",
+		func(ctx context.Context) error {
+			return nil
+		})
+
+	patches.ApplyMethodFunc(&mongo.Collection{}, "FindOne",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+			return &mongo.SingleResult{}
+		})
+
+	patches.ApplyMethodFunc(&mongo.SingleResult{}, "Decode",
+		func(val interface{}) error {
+			doc := val.(*knowledge.KnowledgeDoc)
+			doc.Title = "Doc"
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	results := s.fullTextSearch("test", 3)
+
+	if len(results) != 3 {
+		t.Fatalf("topK=3 but got %d results", len(results))
+	}
+}
+
+func TestFullTextSearch_FindError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	findErr := errors.New("find query failed")
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return nil, findErr
+		})
+
+	s := NewService(&mongo.Database{})
+	results := s.fullTextSearch("test", 10)
+
+	if results != nil {
+		t.Errorf("expected nil results on find error, got %v", results)
+	}
+}
+
+func TestFullTextSearch_EmptyResults(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	var cursor mongo.Cursor
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return &cursor, nil
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Next",
+		func(ctx context.Context) bool {
+			return false
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Close",
+		func(ctx context.Context) error {
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	results := s.fullTextSearch("nonexistent", 10)
+
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestFullTextSearch_DecodeErrorSkips(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	var cursor mongo.Cursor
+	nextCount := 0
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return &cursor, nil
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Next",
+		func(ctx context.Context) bool {
+			nextCount++
+			return nextCount <= 3
+		})
+
+	decodeErr := errors.New("decode error")
+	callCount := 0
+	patches.ApplyMethodFunc(&cursor, "Decode",
+		func(val interface{}) error {
+			callCount++
+			if callCount == 2 {
+				return decodeErr // second chunk fails decode
+			}
+			chunk := val.(*knowledge.Chunk)
+			chunk.ID = fmt.Sprintf("chunk_%d", callCount)
+			chunk.DocID = "doc1"
+			return nil
+		})
+
+	patches.ApplyMethodFunc(&cursor, "Close",
+		func(ctx context.Context) error {
+			return nil
+		})
+
+	patches.ApplyMethodFunc(&mongo.Collection{}, "FindOne",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+			return &mongo.SingleResult{}
+		})
+
+	patches.ApplyMethodFunc(&mongo.SingleResult{}, "Decode",
+		func(val interface{}) error {
+			doc := val.(*knowledge.KnowledgeDoc)
+			doc.Title = "Doc"
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	results := s.fullTextSearch("test", 10)
+
+	// Should have 2 results: chunk 1 (ok) and chunk 3 (ok), chunk 2 skipped
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results (one skipped by decode error), got %d", len(results))
+	}
+}
+
+// ===== semanticSearch tests =====
+
+func TestSemanticSearch_ReturnsNil(t *testing.T) {
+	s := NewService(&mongo.Database{})
+	results := s.semanticSearch("any query", 10)
+	if results != nil {
+		t.Errorf("expected nil, got %v", results)
+	}
+}
+
+func TestSemanticSearch_EmptyQuery(t *testing.T) {
+	s := NewService(&mongo.Database{})
+	results := s.semanticSearch("", 5)
+	if results != nil {
+		t.Errorf("expected nil for empty query, got %v", results)
+	}
+}
+
+// ===== ListDocs cursor All error =====
+
+func TestListDocs_CursorAllError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return &mongo.Cursor{}, nil
+		})
+
+	allErr := errors.New("cursor decode error")
+	patches.ApplyMethodFunc(&mongo.Cursor{}, "All",
+		func(ctx context.Context, results interface{}) error {
+			return allErr
+		})
+
+	patches.ApplyMethodFunc(&mongo.Cursor{}, "Close",
+		func(ctx context.Context) error {
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	docs, err := s.ListDocs("user1")
+
+	if err == nil {
+		t.Fatal("expected error from cursor All, got nil")
+	}
+	if docs != nil {
+		t.Error("expected nil docs on error")
+	}
+}
+
+// ===== ListAllDocs cursor All error =====
+
+func TestListAllDocs_CursorAllError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return &mongo.Cursor{}, nil
+		})
+
+	allErr := errors.New("cursor decode error")
+	patches.ApplyMethodFunc(&mongo.Cursor{}, "All",
+		func(ctx context.Context, results interface{}) error {
+			return allErr
+		})
+
+	patches.ApplyMethodFunc(&mongo.Cursor{}, "Close",
+		func(ctx context.Context) error {
+			return nil
+		})
+
+	s := NewService(&mongo.Database{})
+	docs, err := s.ListAllDocs()
+
+	if err == nil {
+		t.Fatal("expected error from cursor All, got nil")
+	}
+	if docs != nil {
+		t.Error("expected nil docs on error")
 	}
 }
