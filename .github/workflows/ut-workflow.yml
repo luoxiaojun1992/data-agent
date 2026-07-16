@@ -22,27 +22,28 @@ jobs:
         with:
           go-version: '1.25'
 
-      # L1+L2: Pure logic and interface-mocked packages (no Docker required)
-      - name: Run Unit Tests (L1+L2)
+      # L1+L2 only: excludes L3 infra (mongo, redis, qdrant, seaweedfs, vault, queue, worker, scheduler)
+      - name: Run Unit Tests
         run: |
-          go test -race -gcflags=all=-l -coverprofile=coverage-l1l2.out \
-            ./internal/... ./skills/... ./cmd/...
+          go test -race -gcflags=all=-l -coverprofile=coverage.out \
+            -coverpkg=./internal/api/...,./internal/config/...,./internal/domain/...,./internal/logic/...,./internal/service/...,./skills/... \
+            ./internal/... ./skills/...
 
       - name: Check Coverage Threshold
         run: |
-          COVERAGE=$(go tool cover -func=coverage-l1l2.out | grep total | awk '{print $3}' | sed 's/%//')
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 20" | bc -l) )); then
-            echo "ERROR: Coverage ${COVERAGE}% below 20% minimum threshold"
+          if (( $(echo "$COVERAGE < 98" | bc -l) )); then
+            echo "ERROR: Coverage ${COVERAGE}% below 98% minimum threshold"
             exit 1
           fi
-          echo "Coverage check passed (>= 20%). Target: 98%"
+          echo "Coverage check passed (>= 98%)"
 
       - name: Upload Coverage Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage-report
-          path: coverage-l1l2.out
+          path: coverage.out
           retention-days: 7
           if-no-files-found: warn
