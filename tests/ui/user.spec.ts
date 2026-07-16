@@ -80,17 +80,16 @@ test.describe('USER MANAGEMENT — SPEC-023', () => {
 
     // If we have a table, check columns; if empty state, that's fine
     const table = page.locator('[data-testid="user-table"]');
-    if (await table.isVisible({ timeout: 3000 }).catch(() => false)) {
-      // Check header columns
-      await expect(page.locator('[data-testid="user-table-header-name"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-email"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-role"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-status"]')).toBeVisible();
-      await expect(page.locator('[data-testid="user-table-header-actions"]')).toBeVisible();
+    await expect(table).toBeVisible({ timeout: 5000 });
+    // Check header columns
+    await expect(page.locator('[data-testid="user-table-header-name"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-email"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-role"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-status"]')).toBeVisible();
+    await expect(page.locator('[data-testid="user-table-header-actions"]')).toBeVisible();
 
-      // Header style: uppercase
-      await expect(page.locator('[data-testid="user-table-header-name"]')).toHaveCSS('text-transform', 'uppercase');
-    }
+    // Header style: uppercase
+    await expect(page.locator('[data-testid="user-table-header-name"]')).toHaveCSS('text-transform', 'uppercase');
   });
 
   // ═══ UI-077: User — 添加用户 ═══
@@ -291,11 +290,14 @@ test.describe('USER MANAGEMENT — SPEC-023', () => {
     await page.locator('[data-testid="user-add-btn"]').click();
     await expect(page.locator('[data-testid="user-add-modal"]')).toBeVisible();
 
-    // The system_admin option in the role dropdown should be disabled or absent
+    // The system_admin option should not exist or be disabled
     const sysAdminOption = page.locator('[data-testid="user-add-role"] option[value="system_admin"]');
-    if (await sysAdminOption.count() > 0) {
-      // If the option exists, it must be disabled
+    const optionCount = await sysAdminOption.count();
+    if (optionCount > 0) {
       await expect(sysAdminOption).toBeDisabled();
+    } else {
+      // Option absent = good, protection is active
+      expect(optionCount).toBe(0);
     }
     // If it doesn't exist, the protection is already in place at the UI level
 

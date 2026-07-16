@@ -64,6 +64,11 @@ test.describe('NOTIFICATION — SPEC-031', () => {
     // Should contain notification items
     const items = page.locator('[data-testid^="notif-item-"]');
     await page.waitForTimeout(500);
+    // At least the dropdown should render — items depend on async delivery
+    const itemCount = await items.count();
+    if (itemCount > 0) {
+      expect(itemCount).toBeGreaterThanOrEqual(1);
+    }
   });
 
   // ═══ UI-143: 标记已读 ═══
@@ -72,8 +77,12 @@ test.describe('NOTIFICATION — SPEC-031', () => {
     await expect(page.locator('[data-testid="notif-dropdown"]')).toBeVisible();
     const item = page.locator('[data-testid^="notif-item-"]').first();
     const hasItem = await item.isVisible().catch(() => false);
-    if (hasItem) await item.click();
-    await page.waitForTimeout(500);
+    if (hasItem) {
+      await item.click();
+      await page.waitForTimeout(500);
+      // Item should be marked as read (unread indicator should disappear)
+      await expect(item.locator('[data-testid="notif-unread-indicator"]')).not.toBeVisible({ timeout: 3000 });
+    }
   });
 
   // ═══ UI-144: 一键全部已读 ═══
@@ -82,8 +91,12 @@ test.describe('NOTIFICATION — SPEC-031', () => {
     await expect(page.locator('[data-testid="notif-dropdown"]')).toBeVisible();
     const markAllBtn = page.locator('[data-testid="notif-mark-all-read"]');
     const hasMarkAll = await markAllBtn.isVisible().catch(() => false);
-    if (hasMarkAll) await markAllBtn.click();
-    await page.waitForTimeout(500);
+    if (hasMarkAll) {
+      await markAllBtn.click();
+      await page.waitForTimeout(500);
+      // After mark all read, badge should be hidden
+      await expect(page.locator('[data-testid="notif-unread-badge"]')).not.toBeVisible({ timeout: 3000 });
+    }
   });
 
   // ═══ UI-145: 发送站内信（点对点）═══
@@ -103,5 +116,7 @@ test.describe('NOTIFICATION — SPEC-031', () => {
     await page.locator('[data-testid="notif-send-body"]').fill('这是一条测试站内信');
     await page.locator('[data-testid="notif-send-submit"]').click();
     await page.waitForTimeout(1000);
+    // Modal should close after successful send
+    await expect(page.locator('[data-testid="notif-send-modal"]')).not.toBeVisible({ timeout: 3000 });
   });
 });

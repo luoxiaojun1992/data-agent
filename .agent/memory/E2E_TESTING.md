@@ -180,6 +180,137 @@ console.log('[UI-XXX] received:', text?.substring(0, 100));
 
 后端同理：在怀疑的每个环节加 `log.Printf("[DEBUG module] ...")`，用 CI log 下载+unzip+grep 精确复现。
 
+### 后端日志排查 — 测试超时但无前端错误时
+
+当测试持续超时（如 `waitForSelector` 等了 20-30s 仍找不到元素），前端看起来正常但测试失败：
+
+1. **下载 CI 失败 run 的完整日志**：
+   ```bash
+   bash scripts/get-logs.sh <run-id> --failed-only
+   ```
+
+2. **检查后端 HTTP 错误**：
+   ```bash
+   grep -E 'data-agent.*status.*[45][0-9]{2}' ci-logs-<id>/*.log | grep -v health
+   ```
+
+3. **检查前端是否静默吞异常**：
+   ```
+   → 搜索前端源码 `catch { /* ignore */ }` 或 `catch {}` 模式
+   → 常见位置：agent/page.tsx, admin/tasks/page.tsx 的 loadTasks/fetchTasks
+   → 如果前端吞了异常，API 会返回错误但页面显示空列表，测试永远等不到元素
+   ```
+
+4. **验证假设**：在可疑的 `catch` 块加 `console.error('[UI] fetch failed:', e)`，重新跑 CI 确认根因。
+
+5. **修复方向**：
+   - 前端：catch 块至少 `console.error` 记录错误
+   - 后端：确认 API 路由注册正确，数据返回格式与前端 `data.tasks` 解构一致
+   - 测试：不要 `page.goto` + `page.reload` 连环重载，利用前端自带的 `loadTasks()` 等自动刷新逻辑
+
+**已知案例**：
+- 2026-07-16 agent/task 测试持续超时：前端 `catch { /* ignore */ }` 吞了 API 错误，测试在空列表中永远等不到 `task-mgmt-row-*` 元素。修复后去掉冗余的 `page.goto`+`page.reload`，改为等待前端自刷新后的 DOM 更新。
+
+## E2E 测试铁律 — 从 2026-07-16 质量整改中总结
+
+以下原则经过 10+ 轮 CI 验证，违反任意一条都会导致假通过或不稳定。
+
+### 铁律 #1: 禁止条件断言
+
+```typescript
+// ❌ 错 — 条件不满足时静默通过，测试无意义
+if (await btn.isVisible().catch(() => false)) {
+  await btn.click();
+}
+
+// ❌ 错 — 同样静默通过
+if (await rows.count() > 0) {
+  await expect(rows.first()).toBeVisible();
+}
+
+// ✅ 对 — 刚性断言，超时即失败
+await expect(btn).toBeVisible({ timeout: 10000 });
+await btn.click();
+```
+
+**原则**: 如果无法让断言确定性地成立，删除测试，不要条件化。条件断言 = 假通过 = 比不测更危险（给人虚假安全感）。
+
+### 铁律 #2: 只测试确定性状态
+
+| 可测试 | 不可测试（应删除） |
+|--------|-------------------|
+| 页面渲染、导航元素、表单、模态框 | 后端依赖的按钮（cancel/retry 出现在特定时间窗口） |
+| UI 结构（table headers、列数、分页组件） | 安全 toast（依赖安全引擎扫描时序） |
+| 显式用户操作后的 DOM 变化 | SSE 流中间的瞬时状态 |
+| Modal 打开/关闭 | 异步任务日志、进度条具体数值 |
+
+**判断标准**: 同一测试在 CI 中跑 10 次，10 次都通过 → 可保留。出现过一次失败且不是代码 bug → 删除。
+
+### 铁律 #3: 有效测试 = 验证状态变更链
+
+**⚠️ 反模式警示 (2026-07-16)**: Agent UI-052 测试持续超时，`agent-task-title-*` 在创建 task 后不出现。团队第一反应是移除 row 断言，只保留 `agent-page-header` 检查。**这是错误的**——应该追查 `loadTasks()` 为什么没有渲染 task list，修复根因后保留完整的三步断言。
+
+```typescript
+// ❌ 错 — 只验证了 page header 存在，没有测 "取消" 行为
+test('Agent — cancel running task', async ({ page }) => {
+  // ... create task ...
+  await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
+});
+
+// ✅ 对 — 三条断言验证完整状态变更链
+test('Agent — cancel running task', async ({ page }) => {
+  // 1. 创建 task
+  await page.locator('[data-testid="agent-create-task-btn"]').click();
+  await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
+  await page.locator('[data-testid="agent-task-create-btn"]').click();
+  await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+
+  // 2. 验证 task 出现（createTask 内部调用 loadTasks）
+  const row = page.locator('[data-testid^="agent-task-title-"]').first();
+  await expect(row).toBeVisible({ timeout: 10000 });
+  await row.click();
+
+  // 3. 验证取消按钮出现 → 点击 → task 消失
+  const cancelBtn = page.locator('[data-testid="agent-task-cancel-btn"]');
+  await expect(cancelBtn).toBeVisible({ timeout: 5000 });
+  await cancelBtn.click();
+  await expect(row).not.toBeVisible({ timeout: 10000 });
+});
+```
+
+**原则**: 每个断言的前置条件必须由前端代码链路保证（如 `createTask()` 成功后内部调 `loadTasks()`），不能依赖"等一会儿它应该会出现"。
+
+### 铁律 #4: 禁止 `page.route()` 截获 API
+
+```typescript
+// ❌ 错 — 绕过整个 Handler→Service→Repository 栈
+await page.route('**/api/v1/chat', route => {
+  route.fulfill({ body: fakeSSE });
+});
+
+// ✅ 对 — 真实后端 + mockllm seed
+await seedMock(request, 'hello', 'Hello from mock');
+await page.locator('[data-testid="chat-input"]').fill('hello');
+await page.keyboard.press('Enter');
+await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
+```
+
+### 铁律 #5: 禁止 `.catch(() => {})` 吞断言
+
+```typescript
+// ❌ 错 — expect 失败被吞掉，测试永远通过
+await expect(el).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+
+// ✅ 对 — 刚性断言
+await expect(el).not.toBeVisible({ timeout: 5000 });
+```
+
+### 铁律 #6: 先查后端日志，再改测试
+
+当测试持续超时（如 `waitForSelector` 等 20-30s）：**不要加 timeout，先下载 CI 日志查后端 4xx/5xx**。90% 的情况是前端 `catch { /* ignore */ }` 吞了 API 错误导致页面空列表。
+
+---
+
 ## 运行 E2E
 
 ```bash

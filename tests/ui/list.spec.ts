@@ -66,10 +66,10 @@ test.describe('LIST — SPEC-035', () => {
     // Should show "共 N 条"
     await expect(page.locator('[data-testid="user-pagination"]')).toContainText('共');
 
-    // 10, 20, 50 options
-    await expect(pageSize.locator('option[value="10"]')).toBeTruthy();
-    await expect(pageSize.locator('option[value="20"]')).toBeTruthy();
-    await expect(pageSize.locator('option[value="50"]')).toBeTruthy();
+    // 10, 20, 50 options must exist in DOM
+    await expect(pageSize.locator('option[value="10"]')).toBeAttached();
+    await expect(pageSize.locator('option[value="20"]')).toBeAttached();
+    await expect(pageSize.locator('option[value="50"]')).toBeAttached();
   });
 
   // ═══ UI-168: 页码跳转 ═══

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from './components/Sidebar';
 import NotificationBell from './components/NotificationBell';
+import IdleTimer from './components/IdleTimer';
 import { useAuth } from '@/lib/api';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -64,6 +65,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
           <div style={{ flex: 1 }} />
           <NotificationBell />
+          <IdleTimer />
         </div>
         <div className="p-8 pt-4">
           {children}

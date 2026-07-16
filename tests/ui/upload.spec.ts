@@ -87,13 +87,6 @@ test.describe('UPLOAD — SPEC-036', () => {
     await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
     await expect(page.locator('[data-testid="kb-file-item-0"]')).toContainText('test-1.txt');
     await page.locator('button:has-text("确认上传")').click();
-    // Check if upload failed with backend error
-    const errorEl = page.locator('[data-testid="kb-upload-error"]');
-    await page.waitForTimeout(2000);
-    if (await errorEl.isVisible()) {
-      const msg = await errorEl.textContent();
-      console.log('Upload error:', msg);
-    }
     await expect(page.locator('[data-testid="kb-file-done-0"]')).toBeVisible({ timeout: 15000 });
   });
 
@@ -109,8 +102,8 @@ test.describe('UPLOAD — SPEC-036', () => {
     await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
     await page.locator('button:has-text("确认上传")').click();
 
-    // Close modal while uploading
-    await page.locator('[data-testid="kb-upload-modal"]').click({ position: { x: 10, y: 10 } });
+    // Close modal while uploading — use Escape key instead of coordinate click
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
     // KB page still responsive
     await expect(page.locator('[data-testid="kb-search-input"]')).toBeVisible();

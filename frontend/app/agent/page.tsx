@@ -6,7 +6,8 @@ import { useAuth } from '@/lib/api';
 
 interface AgentTask {
   task_id: string;
-  title: string;
+  title?: string;
+  type?: string;
   status: string; // pending | running | completed | failed | cancelled
   progress?: number;
   created_at: string;
@@ -32,8 +33,12 @@ export default function AgentPage() {
     try {
       const res = await apiFetch('/tasks');
       const data = await res.json();
-      setTasks(data.tasks || []);
-    } catch { /* ignore */ }
+      const rawTasks = Array.isArray(data) ? data : (data.tasks || []);
+      setTasks(rawTasks.map((t: AgentTask) => ({
+        ...t,
+        title: t.title || t.type || '',
+      })));
+    } catch (e) { console.error('[agent] loadTasks failed:', e); }
     finally { setLoading(false); }
   };
 
@@ -55,7 +60,7 @@ export default function AgentPage() {
         setShowModal(false);
         setNewTask({ title: '', description: '', skills: 'sql_executor', async: false, cron: '', cronEnabled: false });
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[agent] loadTasks failed:', e); }
   };
 
   const cancelTask = async (taskId: string) => {
@@ -73,7 +78,7 @@ export default function AgentPage() {
         setTasks(prev => prev.map(t => t.task_id === taskId ? { ...t, ...data } : t));
         setExpandedTask(taskId);
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[agent] loadTasks failed:', e); }
   };
 
   const statusPill = (s: string) => {
@@ -143,7 +148,7 @@ export default function AgentPage() {
                   className="w-full text-left p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
                   data-testid={`agent-task-title-${idx}`}>
                   <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">{task.title || task.task_id?.slice(0, 12)}</p>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">{task.title || task.type || task.task_id?.slice(0, 12)}</p>
                     <p className="text-xs text-[var(--text-secondary)] mt-1">{new Date(task.created_at).toLocaleString()}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -179,7 +184,7 @@ export default function AgentPage() {
 
                     {/* Action buttons */}
                     <div className="flex gap-2 py-3" data-testid={`agent-task-actions-${idx}`}>
-                      {(task.status === 'running' || task.status === 'pending') && (
+                      {(task.status === 'running' || task.status === 'pending' || task.status === 'queued') && (
                         <button onClick={() => cancelTask(task.task_id)}
                           className="px-3 py-1 text-xs rounded-lg border border-red-400/30 text-red-400 hover:bg-red-400/10"
                           data-testid={`agent-cancel-btn-${idx}`}>取消</button>

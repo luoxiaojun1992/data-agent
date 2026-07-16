@@ -36,6 +36,16 @@ test.describe('SESSION — SPEC-037', () => {
     await page.locator('[data-testid="login-password-input"]').fill(USER.password);
     await page.locator('[data-testid="login-btn"]').click();
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
+    // Clean up any leftover recovery banners from previous test runs
+    const recoveryBanner = page.locator('[data-testid="session-recovery-banner"]');
+    if (await recoveryBanner.isVisible({ timeout: 2000 }).catch(() => false)) {
+      const restoreBtns = page.locator('[data-testid="session-recovery-restore-btn"]');
+      const restoreCount = await restoreBtns.count();
+      for (let i = 0; i < restoreCount; i++) {
+        await restoreBtns.first().click();
+        await page.waitForTimeout(500);
+      }
+    }
   });
 
   // ═══ UI-180: 多端登录互不干扰 ═══
@@ -124,35 +134,29 @@ test.describe('SESSION — SPEC-037', () => {
   });
 
   // ═══ UI-182: 删除部分上下文不可恢复 ═══
+  // ═══ UI-182: 部分删除（单条消息删除）无恢复入口 ═══
   test('[UI-182] Session — 部分删除无恢复', async ({ page }) => {
     await page.goto('/chat');
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
 
-    // Send a message to create context
+    // Send a message to build session context
     await page.locator('[data-testid="chat-input"]').fill('hello');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(3000);
 
-    // Open session panel, verify it exists
+    // Open session panel
     await page.locator('[data-testid="chat-session-btn"]').click();
     await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
     await page.waitForTimeout(1000);
 
-    // Verify session items are shown (session exists and is NOT deleted)
-    // There should be no recovery banner since nothing was deleted
-    const banner = page.locator('[data-testid="session-recovery-banner"]');
-    if (await banner.isVisible()) {
-      // If banner exists from prior test, restore first
-      const restoreBtns = page.locator('[data-testid="session-recovery-restore-btn"]');
-      const restoreCount = await restoreBtns.count();
-      for (let i = 0; i < restoreCount; i++) {
-        await restoreBtns.first().click();
-        await page.waitForTimeout(500);
-      }
-    }
-
-    // Session panel should show active sessions without recovery banner
+    // Verify session list is visible — no recovery banner should appear
+    // since we didn't delete anything partially yet
     await expect(page.locator('[data-testid="session-list"]')).toBeVisible();
+
+    // Verify there's NO recovery banner (since no partial deletion actually happened)
+    // If a recovery banner existed from previous tests, we already cleaned it up
+    const newBanner = page.locator('[data-testid="session-recovery-banner"]');
+    expect(await newBanner.isVisible({ timeout: 2000 }).catch(() => false)).toBe(false);
   });
 
   // ═══ UI-183: 恢复缓冲期可配置 ═══
@@ -176,7 +180,7 @@ test.describe('SESSION — SPEC-037', () => {
 
     // Error should not be visible
     const err = page.locator('[data-testid="sysconfig-session-recovery-error"]');
-    await expect(err).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+    await expect(err).not.toBeVisible({ timeout: 5000 });
 
     // Reload and verify value persisted
     await page.reload();
@@ -190,5 +194,58 @@ test.describe('SESSION — SPEC-037', () => {
     await page.locator('[data-testid="sysconfig-session-recovery-input"]').fill('24');
     await page.locator('[data-testid="sysconfig-session-recovery-save"]').click();
     await page.waitForTimeout(1000);
+  });
+
+  // ═══ UI-177: Session idle timeout warning ═══
+  test('[UI-177] Session — 超时警告', async ({ page }) => {
+    // Inject short idle timeout BEFORE page loads (init script runs before React)
+    await page.addInitScript(() => {
+      (window as any).__IDLE_TIMEOUT__ = 3;
+      (window as any).__COUNTDOWN__ = 5;
+    });
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
+
+    // Wait for idle timeout to trigger warning (3s idle + buffer)
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="session-timeout-continue-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="session-timeout-logout-btn"]')).toBeVisible();
+  });
+
+  // ═══ UI-178: Session auto-logout after countdown ═══
+  test('[UI-178] Session — 超时自动登出', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__IDLE_TIMEOUT__ = 3;
+      (window as any).__COUNTDOWN__ = 3;
+    });
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
+
+    // Wait for warning to appear
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({ timeout: 10000 });
+
+    // Wait for auto-logout (countdown 3s + buffer)
+    await page.waitForURL(/login/, { timeout: 15000 });
+    await expect(page.locator('[data-testid="login-session-expired-toast"]')).toBeVisible({ timeout: 5000 });
+  });
+
+  // ═══ UI-179: Click continue extends session ═══
+  test('[UI-179] Session — 继续使用续期', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__IDLE_TIMEOUT__ = 3;
+      (window as any).__COUNTDOWN__ = 60;
+    });
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="main-content"]', { timeout: 10000 });
+
+    // Wait for warning
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).toBeVisible({ timeout: 10000 });
+
+    // Click continue — warning should disappear
+    await page.locator('[data-testid="session-timeout-continue-btn"]').click();
+    await expect(page.locator('[data-testid="session-timeout-warning"]')).not.toBeVisible({ timeout: 5000 });
+
+    // Page should still be logged in
+    await expect(page.locator('[data-testid="sidebar"]')).toBeVisible({ timeout: 5000 });
   });
 });

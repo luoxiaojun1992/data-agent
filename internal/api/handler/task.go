@@ -20,8 +20,11 @@ func NewTaskHandler(svc *task.Service) *TaskHandler {
 // CreateTask creates and enqueues a new async task.
 func (h *TaskHandler) CreateTask(c *gin.Context) {
 	var req struct {
+		Title      string                 `json:"title"`
+		Description string                `json:"description"`
 		SessionID  string                 `json:"session_id"`
 		Type       string                 `json:"type"`
+		Skills     []string               `json:"skills"`
 		SkillChain []string               `json:"skill_chain"`
 		Params     map[string]interface{} `json:"params"`
 		CronExpr   string                 `json:"cron_expr"`
@@ -33,16 +36,34 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 
 	userID, _ := c.Get("user_id")
 
-	// Inject cron_expr into params
+	// Normalize: accept both "title" (frontend agent page) and "type" (API)
+	taskType := req.Type
+	if taskType == "" {
+		taskType = req.Title
+	}
+	if taskType == "" {
+		taskType = "agent_exec" // default
+	}
+
+	// Normalize: accept both "skills" (frontend) and "skill_chain" (API)
+	skillChain := req.SkillChain
+	if len(skillChain) == 0 {
+		skillChain = req.Skills
+	}
+
+	// Build params from request
 	params := req.Params
+	if params == nil {
+		params = make(map[string]interface{})
+	}
+	if req.Description != "" {
+		params["description"] = req.Description
+	}
 	if req.CronExpr != "" {
-		if params == nil {
-			params = make(map[string]interface{})
-		}
 		params["cron_expr"] = req.CronExpr
 	}
 
-	t, err := h.svc.CreateTask(req.SessionID, userID.(string), req.Type, req.SkillChain, params)
+	t, err := h.svc.CreateTask(req.SessionID, userID.(string), taskType, skillChain, params)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -79,7 +100,7 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, tasks)
+	c.JSON(http.StatusOK, gin.H{"tasks": tasks})
 }
 
 // PauseTask pauses a scheduled task.

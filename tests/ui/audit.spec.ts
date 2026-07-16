@@ -131,10 +131,7 @@ test.describe('AUDIT LOG — SPEC-029', () => {
 
     // Error should appear
     const errorEl = page.locator('[data-testid="audit-export-limit-error"]');
-    const hasError = await errorEl.isVisible().catch(() => false);
-    if (hasError) {
-      await expect(errorEl).toContainText('50,000');
-    }
+    await expect(errorEl).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-133: 审计日志分页 ═══

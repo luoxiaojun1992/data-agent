@@ -107,9 +107,18 @@ test.describe.serial('PROMPT — SPEC-033', () => {
 
     const input = page.locator('[data-testid="chat-input"]');
     await input.fill('test token');
+
+    // Record the input value before enhance
+    const beforeValue = await input.inputValue();
+    expect(beforeValue).toBe('test token');
+
     await page.locator('[data-testid="chat-enhance-btn"]').click();
+    // Enhanced content should replace the original input
+    await expect(input).not.toHaveValue('test token');
     await expect(input).toHaveValue('增强后的测试内容', { timeout: 5000 });
 
+    // Navigate to dashboard and verify page loads
+    // (Token stats are tracked server-side; we verify enhance UI flow works)
     await page.goto('/');
     await page.waitForTimeout(1000);
     await expect(page.locator('[data-testid="main-content"]')).toBeVisible({ timeout: 5000 });
