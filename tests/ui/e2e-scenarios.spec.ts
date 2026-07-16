@@ -71,12 +71,12 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
     // Send query + wait for AI response
     await page.locator('[data-testid="chat-input"]').fill('统计过去6个月各产品线的销售额和同比增长率');
     await page.keyboard.press('Enter');
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]')).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
 
     // Follow-up
     await page.locator('[data-testid="chat-input"]').fill('产品C表现怎么样');
     await page.keyboard.press('Enter');
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]')).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
   });
 
   // ═══ UI-204: 普通员工 Chat 查询 ═══
@@ -92,8 +92,8 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
     // User can chat
     await page.locator('[data-testid="chat-input"]').fill('今日数据概览');
     await page.keyboard.press('Enter');
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]')).toBeVisible({ timeout: 20000 });
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]')).toContainText('1,200万元');
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText('1,200万元');
 
     // User cannot see admin nav
     await expect(page.locator('[data-testid="nav-admin"]')).not.toBeVisible();
@@ -183,7 +183,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
     if (await input.isVisible().catch(() => false)) {
       await input.fill('什么是数据分析');
       await page.keyboard.press('Enter');
-      await expect(page.locator('[data-testid^="chat-msg-ai-"]')).toBeVisible({ timeout: 20000 });
+      await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
     }
   });
 });
