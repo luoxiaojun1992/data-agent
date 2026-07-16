@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
