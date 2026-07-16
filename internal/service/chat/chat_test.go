@@ -2,54 +2,41 @@ package chat
 
 import (
 	"testing"
+	"time"
 )
 
-func TestNewService(t *testing.T) {
-	s := NewService(nil, nil, nil, nil)
-	if s == nil {
-		t.Fatal("NewService() should not return nil")
+func TestNewContextManager(t *testing.T) {
+	cm := NewContextManager(128000, 0.5)
+	if cm == nil {
+		t.Error("NewContextManager should not return nil")
 	}
 }
 
-func TestNewService_InitializesContextManager(t *testing.T) {
-	s := NewService(nil, nil, nil, nil)
-	if s.context == nil {
-		t.Error("context should be initialized by NewService")
+func TestSessionDefaults(t *testing.T) {
+	s := Session{
+		ID:     "sess-1",
+		UserID: "user-1",
+		Type:   "chat",
+		Status: "active",
+	}
+	if s.ID != "sess-1" {
+		t.Errorf("ID: got %s", s.ID)
+	}
+	if s.Status != "active" {
+		t.Errorf("Status: got %s", s.Status)
+	}
+	if s.Type != "chat" {
+		t.Errorf("Type: got %s", s.Type)
 	}
 }
 
-func TestChatRequest_Defaults(t *testing.T) {
-	req := ChatRequest{
-		Message: "Hello",
-		Stream:  true,
+func TestSession_DeletedAt(t *testing.T) {
+	now := time.Now()
+	s := Session{
+		ID:        "sess-1",
+		DeletedAt: &now,
 	}
-	if req.Message != "Hello" {
-		t.Errorf("Message = %q, want %q", req.Message, "Hello")
-	}
-	if !req.Stream {
-		t.Error("Stream should be true")
-	}
-}
-
-func TestChatRequest_EmptyDefaults(t *testing.T) {
-	req := ChatRequest{}
-	if req.SessionID != "" {
-		t.Error("SessionID should be empty by default")
-	}
-	if req.Stream {
-		t.Error("Stream should be false by default")
-	}
-}
-
-func TestChatRequest_WithSessionID(t *testing.T) {
-	req := ChatRequest{
-		SessionID: "sess-123",
-		Model:     "gpt-4",
-	}
-	if req.SessionID != "sess-123" {
-		t.Errorf("SessionID = %q, want %q", req.SessionID, "sess-123")
-	}
-	if req.Model != "gpt-4" {
-		t.Errorf("Model = %q, want %q", req.Model, "gpt-4")
+	if s.DeletedAt == nil {
+		t.Error("DeletedAt should not be nil")
 	}
 }
