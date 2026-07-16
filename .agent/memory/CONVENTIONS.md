@@ -102,6 +102,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 9 | E2E 测试用条件断言（`if (visible) then test else skip`） | 条件断言 = 假通过，比不测更危险。不能确定性断言就删除测试 |
 | 10 | 测试非确定性 UI 状态（后端依赖的按钮、瞬时 toast、异步任务进度） | 只测试页面渲染、导航、表单、模态框等确定性 UI |
 | 11 | 有效测试只验证 "page header 存在" 而不验证实际行为 | 每个测试必须验证完整状态变更链（如创建→出现→取消→消失） |
+| 12 | 测试失败后降低断言强度迁就 Bug | 修复根因（bug/race condition/缺失 error log），不准削弱测试 |
 
 ## 开发工作流约定
 
@@ -129,3 +130,4 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 4 | 2026-07-16 | 用 `.catch(() => {})` 吞掉 `not.toBeVisible()` 失败 | 移除 `.catch()`，改用刚性断言 | 权限测试可能假绿色 |
 | 5 | 2026-07-16 | 测试用 `page.route()` mock API 响应来测试 Chat 功能 | 使用 mockllm seed + 真实 SSE 流，走完整 Handler→Service→Repository 栈 | Chat 测试等于没测后端 |
 | 6 | 2026-07-16 | 测试只验证 `agent-page-header` 可见就当"测试了取消行为" | 必须验证完整链：创建→row 出现→展开→点击 cancel→row 消失 | 假性测试，取消行为从未被验证 |
+| 7 | 2026-07-16 | Agent UI-052 测试超时 → 移除 task row 断言迁就 Bug，而不是追查 `loadTasks()` 为什么没渲染 | 用后端日志定位根因，修复前端 `createTask` → `loadTasks` 链路的 bug，保留刚性断言 | 真 bug 被掩盖，后续修改可能再次触发 |
