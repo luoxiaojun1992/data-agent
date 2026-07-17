@@ -37,14 +37,10 @@ def main():
 
     failed = False
 
-    # Count only BUG/VULNERABILITY/SECURITY_HOTSPOT — CODE_SMELL is informational
-    blocker_bugs = blocker.get("BUG", 0) + blocker.get("VULNERABILITY", 0) + blocker.get("SECURITY_HOTSPOT", 0)
-    critical_bugs = critical.get("BUG", 0) + critical.get("VULNERABILITY", 0) + critical.get("SECURITY_HOTSPOT", 0)
-
-    if blocker_bugs > 0 or critical_bugs > 0:
-        print(f"FAIL: {blocker_bugs} blocker + {critical_bugs} critical BUG/VULN/HOTSPOT")
+    if blocker_total > 0 or critical_total > 0:
+        print(f"FAIL: {blocker_total} blocker(s) + {critical_total} critical(s)")
         for issue in data.get("openIssuesList", []):
-            if issue.get("severity") in ("BLOCKER", "CRITICAL") and issue.get("type") != "CODE_SMELL":
+            if issue.get("severity") in ("BLOCKER", "CRITICAL"):
                 print(f"  {issue['severity']} {issue['type']}: {issue['message'][:120]}")
         failed = True
 
