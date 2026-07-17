@@ -303,14 +303,11 @@ func TestOpenAIProvider_Chat_EmptyChoices(t *testing.T) {
 	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
 	defer patches.Reset()
 
-	result, err := p.Chat(context.Background(), ChatRequest{
+	_, err := p.Chat(context.Background(), ChatRequest{
 		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
 	})
-	if err != nil {
-		t.Fatalf("Chat empty choices: %v", err)
-	}
-	if result.Content != "" {
-		t.Errorf("content should be empty for empty choices: got %q", result.Content)
+	if err == nil {
+		t.Fatal("should error on empty choices")
 	}
 }
 
