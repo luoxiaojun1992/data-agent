@@ -602,7 +602,7 @@ func TestListInvites_WithPagination(t *testing.T) {
 	}
 
 	var resp authsvc.ListInvitesResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Page != 2 {
 		t.Errorf("page: got %d", resp.Page)
 	}
@@ -1042,7 +1042,7 @@ func TestListInvites_SystemAdminSeesAll(t *testing.T) {
 	}
 
 	var resp authsvc.ListInvitesResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Total != 2 {
 		t.Errorf("total: got %d, want 2", resp.Total)
 	}

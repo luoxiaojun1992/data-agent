@@ -25,12 +25,12 @@ func newMultipartCtx(filename, fileContent, sessionID, persistent string) (*gin.
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, _ := writer.CreateFormFile("file", filename)
-	io.Copy(part, strings.NewReader(fileContent))
+	_, _ = io.Copy(part, strings.NewReader(fileContent))
 	if sessionID != "" {
-		writer.WriteField("session_id", sessionID)
+		_ = writer.WriteField("session_id", sessionID)
 	}
 	if persistent != "" {
-		writer.WriteField("persistent", persistent)
+		_ = writer.WriteField("persistent", persistent)
 	}
 	writer.Close()
 
@@ -511,7 +511,7 @@ func TestUpload_EmptyContentType(t *testing.T) {
 	hdr := make(map[string][]string)
 	hdr["Content-Disposition"] = []string{`form-data; name="file"; filename="test.dat"`}
 	part, _ := writer.CreatePart(hdr)
-	io.Copy(part, strings.NewReader("hello data"))
+	_, _ = io.Copy(part, strings.NewReader("hello data"))
 	writer.Close()
 
 	c, w := newGinContext("POST", "/artifacts", "")
@@ -533,8 +533,8 @@ func TestUpload_MissingFileField(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	writer.WriteField("session_id", "sess-1")
-	writer.WriteField("persistent", "true")
+	_ = writer.WriteField("session_id", "sess-1")
+	_ = writer.WriteField("persistent", "true")
 	writer.Close()
 
 	c, w := newGinContext("POST", "/artifacts", "")

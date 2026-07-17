@@ -24,10 +24,10 @@ func newKnowledgeMultipartCtx(filename, content string, fields map[string]string
 	writer := multipart.NewWriter(body)
 	if filename != "" {
 		part, _ := writer.CreateFormFile("file", filename)
-		io.Copy(part, strings.NewReader(content))
+		_, _ = io.Copy(part, strings.NewReader(content))
 	}
 	for k, v := range fields {
-		writer.WriteField(k, v)
+		_ = writer.WriteField(k, v)
 	}
 	writer.Close()
 

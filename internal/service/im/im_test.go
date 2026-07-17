@@ -212,9 +212,6 @@ func TestVerifySignature(t *testing.T) {
 
 	// Test with known values - should just not panic and return a boolean
 	result := s.VerifySignature("1234567890", "nonce123", "some-signature")
-	if result {
-		// Could be true by coincidence, but that's fine
-	}
 	_ = result
 
 	// Empty values should not panic
@@ -572,9 +569,7 @@ func TestWebhookHandler_EncodeError_URLVerification(t *testing.T) {
 	handler(w, r)
 
 	// Should not panic; error is logged but not propagated
-	if w.writeErrCalled {
-		// Success - write error was triggered
-	}
+	_ = w.writeErrCalled
 }
 
 // TestWebhookHandler_EncodeError_MessageEvent covers the json.Encode error path

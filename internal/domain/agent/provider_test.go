@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,19 +15,27 @@ import (
 func TestNewOpenAIProvider(t *testing.T) {
 	p := NewOpenAIProvider("https://api.openai.com", "sk-test")
 	if p == nil {
-		t.Error("should not return nil")
+		t.Fatal("should not return nil")
 	}
 	if p.baseURL != "https://api.openai.com" {
 		t.Errorf("baseURL: got %s", p.baseURL)
 	}
 	if p.httpClient == nil {
-		t.Error("httpClient should be initialized")
+		t.Fatal("httpClient should be initialized")
 	}
+}
+
+func sseChunk(content string) string {
+	data := map[string]interface{}{
+		"choices": []map[string]interface{}{{"delta": map[string]string{"content": content}}},
+	}
+	b, _ := json.Marshal(data)
+	return fmt.Sprintf("data: %s\n\n", string(b))
 }
 
 func TestParseSSEStream(t *testing.T) {
 	t.Run("multiple chunks", func(t *testing.T) {
-		input := "data: hello\n\ndata: world\n\ndata: [DONE]\n\n"
+		input := sseChunk("hello") + sseChunk("world") + "data: [DONE]\n\n"
 		var chunks []string
 		err := parseSSEStream(bytes.NewReader([]byte(input)), func(chunk string) error {
 			chunks = append(chunks, chunk)
@@ -50,11 +59,11 @@ func TestParseSSEStream(t *testing.T) {
 	})
 
 	t.Run("callback error", func(t *testing.T) {
-		err := parseSSEStream(bytes.NewReader([]byte("data: test\n\n")), func(chunk string) error {
+		err := parseSSEStream(bytes.NewReader([]byte(sseChunk("test"))), func(chunk string) error {
 			return fmt.Errorf("callback failed")
 		})
 		if err == nil {
-			t.Error("should propagate callback error")
+			t.Fatal("should propagate callback error")
 		}
 	})
 
@@ -68,7 +77,7 @@ func TestParseSSEStream(t *testing.T) {
 			t.Fatalf("unexpected: %v", err)
 		}
 		if called {
-			t.Error("should not call callback for non-data lines")
+			t.Fatal("should not call callback for non-data lines")
 		}
 	})
 }
@@ -87,7 +96,7 @@ func TestOpenAIProvider_DoRequest(t *testing.T) {
 			t.Fatalf("doRequest: %v", err)
 		}
 		if len(body) == 0 {
-			t.Error("body should not be empty")
+			t.Fatal("body should not be empty")
 		}
 	})
 
@@ -97,7 +106,7 @@ func TestOpenAIProvider_DoRequest(t *testing.T) {
 
 		_, err := p.doRequest(context.Background(), ChatRequest{Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}}}, false)
 		if err == nil {
-			t.Error("should error on HTTP failure")
+			t.Fatal("should error on HTTP failure")
 		}
 	})
 
@@ -109,7 +118,7 @@ func TestOpenAIProvider_DoRequest(t *testing.T) {
 
 		_, err := p.doRequest(context.Background(), ChatRequest{Model: "gpt-4", Messages: []Message{}}, false)
 		if err == nil {
-			t.Error("should error on non-200")
+			t.Fatal("should error on non-200")
 		}
 	})
 }
@@ -137,7 +146,7 @@ func TestOpenAIProvider_Chat(t *testing.T) {
 func TestOpenAIProvider_ChatStream(t *testing.T) {
 	p := NewOpenAIProvider("https://api.example.com", "sk-test")
 
-	sseData := "data: chunk1\n\ndata: chunk2\n\ndata: [DONE]\n\n"
+	sseData := sseChunk("chunk1") + sseChunk("chunk2") + "data: [DONE]\n\n"
 	respBody := io.NopCloser(bytes.NewReader([]byte(sseData)))
 	resp := &http.Response{StatusCode: 200, Body: respBody}
 	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
@@ -168,6 +177,6 @@ func TestOpenAIProvider_ChatStream_RequestError(t *testing.T) {
 		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
 	}, func(chunk string) error { return nil })
 	if err == nil {
-		t.Error("should error on HTTP failure")
+		t.Fatal("should error on HTTP failure")
 	}
 }

@@ -749,7 +749,7 @@ func TestGetAgentTask_WithTaskService_AllFields(t *testing.T) {
 func TestNewService_AllNil(t *testing.T) {
 	svc := NewService(nil, nil, nil, nil)
 	if svc == nil {
-		t.Error("NewService should not return nil even with all nil arguments")
+		t.Fatal("NewService should not return nil even with all nil arguments")
 	}
 	if svc.engine != nil {
 		t.Error("engine should be nil")

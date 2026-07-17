@@ -1044,7 +1044,7 @@ func TestSearch_Success(t *testing.T) {
 				{ChunkID: "c2", DocID: "doc2", DocTitle: "Doc 2", Content: "world", Source: "fulltext"},
 			}
 		})
-	patches = patches.ApplyPrivateMethod(svc, "semanticSearch",
+	patches.ApplyPrivateMethod(svc, "semanticSearch",
 		func(_ *Service, query string, topK int) []knowledge.SearchResult {
 			return nil
 		})
@@ -1071,7 +1071,7 @@ func TestSearch_WithSemanticResults(t *testing.T) {
 				{ChunkID: "c1", DocTitle: "Text Result"},
 			}
 		})
-	patches = patches.ApplyPrivateMethod(svc, "semanticSearch",
+	patches.ApplyPrivateMethod(svc, "semanticSearch",
 		func(_ *Service, query string, topK int) []knowledge.SearchResult {
 			return []knowledge.SearchResult{
 				{ChunkID: "c1", DocTitle: "Semantic Result"},
@@ -1102,7 +1102,7 @@ func TestSearch_FilterByRoleNonAdmin(t *testing.T) {
 				{ChunkID: "c1", DocTitle: "Doc 1"},
 			}
 		})
-	patches = patches.ApplyPrivateMethod(svc, "semanticSearch",
+	patches.ApplyPrivateMethod(svc, "semanticSearch",
 		func(_ *Service, query string, topK int) []knowledge.SearchResult {
 			return nil
 		})

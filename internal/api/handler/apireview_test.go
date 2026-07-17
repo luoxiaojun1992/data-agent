@@ -74,7 +74,7 @@ func TestListAPIReviews_Empty(t *testing.T) {
 	}
 
 	var result []apireview.APIReview
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	if len(result) != 0 {
 		t.Errorf("expected 0 reviews, got %d", len(result))
 	}

@@ -182,7 +182,7 @@ func TestHandleChat_ExistingSession_Success(t *testing.T) {
 	}
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["content"] != "existing session response" {
 		t.Errorf("content: got %v", resp["content"])
 	}
@@ -264,7 +264,6 @@ func TestHandleChat_Stream_NoFlusherWriter(t *testing.T) {
 
 	// Mock c.Writer to not implement http.Flusher by setting it to nil interface
 	// Then mock c.Header and c.JSON to avoid nil pointer dereference
-	type noFlushResponseWriter struct{ httptest.ResponseRecorder }
 
 	// Use gomonkey to replace c.Header (called before flusher check)
 	patches.ApplyMethodFunc(c, "Header", func(key, value string) {
@@ -734,7 +733,7 @@ func TestHandleChat_ExistingSession_WithUserID(t *testing.T) {
 	}
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["content"] != "hello user-1" {
 		t.Errorf("content: got %v", resp["content"])
 	}
@@ -1511,7 +1510,7 @@ func TestNewManager(t *testing.T) {
 
 	mgr := NewManager(db, time.Hour)
 	if mgr == nil {
-		t.Error("NewManager should not return nil")
+		t.Fatal("NewManager should not return nil")
 	}
 	if mgr.ttl != time.Hour {
 		t.Errorf("ttl: got %v, want 1h", mgr.ttl)

@@ -325,7 +325,7 @@ func TestVerifyInviteToken(t *testing.T) {
 		})
 		defer patches.Reset()
 
-		patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+		patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 			return &model.Invite{
 				InviteID: "inv_test1",
 				Status:   model.InviteStatusPending,
@@ -380,7 +380,7 @@ func TestVerifyInviteToken(t *testing.T) {
 		})
 		defer patches.Reset()
 
-		patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+		patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 			return &model.Invite{
 				InviteID: "inv_used",
 				Status:   model.InviteStatusAccepted,
@@ -407,7 +407,7 @@ func TestVerifyInviteToken(t *testing.T) {
 		})
 		defer patches.Reset()
 
-		patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+		patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 			return nil, nil
 		})
 
@@ -449,11 +449,11 @@ func TestCompleteRegistration_UsernameConflict(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return &model.Invite{InviteID: "inv_test1", Status: model.InviteStatusPending, Role: "user", CreatedBy: "admin-1"}, nil
 	})
 
-	patches = patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
+	patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
 		return &model.User{Username: "existinguser"}, nil
 	})
 
@@ -505,7 +505,7 @@ func TestCompleteRegistration_InviteNotPending(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return &model.Invite{InviteID: "inv_used", Status: model.InviteStatusRevoked, CreatedBy: "admin-1"}, nil
 	})
 
@@ -534,11 +534,11 @@ func TestCompleteRegistration_FindUserError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return &model.Invite{InviteID: "inv_test1", Status: model.InviteStatusPending, Role: "user", CreatedBy: "admin-1"}, nil
 	})
 
-	patches = patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
+	patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
 		return nil, errors.New("db error")
 	})
 
@@ -831,17 +831,17 @@ func TestCompleteRegistration_CreateUserError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return &model.Invite{InviteID: "inv_test1", Status: model.InviteStatusPending, Role: "user", CreatedBy: "admin-1"}, nil
 	})
 
-	patches = patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
+	patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
 		return nil, nil
 	})
 
 	patches.ApplyFunc(middleware.HashPassword, func(pw string) (string, error) { return "$2a$hashed", nil })
 
-	patches = patches.ApplyMethodFunc(repo, "Create", func(ctx context.Context, user *model.User) error {
+	patches.ApplyMethodFunc(repo, "Create", func(ctx context.Context, user *model.User) error {
 		return errors.New("create user failed")
 	})
 
@@ -872,25 +872,25 @@ func TestCompleteRegistration_GenerateTokenError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return &model.Invite{InviteID: "inv_test1", Status: model.InviteStatusPending, Role: "user", CreatedBy: "admin-1"}, nil
 	})
 
-	patches = patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
+	patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
 		return nil, nil
 	})
 
 	patches.ApplyFunc(middleware.HashPassword, func(pw string) (string, error) { return "$2a$hashed", nil })
 
-	patches = patches.ApplyMethodFunc(repo, "Create", func(ctx context.Context, user *model.User) error {
+	patches.ApplyMethodFunc(repo, "Create", func(ctx context.Context, user *model.User) error {
 		return nil
 	})
 
-	patches = patches.ApplyMethodFunc(invRepo, "MarkAccepted", func(ctx context.Context, inviteID, userID string) error {
+	patches.ApplyMethodFunc(invRepo, "MarkAccepted", func(ctx context.Context, inviteID, userID string) error {
 		return nil
 	})
 
-	patches = patches.ApplyMethodFunc(jwt, "GenerateToken", func(userID, username, role string) (string, error) {
+	patches.ApplyMethodFunc(jwt, "GenerateToken", func(userID, username, role string) (string, error) {
 		return "", errors.New("token generation failed")
 	})
 
@@ -916,7 +916,7 @@ func TestLogin_GenerateTokenError(t *testing.T) {
 	patches.ApplyFunc(middleware.CheckPassword, func(hash, pw string) error { return nil })
 
 	jwt := middleware.NewJWTManager("test", 1*time.Hour)
-	patches = patches.ApplyMethodReturn(jwt, "GenerateToken", "", errors.New("generate failed"))
+	patches.ApplyMethodReturn(jwt, "GenerateToken", "", errors.New("generate failed"))
 
 	svc := NewService(repo, jwt)
 	_, err := svc.Login(context.Background(), &LoginRequest{Username: "testuser", Password: "pass"})
@@ -1034,7 +1034,7 @@ func TestCompleteRegistration_InviteNil(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return nil, nil // invite not found
 	})
 
@@ -1065,15 +1065,15 @@ func TestCompleteRegistration_HashPasswordError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return &model.Invite{InviteID: "inv_test1", Status: model.InviteStatusPending, Role: "user", CreatedBy: "admin-1"}, nil
 	})
 
-	patches = patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
+	patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
 		return nil, nil
 	})
 
-	patches = patches.ApplyFunc(middleware.HashPassword, func(pw string) (string, error) {
+	patches.ApplyFunc(middleware.HashPassword, func(pw string) (string, error) {
 		return "", errors.New("hash failed")
 	})
 
@@ -1102,7 +1102,7 @@ func TestCompleteRegistration_FindInviteError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+	patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
 		return nil, errors.New("database connection lost")
 	})
 

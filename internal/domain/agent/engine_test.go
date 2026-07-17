@@ -9,7 +9,7 @@ import (
 func TestNewRouter(t *testing.T) {
 	r := NewRouter()
 	if r == nil {
-		t.Error("NewRouter should not return nil")
+		t.Fatal("NewRouter should not return nil")
 	}
 	if r.providers == nil {
 		t.Error("providers map should be initialized")
