@@ -407,3 +407,42 @@ func TestOpenAIProvider_ChatStream_MarshalError(t *testing.T) {
 		t.Fatal("should error on marshal failure")
 	}
 }
+
+func TestOpenAIProvider_DoRequest_MarshalError(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	patches := gomonkey.ApplyFunc(json.Marshal, func(v interface{}) ([]byte, error) {
+		return nil, fmt.Errorf("marshal error")
+	})
+	defer patches.Reset()
+
+	_, err := p.doRequest(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, false)
+	if err == nil {
+		t.Fatal("should error on marshal failure")
+	}
+}
+
+func TestOpenAIProvider_DoRequest_NewRequestError(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	patches := gomonkey.ApplyFunc(http.NewRequestWithContext,
+		func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
+			return nil, fmt.Errorf("cannot create request")
+		})
+	defer patches.Reset()
+
+	_, err := p.doRequest(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, false)
+	if err == nil {
+		t.Fatal("should error on NewRequestWithContext failure")
+	}
+}
+
+func TestParseSSEStream_ReadError(t *testing.T) {
+	reader := &errorReader{err: fmt.Errorf("network error")}
+	err := parseSSEStream(reader, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error on read failure")
+	}
+}
