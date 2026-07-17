@@ -281,6 +281,53 @@ func TestOpenAIProvider_ChatStream(t *testing.T) {
 	}
 }
 
+func TestOpenAIProvider_ChatStream_Non200(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	respBody := io.NopCloser(bytes.NewReader([]byte(`{"error":"bad"}`)))
+	resp := &http.Response{StatusCode: 500, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	err := p.ChatStream(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error on non-200")
+	}
+}
+
+func TestOpenAIProvider_Chat_EmptyChoices(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	respBody := io.NopCloser(bytes.NewReader([]byte(`{"choices": []}`)))
+	resp := &http.Response{StatusCode: 200, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	result, err := p.Chat(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat empty choices: %v", err)
+	}
+	if result.Content != "" {
+		t.Errorf("content should be empty for empty choices: got %q", result.Content)
+	}
+}
+
+func TestOpenAIProvider_Chat_ReadError(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	// doRequest returns error on non-200 → Chat handles this
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", (*http.Response)(nil), context.DeadlineExceeded)
+	defer patches.Reset()
+
+	_, err := p.Chat(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("should error on HTTP failure")
+	}
+}
+
 func TestOpenAIProvider_ChatStream_RequestError(t *testing.T) {
 	p := NewOpenAIProvider("https://api.example.com", "sk-test")
 

@@ -22,39 +22,36 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Run Unit Tests with Coverage
+      - name: Run Tests with Coverage
         run: |
-          # Run all tests and collect per-package coverage
           go test -race -gcflags=all=-l -count=1 -coverprofile=coverage.out ./internal/... ./skills/...
 
-      - name: Calculate Coverage
+      - name: Coverage Gate
         run: |
-          echo "=== Coverage by function ==="
-          go tool cover -func=coverage.out | tail -20
-          
-          # Calculate total from the profile
-          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Total coverage: ${TOTAL}%"
-          echo "TOTAL_COVERAGE=${TOTAL}" >> $GITHUB_ENV
-
-      - name: Check Coverage Per-Package
-        run: |
-          echo "=== Per-package coverage ==="
-          go tool cover -func=coverage.out | awk '{
-            if ($NF ~ /%/) {
-              cov=$NF; gsub("%","",cov); pkg=$1
-              print sprintf("%6.1f%% %s", cov+0, pkg)
+          echo "=== Per-Package Coverage ==="
+          go tool cover -func=coverage.out | awk '
+            $NF ~ /%/ && $0 !~ /total/ {
+              gsub("%","",$NF); printf "%6.1f%%  %s\n", $NF+0, $1
             }
-          }' | grep -v "^  0.0%" | sort -n
+          ' | sort -n
           
-          # Check if any package is below threshold
-          LOW=$(go tool cover -func=coverage.out | awk '
-            $NF ~ /total/ { next }
-            $NF ~ /%/ { gsub("%","",$NF); if($NF+0 < 80 && $NF+0 > 0) print $1, $NF"%" }')
-          if [ -n "$LOW" ]; then
-            echo "WARNING: Packages below 80%:"
-            echo "$LOW"
+          # Gate: count packages below 90% (excluding total line and 0% infra)
+          FAILING=$(go tool cover -func=coverage.out | awk '
+            $0 ~ /total/ { next }
+            $NF ~ /%/ { gsub("%","",$NF); if($NF+0 < 90 && $NF+0 > 0) count++ }
+            END { print count+0 }
+          ')
+          
+          echo "=== Gate Check ==="
+          if [ "$FAILING" -gt 0 ]; then
+            echo "ERROR: $FAILING functions below 90% coverage!"
+            go tool cover -func=coverage.out | awk '
+              $0 ~ /total/ { next }
+              $NF ~ /%/ { gsub("%","",$NF); if($NF+0 < 90 && $NF+0 > 0) print "  FAIL:", $NF"%", $1 }
+            '
+            exit 1
           fi
+          echo "PASS: All tested functions >= 90% coverage"
 
       - name: Upload Coverage Report
         if: always()
