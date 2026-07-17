@@ -1,9 +1,14 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"testing"
+
+	"github.com/agiledragon/gomonkey/v2"
 )
 
 func TestNewRouter(t *testing.T) {
@@ -230,15 +235,162 @@ func TestRouter_ChatStream(t *testing.T) {
 
 func TestEngine_Run_AutoRegister(t *testing.T) {
 	// Router auto-registers a provider when one isn't found
+	// Use gomonkey to mock HTTP to avoid real network calls
 	r := NewRouter()
 	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4", BaseURL: "https://api.example.com", APIKey: "sk-test"})
 
+	// Create a mock HTTP client to intercept the auto-registered provider's calls
+	mockClient := &http.Client{}
+	mockResp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"choices": [{"message": {"content": "auto-registered response"}}]}`))),
+	}
+	patches := gomonkey.ApplyMethodReturn(mockClient, "Do", mockResp, nil)
+	defer patches.Reset()
+
 	e := NewEngine(r, nil, nil)
-	// This will try to auto-register OpenAIProvider and make HTTP call → fails gracefully
-	_, err := e.Run(context.Background(), ChatRequest{
+	resp, err := e.Run(context.Background(), ChatRequest{
 		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
 	})
-	t.Logf("auto-register result: %v", err)
+	if err != nil {
+		t.Logf("auto-register result: %v (may require real HTTP)", err)
+	}
+	if resp != nil {
+		t.Logf("auto-register response: %s", resp.Content)
+	}
+}
+
+func TestEngine_Run_WithSecurityAudit(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{}
+	e := NewEngine(r, nil, auditor)
+
+	resp, err := e.Run(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "safe content"}},
+	})
+	if err != nil {
+		t.Fatalf("Run with audit: %v", err)
+	}
+	if resp.Content != "sanitized output" {
+		t.Errorf("output should be sanitized: got %q", resp.Content)
+	}
+}
+
+func TestEngine_Run_AuditInputError(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{failInput: true}
+	e := NewEngine(r, nil, auditor)
+
+	_, err := e.Run(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "dangerous"}},
+	})
+	if err == nil {
+		t.Fatal("should error on input audit failure")
+	}
+}
+
+func TestEngine_Run_WithToolCalls(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{withToolCalls: true}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{}
+	e := NewEngine(r, nil, auditor)
+
+	resp, err := e.Run(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "use tools"}},
+	})
+	if err != nil {
+		t.Fatalf("Run with tools: %v", err)
+	}
+	if resp.Content != "sanitized output" {
+		t.Errorf("output: got %q", resp.Content)
+	}
+}
+
+func TestEngine_Run_AuditToolCallError(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{withToolCalls: true}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{failToolCall: true}
+	e := NewEngine(r, nil, auditor)
+
+	_, err := e.Run(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "use tools"}},
+	})
+	if err == nil {
+		t.Fatal("should error on tool call audit failure")
+	}
+}
+
+func TestEngine_RunStream_WithSecurityAudit(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{}
+	e := NewEngine(r, nil, auditor)
+
+	err := e.RunStream(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "safe"}},
+	}, func(chunk string) error { return nil })
+	if err != nil {
+		t.Fatalf("RunStream with audit: %v", err)
+	}
+}
+
+func TestEngine_RunStream_AuditInputError(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{failInput: true}
+	e := NewEngine(r, nil, auditor)
+
+	err := e.RunStream(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "bad"}},
+	}, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error on input audit failure")
+	}
+}
+
+// ===== mockAuditor =====
+
+type mockAuditor struct {
+	failInput    bool
+	failToolCall bool
+}
+
+func (m *mockAuditor) AuditInput(content string) error {
+	if m.failInput {
+		return fmt.Errorf("input audit failed")
+	}
+	return nil
+}
+
+func (m *mockAuditor) AuditToolCall(name string, args string) error {
+	if m.failToolCall {
+		return fmt.Errorf("tool call audit failed")
+	}
+	return nil
+}
+
+func (m *mockAuditor) AuditOutput(content string) (string, error) {
+	return "sanitized output", nil
 }
 
 // ===== mockProvider =====
