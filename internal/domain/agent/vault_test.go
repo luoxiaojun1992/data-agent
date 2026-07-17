@@ -1,7 +1,13 @@
 package agent
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"fmt"
+	"io"
 	"testing"
+
+	"github.com/agiledragon/gomonkey/v2"
 )
 
 func TestNewManager(t *testing.T) {
@@ -27,7 +33,7 @@ func TestNewManager(t *testing.T) {
 }
 
 func TestEncryptDecrypt(t *testing.T) {
-	m, err := NewManager("12345678901234567890123456789012") // exactly 32 bytes
+	m, err := NewManager("12345678901234567890123456789012")
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
@@ -47,6 +53,57 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 	if decrypted != plaintext {
 		t.Errorf("roundtrip failed: got %q, want %q", decrypted, plaintext)
+	}
+}
+
+func TestEncrypt_AesNewCipherError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	patches := gomonkey.ApplyFunc(aes.NewCipher, func(key []byte) (cipher.Block, error) {
+		return nil, fmt.Errorf("mock aes error")
+	})
+	defer patches.Reset()
+
+	_, err = m.Encrypt("test")
+	if err == nil {
+		t.Fatal("should error on aes.NewCipher failure")
+	}
+}
+
+func TestEncrypt_NewGCMError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	patches := gomonkey.ApplyFunc(cipher.NewGCM, func(block cipher.Block) (cipher.AEAD, error) {
+		return nil, fmt.Errorf("mock gcm error")
+	})
+	defer patches.Reset()
+
+	_, err = m.Encrypt("test")
+	if err == nil {
+		t.Fatal("should error on cipher.NewGCM failure")
+	}
+}
+
+func TestEncrypt_ReadFullError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	patches := gomonkey.ApplyFunc(io.ReadFull, func(r io.Reader, buf []byte) (int, error) {
+		return 0, fmt.Errorf("mock readfull error")
+	})
+	defer patches.Reset()
+
+	_, err = m.Encrypt("test")
+	if err == nil {
+		t.Fatal("should error on io.ReadFull failure")
 	}
 }
 
@@ -71,6 +128,41 @@ func TestDecrypt_TooShort(t *testing.T) {
 	_, err = m.Decrypt("YWJj")
 	if err == nil {
 		t.Fatal("should error on short ciphertext")
+	}
+}
+
+func TestDecrypt_AesNewCipherError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	patches := gomonkey.ApplyFunc(aes.NewCipher, func(key []byte) (cipher.Block, error) {
+		return nil, fmt.Errorf("mock aes error")
+	})
+	defer patches.Reset()
+
+	// Need a valid base64 string to pass the decode step
+	_, err = m.Decrypt("dGVzdA==") // "test" in base64
+	if err == nil {
+		t.Fatal("should error on aes.NewCipher failure in Decrypt")
+	}
+}
+
+func TestDecrypt_NewGCMError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	patches := gomonkey.ApplyFunc(cipher.NewGCM, func(block cipher.Block) (cipher.AEAD, error) {
+		return nil, fmt.Errorf("mock gcm error")
+	})
+	defer patches.Reset()
+
+	_, err = m.Decrypt("dGVzdA==")
+	if err == nil {
+		t.Fatal("should error on cipher.NewGCM failure in Decrypt")
 	}
 }
 
@@ -99,6 +191,23 @@ func TestStoreRetrieve(t *testing.T) {
 	}
 }
 
+func TestStore_EncryptError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	patches := gomonkey.ApplyFunc(aes.NewCipher, func(key []byte) (cipher.Block, error) {
+		return nil, fmt.Errorf("mock aes error")
+	})
+	defer patches.Reset()
+
+	err = m.Store("key", "value")
+	if err == nil {
+		t.Fatal("should error on encrypt failure in Store")
+	}
+}
+
 func TestRotateKey(t *testing.T) {
 	m, err := NewManager("12345678901234567890123456789012")
 	if err != nil {
@@ -108,7 +217,7 @@ func TestRotateKey(t *testing.T) {
 	oldKey := make([]byte, len(m.masterKey))
 	copy(oldKey, m.masterKey)
 
-	err = m.RotateKey("new-secret-key-for-rotation-test!")
+	err = m.RotateKey("abcdefghijklmnopqrstuvwxyz123456") // 32 bytes
 	if err != nil {
 		t.Fatalf("RotateKey: %v", err)
 	}
@@ -124,9 +233,53 @@ func TestRotateKey_ShortKey(t *testing.T) {
 		t.Fatalf("NewManager: %v", err)
 	}
 
-	// Short key gets padded to 32 bytes
 	err = m.RotateKey("short")
 	if err != nil {
 		t.Fatalf("RotateKey with short key: %v", err)
+	}
+}
+
+func TestRotateKey_EncryptError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Store a secret with old key
+	err = m.Store("key", "val")
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	// Mock aes.NewCipher to fail → decrypt fails first
+	patches := gomonkey.ApplyFunc(aes.NewCipher, func(key []byte) (cipher.Block, error) {
+		return nil, fmt.Errorf("mock aes error during rotation")
+	})
+	defer patches.Reset()
+
+	err = m.RotateKey("abcdefghijklmnopqrstuvwxyz123456")
+	if err == nil {
+		t.Fatal("should error when decryption fails during rotation")
+	}
+}
+
+func TestRotateKey_ReEncryptError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	err = m.Store("key1", "plaintext-value")
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	// mock io.ReadFull to fail → encrypt (new key) fails on nonce gen,
+	// but decrypt (old key) doesn't call io.ReadFull so it succeeds
+	patches := gomonkey.ApplyFunc(io.ReadFull, func(r io.Reader, buf []byte) (int, error) {
+		return 0, fmt.Errorf("mock nonce error")
+	})
+	defer patches.Reset()
+	err = m.RotateKey("abcdefghijklmnopqrstuvwxyz123456")
+	if err == nil {
+		t.Fatal("should error when re-encryption fails during rotation")
 	}
 }
