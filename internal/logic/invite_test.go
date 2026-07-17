@@ -400,3 +400,76 @@ func TestVerifyInviteToken_MalformedPayloadCustom(t *testing.T) {
 		t.Error("malformed payload should reject")
 	}
 }
+
+// ── Malformed Base64 and Payload Edge Cases ──
+
+func TestVerifyInviteToken_MalformedBase64(t *testing.T) {
+	secret := []byte("test-secret-key-32")
+	inviteID := "inv_test123"
+	email := "test@example.com"
+	role := "user"
+	expireAt := time.Now().Add(24 * time.Hour)
+
+	t.Run("signature with std base64 (has + and =)", func(t *testing.T) {
+		token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+		parts := strings.Split(token, ".")
+		// Replace url-safe signature with standard base64 (contains +/=)
+		badToken := parts[0] + ".abc+==/"
+		_, err := VerifyInviteToken(badToken, [][]byte{secret})
+		if err == nil {
+			t.Error("standard base64 signature should be rejected by RawURLEncoding")
+		}
+	})
+
+	t.Run("payload with correct signature but wrong colon count", func(t *testing.T) {
+		// Construct a payload with only 1 part (no colons for SplitN)
+		payload := "just_invite_id_without_colons"
+		encodedPayload := base64.RawURLEncoding.EncodeToString([]byte(payload))
+
+		mac := hmac.New(sha256.New, secret)
+		mac.Write([]byte(payload))
+		sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+		badToken := encodedPayload + "." + sig
+		_, err := VerifyInviteToken(badToken, [][]byte{secret})
+		if err == nil {
+			t.Error("payload with wrong number of colons should be rejected")
+		}
+	})
+
+	t.Run("payload with two colons (3 parts)", func(t *testing.T) {
+		payload := "inv_id:1234567890:test@example.com"
+		encodedPayload := base64.RawURLEncoding.EncodeToString([]byte(payload))
+
+		mac := hmac.New(sha256.New, secret)
+		mac.Write([]byte(payload))
+		sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+		badToken := encodedPayload + "." + sig
+		_, err := VerifyInviteToken(badToken, [][]byte{secret})
+		if err == nil {
+			t.Error("payload with only 3 parts (need 4) should be rejected")
+		}
+	})
+
+	t.Run("payload with spaces in base64", func(t *testing.T) {
+		token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+		parts := strings.Split(token, ".")
+		// Insert spaces into the base64 payload
+		badToken := parts[0] + " " + parts[0] + "." + parts[1]
+		_, err := VerifyInviteToken(badToken, [][]byte{secret})
+		if err == nil {
+			t.Error("base64 with spaces should be rejected")
+		}
+	})
+
+	t.Run("payload with newlines in base64", func(t *testing.T) {
+		token := GenerateInviteToken(inviteID, expireAt, email, role, secret)
+		parts := strings.Split(token, ".")
+		badToken := "abc\ndef" + "." + parts[1]
+		_, err := VerifyInviteToken(badToken, [][]byte{secret})
+		if err == nil {
+			t.Error("base64 with newlines should be rejected")
+		}
+	})
+}

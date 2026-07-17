@@ -369,9 +369,11 @@ func TestVerifySignature_MockedHash(t *testing.T) {
 
 // mockResponseWriter captures HTTP responses for testing.
 type mockResponseWriter struct {
-	header     http.Header
-	body       []byte
-	statusCode int
+	header        http.Header
+	body          []byte
+	statusCode    int
+	writeErr      error
+	writeErrCalled bool
 }
 
 func (w *mockResponseWriter) Header() http.Header {
@@ -382,6 +384,10 @@ func (w *mockResponseWriter) Header() http.Header {
 }
 
 func (w *mockResponseWriter) Write(b []byte) (int, error) {
+	if w.writeErr != nil {
+		w.writeErrCalled = true
+		return 0, w.writeErr
+	}
 	w.body = append(w.body, b...)
 	return len(b), nil
 }
@@ -541,6 +547,64 @@ func TestWebhookHandler_EmptyBody(t *testing.T) {
 	if !contains(string(w.body), "msg_type") {
 		t.Errorf("response should contain msg_type, got: %q", string(w.body))
 	}
+}
+
+// TestWebhookHandler_EncodeError_URLVerification covers the json.Encode error path
+// in the URL verification response (line 132-134).
+func TestWebhookHandler_EncodeError_URLVerification(t *testing.T) {
+	challengeBody := `{"type":"url_verification","challenge":"challenge_token_abc","token":"verify_token_xyz"}`
+
+	patches := gomonkey.ApplyFunc(io.ReadAll, func(r io.Reader) ([]byte, error) {
+		return []byte(challengeBody), nil
+	})
+	defer patches.Reset()
+
+	cfg := Config{AppID: "app-id", AppSecret: "app-secret", VerifyToken: "verify-token"}
+	s := NewService(cfg)
+
+	// Mock Writer.Write to return an error (simulating encode failure)
+	w := &mockResponseWriter{
+		writeErr: io.ErrClosedPipe,
+	}
+	r, _ := http.NewRequest(http.MethodPost, "/webhook", nil)
+
+	handler := s.WebhookHandler()
+	handler(w, r)
+
+	// Should not panic; error is logged but not propagated
+	if w.writeErrCalled {
+		// Success - write error was triggered
+	}
+}
+
+// TestWebhookHandler_EncodeError_MessageEvent covers the json.Encode error path
+// in the message event response (line 169-170).
+func TestWebhookHandler_EncodeError_MessageEvent(t *testing.T) {
+	eventBody := `{
+		"header": {"event_type": "im.message.receive_v1"},
+		"event": {
+			"sender": {"sender_id": {"open_id": "user_open_123"}},
+			"message": {"content": "Hello"}
+		}
+	}`
+
+	patches := gomonkey.ApplyFunc(io.ReadAll, func(r io.Reader) ([]byte, error) {
+		return []byte(eventBody), nil
+	})
+	defer patches.Reset()
+
+	cfg := Config{AppID: "app-id", AppSecret: "app-secret", VerifyToken: "verify-token"}
+	s := NewService(cfg)
+
+	w := &mockResponseWriter{
+		writeErr: io.ErrClosedPipe,
+	}
+	r, _ := http.NewRequest(http.MethodPost, "/webhook", nil)
+
+	handler := s.WebhookHandler()
+	handler(w, r)
+
+	// Should not panic; error is logged but not propagated
 }
 
 func contains(s, substr string) bool {

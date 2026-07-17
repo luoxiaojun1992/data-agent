@@ -11,6 +11,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -442,5 +443,85 @@ func TestGenerateShortID_Error(t *testing.T) {
 	}
 	if got := w.Header().Get("X-Request-ID"); got != "unknown" {
 		t.Errorf("X-Request-ID: got %q, want 'unknown' when rand.Read fails", got)
+	}
+}
+
+// ── GenerateToken Error Path ──
+
+func TestJWTManager_GenerateToken_SignError(t *testing.T) {
+	m := NewJWTManager("test-secret", time.Hour)
+
+	var token *jwt.Token
+	patches := gomonkey.ApplyMethodFunc(token, "SignedString", func(key interface{}) (string, error) {
+		return "", fmt.Errorf("sign error")
+	})
+	defer patches.Reset()
+
+	_, err := m.GenerateToken("user-1", "testuser", "admin")
+	if err == nil {
+		t.Error("GenerateToken should return error when SignedString fails")
+	}
+}
+
+// ── ValidateToken Error Paths ──
+
+func TestJWTManager_ValidateToken_ParseExpired(t *testing.T) {
+	m := NewJWTManager("test-secret", time.Hour)
+
+	// Mock jwt.ParseWithClaims to return an expired token
+	patches := gomonkey.ApplyFuncReturn(jwt.ParseWithClaims,
+		&jwt.Token{
+			Valid:  false,
+			Claims: &JWTClaims{UserID: "user-1", Username: "test", Role: "user"},
+		},
+		nil,
+	)
+	defer patches.Reset()
+
+	_, err := m.ValidateToken("any-token")
+	if err == nil {
+		t.Error("ValidateToken should reject expired (invalid) token")
+	}
+}
+
+func TestJWTManager_ValidateToken_NonHMACMethod(t *testing.T) {
+	m := NewJWTManager("test-secret", time.Hour)
+
+	var capturedSecret []byte
+	patches := gomonkey.ApplyFunc(jwt.ParseWithClaims, func(tokenString string, claims jwt.Claims, keyFunc jwt.Keyfunc, options ...jwt.ParserOption) (*jwt.Token, error) {
+		// Create a token with a non-HMAC signing method to trigger the rejection
+		token := &jwt.Token{
+			Method: jwt.SigningMethodRS256,
+			Header: map[string]interface{}{"alg": "RS256"},
+			Claims: claims,
+			Valid:  true,
+		}
+		_, err := keyFunc(token)
+		_ = capturedSecret
+		if err != nil {
+			return nil, err
+		}
+		return token, nil
+	})
+	defer patches.Reset()
+
+	_, err := m.ValidateToken("non-hmac-token")
+	if err == nil {
+		t.Error("ValidateToken should reject non-HMAC signing method")
+	}
+}
+
+func TestJWTManager_ValidateToken_InvalidFormat(t *testing.T) {
+	m := NewJWTManager("test-secret", time.Hour)
+
+	patches := gomonkey.ApplyFuncReturn(jwt.ParseWithClaims,
+		(*jwt.Token)(nil),
+		fmt.Errorf("token contains an invalid number of segments"),
+	)
+	defer patches.Reset()
+
+	_, err := m.ValidateToken("invalid.format.here.extra")
+	if err == nil {
+		t.Error("ValidateToken should reject invalid format tokens")
 	}
 }

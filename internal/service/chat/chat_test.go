@@ -246,6 +246,45 @@ func TestHandleChat_Stream_NoFlusher(t *testing.T) {
 	}
 }
 
+// ===== handleStream with no flusher (non-flushing ResponseWriter) =====
+
+func TestHandleChat_Stream_NoFlusherWriter(t *testing.T) {
+	svc := newTestService()
+
+	patches := gomonkey.ApplyMethodReturn(svc.sessions, "Create", &Session{
+		ID:     "sess_stream_noflush",
+		UserID: "",
+		Type:   "chat",
+		Status: "active",
+	}, nil)
+	defer patches.Reset()
+
+	body := `{"messages": [{"role": "user", "content": "stream test"}], "stream": true}`
+	c, w := newGinContext("POST", "/chat", body)
+
+	// Mock c.Writer to not implement http.Flusher by setting it to nil interface
+	// Then mock c.Header and c.JSON to avoid nil pointer dereference
+	type noFlushResponseWriter struct{ httptest.ResponseRecorder }
+
+	// Use gomonkey to replace c.Header (called before flusher check)
+	patches.ApplyMethodFunc(c, "Header", func(key, value string) {
+		// no-op; avoid nil Writer header access
+	})
+
+	patches.ApplyMethodFunc(c, "JSON", func(code int, obj interface{}) {
+		w.WriteHeader(code)
+	})
+
+	// c.Writer = nil (nil gin.ResponseWriter) → type assertion to http.Flusher fails
+	c.Writer = nil
+
+	svc.HandleChat(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandleChat_ContextCompression(t *testing.T) {
 	svc := newTestService()
 
@@ -262,11 +301,13 @@ func TestHandleChat_ContextCompression(t *testing.T) {
 	}, nil)
 
 	// Messages with large content to trigger compression (>64000 tokens threshold)
+	// Each message: 10000 ASCII chars → (10000+3)/4 = 2500 tokens per message
+	// 30 messages * 2500 = 75000 tokens > 64000 threshold
 	var largeMessages []agent.Message
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 30; i++ {
 		largeMessages = append(largeMessages, agent.Message{
 			Role:    "user",
-			Content: strings.Repeat("a", 10000), // ~2500 tokens each
+			Content: strings.Repeat("a", 10000),
 		})
 	}
 	reqBody, _ := json.Marshal(map[string]interface{}{

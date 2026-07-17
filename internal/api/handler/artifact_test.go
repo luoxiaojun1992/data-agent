@@ -485,3 +485,90 @@ func TestWriteWorkspaceFile_EmptyBody(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// ── Upload Missing File Field ──
+
+func TestUpload_EmptyContentType(t *testing.T) {
+	storage := &artifact_svc.Storage{}
+	wm := &workspace.Manager{}
+	h := NewArtifactHandler(storage, wm)
+
+	mockArt := &artifact.Artifact{
+		ID:        "artifact_empty_ct",
+		Name:      "test.dat",
+		MimeType:  "application/octet-stream",
+		SizeBytes: 10,
+		UserID:    "user-1",
+		SessionID: "sess-1",
+	}
+
+	patches := gomonkey.ApplyMethodReturn(storage, "Upload", mockArt, nil)
+	defer patches.Reset()
+
+	// Build multipart form where file part has filename but NO Content-Type
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	hdr := make(map[string][]string)
+	hdr["Content-Disposition"] = []string{`form-data; name="file"; filename="test.dat"`}
+	part, _ := writer.CreatePart(hdr)
+	io.Copy(part, strings.NewReader("hello data"))
+	writer.Close()
+
+	c, w := newGinContext("POST", "/artifacts", "")
+	c.Request = httptest.NewRequest("POST", "/artifacts", body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	c.Set("user_id", "user-1")
+
+	h.Upload(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpload_MissingFileField(t *testing.T) {
+	storage := &artifact_svc.Storage{}
+	wm := &workspace.Manager{}
+	h := NewArtifactHandler(storage, wm)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	writer.WriteField("session_id", "sess-1")
+	writer.WriteField("persistent", "true")
+	writer.Close()
+
+	c, w := newGinContext("POST", "/artifacts", "")
+	// Override with multipart request
+	c.Request = httptest.NewRequest("POST", "/artifacts", body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	c.Set("user_id", "user-1")
+
+	h.Upload(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when file field missing, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ── WriteWorkspaceFile ReadError ──
+
+func TestWriteWorkspaceFile_ReadError(t *testing.T) {
+	storage := &artifact_svc.Storage{}
+	wm := &workspace.Manager{}
+	h := NewArtifactHandler(storage, wm)
+
+	patches := gomonkey.ApplyFuncReturn(io.ReadAll, []byte(nil), fmt.Errorf("read error"))
+	defer patches.Reset()
+
+	c, w := newGinContext("POST", "/workspace/sess-1/write/file.txt", "data")
+	c.Set("user_id", "user-1")
+	c.Params = gin.Params{
+		{Key: "session_id", Value: "sess-1"},
+		{Key: "filename", Value: "file.txt"},
+	}
+	h.WriteWorkspaceFile(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when body read fails, got %d: %s", w.Code, w.Body.String())
+	}
+}

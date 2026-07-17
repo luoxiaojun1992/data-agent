@@ -1,8 +1,11 @@
 package security
 
 import (
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/agiledragon/gomonkey/v2"
 )
 
 type mockAlertLogger struct {
@@ -176,5 +179,223 @@ func TestAuditor_UpdateRules(t *testing.T) {
 	err := a.AuditInput("CUSTOM_BLOCK this text")
 	if err == nil {
 		t.Error("should block CUSTOM_BLOCK after UpdateRules")
+	}
+}
+
+// ── matchRule Tests ──
+
+func TestAuditor_matchRule_KeywordMatch(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{Name: "test_keyword", Type: "keyword", Pattern: "DROP TABLE", Action: "block"}
+	matched, match := a.matchRule(rule, "DROP TABLE users")
+	if !matched {
+		t.Error("keyword should match")
+	}
+	if match != "DROP TABLE" {
+		t.Errorf("match: got %q, want %q", match, "DROP TABLE")
+	}
+}
+
+func TestAuditor_matchRule_KeywordCaseInsensitive(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{Name: "test_keyword", Type: "keyword", Pattern: "DROP TABLE", Action: "block"}
+	matched, _ := a.matchRule(rule, "drop table users")
+	if !matched {
+		t.Error("keyword should match case-insensitively")
+	}
+}
+
+func TestAuditor_matchRule_KeywordNoMatch(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{Name: "test_keyword", Type: "keyword", Pattern: "DROP TABLE", Action: "block"}
+	matched, match := a.matchRule(rule, "SELECT * FROM users")
+	if matched {
+		t.Error("keyword should not match")
+	}
+	if match != "" {
+		t.Errorf("match should be empty: got %q", match)
+	}
+}
+
+func TestAuditor_matchRule_RegexMatch(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{
+		Name:     "phone",
+		Type:     "regex",
+		Pattern:  `1[3-9]\d{9}`,
+		Action:   "sanitize",
+		compiled: regexp.MustCompile(`1[3-9]\d{9}`),
+	}
+	matched, match := a.matchRule(rule, "call 13812345678 now")
+	if !matched {
+		t.Error("regex should match")
+	}
+	if match != "13812345678" {
+		t.Errorf("match: got %q, want %q", match, "13812345678")
+	}
+}
+
+func TestAuditor_matchRule_RegexNoMatch(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{
+		Name:     "phone",
+		Type:     "regex",
+		Pattern:  `1[3-9]\d{9}`,
+		Action:   "sanitize",
+		compiled: regexp.MustCompile(`1[3-9]\d{9}`),
+	}
+	matched, match := a.matchRule(rule, "no phone here")
+	if matched {
+		t.Error("regex should not match")
+	}
+	if match != "" {
+		t.Errorf("match should be empty: got %q", match)
+	}
+}
+
+func TestAuditor_matchRule_RegexCompileOnDemand(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{Name: "test_regex", Type: "regex", Pattern: `abc\d+`, Action: "sanitize"}
+	// compiled is nil, so matchRule should compile it on demand
+	matched, match := a.matchRule(rule, "abc123")
+	if !matched {
+		t.Error("should compile regex on demand and match")
+	}
+	if match != "abc123" {
+		t.Errorf("match: got %q, want %q", match, "abc123")
+	}
+}
+
+func TestAuditor_matchRule_RegexCompileError(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{Name: "bad_regex", Type: "regex", Pattern: `[\d`, Action: "sanitize"}
+	matched, match := a.matchRule(rule, "text")
+	if matched {
+		t.Error("invalid regex should not match")
+	}
+	if match != "" {
+		t.Errorf("match should be empty: got %q", match)
+	}
+}
+
+func TestAuditor_matchRule_DefaultNoMatch(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	rule := Rule{Name: "unknown", Type: "unknown_type", Pattern: "test", Action: "block"}
+	// Unknown type falls through to return false, ""
+	result, _ := regexp.Compile("test")
+	_ = result
+	matched, match := a.matchRule(rule, "test")
+	if matched {
+		t.Error("unknown rule type should not match")
+	}
+	if match != "" {
+		t.Errorf("match should be empty: got %q", match)
+	}
+}
+
+// ── sanitizeByType Tests ──
+
+func TestSanitizeByType_Phone(t *testing.T) {
+	tests := []struct {
+		name     string
+		ruleName string
+		input    string
+		want     string
+	}{
+		{"phone 11 digits", "phone", "13812345678", "138****5678"},
+		{"phone non-11", "phone", "12345", "***"},
+		{"phone empty", "phone", "", "***"},
+		{"id_card 18 chars", "id_card", "110101199001011234", "110***********1234"},
+		{"id_card non-18", "id_card", "12345", "***"},
+		{"api_key valid", "api_key", "sk-" + strings.Repeat("a", 32), "sk-a****"},
+		{"api_key short <= 8", "api_key", "sk-short", "***"},
+		{"api_key over 8", "api_key", "sk-123456", "sk-1****"},
+		{"default type", "email", "user@example.com", "***"},
+		{"default type ssn", "ssn", "123-45-6789", "***"},
+		{"default type credit_card", "credit_card", "4111111111111111", "***"},
+		{"default type unknown", "unknown_rule", "anything", "***"},
+		{"default type empty", "", "", "***"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeByType(tt.ruleName, tt.input)
+			if got != tt.want {
+				t.Errorf("sanitizeByType(%q, %q) = %q, want %q", tt.ruleName, tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// ── AuditOutput Edge Cases ──
+
+func TestAuditor_AuditOutput_MultipleMatches(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	input := "call 13812345678 or 13987654321 for info"
+	output, err := a.AuditOutput(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(output, "13812345678") {
+		t.Error("first phone should be sanitized")
+	}
+	if strings.Contains(output, "13987654321") {
+		t.Error("second phone should be sanitized")
+	}
+}
+
+func TestAuditor_AuditOutput_EmptyInput(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	output, err := a.AuditOutput("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if output != "" {
+		t.Errorf("output should be empty: got %q", output)
+	}
+}
+
+func TestAuditor_AuditOutput_NoSensitiveData(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	input := "The analysis shows a growth of 15%"
+	output, err := a.AuditOutput(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if output != input {
+		t.Errorf("output should be unchanged: got %q, want %q", output, input)
+	}
+}
+
+func TestAuditor_AuditOutput_PanicRecovery(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+
+	// Mock ReplaceAllStringFunc to panic, covering the recover() path
+	patches := gomonkey.ApplyMethodFunc(&regexp.Regexp{}, "ReplaceAllStringFunc",
+		func(src string, repl func(string) string) string {
+			panic("forced panic for coverage")
+		})
+	defer patches.Reset()
+
+	// Use input that will match the phone rule (first sanitize rule)
+	input := "call 13812345678 now"
+	output, err := a.AuditOutput(input)
+	if err != nil {
+		t.Fatalf("AuditOutput should not error even on panic: %v", err)
+	}
+	// Output should be unchanged since the sanitize panic was recovered
+	if !strings.Contains(output, "13812345678") {
+		t.Errorf("output should contain original phone number after panic recovery: %q", output)
+	}
+}
+
+func TestAuditor_AuditOutput_OnlyApiKey(t *testing.T) {
+	a := NewAuditor(&mockAlertLogger{})
+	input := "sk-" + strings.Repeat("b", 40)
+	output, err := a.AuditOutput(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "****") {
+		t.Errorf("api key should be sanitized: got %q", output)
 	}
 }

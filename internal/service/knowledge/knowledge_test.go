@@ -1432,3 +1432,26 @@ func TestListAllDocs_CursorAllError(t *testing.T) {
 		t.Error("expected nil docs on error")
 	}
 }
+
+func TestListAllDocs_FindError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	setupMockDB(patches)
+
+	findErr := errors.New("find error")
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return nil, findErr
+		})
+
+	s := NewService(&mongo.Database{})
+	docs, err := s.ListAllDocs()
+
+	if err == nil {
+		t.Fatal("expected Find error")
+	}
+	if docs != nil {
+		t.Error("expected nil docs on error")
+	}
+}

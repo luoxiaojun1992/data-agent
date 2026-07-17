@@ -1016,3 +1016,100 @@ func TestCompleteRegistration_NoHMACSecret(t *testing.T) {
 		t.Error("should error without HMAC secret")
 	}
 }
+
+// ===== CompleteRegistration: invite nil =====
+
+func TestCompleteRegistration_InviteNil(t *testing.T) {
+	jwt := middleware.NewJWTManager("test", 1*time.Hour)
+	svc := NewService(nil, jwt)
+	invRepo := &mongo.InviteRepository{}
+	svc.SetInviteRepo(invRepo)
+	svc.SetHMACSecret([]byte("test-secret-key-for-complete"))
+
+	patches := gomonkey.ApplyFunc(logic.VerifyInviteToken, func(token string, secrets [][]byte) (*logic.InviteTokenPayload, error) {
+		return &logic.InviteTokenPayload{
+			InviteID: "inv_nil", Email: "test@example.com", Role: "user",
+			ExpireAt: time.Now().Add(24 * time.Hour).Unix(),
+		}, nil
+	})
+	defer patches.Reset()
+
+	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+		return nil, nil // invite not found
+	})
+
+	_, err := svc.CompleteRegistration(context.Background(), &CompleteRegistrationRequest{
+		Token: "valid-token", Username: "newuser", Password: "Pass123!", DisplayName: "New User",
+	})
+	if err == nil {
+		t.Fatal("expected error for nil invite, got nil")
+	}
+}
+
+// ===== CompleteRegistration: HashPassword error =====
+
+func TestCompleteRegistration_HashPasswordError(t *testing.T) {
+	jwt := middleware.NewJWTManager("test", 1*time.Hour)
+	svc := NewService(nil, jwt)
+	repo := &mongo.UserRepository{}
+	svc.userRepo = repo
+	invRepo := &mongo.InviteRepository{}
+	svc.SetInviteRepo(invRepo)
+	svc.SetHMACSecret([]byte("test-secret-key-for-complete"))
+
+	patches := gomonkey.ApplyFunc(logic.VerifyInviteToken, func(token string, secrets [][]byte) (*logic.InviteTokenPayload, error) {
+		return &logic.InviteTokenPayload{
+			InviteID: "inv_test1", Email: "test@example.com", Role: "user",
+			ExpireAt: time.Now().Add(24 * time.Hour).Unix(),
+		}, nil
+	})
+	defer patches.Reset()
+
+	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+		return &model.Invite{InviteID: "inv_test1", Status: model.InviteStatusPending, Role: "user", CreatedBy: "admin-1"}, nil
+	})
+
+	patches = patches.ApplyMethodFunc(repo, "FindByUsername", func(ctx context.Context, username string) (*model.User, error) {
+		return nil, nil
+	})
+
+	patches = patches.ApplyFunc(middleware.HashPassword, func(pw string) (string, error) {
+		return "", errors.New("hash failed")
+	})
+
+	_, err := svc.CompleteRegistration(context.Background(), &CompleteRegistrationRequest{
+		Token: "valid-token", Username: "newuser", Password: "Pass123!", DisplayName: "New User",
+	})
+	if err == nil {
+		t.Fatal("expected HashPassword error, got nil")
+	}
+}
+
+// ===== CompleteRegistration: FindByInviteID returns error =====
+
+func TestCompleteRegistration_FindInviteError(t *testing.T) {
+	jwt := middleware.NewJWTManager("test", 1*time.Hour)
+	svc := NewService(nil, jwt)
+	invRepo := &mongo.InviteRepository{}
+	svc.SetInviteRepo(invRepo)
+	svc.SetHMACSecret([]byte("test-secret-key-for-complete"))
+
+	patches := gomonkey.ApplyFunc(logic.VerifyInviteToken, func(token string, secrets [][]byte) (*logic.InviteTokenPayload, error) {
+		return &logic.InviteTokenPayload{
+			InviteID: "inv_db_error", Email: "test@example.com", Role: "user",
+			ExpireAt: time.Now().Add(24 * time.Hour).Unix(),
+		}, nil
+	})
+	defer patches.Reset()
+
+	patches = patches.ApplyMethodFunc(invRepo, "FindByInviteID", func(ctx context.Context, inviteID string) (*model.Invite, error) {
+		return nil, errors.New("database connection lost")
+	})
+
+	_, err := svc.CompleteRegistration(context.Background(), &CompleteRegistrationRequest{
+		Token: "valid-token", Username: "newuser", Password: "Pass123!", DisplayName: "New User",
+	})
+	if err == nil {
+		t.Fatal("expected error from FindByInviteID, got nil")
+	}
+}

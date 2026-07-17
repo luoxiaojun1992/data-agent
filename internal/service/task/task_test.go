@@ -534,5 +534,49 @@ func TestBatchCancelTasks_Error(t *testing.T) {
 	}
 }
 
+func TestListAllTasks_CursorAllError(t *testing.T) {
+	var coll mongo.Collection
+	var cur mongo.Cursor
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
+	patches.ApplyMethodReturn(&cur, "All", errors.New("cursor all failed"))
+
+	svc := &Service{coll: &coll}
+	_, err := svc.ListAllTasks("")
+	if err == nil {
+		t.Fatal("expected cursor.All error")
+	}
+}
+
+func TestRetryTask_EnqueueError(t *testing.T) {
+	var coll mongo.Collection
+	var stream queue.Stream
+	var sr mongo.SingleResult
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodFunc(&coll, "FindOne", func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+		return &sr
+	})
+	patches.ApplyMethodFunc(&sr, "Decode", func(v interface{}) error {
+		tk := v.(*task.Task)
+		tk.ID = "task_123"
+		tk.Status = task.StatusFailed
+		tk.RetryCount = 0
+		return nil
+	})
+	patches.ApplyMethodReturn(&coll, "ReplaceOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodReturn(&stream, "Enqueue", errors.New("enqueue failed"))
+
+	svc := &Service{coll: &coll, stream: &stream}
+	err := svc.RetryTask("task_123")
+	if err == nil {
+		t.Fatal("expected enqueue error")
+	}
+}
+
 // Ensure bson is used
 var _ = bson.M{}

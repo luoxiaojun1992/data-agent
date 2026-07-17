@@ -3,7 +3,9 @@ package skill
 import (
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	skilldomain "github.com/luoxiaojun1992/data-agent/internal/domain/skill"
+	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 )
 
 func TestSQLExecutor_Name(t *testing.T) {
@@ -111,6 +113,78 @@ func TestSQLExecutor_Execute_RejectedQuery(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("Execute() should return error for rejected SQL")
+	}
+	if result != nil {
+		t.Error("Execute() should return nil result on error")
+	}
+}
+
+func TestSQLExecutor_Execute_Success(t *testing.T) {
+	patches := gomonkey.ApplyFunc(sqlpkg.Validate, func(sql string, params []interface{}) *sqlpkg.ValidationResult {
+		return &sqlpkg.ValidationResult{Allowed: true, Reason: "VALID SELECT"}
+	})
+	defer patches.Reset()
+
+	s := &SQLExecutor{}
+	ctx := skilldomain.SkillContext{UserID: "user1", Role: "user"}
+	result, err := s.Execute(ctx, map[string]any{
+		"query": "SELECT * FROM users WHERE id = ?",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	resultMap, ok := result.(map[string]any)
+	if !ok {
+		t.Fatal("result should be a map")
+	}
+	if resultMap["status"] != "validated" {
+		t.Errorf("status = %v, want 'validated'", resultMap["status"])
+	}
+	if resultMap["query"] != "SELECT * FROM users WHERE id = ?" {
+		t.Errorf("query = %v", resultMap["query"])
+	}
+}
+
+func TestSQLExecutor_Execute_WithBindParams(t *testing.T) {
+	patches := gomonkey.ApplyFunc(sqlpkg.Validate, func(sql string, params []interface{}) *sqlpkg.ValidationResult {
+		return &sqlpkg.ValidationResult{Allowed: true, Reason: "Parameterized query"}
+	})
+	defer patches.Reset()
+
+	s := &SQLExecutor{}
+	ctx := skilldomain.SkillContext{UserID: "user1", Role: "user"}
+	result, err := s.Execute(ctx, map[string]any{
+		"query":  "SELECT * FROM users WHERE status = ?",
+		"params": []interface{}{"active"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	resultMap := result.(map[string]any)
+	if resultMap["status"] != "validated" {
+		t.Errorf("status = %v, want 'validated'", resultMap["status"])
+	}
+}
+
+func TestSQLExecutor_Execute_ValidatorRejected(t *testing.T) {
+	patches := gomonkey.ApplyFunc(sqlpkg.Validate, func(sql string, params []interface{}) *sqlpkg.ValidationResult {
+		return &sqlpkg.ValidationResult{Allowed: false, Reason: "SQL injection detected"}
+	})
+	defer patches.Reset()
+
+	s := &SQLExecutor{}
+	ctx := skilldomain.SkillContext{UserID: "user1", Role: "user"}
+	result, err := s.Execute(ctx, map[string]any{
+		"query": "1; DROP TABLE users; --",
+	})
+	if err == nil {
+		t.Error("Execute() should return error for validator-rejected query")
 	}
 	if result != nil {
 		t.Error("Execute() should return nil result on error")

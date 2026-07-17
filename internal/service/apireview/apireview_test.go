@@ -347,5 +347,28 @@ func TestReject_UpdateError(t *testing.T) {
 	}
 }
 
+func TestListAll_NilReviews(t *testing.T) {
+	var coll mongo.Collection
+	var cur mongo.Cursor
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
+	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
+		// Don't populate — leaves slice nil
+		return nil
+	})
+
+	svc := &Service{coll: &coll}
+	reviews, err := svc.ListAll()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reviews == nil || len(reviews) != 0 {
+		t.Errorf("expected non-nil empty slice, got %v (len=%d)", reviews, len(reviews))
+	}
+}
+
 // Ensure bson is used (for compilation without gcflags issues)
 var _ = bson.M{}
