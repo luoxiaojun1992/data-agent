@@ -1,0 +1,8 @@
+# Minimal Hermes config for CI
+openai_api_key: test-key
+openai_base_url: http://mockllm:8082
+model_provider: openai
+model_name: mock-gpt-4o
+gateway:
+  host: "0.0.0.0"
+  port: 8642
