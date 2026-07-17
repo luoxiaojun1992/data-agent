@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
@@ -38,7 +39,10 @@ type ListResult struct {
 
 // List returns audit logs matching the filter params.
 func (s *Service) List(p ListParams) (*ListResult, error) {
-	filter := buildAuditFilter(p)
+	filter, err := buildAuditFilter(p)
+	if err != nil {
+		return nil, err
+	}
 	p.Limit = normalizeAuditLimit(p.Limit)
 
 	total, err := s.coll.CountDocuments(context.Background(), filter)
@@ -65,7 +69,7 @@ func (s *Service) List(p ListParams) (*ListResult, error) {
 }
 
 // buildAuditFilter builds the MongoDB filter from ListParams.
-func buildAuditFilter(p ListParams) bson.M {
+func buildAuditFilter(p ListParams) (bson.M, error) {
 	filter := bson.M{}
 	if p.Action != "" {
 		filter["action"] = p.Action
@@ -73,29 +77,37 @@ func buildAuditFilter(p ListParams) bson.M {
 	if p.UserID != "" {
 		filter["user_id"] = p.UserID
 	}
-	if dateFilter := buildDateFilter(p.Start, p.End); len(dateFilter) > 0 {
+	dateFilter, err := buildDateFilter(p.Start, p.End)
+	if err != nil {
+		return nil, err
+	}
+	if len(dateFilter) > 0 {
 		filter["created_at"] = dateFilter
 	}
-	return filter
+	return filter, nil
 }
 
 // buildDateFilter builds a date range filter from start/end strings.
-func buildDateFilter(start, end string) bson.M {
+func buildDateFilter(start, end string) (bson.M, error) {
 	if start == "" && end == "" {
-		return nil
+		return nil, nil
 	}
 	dateFilter := bson.M{}
 	if start != "" {
-		if t, err := time.Parse("2006-01-02", start); err == nil {
-			dateFilter["$gte"] = t
+		t, err := time.Parse("2006-01-02", start)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start date %q: must be YYYY-MM-DD", start)
 		}
+		dateFilter["$gte"] = t
 	}
 	if end != "" {
-		if t, err := time.Parse("2006-01-02", end); err == nil {
-			dateFilter["$lt"] = t.Add(24 * time.Hour)
+		t, err := time.Parse("2006-01-02", end)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end date %q: must be YYYY-MM-DD", end)
 		}
+		dateFilter["$lt"] = t.Add(24 * time.Hour)
 	}
-	return dateFilter
+	return dateFilter, nil
 }
 
 // normalizeAuditLimit clamps the limit parameter to valid bounds.

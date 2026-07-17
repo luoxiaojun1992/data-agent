@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -28,6 +29,9 @@ func TestNewService(t *testing.T) {
 	s := NewService(db, nil)
 	if s == nil {
 		t.Fatal("NewService should not return nil")
+	}
+	if s.coll != &coll {
+		t.Error("Service.coll should be the Collection returned by db.Collection")
 	}
 }
 
@@ -56,6 +60,15 @@ func TestCreateTask_Success(t *testing.T) {
 	}
 	if tk.UserID != "user1" {
 		t.Errorf("UserID: got %q, want %q", tk.UserID, "user1")
+	}
+	if tk.Type != "agent_exec" {
+		t.Errorf("Type: got %q, want %q", tk.Type, "agent_exec")
+	}
+	if len(tk.SkillChain) != 2 {
+		t.Fatalf("SkillChain length: got %d, want 2", len(tk.SkillChain))
+	}
+	if !reflect.DeepEqual(tk.Params, map[string]interface{}{"key": "val"}) {
+		t.Errorf("Params: got %v, want {key: val}", tk.Params)
 	}
 }
 
@@ -97,6 +110,10 @@ func TestGetTask_Success(t *testing.T) {
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 	patches.ApplyMethodFunc(&coll, "FindOne", func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+		f := filter.(bson.M)
+		if f["_id"] != "task_123" {
+			t.Errorf("FindOne filter _id: got %v, want task_123", f["_id"])
+		}
 		return &sr
 	})
 	patches.ApplyMethodFunc(&sr, "Decode", func(v interface{}) error {
@@ -115,6 +132,12 @@ func TestGetTask_Success(t *testing.T) {
 	}
 	if tk.ID != "task_123" {
 		t.Errorf("ID: got %q, want %q", tk.ID, "task_123")
+	}
+	if tk.Status != task.StatusRunning {
+		t.Errorf("Status: got %q, want %q", tk.Status, task.StatusRunning)
+	}
+	if tk.SessionID != "session1" {
+		t.Errorf("SessionID: got %q, want %q", tk.SessionID, "session1")
 	}
 }
 
@@ -159,7 +182,36 @@ func TestCancelTask_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "UpdateOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateOne", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		f := filter.(bson.M)
+		if f["_id"] != "task_123" {
+			t.Errorf("CancelTask filter _id: got %v, want task_123", f["_id"])
+		}
+		if statusFilter, ok := f["status"]; ok {
+			if sf, ok := statusFilter.(bson.M); ok {
+				if in, ok := sf["$in"].([]string); ok {
+					foundQueued, foundRunning := false, false
+					for _, s := range in {
+						if s == "queued" {
+							foundQueued = true
+						}
+						if s == "running" {
+							foundRunning = true
+						}
+					}
+					if !foundQueued || !foundRunning {
+						t.Errorf("CancelTask status filter $in: got %v, want [queued, running]", in)
+					}
+				}
+			}
+		}
+		u := update.(bson.M)
+		setOp := u["$set"].(bson.M)
+		if setOp["status"] != task.StatusCancelled {
+			t.Errorf("CancelTask update status: got %v, want %q", setOp["status"], task.StatusCancelled)
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.CancelTask("task_123")
@@ -188,7 +240,13 @@ func TestListTasks_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&coll, "Find", func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+		f := filter.(bson.M)
+		if f["user_id"] != "user1" {
+			t.Errorf("ListTasks filter user_id: got %v, want user1", f["user_id"])
+		}
+		return &cur, nil
+	})
 	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
 	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
 		return nil
@@ -240,7 +298,28 @@ func TestUpdateTaskProgress_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "UpdateOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateOne", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		f := filter.(bson.M)
+		if f["_id"] != "task_123" {
+			t.Errorf("UpdateTaskProgress filter _id: got %v, want task_123", f["_id"])
+		}
+		u := update.(bson.M)
+		setOp := u["$set"].(bson.M)
+		progress := setOp["progress"].(task.TaskProgress)
+		if progress.CurrentStep != 2 {
+			t.Errorf("Progress.CurrentStep: got %d, want 2", progress.CurrentStep)
+		}
+		if progress.TotalSteps != 5 {
+			t.Errorf("Progress.TotalSteps: got %d, want 5", progress.TotalSteps)
+		}
+		if progress.Percent != 40 {
+			t.Errorf("Progress.Percent: got %d, want 40", progress.Percent)
+		}
+		if progress.Message != "Processing step 2" {
+			t.Errorf("Progress.Message: got %q", progress.Message)
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.UpdateTaskProgress("task_123", task.TaskProgress{
@@ -273,7 +352,28 @@ func TestUpdateTaskResult_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "UpdateOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateOne", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		f := filter.(bson.M)
+		if f["_id"] != "task_123" {
+			t.Errorf("UpdateTaskResult filter _id: got %v, want task_123", f["_id"])
+		}
+		u := update.(bson.M)
+		setOp := u["$set"].(bson.M)
+		if setOp["status"] != task.StatusCompleted {
+			t.Errorf("UpdateTaskResult status: got %v, want %q", setOp["status"], task.StatusCompleted)
+		}
+		result := setOp["result"].(map[string]interface{})
+		if result["output"] != "done" {
+			t.Errorf("UpdateTaskResult result.output: got %v, want done", result["output"])
+		}
+		if setOp["duration_ms"] != int64(1500) {
+			t.Errorf("UpdateTaskResult duration_ms: got %v, want 1500", setOp["duration_ms"])
+		}
+		if setOp["error"] != "" {
+			t.Errorf("UpdateTaskResult error: got %v, want empty", setOp["error"])
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.UpdateTaskResult("task_123", task.StatusCompleted, map[string]interface{}{"output": "done"}, "", 1500)
@@ -301,7 +401,18 @@ func TestUpdateStatus_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "UpdateOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateOne", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		f := filter.(bson.M)
+		if f["_id"] != "task_123" {
+			t.Errorf("UpdateStatus filter _id: got %v, want task_123", f["_id"])
+		}
+		u := update.(bson.M)
+		setOp := u["$set"].(bson.M)
+		if setOp["status"] != "paused" {
+			t.Errorf("UpdateStatus status: got %v, want paused", setOp["status"])
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.UpdateStatus("task_123", "paused")
@@ -352,7 +463,13 @@ func TestListAllTasks_WithStatusFilter(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&coll, "Find", func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+		f := filter.(bson.M)
+		if f["status"] != string(task.StatusRunning) {
+			t.Errorf("ListAllTasks status filter: got %v, want %q", f["status"], task.StatusRunning)
+		}
+		return &cur, nil
+	})
 	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
 	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
 		slice := results.(*[]task.Task)
@@ -371,6 +488,11 @@ func TestListAllTasks_WithStatusFilter(t *testing.T) {
 	if len(tasks) != 2 {
 		t.Fatalf("expected 2 tasks, got %d", len(tasks))
 	}
+	for i, tk := range tasks {
+		if tk.Status != task.StatusRunning {
+			t.Errorf("task[%d] status: got %q, want %q", i, tk.Status, task.StatusRunning)
+		}
+	}
 }
 
 func TestListAllTasks_AllFilter(t *testing.T) {
@@ -379,7 +501,13 @@ func TestListAllTasks_AllFilter(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&coll, "Find", func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+		f := filter.(bson.M)
+		if _, ok := f["status"]; ok {
+			t.Error("ListAllTasks with 'all' filter should not have status filter")
+		}
+		return &cur, nil
+	})
 	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
 	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
 		return nil
@@ -412,11 +540,7 @@ func TestListAllTasks_FindError(t *testing.T) {
 func TestRetryTask_Success(t *testing.T) {
 	var coll mongo.Collection
 	var stream queue.Stream
-
-	// GetTask -> FindOne + Decode
 	var sr mongo.SingleResult
-	// RetryTask's s.coll.ReplaceOne
-	// RetryTask's s.stream.Enqueue
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
@@ -430,7 +554,20 @@ func TestRetryTask_Success(t *testing.T) {
 		tk.RetryCount = 0
 		return nil
 	})
-	patches.ApplyMethodReturn(&coll, "ReplaceOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "ReplaceOne", func(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (*mongo.UpdateResult, error) {
+		f := filter.(bson.M)
+		if f["_id"] != "task_123" {
+			t.Errorf("ReplaceOne filter _id: got %v, want task_123", f["_id"])
+		}
+		tk := replacement.(*task.Task)
+		if tk.Status != task.StatusQueued {
+			t.Errorf("RetryTask status: got %q, want %q", tk.Status, task.StatusQueued)
+		}
+		if tk.RetryCount != 1 {
+			t.Errorf("RetryTask retry_count: got %d, want 1", tk.RetryCount)
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 	patches.ApplyMethodReturn(&stream, "Enqueue", nil)
 
 	svc := &Service{coll: &coll, stream: &stream}
@@ -511,7 +648,38 @@ func TestBatchCancelTasks_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "UpdateMany", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateMany", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		f := filter.(bson.M)
+		if ids, ok := f["_id"].(bson.M)["$in"].([]string); ok {
+			if len(ids) != 2 || ids[0] != "task_1" || ids[1] != "task_2" {
+				t.Errorf("BatchCancelTasks ids: got %v, want [task_1, task_2]", ids)
+			}
+		}
+		if statusFilter, ok := f["status"]; ok {
+			if sf, ok := statusFilter.(bson.M); ok {
+				if in, ok := sf["$in"].([]string); ok {
+					foundQueued, foundRunning := false, false
+					for _, s := range in {
+						if s == "queued" {
+							foundQueued = true
+						}
+						if s == "running" {
+							foundRunning = true
+						}
+					}
+					if !foundQueued || !foundRunning {
+						t.Errorf("BatchCancelTasks status filter missing queued/running")
+					}
+				}
+			}
+		}
+		u := update.(bson.M)
+		setOp := u["$set"].(bson.M)
+		if setOp["status"] != task.StatusCancelled {
+			t.Errorf("BatchCancelTasks update status: got %v, want %q", setOp["status"], task.StatusCancelled)
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.BatchCancelTasks([]string{"task_1", "task_2"})

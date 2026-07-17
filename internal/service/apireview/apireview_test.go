@@ -32,6 +32,9 @@ func TestNewService(t *testing.T) {
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}
+	if s.coll != &coll {
+		t.Error("Service.coll should be the Collection returned by db.Collection")
+	}
 }
 
 func TestCreate_Success(t *testing.T) {
@@ -51,11 +54,29 @@ func TestCreate_Success(t *testing.T) {
 	if r.Name != "test-api" {
 		t.Errorf("Name: got %q, want %q", r.Name, "test-api")
 	}
+	if r.FileName != "test.json" {
+		t.Errorf("FileName: got %q, want %q", r.FileName, "test.json")
+	}
+	if r.Domain != "example.com" {
+		t.Errorf("Domain: got %q, want %q", r.Domain, "example.com")
+	}
+	if r.Version != "3.0" {
+		t.Errorf("Version: got %q, want %q", r.Version, "3.0")
+	}
+	if r.Endpoints != 10 {
+		t.Errorf("Endpoints: got %d, want 10", r.Endpoints)
+	}
+	if r.RateLimit != 100 {
+		t.Errorf("RateLimit: got %d, want 100", r.RateLimit)
+	}
 	if r.Status != apireview.StatusPending {
 		t.Errorf("Status: got %q, want %q", r.Status, apireview.StatusPending)
 	}
 	if r.Submitter != "user1" {
 		t.Errorf("Submitter: got %q, want %q", r.Submitter, "user1")
+	}
+	if r.ID == "" {
+		t.Error("ID should not be empty")
 	}
 }
 
@@ -97,6 +118,9 @@ func TestListAll_Success(t *testing.T) {
 	if len(reviews) != 2 {
 		t.Fatalf("expected 2 reviews, got %d", len(reviews))
 	}
+	if reviews[0].ID != "r1" {
+		t.Errorf("reviews[0].ID: got %q, want r1", reviews[0].ID)
+	}
 }
 
 func TestListAll_FindError(t *testing.T) {
@@ -136,11 +160,9 @@ func TestApprove_Success(t *testing.T) {
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 
-	// Mock FindOne to return SingleResult
 	patches.ApplyMethodFunc(&coll, "FindOne", func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
 		return &sr
 	})
-	// Mock Decode to populate the review
 	patches.ApplyMethodFunc(&sr, "Decode", func(v interface{}) error {
 		r := v.(*apireview.APIReview)
 		r.ID = "apirev_test1234"
@@ -149,8 +171,17 @@ func TestApprove_Success(t *testing.T) {
 		r.Submitter = "user1"
 		return nil
 	})
-	// Mock UpdateOne for the approval
-	patches.ApplyMethodReturn(&coll, "UpdateOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateOne", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		u := update.(bson.M)
+		setOp := u["$set"].(bson.M)
+		if setOp["status"] != apireview.StatusApproved {
+			t.Errorf("Approve status: got %v, want %q", setOp["status"], apireview.StatusApproved)
+		}
+		if setOp["reviewer"] != "reviewer1" {
+			t.Errorf("Approve reviewer: got %v, want reviewer1", setOp["reviewer"])
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.Approve("apirev_test1234", "reviewer1")
@@ -189,7 +220,7 @@ func TestApprove_NotPending(t *testing.T) {
 	patches.ApplyMethodFunc(&sr, "Decode", func(v interface{}) error {
 		r := v.(*apireview.APIReview)
 		r.ID = "apirev_test1234"
-		r.Status = apireview.StatusApproved // already approved
+		r.Status = apireview.StatusApproved
 		r.Submitter = "user1"
 		return nil
 	})
@@ -214,7 +245,7 @@ func TestApprove_SelfReview(t *testing.T) {
 		r := v.(*apireview.APIReview)
 		r.ID = "apirev_test1234"
 		r.Status = apireview.StatusPending
-		r.Submitter = "reviewer1" // same as reviewer
+		r.Submitter = "reviewer1"
 		return nil
 	})
 
@@ -265,7 +296,20 @@ func TestReject_Success(t *testing.T) {
 		r.Status = apireview.StatusPending
 		return nil
 	})
-	patches.ApplyMethodReturn(&coll, "UpdateOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateOne", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		u := update.(bson.M)
+		setOp := u["$set"].(bson.M)
+		if setOp["status"] != apireview.StatusRejected {
+			t.Errorf("Reject status: got %v, want %q", setOp["status"], apireview.StatusRejected)
+		}
+		if setOp["reviewer"] != "reviewer1" {
+			t.Errorf("Reject reviewer: got %v, want reviewer1", setOp["reviewer"])
+		}
+		if setOp["reject_reason"] != "not good enough" {
+			t.Errorf("Reject reason: got %v, want 'not good enough'", setOp["reject_reason"])
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.Reject("apirev_test1234", "reviewer1", "not good enough")
@@ -312,7 +356,7 @@ func TestReject_NotPending(t *testing.T) {
 	patches.ApplyMethodFunc(&sr, "Decode", func(v interface{}) error {
 		r := v.(*apireview.APIReview)
 		r.ID = "apirev_test1234"
-		r.Status = apireview.StatusRejected // already rejected
+		r.Status = apireview.StatusRejected
 		return nil
 	})
 
@@ -356,7 +400,6 @@ func TestListAll_NilReviews(t *testing.T) {
 	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
 	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
 	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
-		// Don't populate — leaves slice nil
 		return nil
 	})
 
@@ -370,5 +413,5 @@ func TestListAll_NilReviews(t *testing.T) {
 	}
 }
 
-// Ensure bson is used (for compilation without gcflags issues)
+// Ensure bson is used
 var _ = bson.M{}

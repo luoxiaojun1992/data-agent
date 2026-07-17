@@ -22,6 +22,9 @@ func TestNewService(t *testing.T) {
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}
+	if s.coll != &coll {
+		t.Error("Service.coll should be the Collection returned by db.Collection")
+	}
 }
 
 func TestSend_Success(t *testing.T) {
@@ -42,11 +45,17 @@ func TestSend_Success(t *testing.T) {
 	if n.Title != "Test Title" {
 		t.Errorf("Title: got %q, want %q", n.Title, "Test Title")
 	}
+	if n.Content != "Test Content" {
+		t.Errorf("Content: got %q, want %q", n.Content, "Test Content")
+	}
 	if n.Type != "info" {
 		t.Errorf("Type: got %q, want %q", n.Type, "info")
 	}
 	if len(n.TargetIDs) != 2 {
 		t.Errorf("TargetIDs length: got %d, want 2", len(n.TargetIDs))
+	}
+	if n.TargetAll {
+		t.Error("TargetAll should be false for targeted send")
 	}
 }
 
@@ -85,6 +94,12 @@ func TestBroadcast_Success(t *testing.T) {
 	if n.Title != "System Update" {
 		t.Errorf("Title: got %q", n.Title)
 	}
+	if n.Content != "All systems operational" {
+		t.Errorf("Content: got %q", n.Content)
+	}
+	if len(n.TargetIDs) != 0 {
+		t.Errorf("TargetIDs should be empty for broadcast, got %d items", len(n.TargetIDs))
+	}
 }
 
 func TestBroadcast_InsertError(t *testing.T) {
@@ -107,7 +122,17 @@ func TestListForUser_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&coll, "Find", func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+		f := filter.(bson.M)
+		if or, ok := f["$or"]; ok {
+			if _, ok := or.([]bson.M); !ok {
+				t.Error("ListForUser filter should have $or with array")
+			}
+		} else {
+			t.Error("ListForUser filter should have $or condition")
+		}
+		return &cur, nil
+	})
 	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
 	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
 		slice := results.(*[]model.Notification)
@@ -125,6 +150,12 @@ func TestListForUser_Success(t *testing.T) {
 	}
 	if len(list) != 2 {
 		t.Fatalf("expected 2 notifications, got %d", len(list))
+	}
+	if list[0].Title != "Notif 1" {
+		t.Errorf("list[0].Title: got %q", list[0].Title)
+	}
+	if list[1].Title != "Notif 2" {
+		t.Errorf("list[1].Title: got %q", list[1].Title)
 	}
 }
 
@@ -186,7 +217,15 @@ func TestUnreadCount_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "CountDocuments", int64(5), nil)
+	patches.ApplyMethodFunc(&coll, "CountDocuments", func(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+		f := filter.(bson.M)
+		if or, ok := f["$or"]; ok {
+			if _, ok := or.([]bson.M); !ok {
+				t.Error("UnreadCount filter should have $or with array")
+			}
+		}
+		return int64(5), nil
+	})
 
 	svc := &Service{coll: &coll}
 	count, err := svc.UnreadCount("user1")
@@ -217,10 +256,19 @@ func TestMarkRead_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "UpdateOne", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateOne", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		u := update.(bson.M)
+		if addToSet, ok := u["$addToSet"]; ok {
+			if addToSetMap, ok := addToSet.(bson.M); ok {
+				if addToSetMap["read_by"] != "user1" {
+					t.Errorf("MarkRead read_by: got %v, want user1", addToSetMap["read_by"])
+				}
+			}
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
-	// Use a valid ObjectID hex string (24 hex chars)
 	err := svc.MarkRead("507f1f77bcf86cd799439011", "user1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -254,7 +302,17 @@ func TestMarkAllRead_Success(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "UpdateMany", &mongo.UpdateResult{}, nil)
+	patches.ApplyMethodFunc(&coll, "UpdateMany", func(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+		u := update.(bson.M)
+		if addToSet, ok := u["$addToSet"]; ok {
+			if addToSetMap, ok := addToSet.(bson.M); ok {
+				if addToSetMap["read_by"] != "user1" {
+					t.Errorf("MarkAllRead read_by: got %v, want user1", addToSetMap["read_by"])
+				}
+			}
+		}
+		return &mongo.UpdateResult{}, nil
+	})
 
 	svc := &Service{coll: &coll}
 	err := svc.MarkAllRead("user1")
