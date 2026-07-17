@@ -343,6 +343,23 @@ type errorReader struct{ err error }
 
 func (e *errorReader) Read(p []byte) (int, error) { return 0, e.err }
 
+func TestOpenAIProvider_ChatStream_NewRequestError(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	// Mock http.NewRequestWithContext to fail
+	patches := gomonkey.ApplyFunc(http.NewRequestWithContext,
+		func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
+			return nil, fmt.Errorf("cannot create request")
+		})
+	defer patches.Reset()
+
+	err := p.ChatStream(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error on NewRequestWithContext failure")
+	}
+}
+
 func TestOpenAIProvider_Chat_InvalidJSON(t *testing.T) {
 	p := NewOpenAIProvider("https://api.example.com", "sk-test")
 	respBody := io.NopCloser(bytes.NewReader([]byte(`not json`)))
