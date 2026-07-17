@@ -28,7 +28,12 @@ jobs:
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck -show verbose ./... || echo "::warning::govulncheck found indirect dependency vulns (e.g., quic-go/http3 from gin). These do not affect current HTTP usage. Will address in dependency cleanup task."
+          govulncheck -show verbose ./... 2>&1 | tee govulncheck.log
+          # Allow indirect-dependency vulns that don't affect runtime
+          # quic-go/http3 vulns are from gin indirect dep — not in our HTTP stack
+          if grep -q "Vulnerability #" govulncheck.log; then
+            echo "::warning::govulncheck found vulnerabilities — check log"
+          fi
         continue-on-error: true
 
   sonarqube:
@@ -42,8 +47,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run SonarQube Scanner
+        id: scan
         run: docker compose -f docker-compose-sonar-check.yml up --abort-on-container-exit --exit-code-from sonar-scanner sonar-scanner
 
+      - name: Quality Gate — Blockers & Criticals
+        if: always()
+        run: |
+          echo "=== SonarQube Quality Gate ==="
+          REPORT="scanner-report/sonar-issues.json"
+          if [ ! -f "$REPORT" ]; then
+            echo "WARNING: No SonarQube report found — skipping gate"
+            exit 0
+          fi
+          python3 tests/ci/sonar-quality-gate.py "$REPORT"
       - name: Upload SonarQube Report artifact
         if: always()
         uses: actions/upload-artifact@v4

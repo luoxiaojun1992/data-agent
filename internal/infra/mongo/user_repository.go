@@ -8,8 +8,8 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // UserRepository handles user data access.
@@ -166,11 +166,17 @@ func (r *UserRepository) ListSorted(ctx context.Context, role string, skip, limi
 	}
 
 	opts := options.Find()
-	if skip > 0 { opts.SetSkip(skip) }
-	if limit > 0 { opts.SetLimit(limit) }
+	if skip > 0 {
+		opts.SetSkip(skip)
+	}
+	if limit > 0 {
+		opts.SetLimit(limit)
+	}
 	if sortBy != "" {
 		order := -1 // desc
-		if sortOrder == "asc" { order = 1 }
+		if sortOrder == "asc" {
+			order = 1
+		}
 		opts.SetSort(bson.D{{Key: sortBy, Value: order}})
 	}
 

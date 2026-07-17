@@ -76,17 +76,17 @@ func NewTask(sessionID, userID, taskType string, skillChain []string, params map
 
 // ScheduledTask represents a cron-scheduled task (MongoDB).
 type ScheduledTask struct {
-	ID          string                 `bson:"_id" json:"scheduled_task_id"`
-	UserID      string                 `bson:"user_id" json:"user_id"`
-	Name        string                 `bson:"name" json:"name"`
-	CronExpr    string                 `bson:"cron_expr" json:"cron_expr"`
-	SkillChain  []string               `bson:"skill_chain" json:"skill_chain"`
-	Params      map[string]interface{} `bson:"params" json:"params"`
-	Status      string                 `bson:"status" json:"status"` // active, paused, deleted
-	LastRunAt   *time.Time             `bson:"last_run_at,omitempty" json:"last_run_at,omitempty"`
-	NextRunAt   *time.Time             `bson:"next_run_at,omitempty" json:"next_run_at,omitempty"`
-	FailCount   int                    `bson:"fail_count" json:"fail_count"`
-	CreatedAt   time.Time              `bson:"created_at" json:"created_at"`
+	ID         string                 `bson:"_id" json:"scheduled_task_id"`
+	UserID     string                 `bson:"user_id" json:"user_id"`
+	Name       string                 `bson:"name" json:"name"`
+	CronExpr   string                 `bson:"cron_expr" json:"cron_expr"`
+	SkillChain []string               `bson:"skill_chain" json:"skill_chain"`
+	Params     map[string]interface{} `bson:"params" json:"params"`
+	Status     string                 `bson:"status" json:"status"` // active, paused, deleted
+	LastRunAt  *time.Time             `bson:"last_run_at,omitempty" json:"last_run_at,omitempty"`
+	NextRunAt  *time.Time             `bson:"next_run_at,omitempty" json:"next_run_at,omitempty"`
+	FailCount  int                    `bson:"fail_count" json:"fail_count"`
+	CreatedAt  time.Time              `bson:"created_at" json:"created_at"`
 }
 
 // QueueMessage is the JSON message format for Redis Stream.

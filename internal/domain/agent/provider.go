@@ -141,43 +141,51 @@ func (p *OpenAIProvider) doRequest(ctx context.Context, req ChatRequest, stream 
 	return respBody, nil
 }
 
+// sseEventProcessor handles processing a single SSE event line.
+type sseEventProcessor struct {
+	callback func(chunk string) error
+}
+
+// processLine processes a single SSE data line and returns true if [DONE] was received.
+func (p *sseEventProcessor) processLine(line string) (done bool, err error) {
+	if len(line) <= 6 || line[:6] != "data: " {
+		return false, nil
+	}
+	data := line[6:]
+	if data == "[DONE]" {
+		return true, nil
+	}
+	var chunk struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		return false, nil
+	}
+	if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+		if err := p.callback(chunk.Choices[0].Delta.Content); err != nil {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
 // parseSSEStream reads an SSE stream and calls callback for each data chunk.
 func parseSSEStream(r io.Reader, callback func(chunk string) error) error {
 	buf := make([]byte, 4096)
 	var remaining []byte
+	proc := &sseEventProcessor{callback: callback}
 
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
 			remaining = append(remaining, buf[:n]...)
-			for {
-				idx := bytes.Index(remaining, []byte("\n\n"))
-				if idx == -1 {
-					break
-				}
-				line := string(remaining[:idx])
-				remaining = remaining[idx+2:]
-
-				if len(line) > 6 && line[:6] == "data: " {
-					data := line[6:]
-					if data == "[DONE]" {
-						return nil
-					}
-					var chunk struct {
-						Choices []struct {
-							Delta struct {
-								Content string `json:"content"`
-							} `json:"delta"`
-						} `json:"choices"`
-					}
-					if err := json.Unmarshal([]byte(data), &chunk); err == nil {
-						if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-							if err := callback(chunk.Choices[0].Delta.Content); err != nil {
-								return err
-							}
-						}
-					}
-				}
+			done, cbErr := proc.processBuffer(&remaining)
+			if done || cbErr != nil {
+				return cbErr
 			}
 		}
 		if err == io.EOF {
@@ -188,4 +196,22 @@ func parseSSEStream(r io.Reader, callback func(chunk string) error) error {
 		}
 	}
 	return nil
+}
+
+// processBuffer processes all complete events in the accumulated buffer.
+// Returns (done=true, nil) if [DONE] was received.
+func (p *sseEventProcessor) processBuffer(remaining *[]byte) (bool, error) {
+	for {
+		idx := bytes.Index(*remaining, []byte("\n\n"))
+		if idx == -1 {
+			return false, nil
+		}
+		line := string((*remaining)[:idx])
+		*remaining = (*remaining)[idx+2:]
+
+		done, err := p.processLine(line)
+		if done || err != nil {
+			return done, err
+		}
+	}
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	knowledgepkg "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	skilldomain "github.com/luoxiaojun1992/data-agent/internal/domain/skill"
+	knowledgepkg "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 )
 
 // KnowledgeSearch implements skill.Skill for knowledge base search.
@@ -18,8 +18,10 @@ func NewKnowledgeSearch(kbService *knowledgepkg.Service) *KnowledgeSearch {
 	return &KnowledgeSearch{kbService: kbService}
 }
 
-func (s *KnowledgeSearch) Name() string        { return "knowledge_search" }
-func (s *KnowledgeSearch) Description() string { return "Searches the knowledge base with full-text and semantic search capabilities" }
+func (s *KnowledgeSearch) Name() string { return "knowledge_search" }
+func (s *KnowledgeSearch) Description() string {
+	return "Searches the knowledge base with full-text and semantic search capabilities"
+}
 
 func (s *KnowledgeSearch) Parameters() []skilldomain.Parameter {
 	return []skilldomain.Parameter{
@@ -73,10 +75,10 @@ func (s *KnowledgeSearch) Execute(ctx skilldomain.SkillContext, params map[strin
 	var formatted []map[string]any
 	for _, r := range results {
 		formatted = append(formatted, map[string]any{
-			"doc_id":    r.DocID,
-			"title":     r.DocTitle,
-			"content":   truncateContent(r.Content, 500),
-			"score":     r.Score,
+			"doc_id":  r.DocID,
+			"title":   r.DocTitle,
+			"content": truncateContent(r.Content, 500),
+			"score":   r.Score,
 		})
 	}
 

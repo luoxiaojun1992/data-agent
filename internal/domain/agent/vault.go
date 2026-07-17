@@ -14,7 +14,7 @@ import (
 // Secret represents an encrypted secret stored in Vault.
 type Secret struct {
 	Key       string    `json:"key"`
-	Value     string    `json:"-"`  // encrypted base64
+	Value     string    `json:"-"` // encrypted base64
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 }

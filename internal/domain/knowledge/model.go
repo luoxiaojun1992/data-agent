@@ -8,26 +8,26 @@ import (
 type DocStatus string
 
 const (
-	StatusUploaded   DocStatus = "uploaded"
-	StatusParsing    DocStatus = "parsing"
-	StatusIndexing   DocStatus = "indexing"
-	StatusReady      DocStatus = "ready"
-	StatusFailed     DocStatus = "failed"
+	StatusUploaded DocStatus = "uploaded"
+	StatusParsing  DocStatus = "parsing"
+	StatusIndexing DocStatus = "indexing"
+	StatusReady    DocStatus = "ready"
+	StatusFailed   DocStatus = "failed"
 )
 
 // KnowledgeDoc represents a knowledge base document metadata (MongoDB).
 type KnowledgeDoc struct {
-	ID          string    `bson:"_id" json:"id"`
-	UserID      string    `bson:"user_id" json:"user_id"`
-	Title       string    `bson:"title" json:"title"`
-	FileName    string    `bson:"file_name" json:"file_name"`
-	FileType    string    `bson:"file_type" json:"file_type"` // pdf, docx, xlsx, md, txt
-	SizeBytes   int64     `bson:"size_bytes" json:"size_bytes"`
-	Status      DocStatus `bson:"status" json:"status"`
-	ChunkCount  int       `bson:"chunk_count" json:"chunk_count"`
-	GridFSFileID string   `bson:"gridfs_file_id,omitempty" json:"gridfs_file_id,omitempty"`
-	CreatedAt   time.Time `bson:"created_at" json:"created_at"`
-	UpdatedAt   time.Time `bson:"updated_at" json:"updated_at"`
+	ID           string    `bson:"_id" json:"id"`
+	UserID       string    `bson:"user_id" json:"user_id"`
+	Title        string    `bson:"title" json:"title"`
+	FileName     string    `bson:"file_name" json:"file_name"`
+	FileType     string    `bson:"file_type" json:"file_type"` // pdf, docx, xlsx, md, txt
+	SizeBytes    int64     `bson:"size_bytes" json:"size_bytes"`
+	Status       DocStatus `bson:"status" json:"status"`
+	ChunkCount   int       `bson:"chunk_count" json:"chunk_count"`
+	GridFSFileID string    `bson:"gridfs_file_id,omitempty" json:"gridfs_file_id,omitempty"`
+	CreatedAt    time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt    time.Time `bson:"updated_at" json:"updated_at"`
 }
 
 // DocContent stores the parsed text content (MongoDB GridFS).
@@ -54,7 +54,7 @@ type Chunk struct {
 type IndexTask struct {
 	ID        string    `bson:"_id" json:"id"`
 	DocID     string    `bson:"doc_id" json:"doc_id"`
-	Status    string    `bson:"status" json:"status"` // pending, running, completed, failed
+	Status    string    `bson:"status" json:"status"`     // pending, running, completed, failed
 	Progress  int       `bson:"progress" json:"progress"` // 0-100
 	Error     string    `bson:"error,omitempty" json:"error,omitempty"`
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`

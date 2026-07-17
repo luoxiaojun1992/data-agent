@@ -13,8 +13,8 @@ import (
 
 // Config holds Feishu IM configuration.
 type Config struct {
-	AppID     string
-	AppSecret string
+	AppID       string
+	AppSecret   string
 	VerifyToken string
 }
 
@@ -28,16 +28,16 @@ type Message struct {
 
 // CardMessage represents a Feishu interactive card.
 type CardMessage struct {
-	Title   string          `json:"title"`
-	Content string          `json:"content"`
-	Actions []CardAction    `json:"actions,omitempty"`
+	Title   string       `json:"title"`
+	Content string       `json:"content"`
+	Actions []CardAction `json:"actions,omitempty"`
 }
 
 // CardAction represents an action button in a card.
 type CardAction struct {
-	Text  string `json:"text"`
-	URL   string `json:"url"`
-	Type  string `json:"type"` // "primary", "default", "danger"
+	Text string `json:"text"`
+	URL  string `json:"url"`
+	Type string `json:"type"` // "primary", "default", "danger"
 }
 
 // Service handles Feishu IM integration.
@@ -123,9 +123,9 @@ func (s *Service) WebhookHandler() http.HandlerFunc {
 
 		// Verify Feishu challenge
 		var challenge struct {
-			Type    string `json:"type"`
+			Type      string `json:"type"`
 			Challenge string `json:"challenge"`
-			Token   string `json:"token"`
+			Token     string `json:"token"`
 		}
 		if err := json.Unmarshal(body, &challenge); err == nil && challenge.Type == "url_verification" {
 			w.Header().Set("Content-Type", "application/json")

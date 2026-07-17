@@ -3,15 +3,17 @@ package skill
 import (
 	"fmt"
 
-	reportpkg "github.com/luoxiaojun1992/data-agent/internal/logic/report"
 	skilldomain "github.com/luoxiaojun1992/data-agent/internal/domain/skill"
+	reportpkg "github.com/luoxiaojun1992/data-agent/internal/logic/report"
 )
 
 // SaveReport implements skill.Skill for saving and validating analysis reports.
 type SaveReport struct{}
 
-func (s *SaveReport) Name() string        { return "save_report" }
-func (s *SaveReport) Description() string { return "Validates and saves analysis reports, ensuring mandatory sections are present" }
+func (s *SaveReport) Name() string { return "save_report" }
+func (s *SaveReport) Description() string {
+	return "Validates and saves analysis reports, ensuring mandatory sections are present"
+}
 
 func (s *SaveReport) Parameters() []skilldomain.Parameter {
 	return []skilldomain.Parameter{

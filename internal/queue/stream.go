@@ -92,8 +92,8 @@ func (s *Stream) MoveToDLQ(ctx context.Context, msgID string, data []byte) error
 	_, err := s.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: dlqKey,
 		Values: map[string]interface{}{
-			"data":       string(data),
-			"failed_at":  time.Now().Format(time.RFC3339),
+			"data":        string(data),
+			"failed_at":   time.Now().Format(time.RFC3339),
 			"original_id": msgID,
 		},
 	}).Result()

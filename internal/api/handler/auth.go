@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/consts"
 )
 
 // AuthHandler handles authentication-related HTTP endpoints.
@@ -23,7 +24,7 @@ func NewAuthHandler(authService *authsvc.Service) *AuthHandler {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req authsvc.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq + ": " + err.Error()})
 		return
 	}
 
@@ -47,7 +48,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	var req authsvc.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq + ": " + err.Error()})
 		return
 	}
 
@@ -105,7 +106,7 @@ func (h *AuthHandler) CreateInvite(c *gin.Context) {
 
 	var req authsvc.CreateInviteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq + ": " + err.Error()})
 		return
 	}
 
@@ -197,7 +198,7 @@ func (h *AuthHandler) VerifyInvite(c *gin.Context) {
 func (h *AuthHandler) CompleteRegistration(c *gin.Context) {
 	var req authsvc.CompleteRegistrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq + ": " + err.Error()})
 		return
 	}
 
@@ -215,7 +216,7 @@ func (h *AuthHandler) CompleteRegistration(c *gin.Context) {
 func (h *AuthHandler) UpdateHMACSecret(c *gin.Context) {
 	var req authsvc.UpdateHMACSecretRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq + ": " + err.Error()})
 		return
 	}
 

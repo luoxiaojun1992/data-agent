@@ -9,13 +9,13 @@ import (
 
 // Config holds all configuration for the DataAgent server.
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Mongo    MongoConfig    `mapstructure:"mongo"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	Qdrant   QdrantConfig   `mapstructure:"qdrant"`
+	Server    ServerConfig    `mapstructure:"server"`
+	Mongo     MongoConfig     `mapstructure:"mongo"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	Qdrant    QdrantConfig    `mapstructure:"qdrant"`
 	SeaweedFS SeaweedFSConfig `mapstructure:"seaweedfs"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	Log      LogConfig      `mapstructure:"log"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	Log       LogConfig       `mapstructure:"log"`
 }
 
 type ServerConfig struct {

@@ -28,30 +28,40 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 	now := time.Now()
 	t := &DashboardTrends{}
 
-	// 24h call trend — tasks by hour
-	hourBuckets := make([]int, 6) // 4-hour buckets: 0,4,8,12,16,20
+	t.CallTrend = computeCallTrend(tasks, now)
+	t.DurationDist = computeDurationDist(tasks)
+	t.ReqDist = t.CallTrend
+	t.SuccessTrend = computeSuccessTrend(tasks, now)
+	t.TokenTrend = computeTokenTrend(t.CallTrend)
+	t.OutputStats = computeOutputStats(tasks)
+	t.ROITrend = computeROITrend(tasks, now)
+
+	return t
+}
+
+func computeCallTrend(tasks []task.Task, now time.Time) []TrendPoint {
+	hourBuckets := make([]int, 6)
 	hourLabels := []string{"0时", "4时", "8时", "12时", "16时", "20时"}
-	nowHour := now.Hour()
+	bucketValues := []int{0, 4, 8, 12, 16, 20}
 
 	for _, task := range tasks {
-		age := now.Sub(task.CreatedAt)
-		if age > 24*time.Hour {
+		if now.Sub(task.CreatedAt) > 24*time.Hour {
 			continue
 		}
-		// Map task creation hour to nearest 4-hour bucket
-		taskHour := task.CreatedAt.Hour()
-		bucket := findClosestBucket(taskHour, []int{0, 4, 8, 12, 16, 20})
+		bucket := findClosestBucket(task.CreatedAt.Hour(), bucketValues)
 		if bucket >= 0 {
 			hourBuckets[bucket]++
 		}
 	}
-	_ = nowHour
 
+	var trend []TrendPoint
 	for i, count := range hourBuckets {
-		t.CallTrend = append(t.CallTrend, TrendPoint{Label: hourLabels[i], Value: count})
+		trend = append(trend, TrendPoint{Label: hourLabels[i], Value: count})
 	}
+	return trend
+}
 
-	// Duration distribution
+func computeDurationDist(tasks []task.Task) []TrendPoint {
 	durBuckets := []struct {
 		label  string
 		maxDur time.Duration
@@ -75,14 +85,14 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 			}
 		}
 	}
+	var trend []TrendPoint
 	for _, b := range durBuckets {
-		t.DurationDist = append(t.DurationDist, TrendPoint{Label: b.label, Value: b.count})
+		trend = append(trend, TrendPoint{Label: b.label, Value: b.count})
 	}
+	return trend
+}
 
-	// 24h request distribution — same as call trend
-	t.ReqDist = t.CallTrend
-
-	// Success rate trend — last 7 days
+func computeSuccessTrend(tasks []task.Task, now time.Time) []TrendPoint {
 	dayBuckets := make([]completedFailed, 7)
 	dayLabels := []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 	for _, task := range tasks {
@@ -91,41 +101,55 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 			continue
 		}
 		day := int(age.Hours()/24) % 7
-		if string(task.Status) == "completed" {
-			dayBuckets[day].completed++
-		} else if string(task.Status) == "failed" {
-			dayBuckets[day].failed++
-		}
+		countByStatus(&dayBuckets[day], task.Status)
 	}
+	var trend []TrendPoint
 	for i, b := range dayBuckets {
 		total := b.completed + b.failed
 		rate := 100
 		if total > 0 {
 			rate = (b.completed * 100) / total
 		}
-		t.SuccessTrend = append(t.SuccessTrend, TrendPoint{Label: dayLabels[i], Value: rate})
+		trend = append(trend, TrendPoint{Label: dayLabels[i], Value: rate})
 	}
+	return trend
+}
 
-	// Token trend — estimate from task count (real token tracking needs model integration)
-	for _, p := range t.CallTrend {
-		t.TokenTrend = append(t.TokenTrend, TrendPoint{Label: p.Label, Value: p.Value * 500})
+func countByStatus(cf *completedFailed, status task.Status) {
+	switch status {
+	case task.StatusCompleted:
+		cf.completed++
+	case task.StatusFailed:
+		cf.failed++
 	}
+}
 
-	// Output stats — count by task type/skill
+func computeTokenTrend(callTrend []TrendPoint) []TrendPoint {
+	var trend []TrendPoint
+	for _, p := range callTrend {
+		trend = append(trend, TrendPoint{Label: p.Label, Value: p.Value * 500})
+	}
+	return trend
+}
+
+func computeOutputStats(tasks []task.Task) []TrendPoint {
 	typeCount := make(map[string]int)
 	for _, task := range tasks {
 		for _, s := range task.SkillChain {
 			typeCount[s]++
 		}
 	}
+	var trend []TrendPoint
 	for typ, count := range typeCount {
-		t.OutputStats = append(t.OutputStats, TrendPoint{Label: typ, Value: count})
+		trend = append(trend, TrendPoint{Label: typ, Value: count})
 	}
-	if len(t.OutputStats) == 0 {
-		t.OutputStats = []TrendPoint{{Label: "report", Value: 0}, {Label: "sql", Value: 0}}
+	if len(trend) == 0 {
+		trend = []TrendPoint{{Label: "report", Value: 0}, {Label: "sql", Value: 0}}
 	}
+	return trend
+}
 
-	// ROI trend — correlate task count with output count (weekly)
+func computeROITrend(tasks []task.Task, now time.Time) []TrendPoint {
 	weeklyROI := make([]int, 4)
 	labels := []string{"W1", "W2", "W3", "W4"}
 	for _, task := range tasks {
@@ -138,11 +162,11 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 			weeklyROI[week]++
 		}
 	}
+	var trend []TrendPoint
 	for i, c := range weeklyROI {
-		t.ROITrend = append(t.ROITrend, TrendPoint{Label: labels[i], Value: c})
+		trend = append(trend, TrendPoint{Label: labels[i], Value: c})
 	}
-
-	return t
+	return trend
 }
 
 type completedFailed struct {

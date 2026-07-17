@@ -14,7 +14,7 @@ import (
 type Session struct {
 	ID            string     `json:"id" bson:"_id"`
 	UserID        string     `json:"user_id" bson:"user_id"`
-	Type          string     `json:"type" bson:"type"`   // "chat" or "agent"
+	Type          string     `json:"type" bson:"type"`     // "chat" or "agent"
 	Status        string     `json:"status" bson:"status"` // "active", "expired", "deleted"
 	CreatedAt     time.Time  `json:"created_at" bson:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at" bson:"updated_at"`
@@ -25,8 +25,8 @@ type Session struct {
 
 // Manager handles session lifecycle with MongoDB persistence.
 type Manager struct {
-	coll     *mongo.Collection
-	ttl      time.Duration
+	coll *mongo.Collection
+	ttl  time.Duration
 }
 
 // NewManager creates a session manager with MongoDB persistence.
@@ -151,8 +151,8 @@ func (m *Manager) Restore(id string) error {
 	now := time.Now()
 	res, err := m.coll.UpdateOne(context.Background(),
 		bson.M{
-			"_id":           id,
-			"deleted_at":    bson.M{"$ne": nil},
+			"_id":            id,
+			"deleted_at":     bson.M{"$ne": nil},
 			"recovery_until": bson.M{"$gte": now},
 		},
 		bson.M{"$set": bson.M{

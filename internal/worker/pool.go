@@ -94,52 +94,54 @@ func (p *Pool) runWorker(ctx context.Context, consumerID string) {
 		}
 
 		for _, msg := range msgs {
-			data, ok := msg.Values["data"]
-			if !ok {
-				continue
-			}
-
-			var qm task.QueueMessage
-			if err := json.Unmarshal([]byte(data.(string)), &qm); err != nil {
-				log.Printf("Failed to parse queue message: %v", err)
-				continue
-			}
-
-			t := &task.Task{
-				ID:         qm.TaskID,
-				SessionID:  qm.SessionID,
-				UserID:     qm.UserID,
-				Type:       qm.Type,
-				SkillChain: qm.SkillChain,
-				Params:     qm.Params,
-				Status:     task.StatusRunning,
-			}
-
-			start := time.Now()
-			err = p.executor.Execute(ctx, t)
-			duration := time.Since(start).Milliseconds()
-
-			if err != nil {
-				t.RetryCount++
-				if t.RetryCount >= t.MaxRetries {
-					t.Status = task.StatusFailed
-					// Move to DLQ after max retries
-					_ = p.queue.MoveToDLQ(ctx, msg.ID, []byte(data.(string)))
-				} else {
-					t.Status = task.StatusRetrying
-				}
-			} else {
-				t.Status = task.StatusCompleted
-			}
-
-			t.DurationMs = duration
-			now := time.Now()
-			t.CompletedAt = &now
-
-			// Acknowledge processing
-			_ = p.queue.Ack(ctx, msg.ID)
+			p.processWorkerMessage(ctx, msg)
 		}
 	}
+}
+
+func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
+	data, ok := msg.Values["data"]
+	if !ok {
+		return
+	}
+
+	var qm task.QueueMessage
+	if err := json.Unmarshal([]byte(data.(string)), &qm); err != nil {
+		log.Printf("Failed to parse queue message: %v", err)
+		return
+	}
+
+	t := &task.Task{
+		ID:         qm.TaskID,
+		SessionID:  qm.SessionID,
+		UserID:     qm.UserID,
+		Type:       qm.Type,
+		SkillChain: qm.SkillChain,
+		Params:     qm.Params,
+		Status:     task.StatusRunning,
+	}
+
+	start := time.Now()
+	err := p.executor.Execute(ctx, t)
+	duration := time.Since(start).Milliseconds()
+
+	if err != nil {
+		t.RetryCount++
+		if t.RetryCount >= t.MaxRetries {
+			t.Status = task.StatusFailed
+			_ = p.queue.MoveToDLQ(ctx, msg.ID, []byte(data.(string)))
+		} else {
+			t.Status = task.StatusRetrying
+		}
+	} else {
+		t.Status = task.StatusCompleted
+	}
+
+	t.DurationMs = duration
+	now := time.Now()
+	t.CompletedAt = &now
+
+	_ = p.queue.Ack(ctx, msg.ID)
 }
 
 // heartbeat periodically updates worker health status in Redis.

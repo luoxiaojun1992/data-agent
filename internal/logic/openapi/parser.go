@@ -2,18 +2,18 @@ package openapi
 
 // APIDef represents a parsed OpenAPI definition.
 type APIDef struct {
-	Title       string       `json:"title"`
-	Version     string       `json:"version"`
-	BaseURL     string       `json:"base_url"`
-	Endpoints   []Endpoint   `json:"endpoints"`
+	Title     string     `json:"title"`
+	Version   string     `json:"version"`
+	BaseURL   string     `json:"base_url"`
+	Endpoints []Endpoint `json:"endpoints"`
 }
 
 // Endpoint represents an API endpoint.
 type Endpoint struct {
-	Path        string   `json:"path"`
-	Method      string   `json:"method"`
-	Summary     string   `json:"summary"`
-	Parameters  []Param  `json:"parameters"`
+	Path       string  `json:"path"`
+	Method     string  `json:"method"`
+	Summary    string  `json:"summary"`
+	Parameters []Param `json:"parameters"`
 }
 
 // Param represents an API parameter.

@@ -3,15 +3,17 @@ package skill
 import (
 	"fmt"
 
-	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 	skilldomain "github.com/luoxiaojun1992/data-agent/internal/domain/skill"
+	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 )
 
 // StatsEngine implements skill.Skill for statistical analysis.
 type StatsEngine struct{}
 
-func (s *StatsEngine) Name() string        { return "stats_engine" }
-func (s *StatsEngine) Description() string { return "Performs statistical analysis: descriptive stats, linear regression, time series decomposition" }
+func (s *StatsEngine) Name() string { return "stats_engine" }
+func (s *StatsEngine) Description() string {
+	return "Performs statistical analysis: descriptive stats, linear regression, time series decomposition"
+}
 
 func (s *StatsEngine) Parameters() []skilldomain.Parameter {
 	return []skilldomain.Parameter{
