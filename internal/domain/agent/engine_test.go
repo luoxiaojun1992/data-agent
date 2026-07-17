@@ -453,11 +453,46 @@ func TestEngine_RunStream_AuditInputError(t *testing.T) {
 	}
 }
 
+func TestEngine_RunStream_ChatStreamError(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{failMode: true}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{} // auditor present, so hits the security path
+	e := NewEngine(r, nil, auditor)
+
+	err := e.RunStream(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "safe"}},
+	}, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error when ChatStream fails with auditor present")
+	}
+}
+
+func TestEngine_RunStream_AuditOutputError(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{failOutput: true}
+	e := NewEngine(r, nil, auditor)
+
+	err := e.RunStream(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "safe"}},
+	}, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error on output audit failure")
+	}
+}
+
 // ===== mockAuditor =====
 
 type mockAuditor struct {
 	failInput    bool
 	failToolCall bool
+	failOutput   bool
 }
 
 func (m *mockAuditor) AuditInput(content string) error {
@@ -475,6 +510,9 @@ func (m *mockAuditor) AuditToolCall(name string, params map[string]any) error {
 }
 
 func (m *mockAuditor) AuditOutput(content string) (string, error) {
+	if m.failOutput {
+		return "", fmt.Errorf("output audit failed")
+	}
 	return "sanitized output", nil
 }
 
