@@ -342,3 +342,51 @@ func TestOpenAIProvider_ChatStream_RequestError(t *testing.T) {
 type errorReader struct{ err error }
 
 func (e *errorReader) Read(p []byte) (int, error) { return 0, e.err }
+
+func TestOpenAIProvider_Chat_InvalidJSON(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	respBody := io.NopCloser(bytes.NewReader([]byte(`not json`)))
+	resp := &http.Response{StatusCode: 200, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	_, err := p.Chat(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("should error on invalid JSON response")
+	}
+}
+
+func TestOpenAIProvider_ChatStream_WithTools(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	sseData := sseChunk("ok") + "data: [DONE]\n\n"
+	respBody := io.NopCloser(bytes.NewReader([]byte(sseData)))
+	resp := &http.Response{StatusCode: 200, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	err := p.ChatStream(context.Background(), ChatRequest{
+		Model:    "gpt-4",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+		Tools:    []ToolDef{{Name: "search"}},
+	}, func(chunk string) error { return nil })
+	if err != nil {
+		t.Fatalf("ChatStream with tools: %v", err)
+	}
+}
+
+func TestOpenAIProvider_ChatStream_MarshalError(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	patches := gomonkey.ApplyFunc(json.Marshal, func(v interface{}) ([]byte, error) {
+		return nil, fmt.Errorf("marshal error")
+	})
+	defer patches.Reset()
+
+	err := p.ChatStream(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error on marshal failure")
+	}
+}
