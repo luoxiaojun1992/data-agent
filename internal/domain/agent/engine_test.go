@@ -106,7 +106,7 @@ func TestSkillRegistryAdapter_Get_Empty(t *testing.T) {
 	}
 }
 
-func TestSkillRegistryAdapter_List_Empty(t *testing.T) {
+func TestStubAdapter_List_Empty(t *testing.T) {
 	a := NewSkillRegistryAdapter()
 	list := a.List()
 	if len(list) != 0 {
