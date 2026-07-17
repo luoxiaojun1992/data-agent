@@ -251,25 +251,106 @@ const responses = [
 
 **说明**: mockllm 已验证支持 LPUSH/LPOP 队列 — 同 key 多次注入即为 FIFO 队列。但工具调用链 E2E 的完整验证需依赖 **SPEC-048（ADK ReAct loop 迁移）**。迁移完成前，工具调用测试降级为 API 直调（见 §1.7）。
 
-### 5.3 Dashboard 真实数据（`tests/ui/dashboard-integration.spec.ts`）
+### 5.3 Mem0 长期记忆（`tests/ui/mem0.spec.ts`）
 
 #### 5.3.1 用例设计
 
 | 用例 ID | 标题 | 优先级 | 关键断言 |
 |---------|------|:------:|----------|
-| UI-221 | Dashboard — KPI 显示真实任务数 | P0 | 创建 5 个 Task → KPI 数值 = 5 |
-| UI-222 | Dashboard — KPI 显示真实文档数 | P0 | 索引 3 个 KB Doc → 知识库文档 KPI = 3 |
-| UI-223 | Dashboard — 任务状态分布准确 | P0 | 创建 2 completed + 1 failed + 1 running → 饼图数据正确 |
-| UI-224 | Dashboard — 24h 趋势有时间戳分布 | P0 | 创建 6 小时内任务 → 24h 柱状图非空且分布合理 |
-| UI-225 | Dashboard — Token KPI 非 0 | P1 | 创建 ≥1 已完成任务 → Token 消耗显示非 0 |
-| UI-226 | Dashboard — ROI 随任务数变化 | P1 | 创建 N 个任务 → ROI 数值按公式计算正确 |
-| UI-227 | Dashboard — 多用户隔离 | P0 | 用户 A 创建的数据不出现在用户 B 的 Dashboard |
-| UI-228 | Dashboard — 时间筛选有效 | P1 | 本周筛选时，本周任务显示而上周任务不显示 |
+| UI-219 | Mem0 — 会话自动写入记忆 | P0 | Chat 后搜索该会话关键词 → MemoryService 命中 |
+| UI-220 | Mem0 — memory_search 工具调用 | P0 | LLM 主动调 memory_search → 回答引用记忆内容 |
+| UI-221 | Mem0 — 多用户隔离 | P0 | 用户 B 搜不到用户 A 的记忆 |
+| UI-222 | Mem0 — 长对话压缩后记忆保留 | P1 | 50 轮后 token 不爆炸，关键信息仍可检索 |
 
 #### 5.3.2 核心测试代码模式
 
 ```typescript
-test('[UI-221] Dashboard — KPI 显示真实任务数', async ({ page, request }) => {
+test('[UI-219] Mem0 — 会话自动写入记忆', async ({ page, request }) => {
+  const token = await loginAsUser(request);
+  
+  // 1. 第一轮对话：用户说关键信息
+  await seedMock(request, '我叫张三，最喜欢的项目是 Alpha', '好的，记住了');
+  await page.locator('[data-testid="chat-input"]').fill('我叫张三，最喜欢的项目是 Alpha');
+  await page.locator('[data-testid="chat-send-btn"]').click();
+  await expect(page.locator('[data-testid^="chat-msg-ai-"]').last()).toBeVisible();
+  
+  // 2. 等待 ADK Runner 自动写入 Mem0（write 是副作用）
+  await page.waitForTimeout(3000);
+  
+  // 3. 直接搜 MemoryService 验证
+  const memRes = await request.get(`${API_BASE}/admin/memory/search`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { query: 'Alpha 项目', user_id: USER_ID },
+  });
+  const memories = await memRes.json();
+  expect(memories.results.length).toBeGreaterThanOrEqual(1);
+  expect(memories.results.some(m => m.memory.includes('Alpha'))).toBe(true);
+});
+
+test('[UI-220] Mem0 — memory_search 工具调用', async ({ page, request }) => {
+  // seed 第一轮
+  await seedMock(request, '我叫张三，最喜欢的项目是 Alpha', '好的');
+  // 第二轮：LLM 应调 memory_search 查记忆
+  await seedMock(request, '我叫什么名字', '根据记忆，你叫张三');  // ADK ReAct loop 自动处理
+  await page.locator('[data-testid="chat-input"]').fill('我叫什么名字');
+  await page.locator('[data-testid="chat-send-btn"]').click();
+  await expect(page.locator('[data-testid^="chat-msg-ai-"]').last()).toContainText('张三');
+});
+
+test('[UI-221] Mem0 — 多用户隔离', async ({ page, request }) => {
+  // 用户 A 写
+  await loginAndChat(request, USER_A, '我是用户A', '好的');
+  // 等写入
+  await page.waitForTimeout(3000);
+  
+  // 用户 B 搜
+  const tokenB = await loginAsUserB(request);
+  const memRes = await request.get(`${API_BASE}/admin/memory/search`, {
+    headers: { Authorization: `Bearer ${tokenB}` },
+    params: { query: '用户A', user_id: USER_B_ID },
+  });
+  const memories = await memRes.json();
+  expect(memories.results.length).toBe(0);
+});
+
+test('[UI-222] Mem0 — 长对话压缩后记忆保留', async ({ page, request }) => {
+  // 发送 50 轮对话触发 CompactionConfig (maxEvents=50)
+  for (let i = 0; i < 50; i++) {
+    await seedMock(request, `这是第${i}轮消息`, `回复${i}`);
+    await page.locator('[data-testid="chat-input"]').fill(`这是第${i}轮消息`);
+    await page.locator('[data-testid="chat-send-btn"]').click();
+    await page.waitForTimeout(100);
+  }
+  
+  // 关键信息：第 1 轮说的
+  const memRes = await request.get(`${API_BASE}/admin/memory/search`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { query: '第0轮消息', user_id: USER_ID },
+  });
+  // 压缩后摘要应保留关键信息
+  expect(memRes.ok()).toBe(true);
+});
+```
+
+### 5.4 Dashboard 真实数据（`tests/ui/dashboard-integration.spec.ts`）
+
+#### 5.4.1 用例设计
+
+| 用例 ID | 标题 | 优先级 | 关键断言 |
+|---------|------|:------:|----------|
+| UI-229 | Dashboard — KPI 显示真实任务数 | P0 | 创建 5 个 Task → KPI 数值 = 5 |
+| UI-230 | Dashboard — KPI 显示真实文档数 | P0 | 索引 3 个 KB Doc → 知识库文档 KPI = 3 |
+| UI-231 | Dashboard — 任务状态分布准确 | P0 | 创建 2 completed + 1 failed + 1 running → 饼图数据正确 |
+| UI-232 | Dashboard — 24h 趋势有时间戳分布 | P0 | 创建 6 小时内任务 → 24h 柱状图非空且分布合理 |
+| UI-233 | Dashboard — Token KPI 非 0 | P1 | 创建 ≥1 已完成任务 → Token 消耗显示非 0 |
+| UI-234 | Dashboard — ROI 随任务数变化 | P1 | 创建 N 个任务 → ROI 数值按公式计算正确 |
+| UI-235 | Dashboard — 多用户隔离 | P0 | 用户 A 创建的数据不出现在用户 B 的 Dashboard |
+| UI-236 | Dashboard — 时间筛选有效 | P1 | 本周筛选时，本周任务显示而上周任务不显示 |
+
+#### 5.3.2 核心测试代码模式
+
+```typescript
+test('[UI-229] Dashboard — KPI 显示真实任务数', async ({ page, request }) => {
   const token = await loginAsAdmin(request);
   
   // 1. 创建 5 个真实任务
@@ -306,7 +387,7 @@ test('[UI-221] Dashboard — KPI 显示真实任务数', async ({ page, request 
 #### 5.3.3 时间筛选真实数据验证
 
 ```typescript
-test('[UI-228] Dashboard — 时间筛选有效', async ({ page, request }) => {
+test('[UI-236] Dashboard — 时间筛选有效', async ({ page, request }) => {
   const token = await loginAsAdmin(request);
   
   // 创建本周任务和上周任务（通过修改 created_at 字段）
@@ -355,6 +436,7 @@ test('[UI-228] Dashboard — 时间筛选有效', async ({ page, request }) => {
 | `tests/ui/kb-integration.spec.ts` | New module | New（~300 行，6 用例） |
 | `tests/ui/tool-call.spec.ts` | New module | New（~400 行，8 用例） |
 | `tests/ui/dashboard-integration.spec.ts` | New module | New（~350 行，8 用例） |
+| `tests/ui/mem0.spec.ts` | New module | New（~250 行，4 用例） |
 | `tests/ui/utils/mongo-query.ts` | New helper | New（~100 行） |
 | `tests/ui/fixtures/data/dashboard-fixture.ts` | New data helper | New（~120 行） |
 | `tests/ui/fixtures/data/kb-index-fixture.ts` | New data helper | New（~100 行） |
@@ -362,14 +444,14 @@ test('[UI-228] Dashboard — 时间筛选有效', async ({ page, request }) => {
 | `tests/ui/fixtures/files/kb-finance.md` | New fixture | New |
 | `tests/ui/fixtures/files/kb-sales.md` | New fixture | New |
 | `tests/ui/fixtures/files/sales-data.csv` | New fixture | New |
-| `tests/ui/coverage/cases.json` | Add new IDs | Edit（添加 UI-204~228） |
+| `tests/ui/coverage/cases.json` | Add new IDs | Edit（添加 UI-204~236） |
 | `tests/ui/kb.spec.ts` | Strengthen | Edit（合并部分用例到 integration spec） |
 | `tests/ui/dashboard.spec.ts` | Strengthen | Edit（合并部分用例到 integration spec） |
 | `tests/ui/chat.spec.ts` | Strengthen | Edit（增加响应内容验证） |
 | `tests/ui/agent.spec.ts` | Strengthen | Edit（增加完整任务生命周期） |
 | `internal/api/handler/knowledge.go` | Add status endpoint | Edit（可选，便于测试断言） |
 | `.github/workflows/ui-tests.yml` | Update coverage | Edit（增加新用例 ID 列表） |
-| `docs/DataAgent-UI测试用例文档.md` | Sync docs | Edit（添加 UI-204~228 章节） |
+| `docs/DataAgent-UI测试用例文档.md` | Sync docs | Edit（添加 UI-204~236 章节） |
 
 ## 8. 测试策略
 
@@ -388,8 +470,9 @@ test('[UI-228] Dashboard — 时间筛选有效', async ({ page, request }) => {
 |------|------|----------|
 | 1. KB 索引全链路 | UI-204~209 | ~30s（等待索引） |
 | 2. 工具调用链 | UI-211~218 | ~60s（多轮 SSE） |
-| 3. Dashboard 真实数据 | UI-221~228 | ~45s（数据生成） |
-| 4. 现有用例强化 | UI-024/025/029/030 + Agent | +30s |
+| 3. Mem0 长期记忆 | UI-219~222 | ~60s（含 50 轮长对话） |
+| 4. Dashboard 真实数据 | UI-229~236 | ~45s（数据生成） |
+| 5. 现有用例强化 | UI-024/025/029/030 + Agent | +30s |
 
 ### 8.4 审计
 
@@ -426,7 +509,7 @@ test('[UI-228] Dashboard — 时间筛选有效', async ({ page, request }) => {
 | 指标 | 当前 | 目标 |
 |------|------|------|
 | 假性用例数（仅验证可见性） | ~40 | 0 |
-| 真实集成用例数 | 0 | 22 (UI-204~228) |
+| 真实集成用例数 | 0 | 26 (UI-204~236) |
 | 用例平均行为断言数 | 1.2 | ≥ 2.5 |
 | 测试执行时间 | ~3 分钟 | ~5 分钟 |
 | CI 失败定位准确率 | 70% | 95%（失败时附后端日志） |
@@ -436,7 +519,7 @@ test('[UI-228] Dashboard — 时间筛选有效', async ({ page, request }) => {
 
 ### 10.2 通过/失败判据
 
-- ✅ 所有 22 个新用例通过
+- ✅ 所有 26 个新用例通过
 - ✅ 现有 4 个 spec 文件强化后无回归
 - ✅ CI sonar-check + ui-tests 同时通过
 - ✅ 主分支 Dashboard 截图（手动验证）显示真实 KPI 数值（非 0）
@@ -460,7 +543,8 @@ test('[UI-228] Dashboard — 时间筛选有效', async ({ page, request }) => {
 | 1. SPEC-048 步骤 1-4 | ADK 迁移基础（Session 适配 + Skill 改写 + Runner） | 无 |
 | 2. KB 索引端到端 | UI-204~209（6 用例） | SPEC-048 步骤 1-2（session.Service 就绪） |
 | 3. 工具调用链端到端 | UI-211~218（8 用例） | SPEC-048 步骤 3-4（ReAct loop 就绪） |
-| 4. Dashboard 真实数据 | UI-221~228（8 用例）+ 现有用例强化 | SPEC-048 步骤 3-4 |
-| 5. CI 联调 + 文档同步 + 截图验证 | — | 以上全部 |
+| 4. Mem0 长期记忆 | UI-219~222（4 用例） | SPEC-048 步骤 5（Mem0 + Embedding 就绪） |
+| 5. Dashboard 真实数据 | UI-229~236（8 用例）+ 现有用例强化 | SPEC-048 步骤 3-4 |
+| 6. CI 联调 + 文档同步 + 截图验证 | — | 以上全部 |
 
 每步均需通过 CI 才能进入下一步（沿用「禁止绕过 CI」红线规则）。
