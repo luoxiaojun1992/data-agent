@@ -406,7 +406,7 @@ func (m *mockProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse
 	}
 	resp := &ChatResponse{Content: "mock response"}
 	if m.withToolCalls {
-		resp.ToolCalls = []ToolCall{{Name: "search", Arguments: ""}}
+		resp.ToolCalls = []ToolCall{{Name: "search", Arguments: map[string]interface{}{"q": "test"}}}
 	}
 	return resp, nil
 }
