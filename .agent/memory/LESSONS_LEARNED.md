@@ -128,3 +128,76 @@ go test -race -gcflags=all=-l -count=1 -coverprofile=coverage.out \
 go tool cover -func=coverage.out | grep total | awk '{print $3}'
 # 阈值: >= 98%
 ```
+
+---
+
+## 调试
+
+### CI 测试失败：下载截图 + 日志定位
+tests 在 CI 失败时，**不要猜测原因**。先拉 failure screenshot 和 artifact：
+
+**1. 下载失败截图（Playwright 自动捕获）**
+```bash
+TOKEN=$(cat .github-pat)
+RUN_ID=$(curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/runs?branch=main&per_page=5" \
+  | python3 -c "import sys,json; runs=[r for r in json.load(sys.stdin).get('workflow_runs',[]) if r['name']=='UI Tests' and r['conclusion']=='failure']; print(runs[0]['id'])")
+
+ARTIFACT_ID=$(curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/runs/${RUN_ID}/artifacts" \
+  | python3 -c "import sys,json; [print(a['id']) for a in json.load(sys.stdin).get('artifacts',[]) if a['name']=='test-results']")
+
+curl -sL -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/artifacts/${ARTIFACT_ID}/zip" \
+  -o /tmp/ci-results.zip
+unzip -l /tmp/ci-results.zip | grep test-failed
+```
+
+**2. 下载完整 CI 日志**
+```bash
+curl -sL -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/actions/runs/${RUN_ID}/logs" \
+  -o /tmp/ci-logs.zip
+unzip -p /tmp/ci-logs.zip "ui-tests/5_Run services + E2E tests.txt" | grep "mockllm\|\[DEBUG\]"
+unzip -p /tmp/ci-logs.zip "ui-tests/6_Show service logs (on failure).txt" | grep "✘"
+```
+
+**分析顺序**: 截图 → mockllm 日志 → backend 日志 → 前端 code
+
+### 本地脚本验证（隔离复现）
+当怀疑某段逻辑在 CI 环境异常时，先用独立脚本在本地复现，**禁猜测**：
+- 脚本必须使用与生产代码完全相同的输入数据和 regex pattern
+- 若本地正常而 CI 异常，检查编译环境差异（`CGO_ENABLED`、基础镜像、Go 版本）
+- 无法本地复现时不要断言"Go 有 bug"，先查代码逻辑（如 `Compile()` 是否调用）
+
+### 查资料定位环境差异
+regex 在本地 macOS 正常（21µs），在 CI alpine 容器中挂起 12 秒的排查路径：
+1. 检查 `Dockerfile` → 发现 `CGO_ENABLED=0`，排除 musl/glibc 差异
+2. `grep -rn "Compile"` → 发现仅 `UpdateRules` 中调用，`NewAuditor` 未调用
+3. 确认 `matchRule` 按值传参 → `rule.compiled = compiled` 只改副本 → 循环变量仍为 nil
+**结论**: 不是 Go regex 引擎 bug，是 `Compile()` 未预编译 + 按值传递导致 nil regex。
+
+### Panic 日志注入
+在怀疑 panic 的位置加 `defer/recover`，同时打印 panic value 和关键上下文变量：
+```go
+func() {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf("PANIC in rule %s: %v, input_len=%d, compiled=%v",
+                rule.Name, r, len(result), rule.compiled != nil)
+        }
+    }()
+    result = rule.compiled.ReplaceAllStringFunc(result, ...)
+}()
+```
+注意 `defer/recover` 只捕获当前 goroutine 的 panic，且必须在直接调用链上。
+
+### Debug 日志分层
+按模块加前缀便于 grep 过滤，统一用 `log.Printf("[DEBUG module] message")` 格式：
+```
+[DEBUG chat]      — handler 路由、RunStream 错误
+[DEBUG security]  — auditor: AuditOutput 每个规则、panic、耗时
+[DEBUG]           — engine: RunStream 内部
+[DEBUG]           — mockllm: responses POST/DELETE、chat request、popResponse
+```
+不要写 `fmt.Println` 或无前缀 `log.Printf`。
