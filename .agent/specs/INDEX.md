@@ -59,6 +59,9 @@
 | SPEC-043 | Mock Model Service — 测试用模型模拟服务 | **P8 前置** | [spec-043-mock-model-service.md](spec-043-mock-model-service.md) | ✅ 已实现 |
 | SPEC-044 | 邀请注册系统 — 移除自由注册，改为邀请制 | **P9** | [spec-044-invite-registration.md](spec-044-invite-registration.md) | ✅ 已实现 |
 | SPEC-045 | Go Service 单元测试全覆盖 — 98% 底线，CI 门禁 | **P10** | [spec-045-go-service-ut.md](spec-045-go-service-ut.md) | 📐 设计中 |
+| SPEC-046 | UI E2E 测试增强与真实集成验证（KB 索引 / 工具调用 / Dashboard 数据） | **P11** | [spec-046-ui-test-integration.md](spec-046-ui-test-integration.md) | 📐 设计中 |
+| SPEC-047 | 主分支 UI 截图审查与布局修复（9 个 bug） | **P11** | [spec-047-ui-screenshot-bugfix.md](spec-047-ui-screenshot-bugfix.md) | 📐 设计中 |
+| SPEC-048 | 引擎层迁移 Google ADK — ReAct loop / Session 压缩 / 模型路由 | **P11** | [spec-048-adk-migration.md](spec-048-adk-migration.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -83,6 +86,9 @@
 | **P8** | SPEC-017 ~ SPEC-042 | UI E2E 测试设计 | SPEC-043 (Mock Model Service), SPEC-001 ~ SPEC-016 (全部已实现) |
 | **P9** | SPEC-044 | 邀请注册系统 | SPEC-003 (用户模型 + JWT), SPEC-023 (User Mgmt) |
 | **P10** | SPEC-045 | Go Service 单元测试全覆盖 | SPEC-002 (CI), SPEC-014 (原测试体系), SPEC-003~013 (待测服务) |
+| **P11** | SPEC-048 | 引擎层迁移 Google ADK | SPEC-004, SPEC-006, SPEC-008, SPEC-043 |
+| **P11** | SPEC-046 | UI E2E 真实集成验证 | **SPEC-048 (ADK 迁移)**, SPEC-022, SPEC-028, SPEC-043 |
+| **P11** | SPEC-047 | UI 截图审查与布局修复 | SPEC-017~042, SPEC-046 (联动) |
 
 ### 依赖流向（简化）
 
