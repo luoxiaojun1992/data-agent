@@ -90,8 +90,12 @@ func (s *Service) HandleChat(c *gin.Context) {
 		return
 	}
 
+	s.handleNonStreamChat(c, req)
+}
+
+// handleNonStreamChat processes a non-streaming chat request.
+func (s *Service) handleNonStreamChat(c *gin.Context, req ChatRequest) {
 	log.Printf("[DEBUG chat] HandleChat: routing to non-stream, messages=%d", len(req.Messages))
-	// Non-stream mode
 	agentReq := agent.ChatRequest{
 		Model:    req.Model,
 		Messages: req.Messages,

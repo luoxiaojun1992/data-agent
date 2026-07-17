@@ -634,77 +634,79 @@ func getUserHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
 }
 
 func createUserHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if userRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
-			return
-		}
-		var req struct {
-			Username string           `json:"username"`
-			Password string           `json:"password"`
-			Role     model.UserRole   `json:"role"`
-			Status   model.UserStatus `json:"status"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
-			return
-		}
-		if req.Username == "" || req.Password == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
-			return
-		}
-		if req.Role == "" {
-			req.Role = model.RoleUser
-		}
-		if req.Status == "" {
-			req.Status = model.StatusEnabled
-		}
+	return func(c *gin.Context) { handleCreateUser(c, userRepo) }
+}
 
-		if req.Role == model.RoleSystemAdmin {
-			hasAdmin, err := userRepo.HasSystemAdmin(c.Request.Context())
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			if hasAdmin {
-				c.JSON(http.StatusConflict, gin.H{"error": "\u7cfb\u7edf\u7ba1\u7406\u5458\u5df2\u5b58\u5728\uff0c\u65e0\u6cd5\u521b\u5efa"})
-				return
-			}
-		}
-
-		existing, err := userRepo.FindByUsername(c.Request.Context(), req.Username)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		if existing != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "\u8be5\u90ae\u7bb1\u5df2\u88ab\u6ce8\u518c"})
-			return
-		}
-
-		hash, err := middleware.HashPassword(req.Password)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
-			return
-		}
-
-		user := &model.User{
-			Username:     req.Username,
-			PasswordHash: hash,
-			Role:         req.Role,
-			Status:       req.Status,
-		}
-		if err := userRepo.Create(c.Request.Context(), user); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusCreated, gin.H{
-			"id":       user.ID.Hex(),
-			"username": user.Username,
-			"role":     user.Role,
-			"status":   user.Status,
-		})
+func handleCreateUser(c *gin.Context, userRepo *mongoinfra.UserRepository) {
+	if userRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
+		return
 	}
+	var req struct {
+		Username string           `json:"username"`
+		Password string           `json:"password"`
+		Role     model.UserRole   `json:"role"`
+		Status   model.UserStatus `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
+		return
+	}
+	if req.Username == "" || req.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+		return
+	}
+	if req.Role == "" {
+		req.Role = model.RoleUser
+	}
+	if req.Status == "" {
+		req.Status = model.StatusEnabled
+	}
+
+	if req.Role == model.RoleSystemAdmin {
+		hasAdmin, err := userRepo.HasSystemAdmin(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if hasAdmin {
+			c.JSON(http.StatusConflict, gin.H{"error": "\u7cfb\u7edf\u7ba1\u7406\u5458\u5df2\u5b58\u5728\uff0c\u65e0\u6cd5\u521b\u5efa"})
+			return
+		}
+	}
+
+	existing, err := userRepo.FindByUsername(c.Request.Context(), req.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if existing != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "\u8be5\u90ae\u7bb1\u5df2\u88ab\u6ce8\u518c"})
+		return
+	}
+
+	hash, err := middleware.HashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+		return
+	}
+
+	user := &model.User{
+		Username:     req.Username,
+		PasswordHash: hash,
+		Role:         req.Role,
+		Status:       req.Status,
+	}
+	if err := userRepo.Create(c.Request.Context(), user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":       user.ID.Hex(),
+		"username": user.Username,
+		"role":     user.Role,
+		"status":   user.Status,
+	})
 }
 
 func updateUserRoleHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
@@ -930,92 +932,106 @@ func setupModelConfig(api *gin.RouterGroup, systemConfigRepo *mongoinfra.SystemC
 }
 
 func getModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		configs := gin.H{
-			"api_url":        "https://api.openai.com/v1",
-			"api_key_exists": false,
-			"model_name":     "gpt-4o",
-			"context_len":    128000,
-			"max_output":     16000,
-			"temperature":    0.7,
-			"top_p":          0.95,
-			"hermes_url":     "http://hermes:8081",
-			"hermes_model":   "hermes-3-70b",
+	return func(c *gin.Context) { handleGetModelConfig(c, systemConfigRepo) }
+}
+
+func handleGetModelConfig(c *gin.Context, systemConfigRepo *mongoinfra.SystemConfigRepository) {
+	configs := gin.H{
+		"api_url":        "https://api.openai.com/v1",
+		"api_key_exists": false,
+		"model_name":     "gpt-4o",
+		"context_len":    128000,
+		"max_output":     16000,
+		"temperature":    0.7,
+		"top_p":          0.95,
+		"hermes_url":     "http://hermes:8081",
+		"hermes_model":   "hermes-3-70b",
+	}
+	if systemConfigRepo != nil {
+		dbConfigs, _ := systemConfigRepo.GetAll(c.Request.Context(), "model")
+		result := gin.H{}
+		for _, cfg := range dbConfigs {
+			if cfg.Key == "api_key" || cfg.Key == "hermes_api_key" {
+				result[cfg.Key] = cfg.Value
+				result["api_key_exists"] = true
+			} else {
+				result[cfg.Key] = cfg.Value
+			}
 		}
-		if systemConfigRepo != nil {
-			dbConfigs, _ := systemConfigRepo.GetAll(c.Request.Context(), "model")
-			result := gin.H{}
-			for _, cfg := range dbConfigs {
-				if cfg.Key == "api_key" || cfg.Key == "hermes_api_key" {
-					result[cfg.Key] = cfg.Value
-					result["api_key_exists"] = true
-				} else {
-					result[cfg.Key] = cfg.Value
-				}
-			}
-			if result["api_url"] == nil {
-				result["api_url"] = "https://api.openai.com/v1"
-			}
-			if result["model_name"] == nil {
-				result["model_name"] = "gpt-4o"
-			}
-			if result["context_len"] == nil {
-				result["context_len"] = "128000"
-			}
-			if result["max_output"] == nil {
-				result["max_output"] = "16000"
-			}
-			if result["temperature"] == nil {
-				result["temperature"] = "0.7"
-			}
-			if result["top_p"] == nil {
-				result["top_p"] = "0.95"
-			}
-			if result["hermes_url"] == nil {
-				result["hermes_url"] = "http://hermes:8081"
-			}
-			if result["hermes_model"] == nil {
-				result["hermes_model"] = "hermes-3-70b"
-			}
-			result["api_key_exists"] = result["api_key"] != nil && result["api_key"] != ""
-			c.JSON(http.StatusOK, result)
-			return
-		}
-		c.JSON(http.StatusOK, configs)
+		fillModelConfigDefaults(result)
+		result["api_key_exists"] = result["api_key"] != nil && result["api_key"] != ""
+		c.JSON(http.StatusOK, result)
+		return
+	}
+	c.JSON(http.StatusOK, configs)
+}
+
+func fillModelConfigDefaults(result gin.H) {
+	if result["api_url"] == nil {
+		result["api_url"] = "https://api.openai.com/v1"
+	}
+	if result["model_name"] == nil {
+		result["model_name"] = "gpt-4o"
+	}
+	if result["context_len"] == nil {
+		result["context_len"] = "128000"
+	}
+	if result["max_output"] == nil {
+		result["max_output"] = "16000"
+	}
+	if result["temperature"] == nil {
+		result["temperature"] = "0.7"
+	}
+	if result["top_p"] == nil {
+		result["top_p"] = "0.95"
+	}
+	if result["hermes_url"] == nil {
+		result["hermes_url"] = "http://hermes:8081"
+	}
+	if result["hermes_model"] == nil {
+		result["hermes_model"] = "hermes-3-70b"
 	}
 }
 
 func putModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if systemConfigRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
-			return
-		}
-		var body map[string]interface{}
-		if err := c.ShouldBindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
-			return
-		}
-		for key, val := range body {
-			if valStr, ok := val.(string); ok {
-				if (key == "api_key" || key == "hermes_api_key") && valStr != "" {
-					if vaultClient != nil {
-						vaultPath := vaultinfra.APIKeyPath(consts.DataAgentNS)
-						if key == "hermes_api_key" {
-							vaultPath = vaultinfra.HermesAPIKeyPath(consts.DataAgentNS)
-						}
-						if err := vaultClient.Store(c.Request.Context(), vaultPath, valStr); err != nil {
-							c.JSON(http.StatusInternalServerError, gin.H{"error": "vault store failed"})
-							return
-						}
-					}
-					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, "vault://"+consts.DataAgentNS+"/"+key)
-				} else {
-					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, valStr)
-				}
+	return func(c *gin.Context) { handlePutModelConfig(c, systemConfigRepo, vaultClient) }
+}
+
+func handlePutModelConfig(c *gin.Context, systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client) {
+	if systemConfigRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
+		return
+	}
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
+		return
+	}
+	for key, val := range body {
+		upsertModelConfigKey(c, systemConfigRepo, vaultClient, key, val)
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}
+
+func upsertModelConfigKey(c *gin.Context, systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client, key string, val interface{}) {
+	valStr, ok := val.(string)
+	if !ok {
+		return
+	}
+	if (key == "api_key" || key == "hermes_api_key") && valStr != "" {
+		if vaultClient != nil {
+			vaultPath := vaultinfra.APIKeyPath(consts.DataAgentNS)
+			if key == "hermes_api_key" {
+				vaultPath = vaultinfra.HermesAPIKeyPath(consts.DataAgentNS)
+			}
+			if err := vaultClient.Store(c.Request.Context(), vaultPath, valStr); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "vault store failed"})
+				return
 			}
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+		_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, "vault://"+consts.DataAgentNS+"/"+key)
+	} else {
+		_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, valStr)
 	}
 }
 
@@ -1080,37 +1096,39 @@ func getSysConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gi
 }
 
 func putSysConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if systemConfigRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
-			return
-		}
-		var body map[string]interface{}
-		if err := c.ShouldBindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
-			return
-		}
+	return func(c *gin.Context) { handlePutSysConfig(c, systemConfigRepo) }
+}
 
-		if hours, ok := body["session_recovery_hours"]; ok {
-			if h, ok := toFloat64(hours); ok && (h < 1 || h > 168) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "\u7f13\u51b2\u671f\u6700\u957f 1 \u5468\uff08168 \u5c0f\u65f6\uff09"})
-				return
-			}
-		}
-
-		for key, val := range body {
-			if list, ok := val.([]interface{}); ok {
-				parts := make([]string, len(list))
-				for i, v := range list {
-					parts[i] = fmt.Sprintf("%v", v)
-				}
-				_ = systemConfigRepo.Upsert(c.Request.Context(), "sys", key, strings.Join(parts, ","))
-			} else {
-				_ = systemConfigRepo.Upsert(c.Request.Context(), "sys", key, fmt.Sprintf("%v", val))
-			}
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+func handlePutSysConfig(c *gin.Context, systemConfigRepo *mongoinfra.SystemConfigRepository) {
+	if systemConfigRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
+		return
 	}
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
+		return
+	}
+
+	if hours, ok := body["session_recovery_hours"]; ok {
+		if h, ok := toFloat64(hours); ok && (h < 1 || h > 168) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "\u7f13\u51b2\u671f\u6700\u957f 1 \u5468\uff08168 \u5c0f\u65f6\uff09"})
+			return
+		}
+	}
+
+	for key, val := range body {
+		if list, ok := val.([]interface{}); ok {
+			parts := make([]string, len(list))
+			for i, v := range list {
+				parts[i] = fmt.Sprintf("%v", v)
+			}
+			_ = systemConfigRepo.Upsert(c.Request.Context(), "sys", key, strings.Join(parts, ","))
+		} else {
+			_ = systemConfigRepo.Upsert(c.Request.Context(), "sys", key, fmt.Sprintf("%v", val))
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
 // ===================== Admin Routes =====================
@@ -1274,69 +1292,74 @@ func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager
 }
 
 func changePasswordHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID, _ := c.Get("user_id")
-		var req struct {
-			OldPassword string `json:"old_password" binding:"required"`
-			NewPassword string `json:"new_password" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "\u65e7\u5bc6\u7801\u548c\u65b0\u5bc6\u7801\u4e0d\u80fd\u4e3a\u7a7a"})
-			return
-		}
-		if len(req.NewPassword) < 8 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "\u5bc6\u7801\u81f3\u5c11 8 \u4f4d\uff0c\u9700\u5305\u542b\u5927\u5c0f\u5199\u5b57\u6bcd\u548c\u6570\u5b57"})
-			return
-		}
-		hasUpper, hasLower, hasDigit := false, false, false
-		for _, ch := range req.NewPassword {
-			if ch >= 'A' && ch <= 'Z' {
-				hasUpper = true
-			}
-			if ch >= 'a' && ch <= 'z' {
-				hasLower = true
-			}
-			if ch >= '0' && ch <= '9' {
-				hasDigit = true
-			}
-		}
-		if !hasUpper || !hasLower || !hasDigit {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "\u5bc6\u7801\u81f3\u5c11 8 \u4f4d\uff0c\u9700\u5305\u542b\u5927\u5c0f\u5199\u5b57\u6bcd\u548c\u6570\u5b57"})
-			return
-		}
+	return func(c *gin.Context) { handleChangePassword(c, mongoClient) }
+}
 
-		objID, err := primitive.ObjectIDFromHex(userID.(string))
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "\u7528\u6237\u4e0d\u5b58\u5728"})
-			return
-		}
-		var user model.User
-		coll := mongoClient.DB().Collection(model.CollUsers)
-		err = coll.FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&user)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "\u7528\u6237\u4e0d\u5b58\u5728"})
-			return
-		}
-		if middleware.CheckPassword(user.PasswordHash, req.OldPassword) != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "\u65e7\u5bc6\u7801\u4e0d\u6b63\u786e"})
-			return
-		}
-
-		newHash, err := middleware.HashPassword(req.NewPassword)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "\u5bc6\u7801\u52a0\u5bc6\u5931\u8d25"})
-			return
-		}
-		_, err = coll.UpdateOne(c.Request.Context(),
-			bson.M{"_id": objID},
-			bson.M{"$set": bson.M{"password_hash": newHash, "password_changed": true}},
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "\u4fee\u6539\u5931\u8d25"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "\u5bc6\u7801\u4fee\u6539\u6210\u529f"})
+func handleChangePassword(c *gin.Context, mongoClient *mongoinfra.Client) {
+	userID, _ := c.Get("user_id")
+	var req struct {
+		OldPassword string `json:"old_password" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required"`
 	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "\u65e7\u5bc6\u7801\u548c\u65b0\u5bc6\u7801\u4e0d\u80fd\u4e3a\u7a7a"})
+		return
+	}
+	if !validatePasswordComplexity(req.NewPassword) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "\u5bc6\u7801\u81f3\u5c11 8 \u4f4d\uff0c\u9700\u5305\u542b\u5927\u5c0f\u5199\u5b57\u6bcd\u548c\u6570\u5b57"})
+		return
+	}
+
+	objID, err := primitive.ObjectIDFromHex(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "\u7528\u6237\u4e0d\u5b58\u5728"})
+		return
+	}
+	var user model.User
+	coll := mongoClient.DB().Collection(model.CollUsers)
+	err = coll.FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&user)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "\u7528\u6237\u4e0d\u5b58\u5728"})
+		return
+	}
+	if middleware.CheckPassword(user.PasswordHash, req.OldPassword) != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "\u65e7\u5bc6\u7801\u4e0d\u6b63\u786e"})
+		return
+	}
+
+	newHash, err := middleware.HashPassword(req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u5bc6\u7801\u52a0\u5bc6\u5931\u8d25"})
+		return
+	}
+	_, err = coll.UpdateOne(c.Request.Context(),
+		bson.M{"_id": objID},
+		bson.M{"$set": bson.M{"password_hash": newHash, "password_changed": true}},
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u4fee\u6539\u5931\u8d25"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "\u5bc6\u7801\u4fee\u6539\u6210\u529f"})
+}
+
+func validatePasswordComplexity(password string) bool {
+	if len(password) < 8 {
+		return false
+	}
+	hasUpper, hasLower, hasDigit := false, false, false
+	for _, ch := range password {
+		if ch >= 'A' && ch <= 'Z' {
+			hasUpper = true
+		}
+		if ch >= 'a' && ch <= 'z' {
+			hasLower = true
+		}
+		if ch >= '0' && ch <= '9' {
+			hasDigit = true
+		}
+	}
+	return hasUpper && hasLower && hasDigit
 }
 
 // ===================== Agent Routes =====================
@@ -1443,55 +1466,59 @@ func setupDashboard(router *gin.Engine, jwtManager *middleware.JWTManager, taskS
 }
 
 func dashboardHandler(taskService *task_svc.Service, taskHandler *handler.TaskHandler, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		stats := monitor.SystemStats()
-		userID, _ := c.Get("user_id")
+	return func(c *gin.Context) { handleDashboard(c, taskService, taskHandler, sessionManager, kbService) }
+}
 
-		taskStats := map[string]int{"total": 0, "pending": 0, "running": 0, "completed": 0, "failed": 0}
-		sessionCount := 0
-		docCount := 0
+func handleDashboard(c *gin.Context, taskService *task_svc.Service, taskHandler *handler.TaskHandler, sessionManager *chat.Manager, kbService *knowledge.Service) {
+	stats := monitor.SystemStats()
+	userID, _ := c.Get("user_id")
 
-		if taskHandler != nil {
-			userIDStr := userID.(string)
-			if taskService != nil {
-				tasks, err := taskService.ListTasks(userIDStr)
-				if err == nil {
-					for _, t := range tasks {
-						taskStats["total"]++
-						switch string(t.Status) {
-						case "pending":
-							taskStats["pending"]++
-						case "running":
-							taskStats["running"]++
-						case "completed":
-							taskStats["completed"]++
-						case "failed":
-							taskStats["failed"]++
-						}
-					}
-				}
-			}
+	taskStats := map[string]int{"total": 0, "pending": 0, "running": 0, "completed": 0, "failed": 0}
+	sessionCount := 0
+	docCount := 0
+
+	if taskHandler != nil && taskService != nil {
+		userIDStr := userID.(string)
+		tasks, err := taskService.ListTasks(userIDStr)
+		if err == nil {
+			countTaskStats(tasks, taskStats)
 		}
+	}
 
-		userSessions := sessionManager.ListByUser(userID.(string))
-		sessionCount = len(userSessions)
+	userSessions := sessionManager.ListByUser(userID.(string))
+	sessionCount = len(userSessions)
 
-		if kbService != nil {
-			docs, err := kbService.ListDocs(userID.(string))
-			if err == nil {
-				docCount = len(docs)
-			}
+	if kbService != nil {
+		docs, err := kbService.ListDocs(userID.(string))
+		if err == nil {
+			docCount = len(docs)
 		}
+	}
 
-		stats["kpis"] = []map[string]interface{}{
-			{"label": "活跃 Chat 会话", "value": sessionCount, "icon": "💬", "trend": "实时"},
-			{"label": "Agent 任务", "value": taskStats["total"], "icon": "⚡", "trend": "实时"},
-			{"label": "知识库文档", "value": docCount, "icon": "📚", "trend": "实时"},
-			{"label": "系统可用率", "value": "99.9%", "icon": "🟢", "trend": "稳定"},
+	stats["kpis"] = []map[string]interface{}{
+		{"label": "活跃 Chat 会话", "value": sessionCount, "icon": "💬", "trend": "实时"},
+		{"label": "Agent 任务", "value": taskStats["total"], "icon": "⚡", "trend": "实时"},
+		{"label": "知识库文档", "value": docCount, "icon": "📚", "trend": "实时"},
+		{"label": "系统可用率", "value": "99.9%", "icon": "🟢", "trend": "稳定"},
+	}
+	stats["task_stats"] = taskStats
+
+	c.JSON(http.StatusOK, stats)
+}
+
+func countTaskStats(tasks []task.Task, stats map[string]int) {
+	for _, t := range tasks {
+		stats["total"]++
+		switch string(t.Status) {
+		case "pending":
+			stats["pending"]++
+		case "running":
+			stats["running"]++
+		case "completed":
+			stats["completed"]++
+		case "failed":
+			stats["failed"]++
 		}
-		stats["task_stats"] = taskStats
-
-		c.JSON(http.StatusOK, stats)
 	}
 }
 
