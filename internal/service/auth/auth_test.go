@@ -1113,3 +1113,25 @@ func TestCompleteRegistration_FindInviteError(t *testing.T) {
 		t.Fatal("expected error from FindByInviteID, got nil")
 	}
 }
+
+func TestCompleteRegistration_VerifyTokenError(t *testing.T) {
+	jwt := middleware.NewJWTManager("test", 1*time.Hour)
+	svc := NewService(nil, jwt)
+	repo := &mongo.UserRepository{}
+	svc.userRepo = repo
+	invRepo := &mongo.InviteRepository{}
+	svc.SetInviteRepo(invRepo)
+	svc.SetHMACSecret([]byte("test-secret-key-for-verify-err"))
+
+	patches := gomonkey.ApplyFunc(logic.VerifyInviteToken, func(token string, secrets [][]byte) (*logic.InviteTokenPayload, error) {
+		return nil, context.DeadlineExceeded
+	})
+	defer patches.Reset()
+
+	_, err := svc.CompleteRegistration(context.Background(), &CompleteRegistrationRequest{
+		Token: "any-token", Username: "u", Password: "Pass123!",
+	})
+	if err == nil {
+		t.Fatal("expected error from VerifyInviteToken")
+	}
+}
