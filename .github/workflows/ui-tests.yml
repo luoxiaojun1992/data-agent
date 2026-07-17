@@ -52,6 +52,15 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      - name: Upload Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: tests/ui/artifacts/test-results/**/*.png
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: Upload Coverage Report
         if: always()
         uses: actions/upload-artifact@v4

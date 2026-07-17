@@ -16,7 +16,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.UI_BASE_URL || 'http://localhost:3000',
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    screenshot: { mode: 'on', fullPage: true },
   },
   projects: [
     {
