@@ -144,14 +144,12 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest) {
 		Messages: req.Messages,
 	}
 
+	var firstMsg string
+	if len(req.Messages) > 0 {
+		firstMsg = req.Messages[0].Content
+	}
 	log.Printf("[DEBUG chat] handleStream: model=%q messages=%d stream=%v first_msg=%q",
-		req.Model, len(req.Messages), req.Stream,
-		func() string {
-			if len(req.Messages) > 0 {
-				return req.Messages[0].Content
-			}
-			return ""
-		}())
+		req.Model, len(req.Messages), req.Stream, firstMsg)
 
 	err = s.engine.RunStream(c.Request.Context(), agentReq, func(chunk string) error {
 		data, err := json.Marshal(map[string]string{"content": chunk})

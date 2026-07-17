@@ -107,6 +107,37 @@ func TestEncrypt_ReadFullError(t *testing.T) {
 	}
 }
 
+
+func TestDecrypt_GCMOpenError(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	// Encrypt a value first
+	encrypted, _ := m.Encrypt("testdata")
+	// Mock cipher.NewGCM to return a mock AEAD that fails on Open
+	patches := gomonkey.ApplyFunc(cipher.NewGCM, func(block cipher.Block) (cipher.AEAD, error) {
+		return &mockAEAD{failOpen: true}, nil
+	})
+	defer patches.Reset()
+	_, err = m.Decrypt(encrypted)
+	if err == nil {
+		t.Fatal("should error on GCM Open failure")
+	}
+}
+
+type mockAEAD struct{ failOpen bool }
+
+func (m *mockAEAD) NonceSize() int                                { return 12 }
+func (m *mockAEAD) Overhead() int                                 { return 16 }
+func (m *mockAEAD) Seal(dst, nonce, plaintext, additionalData []byte) []byte { return nil }
+func (m *mockAEAD) Open(dst, nonce, ciphertext, additionalData []byte) ([]byte, error) {
+	if m.failOpen {
+		return nil, fmt.Errorf("mock open error")
+	}
+	return nil, nil
+}
+
 func TestDecrypt_InvalidBase64(t *testing.T) {
 	m, err := NewManager("12345678901234567890123456789012")
 	if err != nil {
@@ -205,6 +236,34 @@ func TestStore_EncryptError(t *testing.T) {
 	err = m.Store("key", "value")
 	if err == nil {
 		t.Fatal("should error on encrypt failure in Store")
+	}
+}
+
+
+func TestRotateKey_WithSecrets(t *testing.T) {
+	m, err := NewManager("12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	err = m.Store("key1", "value1")
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	err = m.Store("key2", "value2")
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	err = m.RotateKey("abcdefghijklmnopqrstuvwxyz123456")
+	if err != nil {
+		t.Fatalf("RotateKey with secrets: %v", err)
+	}
+	// Verify secrets still retrievable after rotation
+	val, err := m.Retrieve("key1")
+	if err != nil {
+		t.Fatalf("Retrieve after rotation: %v", err)
+	}
+	if val != "value1" {
+		t.Errorf("got %q, want %q", val, "value1")
 	}
 }
 

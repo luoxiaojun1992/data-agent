@@ -453,6 +453,23 @@ func TestEngine_RunStream_AuditInputError(t *testing.T) {
 	}
 }
 
+func TestEngine_Run_AuditOutputError(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("gpt-4", mp)
+	r.RegisterModel("gpt-4", &ModelConfig{Model: "gpt-4"})
+
+	auditor := &mockAuditor{failOutput: true}
+	e := NewEngine(r, nil, auditor)
+
+	_, err := e.Run(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "safe"}},
+	})
+	if err == nil {
+		t.Fatal("should error on output audit failure in Run")
+	}
+}
+
 func TestEngine_RunStream_ChatStreamError(t *testing.T) {
 	r := NewRouter()
 	mp := &mockProvider{failMode: true}

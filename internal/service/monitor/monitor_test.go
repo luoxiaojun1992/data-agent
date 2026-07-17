@@ -440,3 +440,16 @@ func TestComputeTrends_OutputStatsWithSkillChain(t *testing.T) {
 		t.Error("OutputStats should contain pdf_generator")
 	}
 }
+
+
+func TestComputeTrends_OldTask(t *testing.T) {
+	oldTask := task.Task{
+		ID: "old-task", CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
+		Status: "completed",
+	}
+	trends := ComputeTrends([]task.Task{oldTask}, nil, 0)
+	if trends == nil {
+		t.Fatal("should return trends")
+	}
+	// Old task should not appear in 24h/7d/28d buckets
+}
