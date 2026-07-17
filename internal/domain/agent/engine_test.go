@@ -382,7 +382,7 @@ func (m *mockAuditor) AuditInput(content string) error {
 	return nil
 }
 
-func (m *mockAuditor) AuditToolCall(name string, args string) error {
+func (m *mockAuditor) AuditToolCall(name string, params map[string]any) error {
 	if m.failToolCall {
 		return fmt.Errorf("tool call audit failed")
 	}
@@ -396,14 +396,19 @@ func (m *mockAuditor) AuditOutput(content string) (string, error) {
 // ===== mockProvider =====
 
 type mockProvider struct {
-	failMode bool
+	failMode      bool
+	withToolCalls bool
 }
 
 func (m *mockProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	if m.failMode {
 		return nil, fmt.Errorf("provider failed")
 	}
-	return &ChatResponse{Content: "mock response"}, nil
+	resp := &ChatResponse{Content: "mock response"}
+	if m.withToolCalls {
+		resp.ToolCalls = []ToolCall{{Name: "search", Arguments: ""}}
+	}
+	return resp, nil
 }
 
 func (m *mockProvider) ChatStream(ctx context.Context, req ChatRequest, callback func(chunk string) error) error {
