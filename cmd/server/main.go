@@ -56,100 +56,149 @@ import (
 	"go.uber.org/zap"
 )
 
+// ===================== main =====================
+
 func main() {
-	// Load configuration
+	cfg, logger, mongoClient, deps := initServer()
+	defer cleanup(logger, mongoClient, &deps)
+
+	router := buildRouter(cfg)
+	registerAllRoutes(router, &deps, logger)
+	startServer(router, cfg, logger)
+}
+
+// ===================== server lifecycle =====================
+
+type serverDependencies struct {
+	mongoClient      *mongoinfra.Client
+	userRepo         *mongoinfra.UserRepository
+	roleRepo         *mongoinfra.RoleRepository
+	systemConfigRepo *mongoinfra.SystemConfigRepository
+	vaultClient      *vaultinfra.Client
+	authHandler      *handler.AuthHandler
+	llmRouter        *agent.Router
+	engine           *agent.Engine
+	sessionManager   *chat.Manager
+	chatService      *chat.Service
+	agentService     *agent_svc.Service
+	skillRegistry    *skill.Registry
+	secAuditor       *security.Auditor
+	cbRegistry       *security.CircuitBreakerRegistry
+	kbService        *knowledge.Service
+	kbHandler        *handler.KnowledgeHandler
+	artifactStorage  *artifact_svc.Storage
+	workspaceMgr     *workspace.Manager
+	artifactHandler  *handler.ArtifactHandler
+	taskService      *task_svc.Service
+	taskHandler      *handler.TaskHandler
+	auditService     *auditsvc.Service
+	auditHandler     *handler.AuditHandler
+	apiReviewSvc     *apireview.Service
+	apiReviewHandler *handler.APIReviewHandler
+	notifSvc         *notifsvc.Service
+	notifHandler     *handler.NotificationHandler
+	auditLogger      *middleware.AuditLogger
+	jwtManager       *middleware.JWTManager
+	redisClient      *redis.Client
+	taskStream       *queue.Stream
+	swClient         *seaweedfs.Client
+}
+
+func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDependencies) {
+	var deps serverDependencies
+
 	cfg, err := config.Load("configs/config.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize logger
 	logger, err := initLogger(cfg)
 	if err != nil {
 		log.Fatalf("Failed to init logger: %v", err)
 	}
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			log.Printf("logger sync error: %v", err)
-		}
-	}()
 
-	// Connect to MongoDB (non-fatal for MVP — server starts even without DB)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var mongoClient *mongoinfra.Client
-	var userRepo *mongoinfra.UserRepository
-	var roleRepo *mongoinfra.RoleRepository
-	var systemConfigRepo *mongoinfra.SystemConfigRepository
-	var vaultClient *vaultinfra.Client
+	deps.mongoClient = mongoClient
 	mongoClient, err = mongoinfra.NewClient(ctx, cfg.Mongo.URI, cfg.Mongo.Database)
+	deps.mongoClient = mongoClient
 	if err != nil {
 		logger.Warn("Failed to connect to MongoDB — server will start without database",
 			zap.Error(err),
 			zap.String("uri", cfg.Mongo.URI),
 		)
 	} else {
-		defer func() {
-			if err := mongoClient.Disconnect(context.Background()); err != nil {
-				logger.Error("Failed to disconnect MongoDB", zap.Error(err))
-			}
-		}()
 		logger.Info("MongoDB connected", zap.String("database", cfg.Mongo.Database))
-
-		// Ensure indexes
 		if err := mongoinfra.EnsureIndexes(ctx, mongoClient.DB()); err != nil {
 			logger.Warn("Failed to ensure indexes", zap.Error(err))
 		}
-
-		// Auto-create system admin if MongoDB connected
-		userRepo = mongoinfra.NewUserRepository(mongoClient.DB())
-		if err := ensureSystemAdmin(ctx, userRepo, logger); err != nil {
+		deps.userRepo = mongoinfra.NewUserRepository(mongoClient.DB())
+		if err := ensureSystemAdmin(ctx, deps.userRepo, logger); err != nil {
 			logger.Warn("Failed to ensure system admin", zap.Error(err))
 		}
-
-		// Initialize role repo
-		roleRepo = mongoinfra.NewRoleRepository(mongoClient.DB())
-
-		// Initialize system config repo
-		systemConfigRepo = mongoinfra.NewSystemConfigRepository(mongoClient.DB())
+		deps.roleRepo = mongoinfra.NewRoleRepository(mongoClient.DB())
+		deps.systemConfigRepo = mongoinfra.NewSystemConfigRepository(mongoClient.DB())
 	}
 
-	// Initialize JWT manager
-	jwtManager := middleware.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
+	deps.jwtManager = middleware.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
+	deps.auditLogger = middleware.NewAuditLogger(mongoClient.Collection(model.CollAuditLogs))
 
-	// Initialize auth service and handler
-	var authHandler *handler.AuthHandler
-	if userRepo != nil {
-		authService := authsvc.NewService(userRepo, jwtManager)
+	// SeaweedFS must be initialized before initArtifacts
+	deps.swClient = seaweedfs.NewClient(cfg.SeaweedFS.Master, cfg.SeaweedFS.Filer)
 
-		// Initialize invite repository
-		inviteRepo := mongoinfra.NewInviteRepository(mongoClient.DB())
-		authService.SetInviteRepo(inviteRepo)
+	initAuthService(&deps, mongoClient, logger)
+	initLLMRouter(&deps)
+	initVault(&deps, logger)
+	initAgentEngine(&deps)
+	initServices(&deps, mongoClient, logger)
+	initArtifacts(&deps, mongoClient, cfg)
+	initKnowledgeBase(&deps, mongoClient)
+	initAuditAndNotifications(&deps, mongoClient)
+	initTaskQueue(&deps, cfg, mongoClient, logger)
+	initSkills(&deps, logger)
 
-		// Load invite HMAC secret
-		hmacSecret, err := logic.LoadInviteHMACSecret()
-		if err != nil {
-			logger.Warn("INVITE_HMAC_SECRET not set — invite system disabled",
-				zap.Error(err),
-			)
-		} else {
-			authService.SetHMACSecret(hmacSecret)
-			logger.Info("Invite HMAC secret loaded")
+	return cfg, logger, mongoClient, deps
+}
+
+func cleanup(logger *zap.Logger, mongoClient *mongoinfra.Client, deps *serverDependencies) {
+	if logger != nil {
+		if err := logger.Sync(); err != nil {
+			log.Printf("logger sync error: %v", err)
 		}
-
-		authHandler = handler.NewAuthHandler(authService)
 	}
+	if mongoClient != nil {
+		if err := mongoClient.Disconnect(context.Background()); err != nil {
+			logger.Error("Failed to disconnect MongoDB", zap.Error(err))
+		}
+	}
+	if deps.redisClient != nil {
+		deps.redisClient.Close()
+	}
+}
 
-	// Initialize audit logger
-	auditLogger := middleware.NewAuditLogger(mongoClient.Collection(model.CollAuditLogs))
+func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
+	if deps.userRepo == nil {
+		return
+	}
+	authService := authsvc.NewService(deps.userRepo, deps.jwtManager)
+	inviteRepo := mongoinfra.NewInviteRepository(mongoClient.DB())
+	authService.SetInviteRepo(inviteRepo)
+	hmacSecret, err := logic.LoadInviteHMACSecret()
+	if err != nil {
+		logger.Warn("INVITE_HMAC_SECRET not set — invite system disabled", zap.Error(err))
+	} else {
+		authService.SetHMACSecret(hmacSecret)
+		logger.Info("Invite HMAC secret loaded")
+	}
+	deps.authHandler = handler.NewAuthHandler(authService)
+}
 
-	// ── SPEC-004: Agent Engine & Services ──
-
-	// Initialize LLM Router with default model from env
-	llmRouter := agent.NewRouter()
+func initLLMRouter(deps *serverDependencies) {
+	deps.llmRouter = agent.NewRouter()
 	if model := os.Getenv("LLM_MODEL"); model != "" {
-		llmRouter.RegisterModel("default", &agent.ModelConfig{
+		deps.llmRouter.RegisterModel("default", &agent.ModelConfig{
 			Model:       model,
 			BaseURL:     getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com"),
 			APIKey:      os.Getenv("LLM_API_KEY"),
@@ -158,9 +207,11 @@ func main() {
 			IsDefault:   true,
 		})
 	}
+}
 
-	// Initialize HashiCorp Vault client
-	vaultClient, err = vaultinfra.NewClient()
+func initVault(deps *serverDependencies, logger *zap.Logger) {
+	var err error
+	deps.vaultClient, err = vaultinfra.NewClient()
 	if err != nil {
 		logger.Warn("Failed to initialize HashiCorp Vault client — API key encryption disabled",
 			zap.Error(err),
@@ -171,143 +222,240 @@ func main() {
 			zap.String("addr", vaultinfra.GetAddr()),
 		)
 	}
+}
 
-	// Initialize Security Auditor
-	secAuditor := security.NewAuditor(nil)
+func initAgentEngine(deps *serverDependencies) {
+	deps.secAuditor = security.NewAuditor(nil)
+	deps.cbRegistry = security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+	deps.skillRegistry = skill.NewRegistry()
+}
 
-	// Initialize Circuit Breaker Registry
-	cbRegistry := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
+	deps.sessionManager = chat.NewManager(mongoClient.DB(), 24*time.Hour)
+	deps.engine = agent.NewEngine(deps.llmRouter, agent.NewSkillRegistryFromDomain(deps.skillRegistry), deps.secAuditor)
+	deps.chatService = chat.NewService(deps.engine, deps.sessionManager, deps.secAuditor, deps.cbRegistry)
+	deps.agentService = agent_svc.NewService(deps.engine, deps.chatService, deps.sessionManager, deps.cbRegistry)
+	deps.agentService.WithSkillRegistry(agent.NewSkillRegistryFromDomain(deps.skillRegistry))
+}
 
-	// Initialize Session Manager (24h TTL)
-	sessionManager := chat.NewManager(mongoClient.DB(), 24*time.Hour)
+func initArtifacts(deps *serverDependencies, mongoClient *mongoinfra.Client, cfg *config.Config) {
+	deps.artifactStorage = artifact_svc.NewStorage(deps.swClient, mongoClient.DB())
+	deps.workspaceMgr = workspace.NewManager(deps.artifactStorage)
+	deps.artifactHandler = handler.NewArtifactHandler(deps.artifactStorage, deps.workspaceMgr)
+}
 
-	// Initialize Skill Registry — all skills are registered at startup
-	skillRegistry := skill.NewRegistry()
-	if err := skillRegistry.Register(&sqlskill.SQLExecutor{}); err != nil {
-		logger.Warn("Failed to register sql_executor skill", zap.Error(err))
-	}
-	if err := skillRegistry.Register(&statsskill.StatsEngine{}); err != nil {
-		logger.Warn("Failed to register stats_engine skill", zap.Error(err))
-	}
-	if err := skillRegistry.Register(&saveskill.SaveReport{}); err != nil {
-		logger.Warn("Failed to register save_report skill", zap.Error(err))
-	}
-	// knowledge_search requires the KB service (registered after kbService init)
+func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client) {
+	deps.kbService = knowledge.NewService(mongoClient.DB())
+	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
+}
 
-	// Initialize Agent Engine with skill registry
-	engine := agent.NewEngine(llmRouter, agent.NewSkillRegistryFromDomain(skillRegistry), secAuditor)
+func initAuditAndNotifications(deps *serverDependencies, mongoClient *mongoinfra.Client) {
+	deps.auditService = auditsvc.NewService(mongoClient.DB())
+	deps.auditHandler = handler.NewAuditHandler(deps.auditService)
+	deps.apiReviewSvc = apireview.NewService(mongoClient.DB())
+	deps.apiReviewHandler = handler.NewAPIReviewHandler(deps.apiReviewSvc)
+	deps.notifSvc = notifsvc.NewService(mongoClient.DB())
+	deps.notifHandler = handler.NewNotificationHandler(deps.notifSvc)
+}
 
-	// Initialize Chat Service
-	chatService := chat.NewService(engine, sessionManager, secAuditor, cbRegistry)
-
-	// Initialize Agent Service
-	agentService := agent_svc.NewService(engine, chatService, sessionManager, cbRegistry)
-	agentService.WithSkillRegistry(agent.NewSkillRegistryFromDomain(skillRegistry))
-
-	// ── SPEC-005: Artifact Storage & Workspace ──
-
-	// Initialize SeaweedFS client (non-fatal — artifacts work only if available)
-	swClient := seaweedfs.NewClient(cfg.SeaweedFS.Master, cfg.SeaweedFS.Filer)
-	_ = swClient // ready for use
-
-	// Initialize Artifact Storage
-	artifactStorage := artifact_svc.NewStorage(swClient, mongoClient.DB())
-
-	// Initialize Workspace Manager
-	workspaceMgr := workspace.NewManager(artifactStorage)
-
-	// Initialize Artifact HTTP Handler
-	artifactHandler := handler.NewArtifactHandler(artifactStorage, workspaceMgr)
-
-	// ── SPEC-006: Knowledge Base ──
-	kbService := knowledge.NewService(mongoClient.DB())
-	kbHandler := handler.NewKnowledgeHandler(kbService)
-
-	// Register knowledge search skill (requires kbService)
-	if err := skillRegistry.Register(kbskill.NewKnowledgeSearch(kbService)); err != nil {
-		logger.Warn("Failed to register knowledge_search skill", zap.Error(err))
-	}
-
-	// ── Audit Log Service ──
-	auditService := auditsvc.NewService(mongoClient.DB())
-	auditHandler := handler.NewAuditHandler(auditService)
-
-	// ── API Review Service ──
-	apiReviewSvc := apireview.NewService(mongoClient.DB())
-	apiReviewHandler := handler.NewAPIReviewHandler(apiReviewSvc)
-
-	// ── Notification Service ──
-	notifSvc := notifsvc.NewService(mongoClient.DB())
-	notifHandler := handler.NewNotificationHandler(notifSvc)
-
-	// ── SPEC-009: Task Queue & Worker Pool ──
-
-	var taskHandler *handler.TaskHandler
-	var taskService *task_svc.Service
-
+func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	redisClient, redisErr := redis.NewClient(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	if redisErr != nil {
 		logger.Warn("Failed to connect to Redis — task queue disabled", zap.Error(redisErr))
-	} else {
-		defer redisClient.Close()
-
-		taskStream, streamErr := queue.NewStream(redisClient.Client())
-		if streamErr != nil {
-			logger.Warn("Failed to create task stream", zap.Error(streamErr))
-		} else {
-			taskService = task_svc.NewService(mongoClient.DB(), taskStream)
-			taskHandler = handler.NewTaskHandler(taskService)
-
-			// Inject task service into agent service for Redis-backed async tasks
-			agentService.WithTaskService(taskService)
-
-			// Initialize Scheduler
-			sched := scheduler.New(scheduler.NewTaskCreatorFromService(taskService))
-			sched.Start(context.Background())
-
-			// Register default scheduled tasks
-			if err := sched.AddSchedule(&scheduler.Schedule{
-				Name:       "System Monitoring Stats",
-				CronExpr:   "every_5m",
-				Enabled:    true,
-				SkillChain: []string{"stats_engine"},
-				Params:     map[string]interface{}{"method": "descriptive"},
-			}); err != nil {
-				logger.Warn("Failed to add monitoring schedule", zap.Error(err))
-			}
-			logger.Info("Scheduler started with default tasks")
-
-			workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, &simpleExecutor{taskSvc: taskService})
-			workerPool.Start(context.Background())
-			defer workerPool.Stop()
-
-			logger.Info("Task queue and worker pool started", zap.Int("workers", 4))
-		}
+		return
 	}
-	_ = taskService // used for route registration check
+	deps.redisClient = redisClient
 
-	// ── Setup Gin Router ──
+	taskStream, streamErr := queue.NewStream(redisClient.Client())
+	if streamErr != nil {
+		logger.Warn("Failed to create task stream", zap.Error(streamErr))
+		return
+	}
+	deps.taskStream = taskStream
+
+	deps.taskService = task_svc.NewService(mongoClient.DB(), taskStream)
+	deps.taskHandler = handler.NewTaskHandler(deps.taskService)
+	deps.agentService.WithTaskService(deps.taskService)
+
+	sched := scheduler.New(scheduler.NewTaskCreatorFromService(deps.taskService))
+	sched.Start(context.Background())
+	if err := sched.AddSchedule(&scheduler.Schedule{
+		Name:       "System Monitoring Stats",
+		CronExpr:   "every_5m",
+		Enabled:    true,
+		SkillChain: []string{"stats_engine"},
+		Params:     map[string]interface{}{"method": "descriptive"},
+	}); err != nil {
+		logger.Warn("Failed to add monitoring schedule", zap.Error(err))
+	}
+	logger.Info("Scheduler started with default tasks")
+
+	workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, &simpleExecutor{taskSvc: deps.taskService})
+	go func() {
+		workerPool.Start(context.Background())
+	}()
+	logger.Info("Task queue and worker pool started", zap.Int("workers", 4))
+}
+
+func initSkills(deps *serverDependencies, logger *zap.Logger) {
+	registerSkill(deps.skillRegistry, &sqlskill.SQLExecutor{}, logger)
+	registerSkill(deps.skillRegistry, &statsskill.StatsEngine{}, logger)
+	registerSkill(deps.skillRegistry, &saveskill.SaveReport{}, logger)
+	registerSkill(deps.skillRegistry, kbskill.NewKnowledgeSearch(deps.kbService), logger)
+}
+
+func registerSkill(reg *skill.Registry, s skill.Skill, logger *zap.Logger) {
+	if err := reg.Register(s); err != nil {
+		logger.Warn("Failed to register skill", zap.Error(err))
+	}
+}
+
+func buildRouter(cfg *config.Config) *gin.Engine {
 	if cfg.Log.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-
 	router := gin.New()
+	return router
+}
 
-	// Global middleware
+func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap.Logger) {
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.RequestIDMiddleware())
 	router.Use(gin.Recovery())
-	router.Use(auditLogger.AuditMiddleware())
+	router.Use(deps.auditLogger.AuditMiddleware())
 
-	// Health check (no auth required)
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-			"time":   time.Now().UTC().Format(time.RFC3339),
-		})
+	// Health check (no auth)
+	router.GET("/health", healthCheck)
+
+	// IM Webhook (no auth)
+	setupIMWebhook(router)
+
+	// IM per-user bind
+	setupIMBind(router, deps.jwtManager, deps.mongoClient)
+
+	// Hermes proxy
+	setupHermesProxy(router, logger)
+
+	// System monitoring (no auth)
+	router.GET("/api/v1/system/stats", monitor.Handler())
+
+	// Auth routes
+	authGroup := router.Group("/api/v1/auth")
+	setupAuthRoutes(authGroup, deps.authHandler)
+
+	// Protected API routes
+	api := router.Group("/api/v1")
+	api.Use(deps.jwtManager.AuthMiddleware())
+
+	setupAuthProtected(api, deps.authHandler)
+	setupUserManagement(api, deps.userRepo)
+	setupRoleManagement(api, deps.roleRepo)
+	setupModelConfig(api, deps.systemConfigRepo, deps.vaultClient)
+	setupSysConfig(api, deps.systemConfigRepo)
+	setupChangePassword(api, deps.jwtManager, deps.mongoClient)
+
+	// Admin routes
+	admin := router.Group("/api/v1/admin")
+	admin.Use(deps.jwtManager.AuthMiddleware())
+	setupAdminRoutes(admin, deps.authHandler)
+
+	// Chat routes
+	chatRoutes := router.Group("/api/v1/chat")
+	chatRoutes.Use(deps.jwtManager.AuthMiddleware())
+	chatRoutes.POST("", deps.agentService.HandleChat)
+	setupChatEnhance(chatRoutes)
+
+	// Agent routes
+	setupAgentRoutes(router, deps.jwtManager, deps.agentService)
+
+	// Session routes
+	sessionRoutes := router.Group("/api/v1/sessions")
+	sessionRoutes.Use(deps.jwtManager.AuthMiddleware())
+	setupSessions(sessionRoutes, deps.sessionManager)
+
+	// Artifact routes
+	setupArtifactRoutes(router, deps.jwtManager, deps.artifactHandler)
+
+	// Workspace routes
+	wsRoutes := router.Group("/api/v1/workspace/:session_id")
+	wsRoutes.Use(deps.jwtManager.AuthMiddleware())
+	setupWorkspaceRoutes(wsRoutes, deps.artifactHandler)
+
+	// Knowledge Base routes
+	setupKnowledgeRoutes(router, deps.jwtManager, deps.kbHandler)
+
+	// Admin KB management
+	adminKB := router.Group("/api/v1/admin/knowledge")
+	adminKB.Use(deps.jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
+	adminKB.GET("/docs", deps.kbHandler.ListAllDocs)
+
+	// Audit Log routes
+	setupAuditRoutes(router, deps.jwtManager, deps.auditHandler)
+
+	// API Review routes
+	setupAPIReviewRoutes(router, deps.jwtManager, deps.apiReviewHandler)
+
+	// Notification routes
+	setupNotificationRoutes(router, deps.jwtManager, deps.notifHandler)
+
+	// Task routes
+	if deps.taskHandler != nil {
+		setupTaskRoutes(router, deps.jwtManager, deps.taskHandler)
+	}
+
+	// Dashboard routes
+	setupDashboard(router, deps.jwtManager, deps.taskService, deps.taskHandler, deps.sessionManager, deps.kbService)
+}
+
+func startServer(router *gin.Engine, cfg *config.Config, logger *zap.Logger) {
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler:      router,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+	}
+
+	go func() {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		<-quit
+		logger.Info("Shutting down server...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(ctx); err != nil {
+			logger.Fatal("Server forced to shutdown", zap.Error(err))
+		}
+	}()
+
+	logger.Info("DataAgent server starting",
+		zap.Int("port", cfg.Server.Port),
+		zap.String("log_level", cfg.Log.Level),
+	)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logger.Fatal("Server error", zap.Error(err))
+	}
+
+	logger.Info("Server exited gracefully")
+}
+
+// ===================== root-level handlers =====================
+
+func healthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+		"time":   time.Now().UTC().Format(time.RFC3339),
 	})
+}
 
-	// ── SPEC-011: Feishu IM Webhook (no auth) ──
+func dbUnavailableHandler(c *gin.Context) {
+	c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
+}
+
+// ===================== IM Webhook =====================
+
+func setupIMWebhook(router *gin.Engine) {
 	imService := im.NewService(im.Config{
 		AppID:     os.Getenv("FEISHU_APP_ID"),
 		AppSecret: os.Getenv("FEISHU_APP_SECRET"),
@@ -315,11 +463,19 @@ func main() {
 	router.POST("/api/v1/im/feishu/webhook", func(c *gin.Context) {
 		imService.WebhookHandler()(c.Writer, c.Request)
 	})
+}
 
-	// ── IM per-user bind ──
+// ===================== IM Bind =====================
+
+func setupIMBind(router *gin.Engine, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	imBindGroup := router.Group("/api/v1/im/bind")
 	imBindGroup.Use(jwtManager.AuthMiddleware())
-	imBindGroup.GET("", func(c *gin.Context) {
+	imBindGroup.GET("", getImBindHandler(mongoClient))
+	imBindGroup.PUT("", updateImBindHandler(mongoClient))
+}
+
+func getImBindHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		objID, _ := primitive.ObjectIDFromHex(userID.(string))
 		var user model.User
@@ -331,8 +487,11 @@ func main() {
 			"feishu_app_id":     user.FeishuAppID,
 			"feishu_app_secret": user.FeishuAppSecret,
 		})
-	})
-	imBindGroup.PUT("", func(c *gin.Context) {
+	}
+}
+
+func updateImBindHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		objID, _ := primitive.ObjectIDFromHex(userID.(string))
 		var req struct {
@@ -348,68 +507,84 @@ func main() {
 			bson.M{"$set": bson.M{"feishu_app_id": req.FeishuAppID, "feishu_app_secret": req.FeishuAppSecret}},
 		)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "\u4fdd\u5b58\u5931\u8d25"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "绑定成功"})
-	})
+		c.JSON(http.StatusOK, gin.H{"message": "\u7ed1\u5b9a\u6210\u529f"})
+	}
+}
 
-	// ── SPEC-012: Hermes Agent Proxy (nousresearch/hermes-agent) ──
+// ===================== Hermes Proxy =====================
+
+func setupHermesProxy(router *gin.Engine, logger *zap.Logger) {
 	hermesURL := os.Getenv("HERMES_URL")
 	if hermesURL != "" {
-		router.Any("/api/v1/hermes/*path", func(c *gin.Context) {
-			target, _ := url.Parse(hermesURL)
-			p := httputil.NewSingleHostReverseProxy(target)
-			c.Request.URL.Path = c.Param("path")
-			p.ServeHTTP(c.Writer, c.Request)
-		})
+		router.Any("/api/v1/hermes/*path", hermesProxyHandler(hermesURL))
 		logger.Info("Hermes proxy enabled", zap.String("hermes_url", hermesURL))
 	}
+}
 
-	// ── SPEC-010: System Monitoring ──
-	router.GET("/api/v1/system/stats", monitor.Handler())
+func hermesProxyHandler(hermesURL string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		target, _ := url.Parse(hermesURL)
+		p := httputil.NewSingleHostReverseProxy(target)
+		c.Request.URL.Path = c.Param("path")
+		p.ServeHTTP(c.Writer, c.Request)
+	}
+}
 
-	// Auth routes (no auth required)
-	authGroup := router.Group("/api/v1/auth")
+// ===================== Auth Routes =====================
+
+func setupAuthRoutes(authGroup *gin.RouterGroup, authHandler *handler.AuthHandler) {
 	if authHandler != nil {
 		authGroup.POST("/login", authHandler.Login)
 		authGroup.POST(consts.PathRegister, authHandler.Register)
-		// Invite-based registration (public)
 		authGroup.GET(consts.PathRegister, authHandler.VerifyInvite)
 		authGroup.POST("/complete-registration", authHandler.CompleteRegistration)
 	} else {
-		authGroup.POST("/login", func(c *gin.Context) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
-		})
-		authGroup.POST(consts.PathRegister, func(c *gin.Context) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
-		})
+		authGroup.POST("/login", dbUnavailableHandler)
+		authGroup.POST(consts.PathRegister, dbUnavailableHandler)
 	}
+}
 
-	// Protected routes
-	api := router.Group("/api/v1")
-	api.Use(jwtManager.AuthMiddleware())
+func setupAuthProtected(api *gin.RouterGroup, authHandler *handler.AuthHandler) {
+	api.POST("/auth/refresh", refreshTokenHandler(authHandler))
+	api.GET("/auth/profile", profileHandler(authHandler))
+}
 
-	// Token refresh (requires valid JWT)
-	api.POST("/auth/refresh", func(c *gin.Context) {
+func refreshTokenHandler(authHandler *handler.AuthHandler) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if authHandler != nil {
 			authHandler.RefreshToken(c)
 		} else {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
+			dbUnavailableHandler(c)
 		}
-	})
+	}
+}
 
-	// Profile
-	api.GET("/auth/profile", func(c *gin.Context) {
+func profileHandler(authHandler *handler.AuthHandler) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if authHandler != nil {
 			authHandler.GetProfile(c)
 		} else {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
+			dbUnavailableHandler(c)
 		}
-	})
+	}
+}
 
-	// User management (requires user:manage or user:manage_all)
-	api.GET("/users", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+// ===================== User Management =====================
+
+func setupUserManagement(api *gin.RouterGroup, userRepo *mongoinfra.UserRepository) {
+	api.GET("/users", middleware.RequirePermission(model.PermUserManage), listUsersHandler(userRepo))
+	api.GET(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), getUserHandler(userRepo))
+	api.POST("/users", middleware.RequirePermission(model.PermUserManage), createUserHandler(userRepo))
+	api.PUT(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), updateUserRoleHandler(userRepo))
+	api.PATCH("/users/:id/status", middleware.RequirePermission(model.PermUserManage), toggleUserStatusHandler(userRepo))
+	api.DELETE(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), deleteUserHandler(userRepo))
+}
+
+func listUsersHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if userRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -431,9 +606,11 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
-	})
+	}
+}
 
-	api.GET(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func getUserHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if userRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -453,10 +630,11 @@ func main() {
 			"role":     user.Role,
 			"status":   user.Status,
 		})
-	})
+	}
+}
 
-	// POST /users — Create user (system_admin or admin)
-	api.POST("/users", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func createUserHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if userRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -482,7 +660,6 @@ func main() {
 			req.Status = model.StatusEnabled
 		}
 
-		// System admin uniqueness check
 		if req.Role == model.RoleSystemAdmin {
 			hasAdmin, err := userRepo.HasSystemAdmin(c.Request.Context())
 			if err != nil {
@@ -490,19 +667,18 @@ func main() {
 				return
 			}
 			if hasAdmin {
-				c.JSON(http.StatusConflict, gin.H{"error": "系统管理员已存在，无法创建"})
+				c.JSON(http.StatusConflict, gin.H{"error": "\u7cfb\u7edf\u7ba1\u7406\u5458\u5df2\u5b58\u5728\uff0c\u65e0\u6cd5\u521b\u5efa"})
 				return
 			}
 		}
 
-		// Email uniqueness check
 		existing, err := userRepo.FindByUsername(c.Request.Context(), req.Username)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 		if existing != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "该邮箱已被注册"})
+			c.JSON(http.StatusConflict, gin.H{"error": "\u8be5\u90ae\u7bb1\u5df2\u88ab\u6ce8\u518c"})
 			return
 		}
 
@@ -528,10 +704,11 @@ func main() {
 			"role":     user.Role,
 			"status":   user.Status,
 		})
-	})
+	}
+}
 
-	// PUT /users/:id — Update user role
-	api.PUT(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func updateUserRoleHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if userRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -542,9 +719,8 @@ func main() {
 			c.JSON(http.StatusNotFound, gin.H{"error": consts.ErrUserNotFound})
 			return
 		}
-		// Prevent downgrading system_admin
 		if user.Role == model.RoleSystemAdmin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "不能修改系统管理员的角色"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "\u4e0d\u80fd\u4fee\u6539\u7cfb\u7edf\u7ba1\u7406\u5458\u7684\u89d2\u8272"})
 			return
 		}
 		var req struct {
@@ -563,10 +739,11 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	}
+}
 
-	// PATCH /users/:id/status — Toggle user enable/disable
-	api.PATCH("/users/:id/status", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func toggleUserStatusHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if userRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -577,9 +754,8 @@ func main() {
 			c.JSON(http.StatusNotFound, gin.H{"error": consts.ErrUserNotFound})
 			return
 		}
-		// Prevent disabling system_admin
 		if user.Role == model.RoleSystemAdmin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "不能停用系统管理员"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "\u4e0d\u80fd\u505c\u7528\u7cfb\u7edf\u7ba1\u7406\u5458"})
 			return
 		}
 		var req struct {
@@ -594,10 +770,11 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	}
+}
 
-	// DELETE /users/:id — Delete user
-	api.DELETE(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func deleteUserHandler(userRepo *mongoinfra.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if userRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -608,9 +785,8 @@ func main() {
 			c.JSON(http.StatusNotFound, gin.H{"error": consts.ErrUserNotFound})
 			return
 		}
-		// Prevent deleting system_admin
 		if user.Role == model.RoleSystemAdmin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "不可删除系统管理员"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "\u4e0d\u53ef\u5220\u9664\u7cfb\u7edf\u7ba1\u7406\u5458"})
 			return
 		}
 		if err := userRepo.Delete(c.Request.Context(), userID); err != nil {
@@ -618,13 +794,22 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	}
+}
 
-	// ── Role management ──
+// ===================== Role Management =====================
 
-	// GET /roles — List all roles (fixed + custom)
-	api.GET("/roles", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
-		customRoles := []model.Role{}
+func setupRoleManagement(api *gin.RouterGroup, roleRepo *mongoinfra.RoleRepository) {
+	api.GET("/roles", middleware.RequirePermission(model.PermUserManage), listRolesHandler(roleRepo))
+	api.GET("/permissions", listPermissionsHandler)
+	api.POST("/roles", middleware.RequirePermission(model.PermUserManage), createRoleHandler(roleRepo))
+	api.PUT("/roles/:id", middleware.RequirePermission(model.PermUserManage), updateRoleHandler(roleRepo))
+	api.DELETE("/roles/:id", middleware.RequirePermission(model.PermUserManage), deleteRoleHandler(roleRepo))
+}
+
+func listRolesHandler(roleRepo *mongoinfra.RoleRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var customRoles []model.Role
 		if roleRepo != nil {
 			var err error
 			customRoles, err = roleRepo.List(c.Request.Context())
@@ -633,19 +818,18 @@ func main() {
 				return
 			}
 		}
-		// Merge fixed roles (from code) with custom roles (from DB)
 		fixedRoles := model.FixedRoles()
 		allRoles := append(fixedRoles, customRoles...)
 		c.JSON(http.StatusOK, gin.H{"roles": allRoles, "total": len(allRoles)})
-	})
+	}
+}
 
-	// GET /permissions — List all available permissions with metadata
-	api.GET("/permissions", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"permissions": model.GetAllPermissions()})
-	})
+func listPermissionsHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"permissions": model.GetAllPermissions()})
+}
 
-	// POST /roles — Create custom role
-	api.POST("/roles", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func createRoleHandler(roleRepo *mongoinfra.RoleRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if roleRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -683,10 +867,11 @@ func main() {
 			"permissions":  role.Permissions,
 			"type":         role.Type,
 		})
-	})
+	}
+}
 
-	// PUT /roles/:id — Update custom role permissions
-	api.PUT("/roles/:id", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func updateRoleHandler(roleRepo *mongoinfra.RoleRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if roleRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -709,10 +894,11 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	}
+}
 
-	// DELETE /roles/:id — Delete custom role (fixed roles blocked)
-	api.DELETE("/roles/:id", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func deleteRoleHandler(roleRepo *mongoinfra.RoleRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if roleRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -724,7 +910,7 @@ func main() {
 			return
 		}
 		if role.Type == "fixed" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "不可删除固定角色"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "\u4e0d\u53ef\u5220\u9664\u56fa\u5b9a\u89d2\u8272"})
 			return
 		}
 		if err := roleRepo.Delete(c.Request.Context(), roleID); err != nil {
@@ -732,12 +918,19 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	}
+}
 
-	// ── Model Config & Vault ──
+// ===================== Model Config & Vault =====================
 
-	// GET /model-config — Get current model configuration
-	api.GET("/model-config", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func setupModelConfig(api *gin.RouterGroup, systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client) {
+	api.GET("/model-config", middleware.RequirePermission(model.PermUserManage), getModelConfigHandler(systemConfigRepo))
+	api.PUT("/model-config", middleware.RequirePermission(model.PermUserManage), putModelConfigHandler(systemConfigRepo, vaultClient))
+	api.POST("/vault/decrypt", middleware.RequirePermission(model.PermUserManage), vaultDecryptHandler(vaultClient))
+}
+
+func getModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		configs := gin.H{
 			"api_url":        "https://api.openai.com/v1",
 			"api_key_exists": false,
@@ -754,13 +947,12 @@ func main() {
 			result := gin.H{}
 			for _, cfg := range dbConfigs {
 				if cfg.Key == "api_key" || cfg.Key == "hermes_api_key" {
-					result[cfg.Key] = cfg.Value // encrypted, only decrypted via /vault/decrypt
+					result[cfg.Key] = cfg.Value
 					result["api_key_exists"] = true
 				} else {
 					result[cfg.Key] = cfg.Value
 				}
 			}
-			// Defaults
 			if result["api_url"] == nil {
 				result["api_url"] = "https://api.openai.com/v1"
 			}
@@ -790,10 +982,11 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, configs)
-	})
+	}
+}
 
-	// PUT /model-config — Save model configuration
-	api.PUT("/model-config", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func putModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if systemConfigRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -805,7 +998,6 @@ func main() {
 		}
 		for key, val := range body {
 			if valStr, ok := val.(string); ok {
-				// API keys go to HashiCorp Vault, not DB
 				if (key == "api_key" || key == "hermes_api_key") && valStr != "" {
 					if vaultClient != nil {
 						vaultPath := vaultinfra.APIKeyPath(consts.DataAgentNS)
@@ -817,7 +1009,6 @@ func main() {
 							return
 						}
 					}
-					// Store marker in DB to indicate key exists
 					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, "vault://"+consts.DataAgentNS+"/"+key)
 				} else {
 					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, valStr)
@@ -825,10 +1016,11 @@ func main() {
 			}
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	}
+}
 
-	// POST /vault/decrypt — Retrieve API key from HashiCorp Vault
-	api.POST("/vault/decrypt", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+func vaultDecryptHandler(vaultClient *vaultinfra.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if vaultClient == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault not configured"})
 			return
@@ -853,12 +1045,18 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"plaintext": plaintext, "masked": vaultinfra.MaskValue(plaintext)})
-	})
+	}
+}
 
-	// ── System Config ──
+// ===================== System Config =====================
 
-	// GET /sysconfig — Get all system configuration
-	api.GET("/sysconfig", middleware.RequirePermission(model.PermSystemConfig), func(c *gin.Context) {
+func setupSysConfig(api *gin.RouterGroup, systemConfigRepo *mongoinfra.SystemConfigRepository) {
+	api.GET("/sysconfig", middleware.RequirePermission(model.PermSystemConfig), getSysConfigHandler(systemConfigRepo))
+	api.PUT("/sysconfig", middleware.RequirePermission(model.PermSystemConfig), putSysConfigHandler(systemConfigRepo))
+}
+
+func getSysConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if systemConfigRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -874,15 +1072,15 @@ func main() {
 		for _, cfg := range dbConfigs {
 			result[cfg.Key] = cfg.Value
 		}
-		// Parse email_whitelist if stored as comma-separated string
 		if s, ok := result["email_whitelist"].(string); ok && s != "" {
 			result["email_whitelist"] = strings.Split(s, ",")
 		}
 		c.JSON(http.StatusOK, result)
-	})
+	}
+}
 
-	// PUT /sysconfig — Save system configuration values
-	api.PUT("/sysconfig", middleware.RequirePermission(model.PermSystemConfig), func(c *gin.Context) {
+func putSysConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if systemConfigRepo == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
@@ -893,18 +1091,15 @@ func main() {
 			return
 		}
 
-		// Validation: session recovery hours max 168
 		if hours, ok := body["session_recovery_hours"]; ok {
 			if h, ok := toFloat64(hours); ok && (h < 1 || h > 168) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "缓冲期最长 1 周（168 小时）"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "\u7f13\u51b2\u671f\u6700\u957f 1 \u5468\uff08168 \u5c0f\u65f6\uff09"})
 				return
 			}
 		}
 
-		// Store each key-value pair
 		for key, val := range body {
 			if list, ok := val.([]interface{}); ok {
-				// Join list as comma-separated string for email_whitelist
 				parts := make([]string, len(list))
 				for i, v := range list {
 					parts[i] = fmt.Sprintf("%v", v)
@@ -915,42 +1110,39 @@ func main() {
 			}
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
+	}
+}
 
-	// Admin-only routes
-	admin := router.Group("/api/v1/admin")
-	admin.Use(jwtManager.AuthMiddleware())
-	admin.GET("/dashboard", middleware.RequirePermission(model.PermSystemConfig), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "admin dashboard placeholder"})
-	})
+// ===================== Admin Routes =====================
 
-	// Invite management (admin)
+func setupAdminRoutes(admin *gin.RouterGroup, authHandler *handler.AuthHandler) {
+	admin.GET("/dashboard", middleware.RequirePermission(model.PermSystemConfig), adminDashboardHandler)
+
 	if authHandler != nil {
 		admin.POST("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.CreateInvite)
 		admin.GET("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.ListInvites)
 		admin.DELETE("/invites/:id", middleware.RequirePermission(model.PermUserManage), authHandler.RevokeInvite)
 		admin.PUT("/invites/hmac-secret", middleware.RequirePermission(model.PermSystemConfig), authHandler.UpdateHMACSecret)
 	}
+}
 
-	// ── SPEC-004: Chat & Agent routes ──
+func adminDashboardHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "admin dashboard placeholder"})
+}
 
-	// Chat endpoint (streaming SSE)
-	chatRoutes := router.Group("/api/v1/chat")
-	chatRoutes.Use(jwtManager.AuthMiddleware())
-	chatRoutes.POST("", agentService.HandleChat)
+// ===================== Session Management =====================
 
-	// Agent endpoints
-	agentRoutes := router.Group("/api/v1/agent")
-	agentRoutes.Use(jwtManager.AuthMiddleware())
-	agentRoutes.POST("/tasks", agentService.CreateAgentTask)
-	agentRoutes.GET("/tasks/:task_id", agentService.GetAgentTask)
-	agentRoutes.GET("/skills", agentService.ListSkills)
-	agentRoutes.GET("/skills/search", agentService.SearchSkills)
+func setupSessions(sessionRoutes *gin.RouterGroup, sessionManager *chat.Manager) {
+	sessionRoutes.POST("", createSessionHandler(sessionManager))
+	sessionRoutes.GET("", listSessionsHandler(sessionManager))
+	sessionRoutes.DELETE("/:id", deleteSessionHandler(sessionManager))
+	sessionRoutes.POST("/:id/restore", restoreSessionHandler(sessionManager))
+	sessionRoutes.GET("/deleted", listDeletedSessionsHandler(sessionManager))
+	sessionRoutes.POST("/:id/renew", renewSessionHandler(sessionManager))
+}
 
-	// Session management
-	sessionRoutes := router.Group("/api/v1/sessions")
-	sessionRoutes.Use(jwtManager.AuthMiddleware())
-	sessionRoutes.POST("", func(c *gin.Context) {
+func createSessionHandler(sessionManager *chat.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		sess, err := sessionManager.Create(userID.(string), "chat")
 		if err != nil {
@@ -961,176 +1153,139 @@ func main() {
 			"session_id": sess.ID,
 			"expires_at": sess.ExpiresAt,
 		})
-	})
+	}
+}
 
-	// List user sessions
-	sessionRoutes.GET("", func(c *gin.Context) {
+func listSessionsHandler(sessionManager *chat.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		sessions := sessionManager.ListByUser(userID.(string))
 		c.JSON(http.StatusOK, gin.H{"sessions": sessions})
-	})
+	}
+}
 
-	// Soft-delete session
-	sessionRoutes.DELETE("/:id", func(c *gin.Context) {
+func deleteSessionHandler(sessionManager *chat.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if err := sessionManager.Delete(c.Param("id")); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
-	})
+	}
+}
 
-	// Restore soft-deleted session
-	sessionRoutes.POST("/:id/restore", func(c *gin.Context) {
+func restoreSessionHandler(sessionManager *chat.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if err := sessionManager.Restore(c.Param("id")); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "restored"})
-	})
+	}
+}
 
-	// List deleted (recoverable) sessions
-	sessionRoutes.GET("/deleted", func(c *gin.Context) {
+func listDeletedSessionsHandler(sessionManager *chat.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		sessions := sessionManager.ListDeleted(userID.(string))
 		c.JSON(http.StatusOK, gin.H{"sessions": sessions})
-	})
+	}
+}
 
-	// Renew session
-	sessionRoutes.POST("/:id/renew", func(c *gin.Context) {
+func renewSessionHandler(sessionManager *chat.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if err := sessionManager.Renew(c.Param("id")); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "renewed"})
-	})
+	}
+}
 
-	// ── Chat Enhance ──
-	chatRoutes.POST("/enhance", func(c *gin.Context) {
-		var req struct {
-			Prompt string `json:"prompt" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
-			return
-		}
-		model := os.Getenv("LLM_MODEL")
-		if model == "" {
-			model = "default"
-		}
-		baseURL := os.Getenv("LLM_BASE_URL")
-		if baseURL == "" {
-			baseURL = "https://api.openai.com"
-		}
-		apiKey := os.Getenv("LLM_API_KEY")
+// ===================== Chat Enhance =====================
 
-		llmReq := map[string]interface{}{
-			"model": model,
-			"messages": []map[string]string{
-				{"role": "system", "content": "你是一个提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"},
-				{"role": "user", "content": req.Prompt},
-			},
-			"temperature": 0.3,
-			"max_tokens":  512,
-		}
-		body, _ := json.Marshal(llmReq)
-		httpReq, err := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "增强服务不可用"})
-			return
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		if apiKey != "" {
-			httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-		}
+func setupChatEnhance(chatRoutes *gin.RouterGroup) {
+	chatRoutes.POST("/enhance", chatEnhanceHandler)
+}
 
-		resp, err := http.DefaultClient.Do(httpReq)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "增强服务不可用"})
-			return
-		}
-		defer resp.Body.Close()
+func chatEnhanceHandler(c *gin.Context) {
+	var req struct {
+		Prompt string `json:"prompt" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
+		return
+	}
+	model := os.Getenv("LLM_MODEL")
+	if model == "" {
+		model = "default"
+	}
+	baseURL := os.Getenv("LLM_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://api.openai.com"
+	}
+	apiKey := os.Getenv("LLM_API_KEY")
 
-		var result struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Choices) == 0 {
-			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"enhanced": result.Choices[0].Message.Content})
-	})
+	llmReq := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": "\u4f60\u662f\u4e00\u4e2a\u63d0\u793a\u8bcd\u4f18\u5316\u4e13\u5bb6\u3002\u628a\u7528\u6237\u8f93\u5165\u7684\u6a21\u7cca\u67e5\u8be2\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u3001\u53ef\u64cd\u4f5c\u7684\u6570\u636e\u5206\u6790\u63d0\u793a\u8bcd\uff0c\u5305\u542b\u5177\u4f53\u6307\u6807\u3001\u7ef4\u5ea6\u3001\u65f6\u9650\u548c\u671f\u671b\u8f93\u51fa\u683c\u5f0f\u3002\u76f4\u63a5\u8f93\u51fa\u4f18\u5316\u540e\u7684\u63d0\u793a\u8bcd\uff0c\u4e0d\u8981\u89e3\u91ca\u3002"},
+			{"role": "user", "content": req.Prompt},
+		},
+		"temperature": 0.3,
+		"max_tokens":  512,
+	}
+	body, _ := json.Marshal(llmReq)
+	httpReq, err := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u589e\u5f3a\u670d\u52a1\u4e0d\u53ef\u7528"})
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
-	// ── SPEC-005: Artifact routes ──
-	artifactRoutes := router.Group("/api/v1/artifacts")
-	artifactRoutes.Use(jwtManager.AuthMiddleware())
-	artifactRoutes.POST("/upload", artifactHandler.Upload)
-	artifactRoutes.GET("/:id/download", artifactHandler.Download)
-	artifactRoutes.DELETE("/:id", artifactHandler.Delete)
-	artifactRoutes.GET("", artifactHandler.ListSession)
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u589e\u5f3a\u670d\u52a1\u4e0d\u53ef\u7528"})
+		return
+	}
+	defer resp.Body.Close()
 
-	// Workspace routes
-	wsRoutes := router.Group("/api/v1/workspace/:session_id")
-	wsRoutes.Use(jwtManager.AuthMiddleware())
-	wsRoutes.GET("/files", artifactHandler.ListWorkspace)
-	wsRoutes.GET("/files/:filename", artifactHandler.ReadWorkspaceFile)
-	wsRoutes.PUT("/files/:filename", artifactHandler.WriteWorkspaceFile)
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Choices) == 0 {
+		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"enhanced": result.Choices[0].Message.Content})
+}
 
-	// ── SPEC-006: Knowledge Base routes ──
-	kbRoutes := router.Group("/api/v1/knowledge")
-	kbRoutes.Use(jwtManager.AuthMiddleware())
-	kbRoutes.POST("/docs", kbHandler.UploadDoc)
-	kbRoutes.GET("/docs", kbHandler.ListDocs)
-	kbRoutes.GET("/docs/:id", kbHandler.GetDoc)
-	kbRoutes.DELETE("/docs/:id", kbHandler.DeleteDoc)
-	kbRoutes.POST("/docs/:id/chunks", kbHandler.AddChunks)
-	kbRoutes.GET("/search", kbHandler.Search)
+// ===================== Change Password =====================
 
-	// Admin KB management (global view)
-	adminKB := router.Group("/api/v1/admin/knowledge")
-	adminKB.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
-	adminKB.GET("/docs", kbHandler.ListAllDocs)
+func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
+	api.POST("/change-password", jwtManager.AuthMiddleware(), changePasswordHandler(mongoClient))
+}
 
-	// ── Audit Log routes (admin only) ──
-	auditRoutes := router.Group("/api/v1/admin/audit")
-	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermAuditLogView))
-	auditRoutes.GET("/logs", auditHandler.ListAuditLogs)
-	auditRoutes.POST("/export", auditHandler.ExportAuditLogs)
-
-	// ── API Review routes (admin only) ──
-	apiRevRoutes := router.Group("/api/v1/admin/api-reviews")
-	apiRevRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermAPIConvert))
-	apiRevRoutes.GET("", apiReviewHandler.ListAPIReviews)
-	apiRevRoutes.POST("", apiReviewHandler.CreateAPIReview)
-	apiRevRoutes.PUT("/:id/approve", apiReviewHandler.ApproveAPIReview)
-	apiRevRoutes.PUT("/:id/reject", apiReviewHandler.RejectAPIReview)
-
-	// ── Notification routes ──
-	notifRoutes := router.Group("/api/v1/notifications")
-	notifRoutes.Use(jwtManager.AuthMiddleware())
-	notifRoutes.GET("", notifHandler.ListNotifications)
-	notifRoutes.GET("/unread-count", notifHandler.UnreadCount)
-	notifRoutes.PUT("/:id/read", notifHandler.MarkRead)
-	notifRoutes.PUT("/read-all", notifHandler.MarkAllRead)
-	notifRoutes.POST("", notifHandler.SendNotification)
-	notifRoutes.POST("/broadcast", notifHandler.BroadcastNotification)
-
-	// ── Change Password ──
-	api.POST("/change-password", jwtManager.AuthMiddleware(), func(c *gin.Context) {
+func changePasswordHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		var req struct {
 			OldPassword string `json:"old_password" binding:"required"`
 			NewPassword string `json:"new_password" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码和新密码不能为空"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "\u65e7\u5bc6\u7801\u548c\u65b0\u5bc6\u7801\u4e0d\u80fd\u4e3a\u7a7a"})
 			return
 		}
 		if len(req.NewPassword) < 8 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 8 位，需包含大小写字母和数字"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "\u5bc6\u7801\u81f3\u5c11 8 \u4f4d\uff0c\u9700\u5305\u542b\u5927\u5c0f\u5199\u5b57\u6bcd\u548c\u6570\u5b57"})
 			return
 		}
 		hasUpper, hasLower, hasDigit := false, false, false
@@ -1146,31 +1301,30 @@ func main() {
 			}
 		}
 		if !hasUpper || !hasLower || !hasDigit {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 8 位，需包含大小写字母和数字"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "\u5bc6\u7801\u81f3\u5c11 8 \u4f4d\uff0c\u9700\u5305\u542b\u5927\u5c0f\u5199\u5b57\u6bcd\u548c\u6570\u5b57"})
 			return
 		}
 
-		// Get user from MongoDB
 		objID, err := primitive.ObjectIDFromHex(userID.(string))
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "\u7528\u6237\u4e0d\u5b58\u5728"})
 			return
 		}
 		var user model.User
 		coll := mongoClient.DB().Collection(model.CollUsers)
 		err = coll.FindOne(c.Request.Context(), bson.M{"_id": objID}).Decode(&user)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "\u7528\u6237\u4e0d\u5b58\u5728"})
 			return
 		}
 		if middleware.CheckPassword(user.PasswordHash, req.OldPassword) != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码不正确"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "\u65e7\u5bc6\u7801\u4e0d\u6b63\u786e"})
 			return
 		}
 
 		newHash, err := middleware.HashPassword(req.NewPassword)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "\u5bc6\u7801\u52a0\u5bc6\u5931\u8d25"})
 			return
 		}
 		_, err = coll.UpdateOne(c.Request.Context(),
@@ -1178,45 +1332,127 @@ func main() {
 			bson.M{"$set": bson.M{"password_hash": newHash, "password_changed": true}},
 		)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "修改失败"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "\u4fee\u6539\u5931\u8d25"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
-	})
-
-	// ── SPEC-009: Task routes ──
-	if taskHandler != nil {
-		taskRoutes := router.Group("/api/v1/tasks")
-		taskRoutes.Use(jwtManager.AuthMiddleware())
-		taskRoutes.POST("", taskHandler.CreateTask)
-		taskRoutes.GET("", taskHandler.ListTasks)
-		taskRoutes.GET("/:task_id", taskHandler.GetTask)
-		taskRoutes.PUT("/:task_id/cancel", taskHandler.CancelTask)
-		taskRoutes.PUT("/:task_id/pause", taskHandler.PauseTask)
-		taskRoutes.PUT("/:task_id/resume", taskHandler.ResumeTask)
-		taskRoutes.GET("/:task_id/artifacts/download", taskHandler.DownloadArtifacts)
-
-		// Admin task management (global view)
-		adminTasks := router.Group("/api/v1/admin/tasks")
-		adminTasks.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
-		adminTasks.GET("", taskHandler.ListAllTasks)
-		adminTasks.PUT("/:task_id/retry", taskHandler.RetryTask)
-		adminTasks.POST("/batch-cancel", taskHandler.BatchCancelTasks)
+		c.JSON(http.StatusOK, gin.H{"message": "\u5bc6\u7801\u4fee\u6539\u6210\u529f"})
 	}
+}
 
-	// ── Dashboard stats endpoint ──
-	router.GET("/api/v1/dashboard", jwtManager.AuthMiddleware(), func(c *gin.Context) {
+// ===================== Agent Routes =====================
+
+func setupAgentRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, agentService *agent_svc.Service) {
+	agentRoutes := router.Group("/api/v1/agent")
+	agentRoutes.Use(jwtManager.AuthMiddleware())
+	agentRoutes.POST("/tasks", agentService.CreateAgentTask)
+	agentRoutes.GET("/tasks/:task_id", agentService.GetAgentTask)
+	agentRoutes.GET("/skills", agentService.ListSkills)
+	agentRoutes.GET("/skills/search", agentService.SearchSkills)
+}
+
+// ===================== Artifact Routes =====================
+
+func setupArtifactRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, artifactHandler *handler.ArtifactHandler) {
+	artifactRoutes := router.Group("/api/v1/artifacts")
+	artifactRoutes.Use(jwtManager.AuthMiddleware())
+	artifactRoutes.POST("/upload", artifactHandler.Upload)
+	artifactRoutes.GET("/:id/download", artifactHandler.Download)
+	artifactRoutes.DELETE("/:id", artifactHandler.Delete)
+	artifactRoutes.GET("", artifactHandler.ListSession)
+}
+
+// ===================== Workspace Routes =====================
+
+func setupWorkspaceRoutes(wsRoutes *gin.RouterGroup, artifactHandler *handler.ArtifactHandler) {
+	wsRoutes.GET("/files", artifactHandler.ListWorkspace)
+	wsRoutes.GET("/files/:filename", artifactHandler.ReadWorkspaceFile)
+	wsRoutes.PUT("/files/:filename", artifactHandler.WriteWorkspaceFile)
+}
+
+// ===================== Knowledge Routes =====================
+
+func setupKnowledgeRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, kbHandler *handler.KnowledgeHandler) {
+	kbRoutes := router.Group("/api/v1/knowledge")
+	kbRoutes.Use(jwtManager.AuthMiddleware())
+	kbRoutes.POST("/docs", kbHandler.UploadDoc)
+	kbRoutes.GET("/docs", kbHandler.ListDocs)
+	kbRoutes.GET("/docs/:id", kbHandler.GetDoc)
+	kbRoutes.DELETE("/docs/:id", kbHandler.DeleteDoc)
+	kbRoutes.POST("/docs/:id/chunks", kbHandler.AddChunks)
+	kbRoutes.GET("/search", kbHandler.Search)
+}
+
+// ===================== Audit Routes =====================
+
+func setupAuditRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, auditHandler *handler.AuditHandler) {
+	auditRoutes := router.Group("/api/v1/admin/audit")
+	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermAuditLogView))
+	auditRoutes.GET("/logs", auditHandler.ListAuditLogs)
+	auditRoutes.POST("/export", auditHandler.ExportAuditLogs)
+}
+
+// ===================== API Review Routes =====================
+
+func setupAPIReviewRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, apiReviewHandler *handler.APIReviewHandler) {
+	apiRevRoutes := router.Group("/api/v1/admin/api-reviews")
+	apiRevRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermAPIConvert))
+	apiRevRoutes.GET("", apiReviewHandler.ListAPIReviews)
+	apiRevRoutes.POST("", apiReviewHandler.CreateAPIReview)
+	apiRevRoutes.PUT("/:id/approve", apiReviewHandler.ApproveAPIReview)
+	apiRevRoutes.PUT("/:id/reject", apiReviewHandler.RejectAPIReview)
+}
+
+// ===================== Notification Routes =====================
+
+func setupNotificationRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, notifHandler *handler.NotificationHandler) {
+	notifRoutes := router.Group("/api/v1/notifications")
+	notifRoutes.Use(jwtManager.AuthMiddleware())
+	notifRoutes.GET("", notifHandler.ListNotifications)
+	notifRoutes.GET("/unread-count", notifHandler.UnreadCount)
+	notifRoutes.PUT("/:id/read", notifHandler.MarkRead)
+	notifRoutes.PUT("/read-all", notifHandler.MarkAllRead)
+	notifRoutes.POST("", notifHandler.SendNotification)
+	notifRoutes.POST("/broadcast", notifHandler.BroadcastNotification)
+}
+
+// ===================== Task Routes =====================
+
+func setupTaskRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, taskHandler *handler.TaskHandler) {
+	taskRoutes := router.Group("/api/v1/tasks")
+	taskRoutes.Use(jwtManager.AuthMiddleware())
+	taskRoutes.POST("", taskHandler.CreateTask)
+	taskRoutes.GET("", taskHandler.ListTasks)
+	taskRoutes.GET("/:task_id", taskHandler.GetTask)
+	taskRoutes.PUT("/:task_id/cancel", taskHandler.CancelTask)
+	taskRoutes.PUT("/:task_id/pause", taskHandler.PauseTask)
+	taskRoutes.PUT("/:task_id/resume", taskHandler.ResumeTask)
+	taskRoutes.GET("/:task_id/artifacts/download", taskHandler.DownloadArtifacts)
+
+	adminTasks := router.Group("/api/v1/admin/tasks")
+	adminTasks.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
+	adminTasks.GET("", taskHandler.ListAllTasks)
+	adminTasks.PUT("/:task_id/retry", taskHandler.RetryTask)
+	adminTasks.POST("/batch-cancel", taskHandler.BatchCancelTasks)
+}
+
+// ===================== Dashboard Routes =====================
+
+func setupDashboard(router *gin.Engine, jwtManager *middleware.JWTManager, taskService *task_svc.Service, taskHandler *handler.TaskHandler, sessionManager *chat.Manager, kbService *knowledge.Service) {
+	router.GET("/api/v1/dashboard", jwtManager.AuthMiddleware(), dashboardHandler(taskService, taskHandler, sessionManager, kbService))
+	router.GET("/api/v1/dashboard/trends", jwtManager.AuthMiddleware(), dashboardTrendsHandler(taskService, sessionManager, kbService))
+}
+
+func dashboardHandler(taskService *task_svc.Service, taskHandler *handler.TaskHandler, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		stats := monitor.SystemStats()
 		userID, _ := c.Get("user_id")
 
-		// Query real task data
 		taskStats := map[string]int{"total": 0, "pending": 0, "running": 0, "completed": 0, "failed": 0}
 		sessionCount := 0
 		docCount := 0
 
 		if taskHandler != nil {
 			userIDStr := userID.(string)
-			// Task counts by status
 			if taskService != nil {
 				tasks, err := taskService.ListTasks(userIDStr)
 				if err == nil {
@@ -1237,11 +1473,9 @@ func main() {
 			}
 		}
 
-		// Session count
 		userSessions := sessionManager.ListByUser(userID.(string))
 		sessionCount = len(userSessions)
 
-		// KB doc count
 		if kbService != nil {
 			docs, err := kbService.ListDocs(userID.(string))
 			if err == nil {
@@ -1258,10 +1492,11 @@ func main() {
 		stats["task_stats"] = taskStats
 
 		c.JSON(http.StatusOK, stats)
-	})
+	}
+}
 
-	// ── Dashboard trends (time-series) endpoint ──
-	router.GET("/api/v1/dashboard/trends", jwtManager.AuthMiddleware(), func(c *gin.Context) {
+func dashboardTrendsHandler(taskService *task_svc.Service, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		var allTasks []task.Task
 
@@ -1280,43 +1515,11 @@ func main() {
 
 		trends := monitor.ComputeTrends(allTasks, make([]interface{}, len(userSessions)), docs)
 		c.JSON(http.StatusOK, trends)
-	})
-
-	// Start server
-	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler:      router,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
 	}
-
-	// Graceful shutdown
-	go func() {
-		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		<-quit
-		logger.Info("Shutting down server...")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := srv.Shutdown(ctx); err != nil {
-			logger.Fatal("Server forced to shutdown", zap.Error(err))
-		}
-	}()
-
-	logger.Info("DataAgent server starting",
-		zap.Int("port", cfg.Server.Port),
-		zap.String("log_level", cfg.Log.Level),
-	)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Fatal("Server error", zap.Error(err))
-	}
-
-	logger.Info("Server exited gracefully")
 }
 
-// initLogger initializes a structured logger based on config.
+// ===================== Helper Functions =====================
+
 func initLogger(cfg *config.Config) (*zap.Logger, error) {
 	var zapCfg zap.Config
 	if cfg.Log.Format == "json" {
@@ -1341,7 +1544,6 @@ func initLogger(cfg *config.Config) (*zap.Logger, error) {
 	return zapCfg.Build()
 }
 
-// ensureSystemAdmin creates the system_admin user if none exists.
 func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, logger *zap.Logger) error {
 	hasAdmin, err := repo.HasSystemAdmin(ctx)
 	if err != nil {
@@ -1364,7 +1566,7 @@ func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, log
 	}
 
 	admin := &model.User{
-		Username:        "系统管理员",
+		Username:        "\u7cfb\u7edf\u7ba1\u7406\u5458",
 		PasswordHash:    passwordHash,
 		Role:            model.RoleSystemAdmin,
 		PasswordChanged: false,
@@ -1378,14 +1580,19 @@ func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, log
 		zap.String("username", admin.Username),
 		zap.String("password", password),
 		zap.String("role", string(model.RoleSystemAdmin)),
-		zap.String("note", "请尽快修改密码！登录后横幅提示修改"),
+		zap.String("note", "\u8bf7\u5c3d\u5feb\u4fee\u6539\u5bc6\u7801\uff01\u767b\u5f55\u540e\u6a2a\u5e45\u63d0\u793a\u4fee\u6539"),
 	)
 
 	return nil
 }
 
-// getEnvOrDefault returns the env var value or a default.
-// toFloat64 tries to convert an interface{} to float64.
+func getEnvOrDefault(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultVal
+}
+
 func toFloat64(v interface{}) (float64, bool) {
 	switch val := v.(type) {
 	case float64:
@@ -1403,21 +1610,11 @@ func toFloat64(v interface{}) (float64, bool) {
 	return 0, false
 }
 
-func getEnvOrDefault(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultVal
-}
-
-// simpleExecutor is a basic task executor for the worker pool.
-// In production, this would route to the Agent Engine for actual execution.
 type simpleExecutor struct {
 	taskSvc *task_svc.Service
 }
 
 func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
-	// Placeholder: in production, this routes to Agent Engine
 	_ = ctx
 	_ = t
 	return nil

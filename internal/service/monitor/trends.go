@@ -101,11 +101,7 @@ func computeSuccessTrend(tasks []task.Task, now time.Time) []TrendPoint {
 			continue
 		}
 		day := int(age.Hours()/24) % 7
-		if string(task.Status) == "completed" {
-			dayBuckets[day].completed++
-		} else if string(task.Status) == "failed" {
-			dayBuckets[day].failed++
-		}
+		countByStatus(&dayBuckets[day], task.Status)
 	}
 	var trend []TrendPoint
 	for i, b := range dayBuckets {
@@ -117,6 +113,15 @@ func computeSuccessTrend(tasks []task.Task, now time.Time) []TrendPoint {
 		trend = append(trend, TrendPoint{Label: dayLabels[i], Value: rate})
 	}
 	return trend
+}
+
+func countByStatus(cf *completedFailed, status task.Status) {
+	switch status {
+	case task.StatusCompleted:
+		cf.completed++
+	case task.StatusFailed:
+		cf.failed++
+	}
 }
 
 func computeTokenTrend(callTrend []TrendPoint) []TrendPoint {
