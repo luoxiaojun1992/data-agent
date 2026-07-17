@@ -31,7 +31,6 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 	// 24h call trend — tasks by hour
 	hourBuckets := make([]int, 6) // 4-hour buckets: 0,4,8,12,16,20
 	hourLabels := []string{"0时", "4时", "8时", "12时", "16时", "20时"}
-	nowHour := now.Hour()
 
 	for _, task := range tasks {
 		age := now.Sub(task.CreatedAt)
@@ -45,7 +44,6 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 			hourBuckets[bucket]++
 		}
 	}
-	_ = nowHour
 
 	for i, count := range hourBuckets {
 		t.CallTrend = append(t.CallTrend, TrendPoint{Label: hourLabels[i], Value: count})

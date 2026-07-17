@@ -123,9 +123,6 @@ func TimeSeriesDecompose(values []float64) *AnalysisResult {
 	if len(values)/2 < window {
 		window = len(values) / 2
 	}
-	if window < 2 {
-		window = 2
-	}
 
 	trend := movingAverage(values, window)
 	residuals := make([]float64, len(values))

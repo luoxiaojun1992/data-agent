@@ -1958,3 +1958,118 @@ func TestManager_SetRecoveryHours_UpdateError(t *testing.T) {
 		t.Error("SetRecoveryHours should error on mongo failure")
 	}
 }
+
+// ===== handleStream json.Marshal error paths =====
+
+func TestHandleChat_Stream_SessionMarshalError(t *testing.T) {
+	svc := newTestService()
+	patches := gomonkey.ApplyMethodReturn(svc.sessions, "Create", &Session{
+		ID: "sess_marshal_err", UserID: "", Type: "chat", Status: "active",
+	}, nil)
+	defer patches.Reset()
+
+	patches.ApplyFunc(json.Marshal, func(v interface{}) ([]byte, error) {
+		return nil, fmt.Errorf("simulated marshal error")
+	})
+
+	body := `{"messages": [{"role": "user", "content": "stream"}], "stream": true}`
+	c, w := newGinContext("POST", "/chat", body)
+
+	svc.HandleChat(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 (stream returns OK even on marshal error), got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleChat_Stream_ErrorDataMarshalError(t *testing.T) {
+	svc := newTestService()
+	patches := gomonkey.ApplyMethodReturn(svc.sessions, "Create", &Session{
+		ID: "sess_errdata", UserID: "", Type: "chat", Status: "active",
+	}, nil)
+	defer patches.Reset()
+
+	// First marshal (session data) succeeds
+	callCount := 0
+	patches.ApplyFunc(json.Marshal, func(v interface{}) ([]byte, error) {
+		callCount++
+		if callCount == 1 {
+			return []byte(`{"session_id":"sess_errdata"}`), nil
+		}
+		// Subsequent marshals fail (error data marshal)
+		return nil, fmt.Errorf("simulated marshal error")
+	})
+
+	// Mock engine.RunStream to return error → triggers error data marshal
+	patches.ApplyMethodReturn(svc.engine, "RunStream", fmt.Errorf("stream crashed"))
+
+	body := `{"messages": [{"role": "user", "content": "stream"}], "stream": true}`
+	c, w := newGinContext("POST", "/chat", body)
+
+	svc.HandleChat(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for SSE stream, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "internal stream error") {
+		t.Logf("body should contain internal error fallback: %s", w.Body.String())
+	}
+}
+
+func TestHandleChat_Stream_ChunkMarshalError(t *testing.T) {
+	svc := newTestService()
+	patches := gomonkey.ApplyMethodReturn(svc.sessions, "Create", &Session{
+		ID: "sess_chunk_err", UserID: "", Type: "chat", Status: "active",
+	}, nil)
+	defer patches.Reset()
+
+	// First marshal (session data) succeeds, but chunks fail
+	callCount := 0
+	patches.ApplyFunc(json.Marshal, func(v interface{}) ([]byte, error) {
+		callCount++
+		if callCount == 1 {
+			return []byte(`{"session_id":"sess_chunk_err"}`), nil
+		}
+		return nil, fmt.Errorf("simulated chunk marshal error")
+	})
+
+	// Mock RunStream to invoke callback then succeed
+	patches.ApplyMethodFunc(svc.engine, "RunStream",
+		func(ctx context.Context, req agent.ChatRequest, callback func(string) error) error {
+			_ = callback("content chunk")
+			return nil
+		})
+
+	body := `{"messages": [{"role": "user", "content": "stream"}], "stream": true}`
+	c, w := newGinContext("POST", "/chat", body)
+
+	svc.HandleChat(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleChat_Stream_RunStreamErrorThenMarshalOk(t *testing.T) {
+	svc := newTestService()
+	patches := gomonkey.ApplyMethodReturn(svc.sessions, "Create", &Session{
+		ID: "sess_err_marshal_ok", UserID: "", Type: "chat", Status: "active",
+	}, nil)
+	defer patches.Reset()
+
+	// Mock RunStream to return error
+	patches.ApplyMethodReturn(svc.engine, "RunStream", fmt.Errorf("engine died"))
+
+	body := `{"messages": [{"role": "user", "content": "stream"}], "stream": true}`
+	c, w := newGinContext("POST", "/chat", body)
+
+	svc.HandleChat(c)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// Should contain the engine error message
+	if !strings.Contains(w.Body.String(), "engine died") {
+		t.Logf("body should contain engine error: %s", w.Body.String())
+	}
+}

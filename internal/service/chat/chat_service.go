@@ -129,7 +129,13 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest) {
 	}
 
 	// Send session ID as first event
-	sessionData, _ := json.Marshal(map[string]string{"session_id": req.SessionID})
+	sessionData, err := json.Marshal(map[string]string{"session_id": req.SessionID})
+	if err != nil {
+		log.Printf("[DEBUG chat] marshal session data: %v", err)
+		fmt.Fprintf(c.Writer, "data: {\"error\":\"marshal failed\"}\n\n")
+		flusher.Flush()
+		return
+	}
 	fmt.Fprintf(c.Writer, "data: %s\n\n", string(sessionData))
 	flusher.Flush()
 
@@ -147,8 +153,12 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest) {
 			return ""
 		}())
 
-	err := s.engine.RunStream(c.Request.Context(), agentReq, func(chunk string) error {
-		data, _ := json.Marshal(map[string]string{"content": chunk})
+	err = s.engine.RunStream(c.Request.Context(), agentReq, func(chunk string) error {
+		data, err := json.Marshal(map[string]string{"content": chunk})
+		if err != nil {
+			log.Printf("[DEBUG chat] marshal chunk: %v", err)
+			return nil
+		}
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(data))
 		flusher.Flush()
 		return nil
@@ -156,8 +166,13 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest) {
 
 	if err != nil {
 		log.Printf("[DEBUG chat] RunStream error: %v", err)
-		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
-		fmt.Fprintf(c.Writer, "data: %s\n\n", string(errData))
+		errData, marshalErr := json.Marshal(map[string]string{"error": err.Error()})
+		if marshalErr != nil {
+			log.Printf("[DEBUG chat] marshal error data: %v", marshalErr)
+			fmt.Fprintf(c.Writer, "data: {\"error\":\"internal stream error\"}\n\n")
+		} else {
+			fmt.Fprintf(c.Writer, "data: %s\n\n", string(errData))
+		}
 		flusher.Flush()
 	}
 
