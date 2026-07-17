@@ -114,9 +114,12 @@ agent_created: true
 涉及代码变更的 spec 需要：
 
 ```markdown
-1. **Unit tests**: xxx
-2. **Integration tests**: xxx
-3. **E2E tests**（条件，前端/Skill 涉及时）: xxx
+## 测试策略
+
+1. **Unit tests**（Go）: 覆盖率基线见 SPEC-045。L1 纯逻辑包 100%，L3 完整链路 98%。CI: `ut-workflow.yml`
+2. **Integration tests**: 条件使用 Docker Compose 环境（`go test -tags=integration`）
+3. **E2E tests**（条件，前端/Skill 涉及时）: 用例编号 `UI-XXX`，CI: `ui-tests.yml`
+4. **审计**: 使用 `.agent/skills/go-ut-audit` 审查 UT 质量
 ```
 
 ### 9. UI Test / E2E 验收规则（必需，暂占位）
@@ -135,6 +138,49 @@ agent_created: true
 参考: `.agent/memory/E2E_TESTING.md`
 ```
 
+### 9.5. Go Unit Test 验收规则（必需）
+
+```markdown
+## Go Unit Test 验收规则
+
+> 开发任务完成后必须编写 Go 单元测试并通过 CI（ut-workflow）。
+
+### 覆盖率底线
+
+| Tier | 特征 | 目标 | 示例 |
+|:---:|------|:---:|------|
+| L1 | 纯函数/纯结构体，无外部依赖 | **100%** | `logic/sql`, `logic/openapi`, `logic/report`, `config` |
+| L2 | 依赖接口，可 mock | **100%** | `queue/`, service interfaces |
+| L3 | 依赖 MongoDB/Redis/HTTP | **98%** | `service/*`, `api/handler/*` |
+| Overall | 全量 | ≥98% | CI `ut-workflow.yml` gate |
+
+### 断言质量要求
+
+- [ ] **必须** 每个 Success 测试至少包含 **2 个行为验证断言**（除 `err == nil` 外必须验证实际值/状态/副作用）
+- [ ] **必须** Handler 测试使用 `gomonkey.ApplyMethodFunc`（非 `ApplyMethodReturn`）验证 handler→service 参数传递正确性
+- [ ] **必须** Service 测试的写操作（`UpdateOne`, `InsertOne` 等）验证写入内容的字段和值
+- [ ] **严禁** `t.Skip()` 绕过无法测试的场景（如确实不可行，需文档注释说明原因并记录到 spec 中）
+- [ ] **严禁** Success 测试只验证 `err == nil` 而不验证操作的实际结果
+
+### 测试模式
+
+- Handler: `httptest.NewRecorder` + `gin.CreateTestContext` + real handler → mock service
+- Service: 直接注入 mock repository / 使用 `gomonkey` 模拟 MongoDB collection
+- Logic (L1): 纯 table-driven test，无 mock 依赖
+- Skill: 注入 mock 的外部服务（`knowledge.Service`, `agent.Engine` 等）
+
+### CI 门禁
+
+- [ ] `go test -race -gcflags=all=-l -coverprofile=coverage.out ./internal/... ./skills/...` 全部通过
+- [ ] 覆盖率 ≥ 98%（`ut-workflow.yml` gate）
+- [ ] `go vet` 无警告
+
+参考:
+- `.agent/specs/spec-045-go-service-ut.md` — Go UT 全覆盖 spec
+- `.agent/skills/go-ut-audit/SKILL.md` — UT 审计 skill
+- `.github/workflows/ut-workflow.yml` — CI UT workflow
+```
+
 ### 10. 验证标准（必需）
 
 可验证、可度量的标准列表。
@@ -143,11 +189,12 @@ agent_created: true
 
 | Spec 类型 | 必需章节 | 条件章节 |
 |-----------|---------|---------|
-| 新 Go 模块/服务 | 1, 6, 7, 9 | 2, 3, 4, 5, 8 |
-| 新 Skill | 1, 4, 6, 7, 9 | 2, 5, 8 |
-| API 变更 | 1, 4, 6, 7, 9 | 2, 5, 8 |
-| 架构重构 | 1, 2, 3, 5, 6, 7, 8, 9 | — |
-| 基础设施变更 | 1, 2, 3, 6, 7, 9 | 5, 8 |
+| 新 Go 模块/服务 | 1, 6, 7, 9, 9.5 | 2, 3, 4, 5, 8 |
+| 新 Skill | 1, 4, 6, 7, 9, 9.5 | 2, 5, 8 |
+| API 变更 | 1, 4, 6, 7, 9, 9.5 | 2, 5, 8 |
+| 架构重构 | 1, 2, 3, 5, 6, 7, 8, 9, 9.5 | — |
+| 基础设施变更 | 1, 2, 3, 6, 7, 9, 9.5 | 5, 8 |
+| 纯前端变更 | 1, 6, 7, 9 | 2, 5, 8 |
 
 ## Spec 编写流程
 

@@ -103,6 +103,10 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 10 | 测试非确定性 UI 状态（后端依赖的按钮、瞬时 toast、异步任务进度） | 只测试页面渲染、导航、表单、模态框等确定性 UI |
 | 11 | 有效测试只验证 "page header 存在" 而不验证实际行为 | 每个测试必须验证完整状态变更链（如创建→出现→取消→消失） |
 | 12 | 测试失败后降低断言强度迁就 Bug | 修复根因（bug/race condition/缺失 error log），不准削弱测试 |
+| 13 | Go UT Success 测试只验证 `err == nil` 不验证实际操作结果 | 每个 Success 测试必须包含 ≥2 个行为验证断言（验证写入的字段值、状态变更、副作用等） |
+| 14 | Handler 测试用 `gomonkey.ApplyMethodReturn` mock service 方法 | 使用 `ApplyMethodFunc` 验证 handler→service 的参数传递正确性（`req.Username`、`req.Password` 等字段） |
+| 15 | Go UT 使用 `t.Skip()` 绕过不可测场景 | 如确实不可测（如 WebSocket Hijacker），必须文档注释说明原因并记录到 spec |
+| 16 | L1 纯逻辑包（`logic/sql`, `logic/openapi`, `logic/report`, `config` 等）无测试或覆盖率不足 | L1 包必须 **100%** 覆盖率，CI `ut-workflow.yml` 98% gate 强制执行 |
 
 ## 开发工作流约定
 

@@ -13,6 +13,14 @@
 | [E2E_TESTING.md](./E2E_TESTING.md) | E2E 测试模式、data-testid 规范、用例矩阵（MVP 占位） |
 | [REUSABLE_PATTERNS.md](./REUSABLE_PATTERNS.md) | 代码片段与设计模式复用 |
 
+### 测试规范
+
+| 资源 | 用途 |
+|------|------|
+| `.github/workflows/ut-workflow.yml` | Go UT CI 门禁（98% 覆盖率 gate, `-race` flag） |
+| `.agent/skills/go-ut-audit/SKILL.md` | Go UT 审计 skill（四维度检查） |
+| `.agent/specs/spec-045-go-service-ut.md` | Go UT 全覆盖 spec（L1/L2/L3 tier 要求） |
+
 ## 快速参考
 
 ### 核心架构
