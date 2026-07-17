@@ -7,8 +7,8 @@
 | 文档 | 内容 |
 |----------|---------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构、关键文件、模块交互 |
-| [CONVENTIONS.md](./CONVENTIONS.md) | 编码规范、红线、Bug 修复记录 |
-| [LESSONS_LEARNED.md](./LESSONS_LEARNED.md) | 工程教训——犯过的错误及如何避免 |
+| [CONVENTIONS.md](./CONVENTIONS.md) | 编码规范、分支命名、提交规范、开发工作流、红线 |
+| [LESSONS_LEARNED.md](./LESSONS_LEARNED.md) | 工程教训——所有已纠正的错误和方法论（测试/覆盖率/工具/CI） |
 | [MEMORY.md](./MEMORY.md) | 工程决策日志（按日期追加） |
 | [E2E_TESTING.md](./E2E_TESTING.md) | E2E 测试模式、data-testid 规范、用例矩阵（MVP 占位） |
 | [REUSABLE_PATTERNS.md](./REUSABLE_PATTERNS.md) | 代码片段与设计模式复用 |

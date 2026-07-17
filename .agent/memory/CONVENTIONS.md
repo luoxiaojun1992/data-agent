@@ -113,25 +113,11 @@ Types: feat, fix, docs, test, refactor, chore, style
 ### 标准开发流程
 1. 开发功能 → 代码 push 到分支
 2. 晓军手动创建 PR
-3. 通过 PAT 轮询等待 GitHub Actions CI（sonar-check → ui-tests）
-4. UI test 失败则分析日志 → 修复代码 → push → 回到步骤 3
-5. UI test 全部通过 → 完成
+3. 通过 PAT 轮询等待 GitHub Actions CI（ut-workflow → sonar-check → ui-tests）
+4. CI 失败则分析日志 → 修复代码 → push → 回到步骤 3
+5. CI 全部通过 → 合并
 
 ### 轮询参数
 - 轮询间隔：120s
 - 使用 `gh api` 或 `curl` + PAT 调用 GitHub REST API
 - PAT 从 `.github-pat` 文件读取（已排除 git 版本控制）
-
-## 已纠正的错误
-
-> 记录过去的错误及其修复方案，用于团队学习。
-
-| # | 日期 | 错误做法 | 正确做法 | 影响 |
-|---|------|---------------|-----------------|--------|
-| 1 | 2026-07-16 | 前端 `catch { /* ignore */ }` 静默吞异常 | `catch` 块至少 `console.error` 记录错误信息 | UI 测试超时 30s 无法定位根因 |
-| 2 | 2026-07-16 | 测试中用 `page.goto` + `page.reload` 连环重载等 task row | 利用组件自带的 `loadTasks()` 自刷新，modal 关闭即断言 | 测试不稳定，频繁 timeout |
-| 3 | 2026-07-16 | 条件断言 `if (await btn.isVisible().catch(() => false))` 静默跳过后端 API 故障 | 刚性 `expect().toBeVisible({ timeout })`，超时即 FAIL | 大量测试假通过，后端 bug 被掩盖 |
-| 4 | 2026-07-16 | 用 `.catch(() => {})` 吞掉 `not.toBeVisible()` 失败 | 移除 `.catch()`，改用刚性断言 | 权限测试可能假绿色 |
-| 5 | 2026-07-16 | 测试用 `page.route()` mock API 响应来测试 Chat 功能 | 使用 mockllm seed + 真实 SSE 流，走完整 Handler→Service→Repository 栈 | Chat 测试等于没测后端 |
-| 6 | 2026-07-16 | 测试只验证 `agent-page-header` 可见就当"测试了取消行为" | 必须验证完整链：创建→row 出现→展开→点击 cancel→row 消失 | 假性测试，取消行为从未被验证 |
-| 7 | 2026-07-16 | Agent UI-052 测试超时 → 移除 task row 断言迁就 Bug，而不是追查 `loadTasks()` 为什么没渲染 | 用后端日志定位根因，修复前端 `createTask` → `loadTasks` 链路的 bug，保留刚性断言 | 真 bug 被掩盖，后续修改可能再次触发 |

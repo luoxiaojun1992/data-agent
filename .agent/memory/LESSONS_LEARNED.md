@@ -1,22 +1,79 @@
-# SPEC-045 工程教训
+# DataAgent — 工程教训
 
-> 记录于 2026-07-17，来源于 UT 覆盖率从 0% → 100% 过程中犯的错误。
+> 记录项目开发过程中犯过的错误及其解决方案，用于团队学习。按领域分类，倒序排列。
 
-## L1: 绝不容忍
+---
+
+## 测试
+
+### E2E: 前端 `catch { /* ignore */ }` 静默吞异常
+**日期**: 2026-07-16 | **影响**: UI 测试超时 30s 无法定位根因  
+**错误**: 前端 catch 块什么都不做，API 调用失败没有任何日志。  
+**教训**: `catch` 块至少 `console.error` 记录错误信息，否则 API 失败无法排查。
+
+### E2E: 用 `page.goto` + `page.reload` 连环重载等 task row
+**日期**: 2026-07-16 | **影响**: 测试不稳定，频繁 timeout  
+**错误**: 手动 reload 页面等渲染，而非依赖组件的自刷新机制。  
+**教训**: 利用组件自带的 `loadTasks()` 自刷新，modal 关闭即断言。
+
+### E2E: 条件断言静默跳过后端 API 故障
+**日期**: 2026-07-16 | **影响**: 大量测试假通过，后端 bug 被掩盖  
+**错误**: `if (await btn.isVisible().catch(() => false))` 静默吞掉后端故障。  
+**教训**: 使用刚性 `expect().toBeVisible({ timeout })`，超时即 FAIL，不做条件跳过。
+
+### E2E: `.catch(() => {})` 吞掉 `not.toBeVisible()` 失败
+**日期**: 2026-07-16 | **影响**: 权限测试可能假绿色  
+**错误**: 用 catch 吞掉断言失败，测试永远通过。  
+**教训**: 移除 `.catch()`，改用刚性断言。
+
+### E2E: `page.route()` mock API 响应测试 Chat 功能
+**日期**: 2026-07-16 | **影响**: Chat 测试等于没测后端  
+**错误**: 用 Playwright 的 `page.route()` 拦截 API 并返回假数据。  
+**教训**: 使用 mockllm seed + 真实 SSE 流，走完整 Handler→Service→Repository 栈。
+
+### E2E: 只验证 header 可见就当"测试了取消行为"
+**日期**: 2026-07-16 | **影响**: 假性测试，取消行为从未被验证  
+**错误**: `expect(header).toBeVisible()` 通过就当整条链路都通过了。  
+**教训**: 必须验证完整状态变更链：创建→row 出现→展开→点击操作→结果出现/消失。
+
+### UT: 断言空洞 — Success 测试只验证 `err == nil`
+**日期**: 2026-07-17 | **影响**: service task/audit/notification/apireview 的 Success 测试有 0.26~0.55 断言/测试比  
+**错误**: `TestCancelTask_Success` 只验证 `err != nil`，不验证任务状态是否真的变成 cancelled。  
+**教训**: 每个 Success 测试必须包含 ≥2 个行为验证断言：验证写入的字段值、状态变更、副作用。使用 `gomonkey.ApplyMethodFunc` 替代 `ApplyMethodReturn` 来校验参数。
+
+### UT: Handler 测试用 `ApplyMethodReturn` 不校验传参
+**日期**: 2026-07-17 | **影响**: handler→service 参数传递错误不可发现  
+**错误**: mock 固定返回 response，handler 传错 username 也能通过。  
+**教训**: Handler 测试使用 `ApplyMethodFunc` 验证 `req.Username`/`req.Password` 等参数正确传递。
+
+### UT: `t.Skip()` 绕过不可测试的 WebSocket
+**日期**: 2026-07-17 | **影响**: WebSocket 升级逻辑零覆盖  
+**错误**: `hermes_test.go` 中 `t.Skip("ResponseWriter does not support Hijacker")`。  
+**教训**: 如确实不可测（如 `httptest` 限制），必须注释说明原因。优先用 `httptest.Server` + 真实 `websocket.Dial` 替代。
+
+### UT: `buildDateFilter` 静默吞下无效日期
+**日期**: 2026-07-17 | **影响**: 用户输入错误日期无提示，过滤静默失效  
+**错误**: `time.Parse` 失败时 `buildDateFilter` 不返回 error，也不会打日志。  
+**教训**: 输入校验失败必须返回明确的 error，不允许静默跳过。
+
+---
+
+## 覆盖率
 
 ### 禁止降级质量门禁
+**日期**: 2026-07-17 | **影响**: 质量门禁名存实亡  
 **错误**: Sonar 报 24 个 CRITICAL CODE_SMELL，把 gate 脚本改成排除 CODE_SMELL。  
 **教训**: **所有质量门禁都是硬约束**，有问题就修代码，不要削足适履。降低标准让数字好看 = 掩耳盗铃。
 
 ### 禁止编造理论掩藏不确定
-**错误**: 本地 100%、CI 99.3%，连续 3 次给出错误根因（"跨包计数差异"、"工具链精度"、"gomonkey + race 失灵"），结果根因是 `.gitignore` 误屏蔽 hermes 目录。  
+**日期**: 2026-07-17 | **影响**: 连续 3 次给出错误根因  
+**错误**: 本地 100%、CI 99.3%，给出错误原因（"跨包计数差异"、"工具链精度"、"gomonkey + race 失灵"），根因是 `.gitignore` 误屏蔽 hermes 目录。  
 **教训**: **不确定时诚实说"还没找到"**，不要说"一定是"或"绝对是"。不要用看似技术性的解释来掩盖信息不足。
 
-### 禁止跳过验证就假设成功
-**错误**: 多次 push 后等 CI 红了才发现覆盖率不对。重构 main() 后也没确认 Sonar 是否真的 0 CRITICAL。  
-**教训**: **push 前本地完整验证**：`go test -race -coverprofile -coverpkg=...` + `golangci-lint run`。不靠 CI 做验证，CI 只用来确认。
-
-## L2: 核心方法
+### 禁止跳过本地验证就 push
+**日期**: 2026-07-17 | **影响**: 反复 push 等 CI 红了才知道覆盖率不对  
+**错误**: 重构后不跑完整测试链路（`-coverpkg` + `golangci-lint`），依赖 CI 做验证。  
+**教训**: **push 前本地完整验证**：`go test -race -coverprofile -coverpkg=...` + `golangci-lint run`。CI 只用来确认，不做首次验证。
 
 ### 覆盖率差异的根因分析流程
 ```
@@ -28,12 +85,6 @@
 ```
 不要跳过对比步骤直接猜测。证据先行。
 
-### gomonkey 在 Linux + race 不可靠
-`gomonkey` 使用 runtime 函数 patch，与 Go race detector 不兼容。编写新测试时优先用：
-1. 接口 mock（最可靠）
-2. `httptest.NewServer`（HTTP 场景）
-3. `gomonkey` 仅作为最后手段，且不带 `-race`
-
 ### Go cover 不计数行内匿名函数
 ```go
 // ❌ Go cover 会漏计 return 语句
@@ -43,6 +94,16 @@ log.Printf("msg=%q", func() string { return x }())
 v := x
 log.Printf("msg=%q", v)
 ```
+
+---
+
+## 工具与配置
+
+### gomonkey 在 Linux + race 不可靠
+`gomonkey` 使用 runtime 函数 patch，与 Go race detector 不兼容。编写新测试时优先用：
+1. 接口 mock（最可靠）
+2. `httptest.NewServer`（HTTP 场景）
+3. `gomonkey` 仅作为最后手段，且不带 `-race`
 
 ### .gitignore 路径规则
 - `hermes` — 匹配**任何目录**下的 hermes 文件/目录（包括 `internal/service/hermes/`）
@@ -55,7 +116,11 @@ log.Printf("msg=%q", v)
 - 每个路由组提取为独立 `setupXxxRoutes()` 函数
 - 每个匿名 handler 提取为命名函数
 
-### CI UT gate 配置
+---
+
+## CI 配置
+
+### UT gate 完整命令
 ```yaml
 go test -race -gcflags=all=-l -count=1 -coverprofile=coverage.out \
   -coverpkg=./internal/api/...,./internal/config/...,./internal/domain/...,./internal/logic/...,./internal/service/...,./skills/... \
