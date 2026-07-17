@@ -179,22 +179,13 @@ func NewEngine(router *Router, registry SkillRegistry, auditor SecurityAuditor) 
 
 // Run executes a chat completion with tool calls in a loop.
 func (e *Engine) Run(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	modelName := req.Model
-	if modelName == "" {
-		defaultModel, err := e.router.GetDefaultModel()
-		if err != nil {
-			return nil, fmt.Errorf("no model specified and no default: %w", err)
-		}
-		modelName = defaultModel.Model
+	modelName, err := e.resolveModel(req.Model)
+	if err != nil {
+		return nil, err
 	}
 
-	// Security audit on input
-	if e.security != nil {
-		for _, msg := range req.Messages {
-			if err := e.security.AuditInput(msg.Content); err != nil {
-				return nil, fmt.Errorf("input audit failed: %w", err)
-			}
-		}
+	if err := e.auditInputMessages(req.Messages); err != nil {
+		return nil, fmt.Errorf("input audit failed: %w", err)
 	}
 
 	startTime := time.Now()
@@ -203,62 +194,101 @@ func (e *Engine) Run(ctx context.Context, req ChatRequest) (*ChatResponse, error
 		return nil, fmt.Errorf("chat failed: %w", err)
 	}
 
-	// Security audit on tool calls before execution
-	if e.security != nil {
-		for _, tc := range resp.ToolCalls {
-			if err := e.security.AuditToolCall(tc.Name, tc.Arguments); err != nil {
-				return nil, fmt.Errorf("tool call audit failed for %q: %w", tc.Name, err)
-			}
-		}
+	if err := e.auditToolCalls(resp.ToolCalls); err != nil {
+		return nil, err
 	}
 
-	// Security audit on output
-	if e.security != nil {
-		sanitized, err := e.security.AuditOutput(resp.Content)
-		if err != nil {
-			return nil, fmt.Errorf("output audit failed: %w", err)
-		}
-		resp.Content = sanitized
+	if err := e.auditOutput(&resp.Content); err != nil {
+		return nil, err
 	}
 
-	_ = startTime // reserved for latency tracking
+	_ = startTime
 	return resp, nil
+}
+
+// resolveModel resolves the model name, falling back to the default.
+func (e *Engine) resolveModel(modelName string) (string, error) {
+	if modelName == "" {
+		defaultModel, err := e.router.GetDefaultModel()
+		if err != nil {
+			return "", fmt.Errorf("no model specified and no default: %w", err)
+		}
+		return defaultModel.Model, nil
+	}
+	return modelName, nil
+}
+
+// auditInputMessages runs security audit on each input message.
+func (e *Engine) auditInputMessages(messages []Message) error {
+	if e.security == nil {
+		return nil
+	}
+	for _, msg := range messages {
+		if err := e.security.AuditInput(msg.Content); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// auditToolCalls runs security audit on each tool call.
+func (e *Engine) auditToolCalls(toolCalls []ToolCall) error {
+	if e.security == nil {
+		return nil
+	}
+	for _, tc := range toolCalls {
+		if err := e.security.AuditToolCall(tc.Name, tc.Arguments); err != nil {
+			return fmt.Errorf("tool call audit failed for %q: %w", tc.Name, err)
+		}
+	}
+	return nil
+}
+
+// auditOutput runs security audit on the output content.
+func (e *Engine) auditOutput(content *string) error {
+	if e.security == nil {
+		return nil
+	}
+	sanitized, err := e.security.AuditOutput(*content)
+	if err != nil {
+		return fmt.Errorf("output audit failed: %w", err)
+	}
+	*content = sanitized
+	return nil
 }
 
 // RunStream executes a streaming chat completion with security audit on I/O.
 func (e *Engine) RunStream(ctx context.Context, req ChatRequest, callback func(chunk string) error) error {
-	if e.security != nil {
-		// Security audit on input
-		for _, msg := range req.Messages {
-			if err := e.security.AuditInput(msg.Content); err != nil {
-				return fmt.Errorf("input audit failed: %w", err)
-			}
-		}
-		// Accumulate full response, then sanitize (regexes may span chunk boundaries)
-		var full strings.Builder
-		log.Printf("[DEBUG] RunStream: calling ChatStream for msg=%q", req.Messages[len(req.Messages)-1].Content)
-		err := e.router.ChatStream(ctx, req.Model, req, func(chunk string) error {
-			full.WriteString(chunk)
-			return nil
-		})
-		log.Printf("[DEBUG] RunStream: ChatStream returned, err=%v full_len=%d", err, full.Len())
-		if err != nil {
-			return err
-		}
-		log.Printf("[DEBUG] RunStream: calling AuditOutput on %d bytes", full.Len())
-		sanitized, auditErr := e.security.AuditOutput(full.String())
-		log.Printf("[DEBUG] RunStream: AuditOutput returned, sanitized_len=%d err=%v", len(sanitized), auditErr)
-		if auditErr != nil {
-			return fmt.Errorf("output audit failed: %w", auditErr)
-		}
-		log.Printf("[DEBUG] RunStream sanitized: full_len=%d sanitized_len=%d first_50=%q",
-			full.Len(), len(sanitized), firstN(sanitized, 50))
-		log.Printf("[DEBUG] RunStream: calling outer callback with %d bytes", len(sanitized))
-		err = callback(sanitized)
-		log.Printf("[DEBUG] RunStream: outer callback returned, err=%v", err)
+	if e.security == nil {
+		return e.router.ChatStream(ctx, req.Model, req, callback)
+	}
+
+	if err := e.auditInputMessages(req.Messages); err != nil {
+		return fmt.Errorf("input audit failed: %w", err)
+	}
+
+	var full strings.Builder
+	log.Printf("[DEBUG] RunStream: calling ChatStream for msg=%q", req.Messages[len(req.Messages)-1].Content)
+	err := e.router.ChatStream(ctx, req.Model, req, func(chunk string) error {
+		full.WriteString(chunk)
+		return nil
+	})
+	log.Printf("[DEBUG] RunStream: ChatStream returned, err=%v full_len=%d", err, full.Len())
+	if err != nil {
 		return err
 	}
-	return e.router.ChatStream(ctx, req.Model, req, callback)
+	log.Printf("[DEBUG] RunStream: calling AuditOutput on %d bytes", full.Len())
+	sanitized, auditErr := e.security.AuditOutput(full.String())
+	log.Printf("[DEBUG] RunStream: AuditOutput returned, sanitized_len=%d err=%v", len(sanitized), auditErr)
+	if auditErr != nil {
+		return fmt.Errorf("output audit failed: %w", auditErr)
+	}
+	log.Printf("[DEBUG] RunStream sanitized: full_len=%d sanitized_len=%d first_50=%q",
+		full.Len(), len(sanitized), firstN(sanitized, 50))
+	log.Printf("[DEBUG] RunStream: calling outer callback with %d bytes", len(sanitized))
+	err = callback(sanitized)
+	log.Printf("[DEBUG] RunStream: outer callback returned, err=%v", err)
+	return err
 }
 
 // Chat sends a chat completion through the router.

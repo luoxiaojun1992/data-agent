@@ -236,8 +236,25 @@ func (s *Service) VerifyInviteToken(ctx context.Context, token string) (*VerifyI
 	}, nil
 }
 
+// registrationValidationResult holds the validated token payload and invite
+// from the database after pre-checks pass.
+type registrationValidationResult struct {
+	payload *logic.InviteTokenPayload
+	invite  *model.Invite
+}
+
 // CompleteRegistration completes user registration using a valid invite token.
 func (s *Service) CompleteRegistration(ctx context.Context, req *CompleteRegistrationRequest) (*CompleteRegistrationResponse, error) {
+	result, err := s.validateCompleteRegistration(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return s.createUserFromCompleteRegistration(ctx, req, result)
+}
+
+// validateCompleteRegistration performs all pre-checks: invite system readiness,
+// token verification, expiry, and DB invite status.
+func (s *Service) validateCompleteRegistration(ctx context.Context, req *CompleteRegistrationRequest) (*registrationValidationResult, error) {
 	if s.inviteRepo == nil {
 		return nil, fmt.Errorf("invite system not available")
 	}
@@ -245,18 +262,15 @@ func (s *Service) CompleteRegistration(ctx context.Context, req *CompleteRegistr
 		return nil, fmt.Errorf("invite hmac secret not configured")
 	}
 
-	// Verify the token with both current and previous secrets (key rotation support)
 	payload, err := logic.VerifyInviteToken(req.Token, [][]byte{s.hmacSecret})
 	if err != nil {
 		return nil, fmt.Errorf("invalid or expired invite token")
 	}
 
-	// Check expiry
 	if time.Now().Unix() > payload.ExpireAt {
 		return nil, fmt.Errorf("invite link has expired")
 	}
 
-	// Check invite in DB
 	invite, err := s.inviteRepo.FindByInviteID(ctx, payload.InviteID)
 	if err != nil {
 		return nil, fmt.Errorf("verify invite: %w", err)
@@ -268,7 +282,12 @@ func (s *Service) CompleteRegistration(ctx context.Context, req *CompleteRegistr
 		return nil, fmt.Errorf("this invite has already been used or revoked")
 	}
 
-	// Check username uniqueness
+	return &registrationValidationResult{payload: payload, invite: invite}, nil
+}
+
+// createUserFromCompleteRegistration creates the user, marks the invite as accepted,
+// and generates a JWT for auto-login.
+func (s *Service) createUserFromCompleteRegistration(ctx context.Context, req *CompleteRegistrationRequest, result *registrationValidationResult) (*CompleteRegistrationResponse, error) {
 	existing, err := s.userRepo.FindByUsername(ctx, req.Username)
 	if err != nil {
 		return nil, fmt.Errorf("check username: %w", err)
@@ -277,32 +296,28 @@ func (s *Service) CompleteRegistration(ctx context.Context, req *CompleteRegistr
 		return nil, fmt.Errorf("username already exists")
 	}
 
-	// Hash password
 	passwordHash, err := middleware.HashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
-	// Create user
 	user := &model.User{
 		Username:        req.Username,
 		PasswordHash:    passwordHash,
-		Role:            model.UserRole(payload.Role),
+		Role:            model.UserRole(result.payload.Role),
 		Status:          model.StatusEnabled,
 		DisplayName:     req.DisplayName,
-		InvitedBy:       invite.CreatedBy,
-		InviteID:        payload.InviteID,
-		PasswordChanged: true, // User set password during registration
+		InvitedBy:       result.invite.CreatedBy,
+		InviteID:        result.payload.InviteID,
+		PasswordChanged: true,
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
-	// Mark invite as accepted (non-fatal: user is already created)
-	_ = s.inviteRepo.MarkAccepted(ctx, payload.InviteID, user.ID.Hex())
+	_ = s.inviteRepo.MarkAccepted(ctx, result.payload.InviteID, user.ID.Hex())
 
-	// Generate JWT for auto-login
 	token, err := s.jwtManager.GenerateToken(user.ID.Hex(), user.Username, string(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
 // RequirePermission checks if the authenticated user has the required permission.
@@ -42,17 +43,17 @@ func getRolePermissions(role string) []string {
 	switch role {
 	case "system_admin":
 		return []string{
-			"model:config", "system:config", "user:manage_all",
-			"kb:manage_all", "audit:view", "password:change",
-			"api:convert", "notify:all",
+			model.PermModelConfig, model.PermSystemConfig, model.PermUserManageAll,
+			model.PermKBManageAll, model.PermAuditLogView, model.PermPasswordChange,
+			model.PermAPIConvert, model.PermNotifyAll,
 		}
 	case "admin":
 		return []string{
-			"user:manage", "kb:manage_own", "password:change",
-			"api:convert", "notify:group",
+			model.PermUserManage, model.PermKBManageOwn, model.PermPasswordChange,
+			model.PermAPIConvert, model.PermNotifyGroup,
 		}
 	case "user":
-		return []string{"kb:manage_own", "password:change"}
+		return []string{model.PermKBManageOwn, model.PermPasswordChange}
 	default:
 		return nil
 	}

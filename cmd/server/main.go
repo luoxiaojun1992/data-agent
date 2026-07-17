@@ -22,6 +22,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/consts"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
@@ -372,16 +373,16 @@ func main() {
 	authGroup := router.Group("/api/v1/auth")
 	if authHandler != nil {
 		authGroup.POST("/login", authHandler.Login)
-		authGroup.POST("/register", authHandler.Register)
+		authGroup.POST(consts.PathRegister, authHandler.Register)
 		// Invite-based registration (public)
-		authGroup.GET("/register", authHandler.VerifyInvite)
+		authGroup.GET(consts.PathRegister, authHandler.VerifyInvite)
 		authGroup.POST("/complete-registration", authHandler.CompleteRegistration)
 	} else {
 		authGroup.POST("/login", func(c *gin.Context) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 		})
-		authGroup.POST("/register", func(c *gin.Context) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+		authGroup.POST(consts.PathRegister, func(c *gin.Context) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 		})
 	}
 
@@ -394,7 +395,7 @@ func main() {
 		if authHandler != nil {
 			authHandler.RefreshToken(c)
 		} else {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 		}
 	})
 
@@ -403,14 +404,14 @@ func main() {
 		if authHandler != nil {
 			authHandler.GetProfile(c)
 		} else {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 		}
 	})
 
 	// User management (requires user:manage or user:manage_all)
-	api.GET("/users", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.GET("/users", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if userRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		role, _ := c.Get("role")
@@ -432,9 +433,9 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
 	})
 
-	api.GET("/users/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.GET(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if userRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		user, err := userRepo.FindByID(c.Request.Context(), c.Param("id"))
@@ -443,7 +444,7 @@ func main() {
 			return
 		}
 		if user == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": consts.ErrUserNotFound})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -455,9 +456,9 @@ func main() {
 	})
 
 	// POST /users — Create user (system_admin or admin)
-	api.POST("/users", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.POST("/users", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if userRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		var req struct {
@@ -530,15 +531,15 @@ func main() {
 	})
 
 	// PUT /users/:id — Update user role
-	api.PUT("/users/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.PUT(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if userRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		userID := c.Param("id")
 		user, err := userRepo.FindByID(c.Request.Context(), userID)
 		if err != nil || user == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": consts.ErrUserNotFound})
 			return
 		}
 		// Prevent downgrading system_admin
@@ -550,7 +551,7 @@ func main() {
 			Role model.UserRole `json:"role"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 			return
 		}
 		if req.Role != model.RoleSystemAdmin && req.Role != model.RoleAdmin && req.Role != model.RoleUser {
@@ -565,15 +566,15 @@ func main() {
 	})
 
 	// PATCH /users/:id/status — Toggle user enable/disable
-	api.PATCH("/users/:id/status", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.PATCH("/users/:id/status", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if userRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		userID := c.Param("id")
 		user, err := userRepo.FindByID(c.Request.Context(), userID)
 		if err != nil || user == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": consts.ErrUserNotFound})
 			return
 		}
 		// Prevent disabling system_admin
@@ -585,7 +586,7 @@ func main() {
 			Status model.UserStatus `json:"status"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 			return
 		}
 		if err := userRepo.UpdateStatus(c.Request.Context(), userID, req.Status); err != nil {
@@ -596,15 +597,15 @@ func main() {
 	})
 
 	// DELETE /users/:id — Delete user
-	api.DELETE("/users/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.DELETE(consts.PathUserByID, middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if userRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		userID := c.Param("id")
 		user, err := userRepo.FindByID(c.Request.Context(), userID)
 		if err != nil || user == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": consts.ErrUserNotFound})
 			return
 		}
 		// Prevent deleting system_admin
@@ -622,7 +623,7 @@ func main() {
 	// ── Role management ──
 
 	// GET /roles — List all roles (fixed + custom)
-	api.GET("/roles", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.GET("/roles", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		customRoles := []model.Role{}
 		if roleRepo != nil {
 			var err error
@@ -644,9 +645,9 @@ func main() {
 	})
 
 	// POST /roles — Create custom role
-	api.POST("/roles", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.POST("/roles", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if roleRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		var req struct {
@@ -655,7 +656,7 @@ func main() {
 			Permissions []string `json:"permissions"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 			return
 		}
 		if req.Name == "" || req.DisplayName == "" {
@@ -685,9 +686,9 @@ func main() {
 	})
 
 	// PUT /roles/:id — Update custom role permissions
-	api.PUT("/roles/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.PUT("/roles/:id", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if roleRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		roleID := c.Param("id")
@@ -700,7 +701,7 @@ func main() {
 			Permissions []string `json:"permissions"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 			return
 		}
 		if err := roleRepo.Update(c.Request.Context(), roleID, req.Permissions); err != nil {
@@ -711,9 +712,9 @@ func main() {
 	})
 
 	// DELETE /roles/:id — Delete custom role (fixed roles blocked)
-	api.DELETE("/roles/:id", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.DELETE("/roles/:id", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if roleRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		roleID := c.Param("id")
@@ -736,7 +737,7 @@ func main() {
 	// ── Model Config & Vault ──
 
 	// GET /model-config — Get current model configuration
-	api.GET("/model-config", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.GET("/model-config", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		configs := gin.H{
 			"api_url":        "https://api.openai.com/v1",
 			"api_key_exists": false,
@@ -792,14 +793,14 @@ func main() {
 	})
 
 	// PUT /model-config — Save model configuration
-	api.PUT("/model-config", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.PUT("/model-config", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if systemConfigRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		var body map[string]interface{}
 		if err := c.ShouldBindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 			return
 		}
 		for key, val := range body {
@@ -807,9 +808,9 @@ func main() {
 				// API keys go to HashiCorp Vault, not DB
 				if (key == "api_key" || key == "hermes_api_key") && valStr != "" {
 					if vaultClient != nil {
-						vaultPath := vaultinfra.APIKeyPath("data-agent")
+						vaultPath := vaultinfra.APIKeyPath(consts.DataAgentNS)
 						if key == "hermes_api_key" {
-							vaultPath = vaultinfra.HermesAPIKeyPath("data-agent")
+							vaultPath = vaultinfra.HermesAPIKeyPath(consts.DataAgentNS)
 						}
 						if err := vaultClient.Store(c.Request.Context(), vaultPath, valStr); err != nil {
 							c.JSON(http.StatusInternalServerError, gin.H{"error": "vault store failed"})
@@ -817,7 +818,7 @@ func main() {
 						}
 					}
 					// Store marker in DB to indicate key exists
-					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, "vault://data-agent/"+key)
+					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, "vault://"+consts.DataAgentNS+"/"+key)
 				} else {
 					_ = systemConfigRepo.Upsert(c.Request.Context(), "model", key, valStr)
 				}
@@ -827,7 +828,7 @@ func main() {
 	})
 
 	// POST /vault/decrypt — Retrieve API key from HashiCorp Vault
-	api.POST("/vault/decrypt", middleware.RequirePermission("user:manage"), func(c *gin.Context) {
+	api.POST("/vault/decrypt", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		if vaultClient == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault not configured"})
 			return
@@ -840,11 +841,11 @@ func main() {
 			Key string `json:"key"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 			return
 		}
 		if req.Key == "" {
-			req.Key = vaultinfra.APIKeyPath("data-agent")
+			req.Key = vaultinfra.APIKeyPath(consts.DataAgentNS)
 		}
 		plaintext, err := vaultClient.Retrieve(c.Request.Context(), req.Key)
 		if err != nil {
@@ -857,9 +858,9 @@ func main() {
 	// ── System Config ──
 
 	// GET /sysconfig — Get all system configuration
-	api.GET("/sysconfig", middleware.RequirePermission("system:config"), func(c *gin.Context) {
+	api.GET("/sysconfig", middleware.RequirePermission(model.PermSystemConfig), func(c *gin.Context) {
 		if systemConfigRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		dbConfigs, _ := systemConfigRepo.GetAll(c.Request.Context(), "sys")
@@ -881,14 +882,14 @@ func main() {
 	})
 
 	// PUT /sysconfig — Save system configuration values
-	api.PUT("/sysconfig", middleware.RequirePermission("system:config"), func(c *gin.Context) {
+	api.PUT("/sysconfig", middleware.RequirePermission(model.PermSystemConfig), func(c *gin.Context) {
 		if systemConfigRepo == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": consts.ErrDBUnavailable})
 			return
 		}
 		var body map[string]interface{}
 		if err := c.ShouldBindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 			return
 		}
 
@@ -919,16 +920,16 @@ func main() {
 	// Admin-only routes
 	admin := router.Group("/api/v1/admin")
 	admin.Use(jwtManager.AuthMiddleware())
-	admin.GET("/dashboard", middleware.RequirePermission("system:config"), func(c *gin.Context) {
+	admin.GET("/dashboard", middleware.RequirePermission(model.PermSystemConfig), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "admin dashboard placeholder"})
 	})
 
 	// Invite management (admin)
 	if authHandler != nil {
-		admin.POST("/invites", middleware.RequirePermission("user:manage"), authHandler.CreateInvite)
-		admin.GET("/invites", middleware.RequirePermission("user:manage"), authHandler.ListInvites)
-		admin.DELETE("/invites/:id", middleware.RequirePermission("user:manage"), authHandler.RevokeInvite)
-		admin.PUT("/invites/hmac-secret", middleware.RequirePermission("system:config"), authHandler.UpdateHMACSecret)
+		admin.POST("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.CreateInvite)
+		admin.GET("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.ListInvites)
+		admin.DELETE("/invites/:id", middleware.RequirePermission(model.PermUserManage), authHandler.RevokeInvite)
+		admin.PUT("/invites/hmac-secret", middleware.RequirePermission(model.PermSystemConfig), authHandler.UpdateHMACSecret)
 	}
 
 	// ── SPEC-004: Chat & Agent routes ──
@@ -1090,18 +1091,18 @@ func main() {
 
 	// Admin KB management (global view)
 	adminKB := router.Group("/api/v1/admin/knowledge")
-	adminKB.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("user:manage"))
+	adminKB.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
 	adminKB.GET("/docs", kbHandler.ListAllDocs)
 
 	// ── Audit Log routes (admin only) ──
 	auditRoutes := router.Group("/api/v1/admin/audit")
-	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("audit:view"))
+	auditRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermAuditLogView))
 	auditRoutes.GET("/logs", auditHandler.ListAuditLogs)
 	auditRoutes.POST("/export", auditHandler.ExportAuditLogs)
 
 	// ── API Review routes (admin only) ──
 	apiRevRoutes := router.Group("/api/v1/admin/api-reviews")
-	apiRevRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("api:convert"))
+	apiRevRoutes.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermAPIConvert))
 	apiRevRoutes.GET("", apiReviewHandler.ListAPIReviews)
 	apiRevRoutes.POST("", apiReviewHandler.CreateAPIReview)
 	apiRevRoutes.PUT("/:id/approve", apiReviewHandler.ApproveAPIReview)
@@ -1197,7 +1198,7 @@ func main() {
 
 		// Admin task management (global view)
 		adminTasks := router.Group("/api/v1/admin/tasks")
-		adminTasks.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission("user:manage"))
+		adminTasks.Use(jwtManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
 		adminTasks.GET("", taskHandler.ListAllTasks)
 		adminTasks.PUT("/:task_id/retry", taskHandler.RetryTask)
 		adminTasks.POST("/batch-cancel", taskHandler.BatchCancelTasks)

@@ -38,37 +38,8 @@ type ListResult struct {
 
 // List returns audit logs matching the filter params.
 func (s *Service) List(p ListParams) (*ListResult, error) {
-	filter := bson.M{}
-	if p.Action != "" {
-		filter["action"] = p.Action
-	}
-	if p.UserID != "" {
-		filter["user_id"] = p.UserID
-	}
-	if p.Start != "" || p.End != "" {
-		dateFilter := bson.M{}
-		if p.Start != "" {
-			if t, err := time.Parse("2006-01-02", p.Start); err == nil {
-				dateFilter["$gte"] = t
-			}
-		}
-		if p.End != "" {
-			if t, err := time.Parse("2006-01-02", p.End); err == nil {
-				t = t.Add(24 * time.Hour)
-				dateFilter["$lt"] = t
-			}
-		}
-		if len(dateFilter) > 0 {
-			filter["created_at"] = dateFilter
-		}
-	}
-
-	if p.Limit <= 0 {
-		p.Limit = 20
-	}
-	if p.Limit > 100 {
-		p.Limit = 100
-	}
+	filter := buildAuditFilter(p)
+	p.Limit = normalizeAuditLimit(p.Limit)
 
 	total, err := s.coll.CountDocuments(context.Background(), filter)
 	if err != nil {
@@ -91,6 +62,51 @@ func (s *Service) List(p ListParams) (*ListResult, error) {
 	}
 
 	return &ListResult{Logs: logs, Total: total}, nil
+}
+
+// buildAuditFilter builds the MongoDB filter from ListParams.
+func buildAuditFilter(p ListParams) bson.M {
+	filter := bson.M{}
+	if p.Action != "" {
+		filter["action"] = p.Action
+	}
+	if p.UserID != "" {
+		filter["user_id"] = p.UserID
+	}
+	if dateFilter := buildDateFilter(p.Start, p.End); len(dateFilter) > 0 {
+		filter["created_at"] = dateFilter
+	}
+	return filter
+}
+
+// buildDateFilter builds a date range filter from start/end strings.
+func buildDateFilter(start, end string) bson.M {
+	if start == "" && end == "" {
+		return nil
+	}
+	dateFilter := bson.M{}
+	if start != "" {
+		if t, err := time.Parse("2006-01-02", start); err == nil {
+			dateFilter["$gte"] = t
+		}
+	}
+	if end != "" {
+		if t, err := time.Parse("2006-01-02", end); err == nil {
+			dateFilter["$lt"] = t.Add(24 * time.Hour)
+		}
+	}
+	return dateFilter
+}
+
+// normalizeAuditLimit clamps the limit parameter to valid bounds.
+func normalizeAuditLimit(limit int64) int64 {
+	if limit <= 0 {
+		return 20
+	}
+	if limit > 100 {
+		return 100
+	}
+	return limit
 }
 
 // ExportParams defines the export request.

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
 func TestGetRolePermissions(t *testing.T) {
@@ -14,9 +15,9 @@ func TestGetRolePermissions(t *testing.T) {
 		wantLen int
 		want    []string
 	}{
-		{"system_admin", 8, []string{"model:config", "system:config", "user:manage_all"}},
-		{"admin", 5, []string{"user:manage", "kb:manage_own", "password:change"}},
-		{"user", 2, []string{"kb:manage_own", "password:change"}},
+		{"system_admin", 8, []string{model.PermModelConfig, model.PermSystemConfig, model.PermUserManageAll}},
+		{"admin", 5, []string{model.PermUserManage, model.PermKBManageOwn, model.PermPasswordChange}},
+		{"user", 2, []string{model.PermKBManageOwn, model.PermPasswordChange}},
 		{"unknown", 0, nil},
 	}
 
@@ -67,7 +68,7 @@ func TestRequirePermission(t *testing.T) {
 	t.Run("role not in context returns 403", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
-		handler := RequirePermission("model:config")
+		handler := RequirePermission(model.PermModelConfig)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("status: got %d, want 403", w.Code)
@@ -78,7 +79,7 @@ func TestRequirePermission(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "system_admin")
-		handler := RequirePermission("system:config")
+		handler := RequirePermission(model.PermSystemConfig)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("system_admin should pass, got %d", w.Code)
@@ -89,7 +90,7 @@ func TestRequirePermission(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "user")
-		handler := RequirePermission("user:manage")
+		handler := RequirePermission(model.PermUserManage)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("user should be forbidden, got %d", w.Code)
@@ -100,7 +101,7 @@ func TestRequirePermission(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "user")
-		handler := RequirePermission("password:change")
+		handler := RequirePermission(model.PermPasswordChange)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("user should have password:change, got %d", w.Code)
@@ -111,7 +112,7 @@ func TestRequirePermission(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "admin")
-		handler := RequirePermission("system:config")
+		handler := RequirePermission(model.PermSystemConfig)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("admin should lack system:config, got %d", w.Code)
@@ -126,7 +127,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", 123)
-		handler := RequirePermission("model:config")
+		handler := RequirePermission(model.PermModelConfig)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("non-string role should be 403, got %d", w.Code)
@@ -137,7 +138,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", nil)
-		handler := RequirePermission("model:config")
+		handler := RequirePermission(model.PermModelConfig)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("nil role should be 403, got %d", w.Code)
@@ -148,7 +149,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "")
-		handler := RequirePermission("model:config")
+		handler := RequirePermission(model.PermModelConfig)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("empty role should be 403, got %d", w.Code)
@@ -159,7 +160,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "super_admin")
-		handler := RequirePermission("model:config")
+		handler := RequirePermission(model.PermModelConfig)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("unknown role should be 403, got %d", w.Code)
@@ -170,7 +171,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "admin")
-		handler := RequirePermission("user:manage")
+		handler := RequirePermission(model.PermUserManage)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("admin should have user:manage, got %d", w.Code)
@@ -181,7 +182,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "admin")
-		handler := RequirePermission("kb:manage_own")
+		handler := RequirePermission(model.PermKBManageOwn)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("admin should have kb:manage_own, got %d", w.Code)
@@ -192,7 +193,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "admin")
-		handler := RequirePermission("api:convert")
+		handler := RequirePermission(model.PermAPIConvert)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("admin should have api:convert, got %d", w.Code)
@@ -203,7 +204,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "admin")
-		handler := RequirePermission("notify:group")
+		handler := RequirePermission(model.PermNotifyGroup)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("admin should have notify:group, got %d", w.Code)
@@ -214,7 +215,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "system_admin")
-		handler := RequirePermission("model:config")
+		handler := RequirePermission(model.PermModelConfig)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("system_admin should have model:config, got %d", w.Code)
@@ -225,7 +226,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "system_admin")
-		handler := RequirePermission("user:manage_all")
+		handler := RequirePermission(model.PermUserManageAll)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("system_admin should have user:manage_all, got %d", w.Code)
@@ -236,7 +237,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "system_admin")
-		handler := RequirePermission("audit:view")
+		handler := RequirePermission(model.PermAuditLogView)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("system_admin should have audit:view, got %d", w.Code)
@@ -247,7 +248,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", "system_admin")
-		handler := RequirePermission("notify:all")
+		handler := RequirePermission(model.PermNotifyAll)
 		handler(c)
 		if w.Code != http.StatusOK {
 			t.Errorf("system_admin should have notify:all, got %d", w.Code)
@@ -269,7 +270,7 @@ func TestRequirePermission_EdgeCases(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set("role", true)
-		handler := RequirePermission("model:config")
+		handler := RequirePermission(model.PermModelConfig)
 		handler(c)
 		if w.Code != http.StatusForbidden {
 			t.Errorf("bool role should be 403, got %d", w.Code)
