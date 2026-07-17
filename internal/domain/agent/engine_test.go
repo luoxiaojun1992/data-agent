@@ -233,6 +233,67 @@ func TestRouter_ChatStream(t *testing.T) {
 	}
 }
 
+func TestRouter_Chat_WithDefault(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("default-model", mp)
+	r.RegisterModel("default-model", &ModelConfig{Model: "default-model", IsDefault: true})
+
+	resp, err := r.Chat(context.Background(), "", ChatRequest{
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Router.Chat with default: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("should have response")
+	}
+}
+
+func TestRouter_Chat_NotFound(t *testing.T) {
+	r := NewRouter()
+	_, err := r.Chat(context.Background(), "nonexistent", ChatRequest{
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("should error for nonexistent model")
+	}
+}
+
+func TestRouter_ChatStream_WithDefault(t *testing.T) {
+	r := NewRouter()
+	mp := &mockProvider{}
+	r.RegisterProvider("default-model", mp)
+	r.RegisterModel("default-model", &ModelConfig{Model: "default-model", IsDefault: true})
+
+	err := r.ChatStream(context.Background(), "", ChatRequest{
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(chunk string) error { return nil })
+	if err != nil {
+		t.Fatalf("Router.ChatStream with default: %v", err)
+	}
+}
+
+func TestRouter_Chat_NoModel_NoDefault(t *testing.T) {
+	r := NewRouter()
+	_, err := r.Chat(context.Background(), "", ChatRequest{
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("should error when no model and no default")
+	}
+}
+
+func TestRouter_ChatStream_NoModel_NoDefault(t *testing.T) {
+	r := NewRouter()
+	err := r.ChatStream(context.Background(), "", ChatRequest{
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(chunk string) error { return nil })
+	if err == nil {
+		t.Fatal("should error when no model and no default")
+	}
+}
+
 func TestEngine_Run_AutoRegister(t *testing.T) {
 	// Router auto-registers a provider when one isn't found
 	// Use gomonkey to mock HTTP to avoid real network calls

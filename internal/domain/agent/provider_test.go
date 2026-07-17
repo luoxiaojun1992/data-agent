@@ -143,6 +143,120 @@ func TestOpenAIProvider_Chat(t *testing.T) {
 	}
 }
 
+func TestOpenAIProvider_Chat_Non200(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	respBody := io.NopCloser(bytes.NewReader([]byte(`{"error":"bad"}`)))
+	resp := &http.Response{StatusCode: 500, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	_, err := p.Chat(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("should error on non-200")
+	}
+}
+
+func TestOpenAIProvider_Chat_WithTools(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	respBody := io.NopCloser(bytes.NewReader([]byte(`{"choices": [{"message": {"content": "ok"}}]}`)))
+	resp := &http.Response{StatusCode: 200, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	result, err := p.Chat(context.Background(), ChatRequest{
+		Model: "gpt-4",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+		Tools:    []ToolDef{{Name: "search"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat with tools: %v", err)
+	}
+	if result == nil {
+		t.Fatal("should have response")
+	}
+}
+
+func TestOpenAIProvider_DoRequest_StreamMode(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	respBody := io.NopCloser(bytes.NewReader([]byte(`{"choices": []}`)))
+	resp := &http.Response{StatusCode: 200, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	body, err := p.doRequest(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, true) // stream mode
+	if err != nil {
+		t.Fatalf("doRequest stream: %v", err)
+	}
+	if len(body) == 0 {
+		t.Fatal("body should not be empty")
+	}
+}
+
+func TestOpenAIProvider_DoRequest_WithTools(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	respBody := io.NopCloser(bytes.NewReader([]byte(`{}`)))
+	resp := &http.Response{StatusCode: 200, Body: respBody}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	body, err := p.doRequest(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+		Tools: []ToolDef{{Name: "search"}},
+	}, false)
+	if err != nil {
+		t.Fatalf("doRequest: %v", err)
+	}
+	if body == nil {
+		t.Fatal("should have body")
+	}
+}
+
+func TestOpenAIProvider_DoRequest_ReadError(t *testing.T) {
+	p := NewOpenAIProvider("https://api.example.com", "sk-test")
+	errReader := &errorReader{err: io.ErrUnexpectedEOF}
+	resp := &http.Response{StatusCode: 200, Body: io.NopCloser(errReader)}
+	patches := gomonkey.ApplyMethodReturn(p.httpClient, "Do", resp, nil)
+	defer patches.Reset()
+
+	_, err := p.doRequest(context.Background(), ChatRequest{
+		Model: "gpt-4", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, false)
+	if err == nil {
+		t.Fatal("should error on read failure")
+	}
+}
+
+func TestParseSSEStream_SkipNonDelta(t *testing.T) {
+	// Data that isn't valid JSON or has empty delta content
+	var called bool
+	input := "data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n"
+	err := parseSSEStream(bytes.NewReader([]byte(input)), func(chunk string) error {
+		called = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("parseSSEStream: %v", err)
+	}
+	if called {
+		t.Fatal("should skip empty content")
+	}
+}
+
+func TestParseSSEStream_InvalidJSON(t *testing.T) {
+	var called bool
+	_ = parseSSEStream(bytes.NewReader([]byte("data: not-json\n\n")), func(chunk string) error {
+		called = true
+		return nil
+	})
+	if called {
+		t.Fatal("should skip invalid JSON")
+	}
+}
+
 func TestOpenAIProvider_ChatStream(t *testing.T) {
 	p := NewOpenAIProvider("https://api.example.com", "sk-test")
 
@@ -180,3 +294,7 @@ func TestOpenAIProvider_ChatStream_RequestError(t *testing.T) {
 		t.Fatal("should error on HTTP failure")
 	}
 }
+
+type errorReader struct{ err error }
+
+func (e *errorReader) Read(p []byte) (int, error) { return 0, e.err }
