@@ -19,6 +19,9 @@ func TestNewService(t *testing.T) {
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}
+	if s.coll != &coll {
+		t.Error("Service.coll should be the Collection returned by db.Collection")
+	}
 }
 
 func TestList_Success_NoFilters(t *testing.T) {
@@ -58,6 +61,10 @@ func TestList_Success_WithFilters(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(&coll, "CountDocuments", int64(5), nil)
 	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
+	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
+		return nil
+	})
 	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
 	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
 		return nil
@@ -177,48 +184,18 @@ func TestList_LimitCapped(t *testing.T) {
 }
 
 func TestList_InvalidStartDate(t *testing.T) {
-	var coll mongo.Collection
-	var cur mongo.Cursor
-
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "CountDocuments", int64(0), nil)
-	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
-	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
-	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
-		return nil
-	})
-
-	svc := &Service{coll: &coll}
-	result, err := svc.List(ListParams{Start: "invalid-date"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("expected non-nil ListResult")
+	svc := &Service{coll: nil}
+	_, err := svc.List(ListParams{Start: "invalid-date"})
+	if err == nil {
+		t.Fatal("expected error for invalid start date")
 	}
 }
 
 func TestList_InvalidEndDate(t *testing.T) {
-	var coll mongo.Collection
-	var cur mongo.Cursor
-
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(&coll, "CountDocuments", int64(0), nil)
-	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
-	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
-	patches.ApplyMethodFunc(&cur, "All", func(ctx context.Context, results interface{}) error {
-		return nil
-	})
-
-	svc := &Service{coll: &coll}
-	result, err := svc.List(ListParams{End: "invalid-date"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("expected non-nil ListResult")
+	svc := &Service{coll: nil}
+	_, err := svc.List(ListParams{End: "invalid-date"})
+	if err == nil {
+		t.Fatal("expected error for invalid end date")
 	}
 }
 

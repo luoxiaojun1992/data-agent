@@ -30,14 +30,23 @@ func TestLogin_Success(t *testing.T) {
 	svc := &authsvc.Service{}
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Login", &authsvc.LoginResponse{
-		UserID:      "user123",
-		Username:    "testuser",
-		Role:        "user",
-		AccessToken: "token-abc",
-		TokenType:   "Bearer",
-		ExpiresIn:   3600,
-	}, nil)
+	patches := gomonkey.ApplyMethodFunc(svc, "Login", func(_ interface{}, req *authsvc.LoginRequest) (*authsvc.LoginResponse, error) {
+		// Verify handler correctly passes request fields from JSON body
+		if req.Username != "testuser" {
+			t.Errorf("Login service received username=%q, want testuser", req.Username)
+		}
+		if req.Password != "password123" {
+			t.Error("Login service received wrong password")
+		}
+		return &authsvc.LoginResponse{
+			UserID:      "user123",
+			Username:    "testuser",
+			Role:        "user",
+			AccessToken: "token-abc",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+		}, nil
+	})
 	defer patches.Reset()
 
 	body := `{"username": "testuser", "password": "password123"}`
@@ -57,6 +66,24 @@ func TestLogin_Success(t *testing.T) {
 	}
 	if resp.AccessToken != "token-abc" {
 		t.Errorf("token: got %s", resp.AccessToken)
+	}
+}
+
+func TestLogin_ServiceError(t *testing.T) {
+	svc := &authsvc.Service{}
+	h := NewAuthHandler(svc)
+
+	patches := gomonkey.ApplyMethodFunc(svc, "Login", func(_ interface{}, req *authsvc.LoginRequest) (*authsvc.LoginResponse, error) {
+		return nil, fmt.Errorf("invalid credentials")
+	})
+	defer patches.Reset()
+
+	body := `{"username": "testuser", "password": "wrongpass"}`
+	c, w := newGinContext("POST", "/auth/login", body)
+	h.Login(c)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for service error, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
