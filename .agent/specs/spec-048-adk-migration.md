@@ -1,6 +1,6 @@
 # 引擎层迁移 Google ADK — ReAct Loop / Session 压缩 / 模型路由
 
-> **SPEC-048** | Status: 设计中 | Date: 2026-07-17 | Phase: P11
+> **SPEC-048** | Status: ✅ 已实现 | Date: 2026-07-17 | Phase: P11
 
 > **实现说明（2026-07-18）**：实现基于 ADK Go SDK v1.5.0，与本文档原始假设有以下偏差：
 > 1. **LiteLlm 不存在于 Go SDK**（仅 Python ADK 有）。Go SDK 仅内置 `model/gemini`。模型路由由 `internal/adk/model` 自实现：OpenAI 兼容 `model.LLM` + `FallbackLLM` fallback 链（`LLM_FALLBACK_BASE_URLS`）。
