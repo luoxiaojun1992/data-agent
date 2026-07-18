@@ -417,6 +417,89 @@ curl -s -H "Authorization: token $TOKEN" \
 
 ---
 
+## Lesson 20: Understand mockllm Key Matching Before Debugging Test Failures
+
+**Anti-pattern**: Test fails → assume mockllm FIFO is broken → refactor mockllm to global queue → break concurrent test isolation → revert → try fallback matching → user corrects: "为什么不按我说的做".
+
+**Real example 2026-07-18 (SPEC-046)**:
+- Tool-call tests (UI-211~218) used multi-step ReAct seed pattern: seed1(user_msg)→tool_call, seed2(user_msg)→final_answer
+- Tests failed: second LLM call's last message was tool result, not user message
+- SHA256 hash didn't match → mockllm returned default reply
+- Multiple wrong fixes attempted: relaxed assertions, global FIFO, first-user fallback
+- **Correct approach**: seed2 key = actual Go `json.Marshal()` of tool's deterministic return value
+
+**How mockllm matching works**:
+```go
+// mockllm/main.go — SHA256 of messages[-1].Content
+lastContent := req.Messages[len(req.Messages)-1].Content
+lookupKey := fmt.Sprintf("mock:resp:%x", sha256.Sum256([]byte(lastContent)))
+```
+
+ReAct loop message flow:
+```
+Call 1: messages = [user:"销售数据"]
+        lastContent = "销售数据" → hash matches seed1 key ✅
+        
+Tool executes → result appended
+
+Call 2: messages = [user:"销售数据", assistant:"{tool_call}", tool:"<tool_json>"]
+        lastContent = tool_result_json → hash must match seed2 key
+```
+
+**Correct seed pattern for ReAct tool call tests**:
+```typescript
+// Seed 1: user message → LLM decides to call tool
+await seedMock(request, '销售数据', tool_call_json);
+
+// Seed 2: tool's actual Go json.Marshal output → LLM gets final answer
+// Must match exactly what the tool returns (Go json.Marshal, no spaces, omitempty honored)
+await seedMock(request, '{"query":"销售数据","results":[],"count":0}', final_answer);
+```
+
+**Rule**: 
+1. Read the tool's Go struct to determine exact JSON output format
+2. Go `json.Marshal` produces compact JSON (no spaces, omitempty fields excluded)
+3. Never add fallback logic to mockllm — it defeats concurrent test isolation (hash per-key)
+4. If tool result format is uncertain, let CI run with a guess, grab actual content from logs, fix seed
+
+---
+
+## Lesson 21: data-testid Must Match Actual DOM — Grep Frontend Before Writing Selectors
+
+**Anti-pattern**: Write test with selector `[data-testid="agent-task-detail"]` → CI fails → selector doesn't exist in DOM.
+
+**Real example 2026-07-18 (SPEC-046)**:
+- Strengthened agent.spec.ts placeholder tests, added `[data-testid="agent-task-detail"]`
+- CI: 4 tests failed with `expect(locator).toBeVisible() failed`
+- Frontend uses indexed selectors: `[data-testid={`agent-task-detail-${idx}`}]`
+- Fix: changed to `[data-testid^="agent-task-detail-"]`
+
+**Rule**: Before writing any test that references a `data-testid`, verify the selector exists:
+```bash
+grep -r "agent-task-detail" frontend/
+```
+If using `^=` prefix match, verify ALL matching elements are the intended ones.
+
+---
+
+## Lesson 22: Listen to User's Design Intent — Don't Self-Solve Around It
+
+**Anti-pattern**: User specifies exact approach ("seed2 key = tool return value") → agent tries 3 different workarounds (relax assertions, FIFO queue, first-user fallback) → user gets frustrated: "你是不是有病，为什么不按我说的做？".
+
+**Real example 2026-07-18 (SPEC-046)**:
+- User explicitly said: tool must really be called, seed2 key = tool result, no first-user fallback
+- Agent tried: relaxing test assertions, global FIFO queue, first-user-message fallback in mockllm
+- User corrected each time → wasted 3 CI cycles (~1 hour)
+- Final correct approach was exactly what user specified from the beginning
+
+**Rule**: When the user gives a specific technical approach:
+1. First try EXACTLY what they ask for — don't pre-emptively "improve" it
+2. If blocked by a genuine technical limitation, EXPLAIN the limitation and ASK before deviating
+3. Never silently substitute the user's design with a simpler/hackier approach
+4. "我按你说的做" should be the first response, not the last resort
+
+---
+
 ## Documentation Protocol
 
 After completing non-trivial work, auto-check and update:
