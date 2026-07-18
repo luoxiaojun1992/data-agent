@@ -1,6 +1,6 @@
 # Go 1.26 升级与 adk-go-memory 迁移（含记忆相似度合并）
 
-> **SPEC-050** | Status: 设计中 | Date: 2026-07-18 | Phase: P12
+> **SPEC-050** | Status: ✅ 已实现 | Date: 2026-07-18 | Phase: P12
 
 ## 1. 目标
 
