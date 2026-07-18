@@ -31,11 +31,13 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	vaultinfra "github.com/luoxiaojun1992/data-agent/internal/infra/vault"
-	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
@@ -56,8 +58,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 
-	adksessionIF "google.golang.org/adk/session"
 	"google.golang.org/adk/memory"
+	adksessionIF "google.golang.org/adk/session"
 )
 
 // appName namespaces ADK sessions, memory entries, and tool registration.
@@ -84,11 +86,11 @@ type serverDependencies struct {
 	vaultClient      *vaultinfra.Client
 	authHandler      *handler.AuthHandler
 	modelCfg         *modelcfg.Provider
-	qdrantClient      *qdrantinfra.Client
+	qdrantClient     *qdrantinfra.Client
 	adkRuntime       *adkruntime.Runtime
 	adkSessions      *adksession.Service
-	memoryService    memory.Service       // google.golang.org/adk/memory.Service
-	memoryKit        *memoryx.Kit         // adk-go-memory Kit (nil when legacy)
+	memoryService    memory.Service // google.golang.org/adk/memory.Service
+	memoryKit        *memoryx.Kit   // adk-go-memory Kit (nil when legacy)
 	sessionManager   *chat.Manager
 	chatService      *chat.Service
 	agentService     *agent_svc.Service
@@ -110,6 +112,8 @@ type serverDependencies struct {
 	auditLogger      *middleware.AuditLogger
 	jwtManager       *middleware.JWTManager
 	redisClient      *redis.Client
+	llmRecorder      *llmstats.Recorder
+	llmCache         *llmcache.Cache
 	taskStream       *queue.Stream
 	swClient         *seaweedfs.Client
 }
@@ -233,6 +237,10 @@ func initAgentEngine(deps *serverDependencies) {
 
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoClient.DB(), 24*time.Hour)
+	deps.llmRecorder = llmstats.NewRecorder(mongoClient.DB())
+	if deps.redisClient != nil {
+		deps.llmCache = llmcache.New(deps.redisClient.Client())
+	}
 
 	// Build LLM from model config (Provider reads system_config or env).
 	llm, llmErr := deps.modelCfg.BuildLLM(context.Background())
@@ -1070,8 +1078,6 @@ func handleGetModelConfig(c *gin.Context, systemConfigRepo *mongoinfra.SystemCon
 	c.JSON(http.StatusOK, result)
 }
 
-
-
 func putModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client) gin.HandlerFunc {
 	return func(c *gin.Context) { handlePutModelConfig(c, systemConfigRepo, vaultClient) }
 }
@@ -1327,45 +1333,51 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup) {
 
 func chatEnhanceHandler(c *gin.Context) {
 	var req struct {
-		Prompt string `json:"prompt" binding:"required"`
+		Prompt string `json:"prompt"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
+	if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 		return
 	}
-	model := os.Getenv("LLM_MODEL")
-	if model == "" {
-		model = "default"
-	}
-	baseURL := os.Getenv("LLM_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://api.openai.com"
-	}
-	apiKey := os.Getenv("LLM_API_KEY")
 
-	llmReq := map[string]interface{}{
-		"model": model,
+	// Cache check
+	deps := getDeps(c)
+	if deps.llmCache != nil {
+		model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
+		if cached, ok := deps.llmCache.GetEnhance(c.Request.Context(), model, req.Prompt); ok {
+			deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
+				CallPoint: "enhance", Model: model,
+				PromptTokens: llmstats.EstimateTokens(req.Prompt),
+				CacheHit:     true,
+			})
+			c.JSON(http.StatusOK, gin.H{"enhanced": cached, "cache": "hit"})
+			return
+		}
+	}
+
+	// Call LLM
+	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
+	apiKey := os.Getenv("LLM_API_KEY")
+	if apiKey == "" {
+		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": getEnvOrDefault("LLM_MODEL", "gpt-4o"),
 		"messages": []map[string]string{
-			{"role": "system", "content": "\u4f60\u662f\u4e00\u4e2a\u63d0\u793a\u8bcd\u4f18\u5316\u4e13\u5bb6\u3002\u628a\u7528\u6237\u8f93\u5165\u7684\u6a21\u7cca\u67e5\u8be2\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u3001\u53ef\u64cd\u4f5c\u7684\u6570\u636e\u5206\u6790\u63d0\u793a\u8bcd\uff0c\u5305\u542b\u5177\u4f53\u6307\u6807\u3001\u7ef4\u5ea6\u3001\u65f6\u9650\u548c\u671f\u671b\u8f93\u51fa\u683c\u5f0f\u3002\u76f4\u63a5\u8f93\u51fa\u4f18\u5316\u540e\u7684\u63d0\u793a\u8bcd\uff0c\u4e0d\u8981\u89e3\u91ca\u3002"},
+			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
 			{"role": "user", "content": req.Prompt},
 		},
-		"temperature": 0.3,
-		"max_tokens":  512,
-	}
-	body, _ := json.Marshal(llmReq)
-	httpReq, err := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u589e\u5f3a\u670d\u52a1\u4e0d\u53ef\u7528"})
-		return
-	}
+		"max_tokens": 256,
+	})
+	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/chat/completions", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-
-	resp, err := http.DefaultClient.Do(httpReq)
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(httpReq)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u589e\u5f3a\u670d\u52a1\u4e0d\u53ef\u7528"})
+		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
 		return
 	}
 	defer resp.Body.Close()
@@ -1376,16 +1388,40 @@ func chatEnhanceHandler(c *gin.Context) {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Choices) == 0 {
-		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-		return
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+
+	enhanced := req.Prompt
+	if len(result.Choices) > 0 && result.Choices[0].Message.Content != "" {
+		enhanced = result.Choices[0].Message.Content
 	}
-	c.JSON(http.StatusOK, gin.H{"enhanced": result.Choices[0].Message.Content})
+
+	// Record token usage
+	model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
+	promptTk := result.Usage.PromptTokens
+	if promptTk == 0 {
+		promptTk = llmstats.EstimateTokens(req.Prompt)
+	}
+	compTk := result.Usage.CompletionTokens
+	if compTk == 0 {
+		compTk = llmstats.EstimateTokens(enhanced)
+	}
+	deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
+		CallPoint: "enhance", Model: model,
+		PromptTokens: promptTk, CompletionTokens: compTk,
+		Estimated: result.Usage.PromptTokens == 0,
+	})
+
+	// Cache result
+	if deps.llmCache != nil {
+		deps.llmCache.SetEnhance(c.Request.Context(), model, req.Prompt, enhanced)
+	}
+	c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 }
-
-// ===================== Change Password =====================
-
 func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	api.POST("/change-password", jwtManager.AuthMiddleware(), changePasswordHandler(mongoClient))
 }
@@ -1744,4 +1780,10 @@ func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
 	_ = ctx
 	_ = t
 	return nil
+}
+
+// getDeps retrieves serverDependencies from the gin context.
+func getDeps(c *gin.Context) *serverDependencies {
+	deps, _ := c.Get("deps")
+	return deps.(*serverDependencies)
 }
