@@ -10,6 +10,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
+	qdrant "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -1455,3 +1456,126 @@ func TestListAllDocs_FindError(t *testing.T) {
 		t.Error("expected nil docs on error")
 	}
 }
+
+// ===== SPEC-049 Qdrant / semanticSearch / AddChunks coverage =====
+
+func TestWithVectorIndex(t *testing.T) {
+	s := NewService(&mongo.Database{})
+	if s.qdrant != nil || s.embed != nil {
+		t.Error("qdrant/embed should be nil by default")
+	}
+	s.WithVectorIndex(&qdrant.Client{}, func(ctx context.Context, text string) ([]float32, error) {
+		return []float32{1, 2, 3}, nil
+	})
+	if s.qdrant == nil || s.embed == nil {
+		t.Error("qdrant/embed should be set after WithVectorIndex")
+	}
+}
+
+func TestSemanticSearch_WithQdrant(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	setupMockDB(patches)
+
+	qc := &qdrant.Client{}
+	patches.ApplyMethodReturn(qc, "Search", []qdrant.SearchHit{
+		{ID: 1, Score: 0.95, Payload: map[string]any{"doc_id": "doc1", "chunk_id": "chunk_a", "text": "hello world"}},
+		{ID: 2, Score: 0.80, Payload: map[string]any{"doc_id": "doc1", "chunk_id": "chunk_b", "text": "hello again"}},
+	}, nil)
+
+	// Mock doc lookup (FindOne for doc title)
+	patches.ApplyMethodFunc(&mongo.Collection{}, "FindOne",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+			return &mongo.SingleResult{}
+		})
+	patches.ApplyMethodReturn(&mongo.SingleResult{}, "Decode", nil)
+
+	s := NewService(&mongo.Database{})
+	s.WithVectorIndex(qc, func(ctx context.Context, text string) ([]float32, error) {
+		return []float32{0.1, 0.2}, nil
+	})
+
+	results := s.semanticSearch("hello", 3)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Score < 0.9 || results[0].Source != "semantic" {
+		t.Errorf("result mapping: %+v", results[0])
+	}
+}
+
+func TestSemanticSearch_QdrantError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	setupMockDB(patches)
+
+	qc := &qdrant.Client{}
+	patches.ApplyMethodReturn(qc, "Search", ([]qdrant.SearchHit)(nil), fmt.Errorf("qdrant down"))
+
+	s := NewService(&mongo.Database{})
+	s.WithVectorIndex(qc, func(ctx context.Context, text string) ([]float32, error) {
+		return []float32{0.1}, nil
+	})
+
+	results := s.semanticSearch("q", 3)
+	if results != nil {
+		t.Errorf("expected nil on qdrant error, got %v", results)
+	}
+}
+
+func TestSearch_RRF(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	setupMockDB(patches)
+
+	// Mock fullTextSearch: 2 results
+	patches.ApplyMethodFunc(&mongo.Collection{}, "Find",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+			return &mongo.Cursor{}, nil
+		})
+	var cursor mongo.Cursor
+	nextCalls := 0
+	patches.ApplyMethodFunc(&cursor, "Next",
+		func(ctx context.Context) bool {
+			nextCalls++
+			return nextCalls <= 4
+		})
+	patches.ApplyMethodFunc(&cursor, "Decode", func(v interface{}) error { return nil })
+	patches.ApplyMethodFunc(&cursor, "Close", func(ctx context.Context) error { return nil })
+	patches.ApplyMethodFunc(&mongo.Collection{}, "FindOne",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+			return &mongo.SingleResult{}
+		})
+
+	// Mock semanticSearch via qdrant
+	qc := &qdrant.Client{}
+	patches.ApplyMethodReturn(qc, "Search", []qdrant.SearchHit{
+		{ID: 3, Score: 0.9, Payload: map[string]any{"doc_id": "doc2", "chunk_id": "chunk_b", "text": "semantic match"}},
+	}, nil)
+
+	s := NewService(&mongo.Database{})
+	s.WithVectorIndex(qc, func(ctx context.Context, text string) ([]float32, error) {
+		return []float32{0.1}, nil
+	})
+
+	results, err := s.Search("user1", "test", 5, "admin")
+	if err != nil {
+		t.Fatalf("Search error: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("RRF search should return merged results")
+	}
+	hasSemantic := false
+	for _, r := range results {
+		if r.Source == "semantic" {
+			hasSemantic = true
+		}
+	}
+	if !hasSemantic {
+		t.Error("RRF should include semantic results")
+	}
+}
+
+// AddChunks Qdrant path is covered by existing TestCreateDoc + TestAddChunks in fullworkflow
+// integration tests. Unit-testing requires mocking *mongo.Collection.InsertOne/UpdateOne
+// with variadic options params that are unstable under gomonkey on Go 1.25.
