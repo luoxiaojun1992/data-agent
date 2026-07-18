@@ -295,6 +295,128 @@ Extract: `initServer()` → `buildRouter()` → 22 `setupXxxRoutes()` functions 
 
 ---
 
+## Lesson 15: Never Downgrade Functionality for Tests — Fix the Implementation
+
+**Anti-pattern**: UI test fails → remove new features (caching, recording) to make the test pass.
+
+**Real example 2026-07-18 (SPEC-051)**: 
+- New `llmstats.Recorder` + `llmcache.Cache` added to enhance handler via closure
+- UI-158 (Prompt enhance button) failed in CI
+- Wrong response: revert entire enhance handler to pre-SPEC-051 behavior, removing token recording
+- User feedback: "严格禁止为了通过ui test或ut，而修改设计好的功能"
+- **Correct response**: fix the implementation (getDeps null → closure injection, unused code → delete, complexity 17 → extract helpers) while keeping ALL functionality
+
+**Rule**: Tests protect functionality. When a test fails:
+1. Is the test asserting real behavior? → fix the implementation, not the test expectation
+2. Is the new feature breaking the test? → the feature is correct, fix the integration point
+3. Never delete/disable a feature to make CI green
+
+**Checklist**:
+```
+Test fails with new feature
+  ├── Feature correct, test assertion stale → update test
+  ├── Feature correct, integration broken → fix wiring (closure, DI, middleware)
+  ├── Feature correct, CI flake → investigate logs, retry
+  └── Feature wrong → redesign feature, don't just remove it
+```
+
+---
+
+## Lesson 16: Go 1.26 Coverage Baseline Shifts
+
+**Anti-pattern**: Assume go version upgrade doesn't affect coverage metrics → push without verifying locally.
+
+**Real example 2026-07-18 (SPEC-050)**:
+- Go 1.25 → 1.26 upgrade: go.mod, CI workflows, Dockerfile all updated
+- Total coverage dropped from 99.0% to 96.5%
+- Root cause: go 1.26 compiler generates different coverage instrumentation blocks for the same source code
+- 6 rounds of push-analyze-fix to restore coverage: memoryx 56%→71%→85%→86%→92% self-coverage, total 96.5%→97.1%→97.8%→97.9%→98.1%
+- Each round: 2min push + 8min CI = 10min × 5 = 50min wasted
+
+**Rule**: After any go version upgrade, run full coverage locally first and compare with baseline. Budget for ~200 additional test statements (0.5-1.5% coverage delta) when adding new packages.
+
+```bash
+# Before go version upgrade push:
+go test -race -gcflags=all=-l -coverprofile=/tmp/cov-before.out \
+  -coverpkg=./internal/adk/...,./internal/api/...,./internal/config/...,./internal/domain/...,./internal/logic/...,./internal/service/... \
+  ./internal/...
+# After upgrade:
+go test ... -coverprofile=/tmp/cov-after.out ...
+# Compare: python3 -c "..." to find delta
+```
+
+---
+
+## Lesson 17: Python String Replacement on Go Source Is Fragile
+
+**Anti-pattern**: Use Python `str.replace()` to refactor Go code → struct tags mangled, backticks corrupted.
+
+**Real example 2026-07-18 (SPEC-051)**:
+- Used Python heredoc with escaped backticks to replace Go handler code
+- Result: `` `json:"content"` `` became `` `+"`json:\"content\"`"+` `` (mangled)
+- Multiple rounds of build failures before switching to direct `Edit` tool
+
+**Rule**: 
+- For Go code changes: use the `Edit` tool with exact `old_string` / `new_string` matches
+- For simple replacements (imports, constants): `sed` is OK
+- For structural changes: read the file, plan the exact Edit blocks, apply one at a time
+- Python string manipulation on Go source = last resort only, and ALWAYS `go build` immediately after
+
+---
+
+## Lesson 18: Gin HandlerFunc Closures Count Toward Sonar Complexity
+
+**Anti-pattern**: Wrap gin route handlers in closures that capture deps → sonar counts the entire closure body as one function.
+
+**Real example 2026-07-18 (SPEC-051)**:
+- `makeEnhanceHandler(deps)` returned `func(c *gin.Context) { ... 40 lines ... }`
+- Sonar cognitive complexity: 17 (limit 15)
+- Fix: extract LLM call → `callEnhanceLLM(ctx, prompt)`, token recording → `recordEnhanceTokens(ctx, deps, ...)`
+- Closure body reduced to 5 lines (complexity 3)
+
+**Pattern**:
+```go
+// ❌ Sonar complexity 17
+func makeHandler(deps *deps) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // 40 lines of business logic
+    }
+}
+
+// ✅ Sonar complexity 3
+func makeHandler(deps *deps) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        result := doTheWork(c.Request.Context(), getInput(c))
+        recordTheResult(c.Request.Context(), deps, result)
+        c.JSON(200, result)
+    }
+}
+```
+
+---
+
+## Lesson 19: CI Polling with Shell Loops Is Unreliable
+
+**Anti-pattern**: `while sleep 120; do curl ...; done` in bash → timeout at 137 (SIGKILL), proxy hangs, no notification.
+
+**Real example 2026-07-18 (multiple specs)**:
+- Used `bash scripts/wait-for-ci.sh` → exited 137 (SIGKILL) after ~30min
+- Used `while sleep 120` loops → would hang on proxy, never return
+- Docker-based CI jobs take 20-40 minutes for ui-tests
+
+**Better approach**:
+```bash
+# One-shot direct check (no polling)
+curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/luoxiaojun1992/data-agent/commits/$BRANCH/check-runs" \
+  | python3 -c "import sys,json; ..."
+```
+- Check manually after push, wait for natural completion
+- If monitoring is needed, use a proper tool (gh CLI with notification, or GitHub webhook)
+- Don't trust bash `sleep` + `curl` loops for long-running CI jobs
+
+---
+
 ## Documentation Protocol
 
 After completing non-trivial work, auto-check and update:
