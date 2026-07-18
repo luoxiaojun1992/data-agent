@@ -1336,6 +1336,59 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
 // defaultModel is the fallback model name for enhance/embedding.
 const defaultModel = "gpt-4o"
 
+// callEnhanceLLM calls the LLM to enhance a prompt. Falls back to original on error.
+func callEnhanceLLM(ctx context.Context, prompt string) string {
+	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
+	apiKey := os.Getenv("LLM_API_KEY")
+	if apiKey == "" {
+		return prompt
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": getEnvOrDefault("LLM_MODEL", defaultModel),
+		"messages": []map[string]string{
+			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
+			{"role": "user", "content": prompt},
+		},
+		"max_tokens": 256,
+	})
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/chat/completions", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
+	if err != nil {
+		return prompt
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if len(result.Choices) == 0 {
+		return prompt
+	}
+	return result.Choices[0].Message.Content
+}
+
+// recordEnhanceTokens records token usage for an enhance call.
+func recordEnhanceTokens(ctx context.Context, deps *serverDependencies, prompt, enhanced string) {
+	if deps.llmRecorder == nil {
+		return
+	}
+	model := getEnvOrDefault("LLM_MODEL", defaultModel)
+	_ = deps.llmRecorder.Record(ctx, llmstats.Record{
+		CallPoint:        "enhance",
+		Model:            model,
+		PromptTokens:     llmstats.EstimateTokens(prompt),
+		CompletionTokens: llmstats.EstimateTokens(enhanced),
+		Estimated:        true,
+	})
+}
+
 func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -1346,71 +1399,8 @@ func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
 			return
 		}
 
-		baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
-		apiKey := os.Getenv("LLM_API_KEY")
-		if apiKey == "" {
-			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-			return
-		}
-
-		client := &http.Client{Timeout: 30 * time.Second}
-		body, _ := json.Marshal(map[string]interface{}{
-			"model": getEnvOrDefault("LLM_MODEL", defaultModel),
-			"messages": []map[string]string{
-				{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
-				{"role": "user", "content": req.Prompt},
-			},
-			"max_tokens": 256,
-		})
-		httpReq, _ := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/chat/completions", bytes.NewReader(body))
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-			return
-		}
-		defer resp.Body.Close()
-
-		var result struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-			Usage struct {
-				PromptTokens     int `json:"prompt_tokens"`
-				CompletionTokens int `json:"completion_tokens"`
-			} `json:"usage"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&result)
-
-		if len(result.Choices) == 0 {
-			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-			return
-		}
-		enhanced := result.Choices[0].Message.Content
-
-		// Record token usage (non-blocking, best-effort).
-		if deps.llmRecorder != nil {
-			model := getEnvOrDefault("LLM_MODEL", defaultModel)
-			pt := result.Usage.PromptTokens
-			if pt == 0 {
-				pt = llmstats.EstimateTokens(req.Prompt)
-			}
-			ct := result.Usage.CompletionTokens
-			if ct == 0 {
-				ct = llmstats.EstimateTokens(enhanced)
-			}
-			_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
-				CallPoint: "enhance", Model: model,
-				PromptTokens:     pt,
-				CompletionTokens: ct,
-				Estimated:        result.Usage.PromptTokens == 0,
-			})
-		}
-
-		// Same response format as pre-SPEC-051 — backward compatible with UI-158.
+		enhanced := callEnhanceLLM(c.Request.Context(), req.Prompt)
+		recordEnhanceTokens(c.Request.Context(), deps, req.Prompt, enhanced)
 		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 	}
 }
