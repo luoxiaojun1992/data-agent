@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	adkmemory "github.com/luoxiaojun1992/data-agent/internal/adk/memory"
+	"github.com/luoxiaojun1992/data-agent/internal/adk/memoryx"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	adksession "github.com/luoxiaojun1992/data-agent/internal/adk/session"
@@ -56,6 +57,7 @@ import (
 	"go.uber.org/zap"
 
 	adksessionIF "google.golang.org/adk/session"
+	"google.golang.org/adk/memory"
 )
 
 // appName namespaces ADK sessions, memory entries, and tool registration.
@@ -85,7 +87,8 @@ type serverDependencies struct {
 	qdrantClient      *qdrantinfra.Client
 	adkRuntime       *adkruntime.Runtime
 	adkSessions      *adksession.Service
-	memoryService    *adkmemory.Service
+	memoryService    memory.Service       // google.golang.org/adk/memory.Service
+	memoryKit        *memoryx.Kit         // adk-go-memory Kit (nil when legacy)
 	sessionManager   *chat.Manager
 	chatService      *chat.Service
 	agentService     *agent_svc.Service
@@ -244,18 +247,37 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	)
 
 	// Long-term memory (MongoDB + embedding).
+	// MEMORY_BACKEND=adk-memory (default) → adk-go-memory with LLM deriver + similarity merge.
+	// MEMORY_BACKEND=legacy → SPEC-048 self-implemented memory.Service.
 	embedCfg := deps.modelCfg.EmbeddingConfig()
-	var embed adkmemory.EmbeddingFunc
+	var embedFn func(ctx context.Context, text string) ([]float32, error)
 	if embedCfg.BaseURL != "" {
-		embed = adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
+		e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
 			BaseURL: embedCfg.BaseURL,
 			Model:   embedCfg.Model,
 			APIKey:  embedCfg.APIKey,
 		})
+		embedFn = func(ctx context.Context, text string) ([]float32, error) { return e(ctx, text) }
 	} else {
 		logger.Info("EMBEDDING_BASE_URL not set — memory search falls back to keyword matching")
 	}
-	deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
+
+	if os.Getenv("MEMORY_BACKEND") == "legacy" {
+		logger.Info("Using legacy memory backend (SPEC-048 self-implemented)")
+		var embed adkmemory.EmbeddingFunc
+		if embedFn != nil {
+			embed = embedFn
+		}
+		deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
+	} else {
+		logger.Info("Using adk-go-memory backend (SPEC-050)")
+		kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
+		if err != nil {
+			logger.Fatal("Failed to create adk-go-memory Kit", zap.Error(err))
+		}
+		deps.memoryService = kit.Service()
+		deps.memoryKit = kit
+	}
 
 	// ADK tools.
 	toolDeps := &adktools.Deps{
@@ -991,7 +1013,7 @@ func setupModelConfig(api *gin.RouterGroup, systemConfigRepo *mongoinfra.SystemC
 
 // setupMemorySearch registers the admin memory search endpoint used to verify
 // Mem0-style long-term memory writes (SPEC-048/SPEC-046).
-func setupMemorySearch(api *gin.RouterGroup, memSvc *adkmemory.Service) {
+func setupMemorySearch(api *gin.RouterGroup, memSvc memory.Service) {
 	api.GET("/memory/search", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
 		handleMemorySearch(c, memSvc)
 	})
@@ -999,7 +1021,7 @@ func setupMemorySearch(api *gin.RouterGroup, memSvc *adkmemory.Service) {
 
 // handleMemorySearch searches long-term memory for a user.
 // Query params: q (required), user_id (defaults to the caller).
-func handleMemorySearch(c *gin.Context, memSvc *adkmemory.Service) {
+func handleMemorySearch(c *gin.Context, memSvc memory.Service) {
 	query := c.Query("q")
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' required"})
@@ -1011,12 +1033,26 @@ func handleMemorySearch(c *gin.Context, memSvc *adkmemory.Service) {
 		userID, _ = uid.(string)
 	}
 
-	results, err := memSvc.AdminSearch(c.Request.Context(), appName, userID, query)
+	results, err := memSvc.SearchMemory(c.Request.Context(), &memory.SearchRequest{
+		Query:   query,
+		UserID:  userID,
+		AppName: appName,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"results": results, "count": len(results)})
+	var texts []string
+	for _, m := range results.Memories {
+		if m.Content != nil {
+			for _, p := range m.Content.Parts {
+				if p != nil {
+					texts = append(texts, p.Text)
+				}
+			}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"results": texts, "count": len(texts)})
 }
 
 func getModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gin.HandlerFunc {
