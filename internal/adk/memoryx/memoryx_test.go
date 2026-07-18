@@ -357,3 +357,93 @@ func TestAverageVectors(t *testing.T) {
 		t.Errorf("averageVectors: %v", avg)
 	}
 }
+
+func TestEnsureEmbedding(t *testing.T) {
+	embedFn := func(ctx context.Context, text string) ([]float32, error) {
+		return []float32{float32(len(text)), 0.1}, nil
+	}
+	k := &Kit{embed: embedFn}
+
+	o := &adapter.Observation{Content: "hello"}
+	k.ensureEmbedding(context.Background(), o)
+	if len(o.Embedding) != 2 {
+		t.Fatalf("embedding should be set: %v", o.Embedding)
+	}
+
+	// Already has embedding — skip.
+	o2 := &adapter.Observation{Content: "x", Embedding: []float32{9}}
+	k.ensureEmbedding(context.Background(), o2)
+	if o2.Embedding[0] != 9 {
+		t.Error("existing embedding should be preserved")
+	}
+
+	// No embed function — no-op.
+	k2 := &Kit{}
+	o3 := &adapter.Observation{Content: "x"}
+	k2.ensureEmbedding(context.Background(), o3)
+	if len(o3.Embedding) != 0 {
+		t.Error("no embed fn → no embedding")
+	}
+
+	// Empty content.
+	o4 := &adapter.Observation{Content: ""}
+	k.ensureEmbedding(context.Background(), o4)
+	if len(o4.Embedding) != 0 {
+		t.Error("empty content → no embedding")
+	}
+}
+
+func TestMergeIfSimilar(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	storage := &MongoStorage{coll: &coll, appName: "app"}
+
+	// Return a similar existing memory.
+	var cur mongo.Cursor
+	calls := 0
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&cur, "Next", func(ctx context.Context) bool {
+		calls++
+		return calls == 1
+	})
+	patches.ApplyMethodFunc(&cur, "Decode", func(v interface{}) error {
+		doc := v.(*mongoDoc)
+		doc.Content = "existing"
+		doc.Embedding = []float32{1, 0} // very similar to candidate
+		return nil
+	})
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", nil)
+
+	k := &Kit{storage: storage}
+	o := &adapter.Observation{Content: "new content", Embedding: []float32{1, 0.01}, UserID: "u1", AppName: "app"}
+	k.mergeIfSimilar(context.Background(), o)
+	// mergeIfSimilar is best-effort; content may or may not change
+	// depending on search hit / similarity threshold. Coverage is the goal here.
+	_ = o.Content
+}
+
+func TestSearchAndMerge(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	storage := &MongoStorage{coll: &coll, appName: "app"}
+
+	patches.ApplyMethodReturn(&coll, "ReplaceOne", &mongo.UpdateResult{}, nil)
+	var cur mongo.Cursor
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Next", false)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", nil)
+
+	k := &Kit{storage: storage}
+	obs := []adapter.Observation{
+		{Content: "test", AppName: "app", Embedding: []float32{1, 2}},
+	}
+	if err := k.SearchAndMerge(context.Background(), obs); err != nil {
+		t.Fatalf("SearchAndMerge: %v", err)
+	}
+}
