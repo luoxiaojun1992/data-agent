@@ -1,0 +1,16 @@
+product,region,month,revenue,units,cost
+DataInsight Pro,华北,1月,450,120,180
+DataInsight Pro,华东,2月,380,105,155
+DataInsight Pro,华南,3月,520,145,210
+CloudQuery,华北,1月,320,85,130
+CloudQuery,华东,2月,290,78,115
+CloudQuery,华南,3月,410,110,165
+AutoReport,华北,2月,250,65,100
+AutoReport,华东,3月,310,82,125
+AutoReport,华南,4月,350,90,140
+SecureVault,华东,1月,220,55,95
+SecureVault,华南,2月,280,72,110
+SecureVault,华北,3月,300,80,120
+API Gateway,华南,1月,180,48,70
+API Gateway,华北,2月,210,55,85
+API Gateway,华东,3月,260,68,105

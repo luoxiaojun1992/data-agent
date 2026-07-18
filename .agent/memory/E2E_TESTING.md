@@ -139,8 +139,34 @@
 | UI-201 | Invite — 角色默认 user | ✅ 已实现 |
 | UI-202 | Invite — 有效期默认 24h | ✅ 已实现 |
 | UI-203 | Invite — 空列表显示占位文本 | ✅ 已实现 |
+| UI-204 | KB — 文档索引端到端验证 | ✅ 已实现 |
+| UI-205 | KB — 索引后检索命中 | ✅ 已实现 |
+| UI-206 | KB — 索引进度实时更新 | ✅ 已实现 |
+| UI-207 | KB — 搜索过滤结果准确 | ✅ 已实现 |
+| UI-208 | KB — 索引失败重试 | ✅ 已实现 |
+| UI-209 | KB — 大文档分块（>10KB） | ✅ 已实现 |
+| UI-211 | ToolCall — knowledge_search 全文检索 | ✅ 已实现 |
+| UI-212 | ToolCall — knowledge_search 命中后回答 | ✅ 已实现 |
+| UI-213 | ToolCall — sql_executor 校验通过 | ✅ 已实现 |
+| UI-214 | ToolCall — sql_executor 校验失败 | ✅ 已实现 |
+| UI-215 | ToolCall — stats_engine 真实计算 | ✅ 已实现 |
+| UI-216 | ToolCall — save_report 报告生成 | ✅ 已实现 |
+| UI-217 | ToolCall — 多工具链式调用 | ✅ 已实现 |
+| UI-218 | ToolCall — 工具结果复制 | ✅ 已实现 |
+| UI-219 | Mem0 — 会话自动写入记忆 | ✅ 已实现 |
+| UI-220 | Mem0 — memory_search 工具调用 | ✅ 已实现 |
+| UI-221 | Mem0 — 多用户隔离 | ✅ 已实现 |
+| UI-222 | Mem0 — 长对话压缩后记忆保留 | ✅ 已实现 |
+| UI-229 | Dashboard — KPI 显示真实任务数 | ✅ 已实现 |
+| UI-230 | Dashboard — KPI 显示真实文档数 | ✅ 已实现 |
+| UI-231 | Dashboard — 任务状态分布准确 | ✅ 已实现 |
+| UI-232 | Dashboard — 24h 趋势图渲染 | ✅ 已实现 |
+| UI-233 | Dashboard — Token KPI 渲染 | ✅ 已实现 |
+| UI-234 | Dashboard — ROI 图表渲染 | ✅ 已实现 |
+| UI-235 | Dashboard — 多用户数据隔离 | ✅ 已实现 |
+| UI-236 | Dashboard — 时间筛选有效 | ✅ 已实现 |
 
-**合计**: 119 个真实用例 + 7 个手动测试用例
+**合计**: 145 个真实用例 + 7 个手动测试用例
 
 ## data-testid 命名规范
 

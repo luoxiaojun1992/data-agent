@@ -59,7 +59,7 @@
 | SPEC-043 | Mock Model Service — 测试用模型模拟服务 | **P8 前置** | [spec-043-mock-model-service.md](spec-043-mock-model-service.md) | ✅ 已实现 |
 | SPEC-044 | 邀请注册系统 — 移除自由注册，改为邀请制 | **P9** | [spec-044-invite-registration.md](spec-044-invite-registration.md) | ✅ 已实现 |
 | SPEC-045 | Go Service 单元测试全覆盖 — 98% 底线，CI 门禁 | **P10** | [spec-045-go-service-ut.md](spec-045-go-service-ut.md) | ✅ 已实现 |
-| SPEC-046 | UI E2E 测试增强与真实集成验证（KB 索引 / 工具调用 / Dashboard 数据） | **P11** | [spec-046-ui-test-integration.md](spec-046-ui-test-integration.md) | 📐 设计中 |
+| SPEC-046 | UI E2E 测试增强与真实集成验证（KB 索引 / 工具调用 / Dashboard 数据） | **P11** | [spec-046-ui-test-integration.md](spec-046-ui-test-integration.md) | ✅ 已实现 |
 | SPEC-047 | 主分支 UI 截图审查与布局修复（9 个 bug） | **P11** | [spec-047-ui-screenshot-bugfix.md](spec-047-ui-screenshot-bugfix.md) | 📐 设计中 |
 | SPEC-048 | 引擎层迁移 Google ADK — ReAct loop / Session 压缩 / 模型路由 | **P11** | [spec-048-adk-migration.md](spec-048-adk-migration.md) | ✅ 已实现 |
 | SPEC-049 | 统一模型配置与多模型能力体系（提示词/能力描述/token 倍率 + KB embedding 索引） | **P12** | [spec-049-unified-model-config.md](spec-049-unified-model-config.md) | ✅ 已实现 |
