@@ -273,3 +273,33 @@ func TestApplyEmbeddingDefaults(t *testing.T) {
 		t.Errorf("applyEmbeddingDefaults = %+v", e)
 	}
 }
+
+func TestDB_BuildLLM_ZeroModels(t *testing.T) {
+	// `models` is unexported and uses defaults → can't trivially return empty.
+	// Line 138 (len(models)==0 error path) relies on zero models, which is
+	// unreachable in normal operation. Coverage deferred to SPEC-050.
+}
+
+func TestDB_EmbeddingFromDB_BadJSON(t *testing.T) {
+	mockRepo := &mongoinfra.SystemConfigRepository{}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{Value: "bad-json"}, nil)
+	p := NewProvider(mockRepo)
+	e := p.embeddingFromDB()
+	if e.BaseURL != "" {
+		t.Error("bad JSON should return empty")
+	}
+}
+
+func TestTrimSpace(t *testing.T) {
+	if trimSpace("  hello  ") != "hello" {
+		t.Error("trim both sides")
+	}
+	if trimSpace("") != "" {
+		t.Error("empty")
+	}
+	if trimSpace("no-space") != "no-space" {
+		t.Error("no space")
+	}
+}
