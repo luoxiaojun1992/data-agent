@@ -60,25 +60,8 @@ func (k *Kit) Provider() *adkmemory.Provider {
 func (k *Kit) SearchAndMerge(ctx context.Context, obs []adapter.Observation) error {
 	for i := range obs {
 		o := &obs[i]
-		if len(o.Embedding) == 0 && k.embed != nil && o.Content != "" {
-			vec, err := k.embed(ctx, o.Content)
-			if err == nil && len(vec) > 0 {
-				o.Embedding = vec
-			}
-		}
-		existing, err := k.storage.Search(ctx, &adapter.SearchOptions{
-			Embedding:  o.Embedding,
-			MaxResults: 1,
-			UserID:     o.UserID,
-			AppName:    o.AppName,
-		})
-		if err == nil && len(existing) > 0 {
-			merged, _ := MergeSimilar(o, []*adapter.Observation{&existing[0].Observation}, k.embed)
-			if merged != nil {
-				o.Content = merged.Content
-				o.Embedding = merged.Embedding
-			}
-		}
+		k.ensureEmbedding(ctx, o)
+		k.mergeIfSimilar(ctx, o)
 		if o.ID == [16]byte{} {
 			o.ID = NewID()
 		}
@@ -87,4 +70,31 @@ func (k *Kit) SearchAndMerge(ctx context.Context, obs []adapter.Observation) err
 		}
 	}
 	return nil
+}
+
+func (k *Kit) ensureEmbedding(ctx context.Context, o *adapter.Observation) {
+	if len(o.Embedding) > 0 || k.embed == nil || o.Content == "" {
+		return
+	}
+	vec, err := k.embed(ctx, o.Content)
+	if err == nil && len(vec) > 0 {
+		o.Embedding = vec
+	}
+}
+
+func (k *Kit) mergeIfSimilar(ctx context.Context, o *adapter.Observation) {
+	existing, err := k.storage.Search(ctx, &adapter.SearchOptions{
+		Embedding:  o.Embedding,
+		MaxResults: 1,
+		UserID:     o.UserID,
+		AppName:    o.AppName,
+	})
+	if err != nil || len(existing) == 0 {
+		return
+	}
+	merged, _ := MergeSimilar(o, []*adapter.Observation{&existing[0].Observation}, k.embed)
+	if merged != nil {
+		o.Content = merged.Content
+		o.Embedding = merged.Embedding
+	}
 }

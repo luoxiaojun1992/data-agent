@@ -234,3 +234,126 @@ func TestNewMongoStorage(t *testing.T) {
 		t.Error("NewMongoStorage miswired")
 	}
 }
+
+func TestQueryRanked(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	var cur mongo.Cursor
+	calls := 0
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodFunc(&cur, "Next", func(ctx context.Context) bool {
+		calls++
+		return calls == 1
+	})
+	patches.ApplyMethodFunc(&cur, "Decode", func(v interface{}) error {
+		doc := v.(*mongoDoc)
+		doc.Content = "test"
+		return nil
+	})
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", nil)
+
+	s := &MongoStorage{coll: &coll, appName: "app"}
+	obs, err := s.queryRanked(context.Background(), "s1", "u1", "app", 5, "created_at")
+	if err != nil || len(obs) != 1 {
+		t.Fatalf("queryRanked: %v, len=%d", err, len(obs))
+	}
+}
+
+func TestQueryMostDerived(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	var cur mongo.Cursor
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Next", false)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", nil)
+
+	s := &MongoStorage{coll: &coll, appName: "app"}
+	obs, err := s.QueryMostDerived(context.Background(), "", "u1", "", 5)
+	if err != nil || len(obs) != 0 {
+		t.Fatalf("QueryMostDerived: %v, len=%d", err, len(obs))
+	}
+}
+
+func TestQueryRecent(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	var cur mongo.Cursor
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Next", false)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", nil)
+
+	s := &MongoStorage{coll: &coll, appName: "app"}
+	obs, err := s.QueryRecent(context.Background(), "s1", "u1", "app", 10)
+	if err != nil || len(obs) != 0 {
+		t.Fatalf("QueryRecent: %v, len=%d", err, len(obs))
+	}
+}
+
+func TestDocConversion(t *testing.T) {
+	obs := &adapter.Observation{
+		ID:           idx.ID{1, 2, 3},
+		Content:      "test",
+		Level:        adapter.LevelExplicit,
+		SessionID:    "s1",
+		UserID:       "u1",
+		AppName:      "app",
+		Tags:         []string{"a", "b"},
+		TimesDerived: 3,
+		Embedding:    []float32{0.1, 0.2},
+	}
+	doc := docFromObs(obs)
+	back := obsFromDoc(doc)
+	if back.ID != obs.ID || back.Content != obs.Content || back.Level != obs.Level {
+		t.Errorf("round-trip failed: %+v", back)
+	}
+}
+
+func TestCosine_Various(t *testing.T) {
+	if cosine([]float32{0.5, 0.5}, []float32{0.5, 0.5}) < 0.99 {
+		t.Error("exact match should be ~1.0")
+	}
+	if cosine([]float32{}, []float32{1, 2}) != 0 {
+		t.Error("empty first vector")
+	}
+}
+
+func TestMergeSimilar_NoEmbedding(t *testing.T) {
+	existing := []*adapter.Observation{{Content: "x", Embedding: []float32{1}}}
+	c := &adapter.Observation{Content: "c"}
+	merged, _ := MergeSimilar(c, existing, nil)
+	if merged != nil {
+		t.Error("no embedding in candidate")
+	}
+}
+
+func TestMergeSimilar_ExistingNoEmbed(t *testing.T) {
+	existing := []*adapter.Observation{{Content: "x"}} // no embedding
+	c := &adapter.Observation{Content: "c", Embedding: []float32{1, 0}}
+	merged, _ := MergeSimilar(c, existing, nil)
+	if merged != nil {
+		t.Error("existing has no embedding")
+	}
+}
+
+func TestDedupeTags(t *testing.T) {
+	tags := dedupeTags([]string{"a", "b", "a", ""})
+	if len(tags) != 2 || tags[0] != "a" || tags[1] != "b" {
+		t.Errorf("dedupeTags: %v", tags)
+	}
+}
+
+func TestAverageVectors(t *testing.T) {
+	avg := averageVectors([]float32{2, 4}, []float32{4, 6})
+	if avg[0] != 3.0 || avg[1] != 5.0 {
+		t.Errorf("averageVectors: %v", avg)
+	}
+}
