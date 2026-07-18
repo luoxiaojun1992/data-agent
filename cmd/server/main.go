@@ -1336,56 +1336,6 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
 // defaultModel is the fallback model name for enhance/embedding.
 const defaultModel = "gpt-4o"
 
-func callEnhanceLLM(ctx context.Context, prompt string) (*http.Response, string) {
-	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
-	apiKey := os.Getenv("LLM_API_KEY")
-	if apiKey == "" {
-		return nil, prompt
-	}
-	reqBody, _ := json.Marshal(map[string]interface{}{
-		"model": getEnvOrDefault("LLM_MODEL", defaultModel),
-		"messages": []map[string]string{
-			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
-			{"role": "user", "content": prompt},
-		},
-		"max_tokens": 256,
-	})
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/chat/completions", bytes.NewReader(reqBody))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
-	if err != nil {
-		return nil, prompt
-	}
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&result)
-	if len(result.Choices) == 0 {
-		return resp, prompt
-	}
-	return resp, result.Choices[0].Message.Content
-}
-
-func recordEnhanceTokens(ctx context.Context, deps *serverDependencies, prompt, enhanced string, resp *http.Response) {
-	if deps.llmRecorder == nil {
-		return
-	}
-	// Re-read response for usage
-	_ = resp // usage is parsed inline — fall back to estimate
-	model := getEnvOrDefault("LLM_MODEL", defaultModel)
-	_ = deps.llmRecorder.Record(ctx, llmstats.Record{
-		CallPoint: "enhance", Model: model,
-		PromptTokens:     llmstats.EstimateTokens(prompt),
-		CompletionTokens: llmstats.EstimateTokens(enhanced),
-		Estimated:        true,
-	})
-}
-
 func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
