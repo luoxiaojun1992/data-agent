@@ -107,6 +107,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 14 | Handler 测试用 `gomonkey.ApplyMethodReturn` mock service 方法 | 使用 `ApplyMethodFunc` 验证 handler→service 的参数传递正确性（`req.Username`、`req.Password` 等字段） |
 | 15 | Go UT 使用 `t.Skip()` 绕过不可测场景 | 如确实不可测（如 WebSocket Hijacker），必须文档注释说明原因并记录到 spec |
 | 16 | L1 纯逻辑包（`logic/sql`, `logic/openapi`, `logic/report`, `config` 等）无测试或覆盖率不足 | L1 包必须 **100%** 覆盖率，CI `ut-workflow.yml` 98% gate 强制执行 |
+| 17 | **降级/删除功能以通过测试** | 测试挂 → 修实现 bug 或修测试基础设施，**严禁删除功能**。功能设计是深思熟虑的，测试是保护功能的。 |
 
 ## 开发工作流约定
 

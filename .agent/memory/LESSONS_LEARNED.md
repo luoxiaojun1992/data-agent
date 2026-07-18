@@ -201,3 +201,33 @@ func() {
 [DEBUG]           — mockllm: responses POST/DELETE、chat request、popResponse
 ```
 不要写 `fmt.Println` 或无前缀 `log.Printf`。
+
+---
+
+## 2026-07-18 新增（SPEC-048 ~ 051）
+
+### Go 1.26 覆盖率基线漂移
+**日期**: 2026-07-18 | **影响**: 升级 go 1.25→1.26 后总覆盖率从 99.0% 跌至 96.5%  
+**根因**: go 1.26 编译器为相同源码生成不同的 coverage instrumentation block，新增 package 的 coverpkg footprint 需大量测试补偿。  
+**解决**: 6 轮 push，memoryx 自覆盖从 56% 提升至 92%，总覆盖恢复到 98.1%。  
+**教训**: Go 大版本升级后必须本地跑全量 `-coverpkg` 覆盖率并 diff 对比基线。预算 ~0.5-1.5% 的覆盖率下降。
+
+### Python string replace 操作 Go 源码会破坏反引号 struct tag
+**日期**: 2026-07-18 | **影响**: 数十次 build failure，struct tag 变 `` `+"`json:\"content\"`"+` ``  
+**根因**: Python heredoc 中的反引号会被 shell/bash 转义，无法正确传递给 Go 编译器。  
+**教训**: Go 源码的字符串替换必须用 `Edit` 工具（exact match），禁止用 Python `str.replace()` 处理含反引号/JSON tag 的代码。
+
+### Gin HandlerFunc 闭包计入 Sonar 认知复杂度
+**日期**: 2026-07-18 | **影响**: Sonar CRITICAL: 认知复杂度 17，阻塞 PR  
+**根因**: `makeEnhanceHandler(deps)` 返回 `func(c *gin.Context) { ... 40行 }`，Sonar 将整个闭包 body 计为一个函数。  
+**解决**: 提取 `callEnhanceLLM()` + `recordEnhanceTokens()` 独立函数，闭包 body 降为 5 行（复杂度 3）。
+
+### Shell 轮询 CI 不可靠
+**日期**: 2026-07-18 | **影响**: `while sleep 120; do curl ...` 反复 exit 137（SIGKILL）、代理卡死  
+**原因**: macOS bash 中长时间运行的 `curl` loop 被 sandbox/shell timeout 强制终止。  
+**教训**: CI 检查用一次性 `curl` + `python3` 解析，不用 shell 循环轮询。Docker CI 任务 20-40 分钟，手动检查即可。
+
+### Mockllm 请求体必须与原始 handler 逐字节一致
+**日期**: 2026-07-18 | **影响**: UI-158 持续失败 6 轮，mockllm seed 数据匹配不上  
+**根因**: `callEnhanceLLM` 重写时使用了**英文**系统提示词、`/chat/completions` URL、256 tokens、无 temperature，而原始 handler 用的是**中文**提示词、`/v1/chat/completions`、512 tokens、tempe 0.3。Mockllm 按请求体 hash 匹配 → 不命中 → 返回默认响应。  
+**教训**: 重构现有 HTTP handler 时，**必须 `git show` 原始代码逐字段对齐请求体**，不能凭记忆重写。Mock/seed 数据依赖请求体的精确 hash。
