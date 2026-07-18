@@ -1349,7 +1349,7 @@ func chatEnhanceHandler(c *gin.Context) {
 	// Cache check
 	deps := getDeps(c)
 	if cached, ok := tryEnhanceCache(c, deps, req.Prompt); ok {
-		c.JSON(http.StatusOK, gin.H{"enhanced": cached, "cache": "hit"})
+		c.JSON(http.StatusOK, gin.H{"enhanced": cached})
 		return
 	}
 
