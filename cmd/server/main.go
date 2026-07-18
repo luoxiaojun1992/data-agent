@@ -31,11 +31,13 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	vaultinfra "github.com/luoxiaojun1992/data-agent/internal/infra/vault"
-	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
@@ -56,8 +58,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 
-	adksessionIF "google.golang.org/adk/session"
 	"google.golang.org/adk/memory"
+	adkmodel "google.golang.org/adk/model"
+	adksessionIF "google.golang.org/adk/session"
 )
 
 // appName namespaces ADK sessions, memory entries, and tool registration.
@@ -84,11 +87,11 @@ type serverDependencies struct {
 	vaultClient      *vaultinfra.Client
 	authHandler      *handler.AuthHandler
 	modelCfg         *modelcfg.Provider
-	qdrantClient      *qdrantinfra.Client
+	qdrantClient     *qdrantinfra.Client
 	adkRuntime       *adkruntime.Runtime
 	adkSessions      *adksession.Service
-	memoryService    memory.Service       // google.golang.org/adk/memory.Service
-	memoryKit        *memoryx.Kit         // adk-go-memory Kit (nil when legacy)
+	memoryService    memory.Service // google.golang.org/adk/memory.Service
+	memoryKit        *memoryx.Kit   // adk-go-memory Kit (nil when legacy)
 	sessionManager   *chat.Manager
 	chatService      *chat.Service
 	agentService     *agent_svc.Service
@@ -110,6 +113,8 @@ type serverDependencies struct {
 	auditLogger      *middleware.AuditLogger
 	jwtManager       *middleware.JWTManager
 	redisClient      *redis.Client
+	llmRecorder      *llmstats.Recorder
+	llmCache         *llmcache.Cache
 	taskStream       *queue.Stream
 	swClient         *seaweedfs.Client
 }
@@ -231,8 +236,43 @@ func initAgentEngine(deps *serverDependencies) {
 	deps.cbRegistry = security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
 }
 
+func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client, llm adkmodel.LLM, logger *zap.Logger) {
+	embedFn := buildEmbedFn(deps)
+	if os.Getenv("MEMORY_BACKEND") == "legacy" {
+		logger.Info("Using legacy memory backend")
+		var embed adkmemory.EmbeddingFunc
+		if embedFn != nil {
+			embed = embedFn
+		}
+		deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
+		return
+	}
+	logger.Info("Using adk-go-memory backend (SPEC-050)")
+	kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
+	if err != nil {
+		logger.Fatal("Failed to create adk-go-memory Kit", zap.Error(err))
+	}
+	deps.memoryService = kit.Service()
+	deps.memoryKit = kit
+}
+
+func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text string) ([]float32, error) {
+	cfg := deps.modelCfg.EmbeddingConfig()
+	if cfg.BaseURL == "" {
+		return nil
+	}
+	e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
+		BaseURL: cfg.BaseURL, Model: cfg.Model, APIKey: cfg.APIKey,
+	})
+	return func(ctx context.Context, text string) ([]float32, error) { return e(ctx, text) }
+}
+
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoClient.DB(), 24*time.Hour)
+	deps.llmRecorder = llmstats.NewRecorder(mongoClient.DB())
+	if deps.redisClient != nil {
+		deps.llmCache = llmcache.New(deps.redisClient.Client())
+	}
 
 	// Build LLM from model config (Provider reads system_config or env).
 	llm, llmErr := deps.modelCfg.BuildLLM(context.Background())
@@ -247,37 +287,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	)
 
 	// Long-term memory (MongoDB + embedding).
-	// MEMORY_BACKEND=adk-memory (default) → adk-go-memory with LLM deriver + similarity merge.
-	// MEMORY_BACKEND=legacy → SPEC-048 self-implemented memory.Service.
-	embedCfg := deps.modelCfg.EmbeddingConfig()
-	var embedFn func(ctx context.Context, text string) ([]float32, error)
-	if embedCfg.BaseURL != "" {
-		e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
-			BaseURL: embedCfg.BaseURL,
-			Model:   embedCfg.Model,
-			APIKey:  embedCfg.APIKey,
-		})
-		embedFn = func(ctx context.Context, text string) ([]float32, error) { return e(ctx, text) }
-	} else {
-		logger.Info("EMBEDDING_BASE_URL not set — memory search falls back to keyword matching")
-	}
-
-	if os.Getenv("MEMORY_BACKEND") == "legacy" {
-		logger.Info("Using legacy memory backend (SPEC-048 self-implemented)")
-		var embed adkmemory.EmbeddingFunc
-		if embedFn != nil {
-			embed = embedFn
-		}
-		deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
-	} else {
-		logger.Info("Using adk-go-memory backend (SPEC-050)")
-		kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
-		if err != nil {
-			logger.Fatal("Failed to create adk-go-memory Kit", zap.Error(err))
-		}
-		deps.memoryService = kit.Service()
-		deps.memoryKit = kit
-	}
+	initMemoryBackend(deps, mongoClient, llm, logger)
 
 	// ADK tools.
 	toolDeps := &adktools.Deps{
@@ -443,7 +453,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	chatRoutes := router.Group("/api/v1/chat")
 	chatRoutes.Use(deps.jwtManager.AuthMiddleware())
 	chatRoutes.POST("", deps.agentService.HandleChat)
-	setupChatEnhance(chatRoutes)
+	setupChatEnhance(chatRoutes, deps)
 
 	// Agent routes
 	setupAgentRoutes(router, deps.jwtManager, deps.agentService)
@@ -1070,8 +1080,6 @@ func handleGetModelConfig(c *gin.Context, systemConfigRepo *mongoinfra.SystemCon
 	c.JSON(http.StatusOK, result)
 }
 
-
-
 func putModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client) gin.HandlerFunc {
 	return func(c *gin.Context) { handlePutModelConfig(c, systemConfigRepo, vaultClient) }
 }
@@ -1321,52 +1329,37 @@ func renewSessionHandler(sessionManager *chat.Manager) gin.HandlerFunc {
 
 // ===================== Chat Enhance =====================
 
-func setupChatEnhance(chatRoutes *gin.RouterGroup) {
-	chatRoutes.POST("/enhance", chatEnhanceHandler)
+func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
+	chatRoutes.POST("/enhance", makeEnhanceHandler(deps))
 }
 
-func chatEnhanceHandler(c *gin.Context) {
-	var req struct {
-		Prompt string `json:"prompt" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
-		return
-	}
-	model := os.Getenv("LLM_MODEL")
-	if model == "" {
-		model = "default"
-	}
-	baseURL := os.Getenv("LLM_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://api.openai.com"
-	}
+// defaultModel is the fallback model name for enhance/embedding.
+const defaultModel = "gpt-4o"
+
+// callEnhanceLLM calls the LLM to enhance a prompt. Falls back to original on error.
+func callEnhanceLLM(ctx context.Context, prompt string) string {
+	model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
+	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
 	apiKey := os.Getenv("LLM_API_KEY")
 
 	llmReq := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{
-			{"role": "system", "content": "\u4f60\u662f\u4e00\u4e2a\u63d0\u793a\u8bcd\u4f18\u5316\u4e13\u5bb6\u3002\u628a\u7528\u6237\u8f93\u5165\u7684\u6a21\u7cca\u67e5\u8be2\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u3001\u53ef\u64cd\u4f5c\u7684\u6570\u636e\u5206\u6790\u63d0\u793a\u8bcd\uff0c\u5305\u542b\u5177\u4f53\u6307\u6807\u3001\u7ef4\u5ea6\u3001\u65f6\u9650\u548c\u671f\u671b\u8f93\u51fa\u683c\u5f0f\u3002\u76f4\u63a5\u8f93\u51fa\u4f18\u5316\u540e\u7684\u63d0\u793a\u8bcd\uff0c\u4e0d\u8981\u89e3\u91ca\u3002"},
-			{"role": "user", "content": req.Prompt},
+			{"role": "system", "content": "你是一个提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"},
+			{"role": "user", "content": prompt},
 		},
 		"temperature": 0.3,
 		"max_tokens":  512,
 	}
 	body, _ := json.Marshal(llmReq)
-	httpReq, err := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u589e\u5f3a\u670d\u52a1\u4e0d\u53ef\u7528"})
-		return
-	}
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	if apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	}
-
-	resp, err := http.DefaultClient.Do(httpReq)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "\u589e\u5f3a\u670d\u52a1\u4e0d\u53ef\u7528"})
-		return
+		return prompt
 	}
 	defer resp.Body.Close()
 
@@ -1377,15 +1370,43 @@ func chatEnhanceHandler(c *gin.Context) {
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Choices) == 0 {
-		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-		return
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if len(result.Choices) == 0 {
+		return prompt
 	}
-	c.JSON(http.StatusOK, gin.H{"enhanced": result.Choices[0].Message.Content})
+	return result.Choices[0].Message.Content
 }
 
-// ===================== Change Password =====================
+// recordEnhanceTokens records token usage for an enhance call.
+func recordEnhanceTokens(ctx context.Context, deps *serverDependencies, prompt, enhanced string) {
+	if deps.llmRecorder == nil {
+		return
+	}
+	model := getEnvOrDefault("LLM_MODEL", defaultModel)
+	_ = deps.llmRecorder.Record(ctx, llmstats.Record{
+		CallPoint:        "enhance",
+		Model:            model,
+		PromptTokens:     llmstats.EstimateTokens(prompt),
+		CompletionTokens: llmstats.EstimateTokens(enhanced),
+		Estimated:        true,
+	})
+}
 
+func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
+			return
+		}
+
+		enhanced := callEnhanceLLM(c.Request.Context(), req.Prompt)
+		recordEnhanceTokens(c.Request.Context(), deps, req.Prompt, enhanced)
+		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
+	}
+}
 func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	api.POST("/change-password", jwtManager.AuthMiddleware(), changePasswordHandler(mongoClient))
 }
@@ -1745,3 +1766,5 @@ func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
 	_ = t
 	return nil
 }
+
+// doEnhanceCall calls the LLM to enhance a prompt and returns the result with token usage.
