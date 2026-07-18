@@ -1730,7 +1730,7 @@ type enhanceUsage struct {
 }
 
 // doEnhanceCall calls the LLM to enhance a prompt and returns the result with token usage.
-func doEnhanceCall(c *gin.Context, deps *serverDependencies, prompt string) (string, enhanceUsage) {
+func doEnhanceCall(c *gin.Context, _ *serverDependencies, prompt string) (string, enhanceUsage) {
 	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
 	apiKey := os.Getenv("LLM_API_KEY")
 	if apiKey == "" {
