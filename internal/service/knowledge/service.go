@@ -197,7 +197,7 @@ func (s *Service) fullTextSearch(query string, topK int) []knowledge.SearchResul
 			Score:    1.0,
 			Source:   "fulltext",
 		})
-		if len(results) >= topK*2 {
+		if len(results) >= topK {
 			break
 		}
 	}
