@@ -231,3 +231,19 @@ func() {
 **日期**: 2026-07-18 | **影响**: UI-158 持续失败 6 轮，mockllm seed 数据匹配不上  
 **根因**: `callEnhanceLLM` 重写时使用了**英文**系统提示词、`/chat/completions` URL、256 tokens、无 temperature，而原始 handler 用的是**中文**提示词、`/v1/chat/completions`、512 tokens、tempe 0.3。Mockllm 按请求体 hash 匹配 → 不命中 → 返回默认响应。  
 **教训**: 重构现有 HTTP handler 时，**必须 `git show` 原始代码逐字段对齐请求体**，不能凭记忆重写。Mock/seed 数据依赖请求体的精确 hash。
+
+### Mockllm SHA256 匹配机制与 ReAct loop 的 seed 策略
+**日期**: 2026-07-18 | **影响**: tool-call 测试 5 轮 CI 失败，多次错误修改方向  
+**根因**: mockllm 用 `SHA256(messages[-1].Content)` 做 key 匹配。ADK ReAct loop 第 2 次 LLM 调用时，messages 末尾变成 tool result 而不是用户原始消息，hash 必然不匹配。  
+**错误尝试**: 放宽断言 → 全局 FIFO（丢失并发隔离） → first-user fallback（用户明确拒绝）  
+**正确方案**: seed2 key = 工具的实际 Go `json.Marshal` 输出（确定性），不做 mockllm 改动  
+**教训**: 
+1. 先理解 mockllm key 匹配机制（SHA256 of last message）再写测试 seed
+2. ReAct loop 的 seed2 key 必须是工具真实返回的 JSON，不是用户消息
+3. Go `json.Marshal` 输出格式是确定的：compact（无空格），omitempty 字段不出现
+4. mockllm 不要加任何 fallback 逻辑 —— hash 分桶 = 并发测试隔离
+
+### data-testid 不 grep 前端就写测试 = 白跑一轮 CI
+**日期**: 2026-07-18 | **影响**: 4 个 agent 测试失败，浪费 1 轮 CI  
+**根因**: 测试用 `[data-testid="agent-task-detail"]`，前端实际用 `[data-testid={agent-task-detail-${idx}}]`（带索引后缀）  
+**教训**: 写测试 selector 前必须先 `grep -r "data-testid.*agent-task-detail" frontend/` 确认。

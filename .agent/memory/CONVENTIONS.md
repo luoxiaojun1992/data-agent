@@ -108,6 +108,8 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 15 | Go UT 使用 `t.Skip()` 绕过不可测场景 | 如确实不可测（如 WebSocket Hijacker），必须文档注释说明原因并记录到 spec |
 | 16 | L1 纯逻辑包（`logic/sql`, `logic/openapi`, `logic/report`, `config` 等）无测试或覆盖率不足 | L1 包必须 **100%** 覆盖率，CI `ut-workflow.yml` 98% gate 强制执行 |
 | 17 | **降级/删除功能以通过测试** | 测试挂 → 修实现 bug 或修测试基础设施，**严禁删除功能**。功能设计是深思熟虑的，测试是保护功能的。 |
+| 18 | **绕过用户的技术方案自搞一套** | 用户给的技术方案必须先严格执行。被技术限制卡住 → 解释限制并询问，**不要静默替换成简单/hack 方案** |
+| 19 | **测试里凭想象写 data-testid** | 写 `data-testid="xxx"` 前必须 `grep -r xxx frontend/` 确认元素存在。避免一轮 CI 白跑 |
 
 ## 开发工作流约定
 

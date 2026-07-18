@@ -14,7 +14,11 @@ agent_created: true
 
 This skill loads the non-negotiable lessons learned from real bugs and anti-patterns discovered in this project. Do NOT repeat these mistakes.
 
-**Active duty**: After completing any non-trivial engineering task (spec, bug fix, quality improvement, CI fix), self-audit against this skill's lessons. If a new lesson is discovered, update this SKILL.md AND the corresponding memory file in `.agent/memory/`.
+**Active duty**: After completing any non-trivial engineering task (spec, bug fix, quality improvement, CI fix), self-audit against this skill's lessons. If a new lesson is discovered:
+
+1. Update `.agent/memory/LESSONS_LEARNED.md` — add the lesson under the appropriate category
+2. Update `.agent/memory/CONVENTIONS.md` — add new red lines if the lesson is a systemic rule
+3. Update this SKILL.md — record the lesson with anti-pattern + real example + rule
 
 ---
 
