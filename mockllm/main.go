@@ -17,8 +17,23 @@ import (
 
 // ChatMessage represents a single message in OpenAI format.
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role         string        `json:"role"`
+	Content      string        `json:"content,omitempty"`
+	FunctionCall *FunctionCall `json:"function_call,omitempty"`
+	ToolCalls    []ToolCall    `json:"tool_calls,omitempty"`
+}
+
+// FunctionCall represents the deprecated but still widely used OpenAI function_call format.
+type FunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+// ToolCall represents a tool call in the newer OpenAI tool_calls format.
+type ToolCall struct {
+	ID       string        `json:"id"`
+	Type     string        `json:"type"`
+	Function *FunctionCall `json:"function"`
 }
 
 // ChatCompletionRequest mirrors OpenAI /v1/chat/completions request.
@@ -49,6 +64,36 @@ type ChatCompletionResponse struct {
 type ResponsesPayload struct {
 	Key      string `json:"key"`
 	Response string `json:"response"`
+}
+
+// toolCallResponse is the JSON format used in test seeds for tool call responses.
+// When the seeded response matches this format, mockllm returns it as an OpenAI
+// function_call instead of plain text content — enabling ADK ReAct tool execution.
+type toolCallResponse struct {
+	Type  string         `json:"type"`
+	Name  string         `json:"name"`
+	Input map[string]any `json:"input"`
+}
+
+// tryAsFunctionCall checks if the response content is a tool_call JSON block.
+// If so, it builds a ChatMessage with function_call instead of text content.
+func tryAsFunctionCall(content string) *ChatMessage {
+	var tc toolCallResponse
+	if err := json.Unmarshal([]byte(content), &tc); err != nil || tc.Type != "tool_call" || tc.Name == "" {
+		return nil
+	}
+	argsJSON, err := json.Marshal(tc.Input)
+	if err != nil {
+		return nil
+	}
+	log.Printf("[DEBUG] tool call detected: name=%s args=%s", tc.Name, string(argsJSON))
+	return &ChatMessage{
+		Role: "assistant",
+		FunctionCall: &FunctionCall{
+			Name:      tc.Name,
+			Arguments: string(argsJSON),
+		},
+	}
 }
 
 func envOrDefault(key, defaultVal string) string {
@@ -144,6 +189,16 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 		ctx := context.Background()
 		response := popResponse(ctx, rdb, lookupKey, defaultReply)
 
+		// If the response is a tool_call JSON, return as OpenAI function_call
+		if fc := tryAsFunctionCall(response); fc != nil {
+			if req.Stream {
+				handleStream(w, response, chunkDelay) // fallback to text stream
+			} else {
+				handleFunctionCall(w, fc, req.Model)
+			}
+			return
+		}
+
 		if req.Stream {
 			handleStream(w, response, chunkDelay)
 		} else {
@@ -163,6 +218,29 @@ func popResponse(ctx context.Context, rdb *redis.Client, exactKey, defaultReply 
 
 	log.Printf("[DEBUG] popResponse: no exact match, returning default (len=%d)", len(defaultReply))
 	return defaultReply
+}
+
+// handleFunctionCall writes a response with function_call format,
+// enabling ADK to detect and execute tools via ReAct loop.
+func handleFunctionCall(w http.ResponseWriter, msg *ChatMessage, model string) {
+	resp := ChatCompletionResponse{
+		ID:      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
+		Object:  "chat.completion",
+		Created: time.Now().Unix(),
+		Model:   model,
+		Choices: []ChatCompletionChoice{
+			{
+				Index:   0,
+				Message: msg,
+				FinishReason: "function_call",
+			},
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+	log.Printf("[DEBUG] function_call response: name=%s", msg.FunctionCall.Name)
 }
 
 // handleNonStream writes a single JSON response.
