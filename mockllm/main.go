@@ -136,13 +136,31 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 		// Generate lookup key from last message content (full SHA256 hash)
 		lastContent := req.Messages[len(req.Messages)-1].Content
 		hash := sha256.Sum256([]byte(lastContent))
-		lookupKey := fmt.Sprintf("mock:resp:%x", hash)
+		lastKey := fmt.Sprintf("mock:resp:%x", hash)
 		log.Printf("[DEBUG] chat request: model=%s messages=%d last_msg_len=%d last_msg=%q hash=%x key=%s",
-			req.Model, len(req.Messages), len(lastContent), lastContent, hash, lookupKey)
+			req.Model, len(req.Messages), len(lastContent), lastContent, hash, lastKey)
 
-		// Look up response in Redis
+		// Look up response in Redis — try last message first, then fallback to first user message
+		// (needed for ADK ReAct loops where tool results become the last message)
+		var candidateKeys []string
+		candidateKeys = append(candidateKeys, lastKey)
+
+		if len(req.Messages) > 1 {
+			for _, msg := range req.Messages {
+				if msg.Role == "user" {
+					firstUserHash := sha256.Sum256([]byte(msg.Content))
+					firstUserKey := fmt.Sprintf("mock:resp:%x", firstUserHash)
+					if firstUserKey != lastKey {
+						candidateKeys = append(candidateKeys, firstUserKey)
+						log.Printf("[DEBUG] ReAct fallback: first user msg=%q key=%s", msg.Content, firstUserKey)
+					}
+					break
+				}
+			}
+		}
+
 		ctx := context.Background()
-		response := popResponse(ctx, rdb, lookupKey, defaultReply)
+		response := popResponse(ctx, rdb, candidateKeys, defaultReply)
 
 		if req.Stream {
 			handleStream(w, response, chunkDelay)
@@ -152,16 +170,18 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 	}
 }
 
-// popResponse tries exact match first, then returns default.
-func popResponse(ctx context.Context, rdb *redis.Client, exactKey, defaultReply string) string {
-	log.Printf("[DEBUG] popResponse: looking up key=%s", exactKey)
-	// Exact match
-	if val, err := rdb.LPop(ctx, exactKey).Result(); err == nil && val != "" {
-		log.Printf("[DEBUG] popResponse: FOUND exact match, val_len=%d", len(val))
-		return val
+// popResponse tries each candidate key in order (the first key is the most specific),
+// falling through to subsequent keys for ReAct loop support, then returns default.
+func popResponse(ctx context.Context, rdb *redis.Client, candidateKeys []string, defaultReply string) string {
+	for i, key := range candidateKeys {
+		log.Printf("[DEBUG] popResponse: trying key[%d]=%s", i, key)
+		if val, err := rdb.LPop(ctx, key).Result(); err == nil && val != "" {
+			log.Printf("[DEBUG] popResponse: FOUND match on key[%d], val_len=%d", i, len(val))
+			return val
+		}
 	}
 
-	log.Printf("[DEBUG] popResponse: no exact match, returning default (len=%d)", len(defaultReply))
+	log.Printf("[DEBUG] popResponse: no match in %d candidate keys, returning default (len=%d)", len(candidateKeys), len(defaultReply))
 	return defaultReply
 }
 
