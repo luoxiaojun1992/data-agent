@@ -447,3 +447,33 @@ func TestSearchAndMerge(t *testing.T) {
 		t.Fatalf("SearchAndMerge: %v", err)
 	}
 }
+
+func TestCosine_ZeroNorm(t *testing.T) {
+	if cosine([]float32{0, 0}, []float32{0, 0}) != 0 {
+		t.Error("zero vectors")
+	}
+}
+
+func TestMergeSimilar_LongerCandidate(t *testing.T) {
+	a := &adapter.Observation{Content: "longer content here", Embedding: []float32{1, 0.05}}
+	existing := []*adapter.Observation{
+		{Content: "short", Embedding: []float32{1, 0}},
+	}
+	merged, _ := MergeSimilar(a, existing, nil)
+	if merged == nil || merged.Content != "longer content here" {
+		t.Error("longer candidate should win")
+	}
+}
+
+func TestMaxLevel(t *testing.T) {
+	if maxLevel(adapter.LevelExplicit, adapter.LevelDeductive) != adapter.LevelExplicit {
+		t.Error("maxLevel explicit vs deductive")
+	}
+	if maxLevel(adapter.LevelDeductive, adapter.LevelInductive) != adapter.LevelInductive {
+		t.Error("maxLevel: inductive > deductive alphabetically")
+	}
+}
+
+func TestNewKit_ErrorPath(t *testing.T) {
+	t.Skip("NewKit requires real LLM — covered by integration/E2E tests")
+}
