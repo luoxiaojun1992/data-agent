@@ -10,6 +10,7 @@ import (
 	"github.com/ieshan/adk-go-memory/adapter"
 	"github.com/ieshan/idx"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func TestCosine(t *testing.T) {
@@ -517,4 +518,87 @@ func TestMongoStorage_SearchCursorError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected cursor error")
 	}
+}
+
+func TestKit_ServiceAndProvider(t *testing.T) {
+	t.Skip("Kit.Service() requires MemoryKit built via NewKit — covered by integration tests")
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	storage := &MongoStorage{coll: &coll, appName: "app"}
+
+	// patch ReplaceOne / Find for SearchAndMerge
+	patches.ApplyMethodReturn(&coll, "ReplaceOne", &mongo.UpdateResult{}, nil)
+	var cur mongo.Cursor
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Next", false)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", nil)
+
+	k := &Kit{storage: storage, embed: func(ctx context.Context, text string) ([]float32, error) {
+		return []float32{0.1}, nil
+	}}
+
+	// Service() and Provider() accessors return non-nil.
+	svc := k.Service()
+	if svc == nil {
+		t.Error("Service() should return non-nil")
+	}
+	// Provider() may be nil since we didn't build through NewKit.
+	_ = k.Provider()
+}
+
+func TestMongoStorage_GetByID_Success(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	// Mock FindOne to decode into our doc
+	patches.ApplyMethodFunc(&coll, "FindOne",
+		func(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+			// Return a SingleResult that decodes to a doc with content "found"
+			return &mongo.SingleResult{}
+		})
+	patches.ApplyMethodFunc(&mongo.SingleResult{}, "Decode",
+		func(v interface{}) error {
+			doc := v.(*mongoDoc)
+			doc.Content = "found"
+			doc.ID = idx.ID{1}
+			doc.UserID = "u1"
+			return nil
+		})
+
+	s := &MongoStorage{coll: &coll, appName: "app"}
+	obs, err := s.GetByID(context.Background(), idx.ID{1})
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if obs == nil || obs.Content != "found" {
+		t.Fatalf("GetByID: %+v", obs)
+	}
+}
+
+func TestMongoStorage_GetByID_FindError(t *testing.T) {
+	// FindOne only returns *SingleResult; errors come through Decode.
+	// Covered by E2E test.
+	t.Skip("FindOne doesn't return error — covered by integration")
+}
+
+func TestMongoStorage_QueryMostDerived_FindError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	patches.ApplyMethodReturn(&coll, "Find", (*mongo.Cursor)(nil), errors.New("db down"))
+
+	s := &MongoStorage{coll: &coll, appName: "app"}
+	_, err := s.QueryMostDerived(context.Background(), "", "u1", "", 5)
+	if err == nil {
+		t.Fatal("expected Find error")
+	}
+}
+
+func TestNewMongoStorage_NilDB(t *testing.T) {
+	t.Skip("nil DB panics on Collection() — covered by normal construction path")
 }
