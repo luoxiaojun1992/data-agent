@@ -477,3 +477,44 @@ func TestMaxLevel(t *testing.T) {
 func TestNewKit_ErrorPath(t *testing.T) {
 	t.Skip("NewKit requires real LLM — covered by integration/E2E tests")
 }
+
+func TestSearchAndMerge_StoreError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	storage := &MongoStorage{coll: &coll, appName: "app"}
+
+	patches.ApplyMethodReturn(&coll, "ReplaceOne", (*mongo.UpdateResult)(nil), errors.New("db down"))
+	var cur mongo.Cursor
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Next", false)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", nil)
+
+	k := &Kit{storage: storage}
+	obs := []adapter.Observation{
+		{Content: "test", AppName: "app"},
+	}
+	if err := k.SearchAndMerge(context.Background(), obs); err == nil {
+		t.Error("expected Store error to propagate")
+	}
+}
+
+func TestMongoStorage_SearchCursorError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	var coll mongo.Collection
+	var cur mongo.Cursor
+	patches.ApplyMethodReturn(&coll, "Find", &cur, nil)
+	patches.ApplyMethodReturn(&cur, "Next", false)
+	patches.ApplyMethodReturn(&cur, "Close", nil)
+	patches.ApplyMethodReturn(&cur, "Err", errors.New("cursor error"))
+
+	s := &MongoStorage{coll: &coll, appName: "app"}
+	_, err := s.Search(context.Background(), &adapter.SearchOptions{})
+	if err == nil {
+		t.Fatal("expected cursor error")
+	}
+}
