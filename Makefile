@@ -10,17 +10,17 @@ test:
 
 # Run tests with coverage
 test-cover:
-	go test -race -coverprofile=coverage.out ./internal/... ./skills/...
+	go test -race -coverprofile=coverage.out ./internal/...
 	go tool cover -func=coverage.out | grep total
 
 # Generate HTML coverage report
 test-cover-html:
-	go test -race -coverprofile=coverage.out ./internal/... ./skills/...
+	go test -race -coverprofile=coverage.out ./internal/...
 	go tool cover -html=coverage.out -o coverage.html
 
 # Check coverage threshold
 test-cover-check:
-	@go test -race -coverprofile=coverage.out ./internal/... ./skills/... || exit 1
+	@go test -race -coverprofile=coverage.out ./internal/... || exit 1
 	@COVERAGE=$$(go tool cover -func=coverage.out | grep total | awk '{print $$3}' | sed 's/%//'); \
 	echo "Coverage: $$COVERAGE%"; \
 	if [ $$(echo "$$COVERAGE < 10" | bc -l) -eq 1 ]; then \

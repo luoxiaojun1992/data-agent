@@ -4,30 +4,39 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
 
+// ToolLister provides the names of registered ADK tools for the skills API.
+type ToolLister interface {
+	List() []string
+}
+
+// ToolListerFunc adapts a function to ToolLister.
+type ToolListerFunc func() []string
+
+// List returns the tool names.
+func (f ToolListerFunc) List() []string { return f() }
+
 // Service is the unified Agent Service entry point.
 // It handles Chat, Agent sync/async, and Task management.
 type Service struct {
-	engine      *agent.Engine
 	chatSvc     *chat.Service
 	sessions    *chat.Manager
 	cbReg       *security.CircuitBreakerRegistry
-	taskService *task_svc.Service   // optional — requires Redis
-	skillReg    agent.SkillRegistry // real skill registry
+	taskService *task_svc.Service // optional — requires Redis
+	toolLister  ToolLister        // ADK tool names for the skills API
 }
 
 // NewService creates a new Agent Service.
-func NewService(engine *agent.Engine, chatSvc *chat.Service, sessions *chat.Manager, cbReg *security.CircuitBreakerRegistry) *Service {
+func NewService(chatSvc *chat.Service, sessions *chat.Manager, cbReg *security.CircuitBreakerRegistry) *Service {
 	return &Service{
-		engine:   engine,
-		chatSvc:  chatSvc,
-		sessions: sessions,
-		cbReg:    cbReg,
+		chatSvc:    chatSvc,
+		sessions:   sessions,
+		cbReg:      cbReg,
+		toolLister: ToolListerFunc(func() []string { return []string{} }),
 	}
 }
 
@@ -37,9 +46,11 @@ func (s *Service) WithTaskService(ts *task_svc.Service) *Service {
 	return s
 }
 
-// WithSkillRegistry injects the real skill registry.
-func (s *Service) WithSkillRegistry(reg agent.SkillRegistry) *Service {
-	s.skillReg = reg
+// WithToolLister injects the ADK tool lister for the skills listing API.
+func (s *Service) WithToolLister(l ToolLister) *Service {
+	if l != nil {
+		s.toolLister = l
+	}
 	return s
 }
 
@@ -53,7 +64,7 @@ func (s *Service) CreateAgentTask(c *gin.Context) {
 	var req struct {
 		Title      string                 `json:"title"`
 		Model      string                 `json:"model"`
-		Messages   []agent.Message        `json:"messages"`
+		Messages   []chat.Message         `json:"messages"`
 		SkillChain []string               `json:"skill_chain"`
 		Params     map[string]interface{} `json:"params"`
 	}
@@ -127,20 +138,16 @@ func (s *Service) GetAgentTask(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "task service not available"})
 }
 
-// ListSkills returns all registered skills.
+// ListSkills returns all registered ADK tools.
 func (s *Service) ListSkills(c *gin.Context) {
-	if s.skillReg != nil {
-		names := s.skillReg.List()
-		if names == nil {
-			names = []string{}
-		}
-		c.JSON(http.StatusOK, gin.H{"skills": names})
-		return
+	names := s.toolLister.List()
+	if names == nil {
+		names = []string{}
 	}
-	c.JSON(http.StatusOK, gin.H{"skills": []string{}})
+	c.JSON(http.StatusOK, gin.H{"skills": names})
 }
 
-// SearchSkills searches for skills by name/description.
+// SearchSkills searches for tools by name substring.
 func (s *Service) SearchSkills(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
@@ -148,20 +155,13 @@ func (s *Service) SearchSkills(c *gin.Context) {
 		return
 	}
 
-	if s.skillReg != nil {
-		// Check if registry supports search via strings.Contains on List()
-		names := s.skillReg.List()
-		var results []string
-		for _, name := range names {
-			if contains(name, query) {
-				results = append(results, name)
-			}
+	var results []string
+	for _, name := range s.toolLister.List() {
+		if contains(name, query) {
+			results = append(results, name)
 		}
-		c.JSON(http.StatusOK, gin.H{"query": query, "results": results})
-		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"query": query, "results": []string{}})
+	c.JSON(http.StatusOK, gin.H{"query": query, "results": results})
 }
 
 func contains(s, substr string) bool {

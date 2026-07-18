@@ -77,21 +77,21 @@ DataAgent 是企业级智能数据分析平台，采用 **前后端分离的 B/S
 - **依赖**: Agent Engine, Worker Pool, Redis Stream, MongoDB
 
 ### Agent Engine (ADK)
-- **路径**: `internal/domain/agent/`
-- **职责**: LLM 推理编排、Tool/Skill 调用、Agent System Prompt 管理
+- **路径**: `internal/adk/`
+- **职责**: LLM 推理编排（ReAct loop）、Tool 调用、Session 压缩、长期记忆
 - **关键文件**:
-  - `internal/domain/agent/engine.go`: Agent 引擎核心
-  - `internal/domain/agent/llm_router.go`: LLM 模型路由
-  - `internal/domain/agent/system_prompt.go`: System Prompt 模板
-- **依赖**: Skill Registry, LLM Router, Security Audit Layer
+  - `internal/adk/runtime/runtime.go`: ADK llmagent + runner 装配（审计回调注入）
+  - `internal/adk/model/openai.go`: OpenAI 兼容 model.LLM（stream/tool_calls/genai 转换）
+  - `internal/adk/model/fallback.go`: 多后端 fallback 模型路由
+  - `internal/adk/session/mongo.go`: MongoDB session.Service + LLM 摘要压缩
+  - `internal/adk/memory/memory.go`: memory.Service（MongoDB + embedding 语义检索）
+  - `internal/adk/tools/tools.go`: 5 个 ADK function tool（sql_validate/stats_compute/knowledge_search/save_report/memory_search）
+- **依赖**: Google ADK Go SDK v1.5.0 (`google.golang.org/adk`)，Security Audit Layer 经 Before/AfterModel/Tool 回调注入
 
-### Skill Registry
-- **路径**: `internal/domain/skill/`, `skills/`
-- **职责**: Skill 注册、发现、调用。自动扫描 `skills/` 目录加载 Skill
-- **关键文件**:
-  - `internal/domain/skill/registry.go`: Skill 注册中心
-  - `internal/domain/skill/context.go`: SkillContext 注入机制
-- **依赖**: 各 Skill 实现
+### Skill Tools (ADK)
+- **路径**: `internal/adk/tools/`
+- **职责**: 原 Skill 注册中心已迁移为 ADK function tool；session 归属（user_id/role/kb_id）经 `tool.Context.State()` 自动注入，不依赖 LLM 传参
+- **说明**: 原 `skills/` 目录与 `internal/domain/skill/` 已于 SPEC-048 删除；核心业务逻辑保留在 `internal/logic/`
 
 ### Worker Pool
 - **路径**: `internal/worker/`
