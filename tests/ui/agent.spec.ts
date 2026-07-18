@@ -106,7 +106,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await row.click();
 
     // Detail panel should show task info
-    await expect(page.locator('[data-testid="agent-task-detail"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-048: Step indicator (agent-extras) ═══
@@ -124,7 +124,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await row.click();
 
     // Detail panel should be visible after clicking a task row
-    await expect(page.locator('[data-testid="agent-task-detail"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-050: Create task → verify artifact section ═══
@@ -138,7 +138,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(row).toBeVisible({ timeout: 10000 });
     await row.click();
 
-    await expect(page.locator('[data-testid="agent-task-detail"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-051: Create task → verify detail panel has task info ═══
@@ -153,7 +153,7 @@ test.describe('AGENT — Professional Workspace', () => {
     await row.click();
 
     // Detail panel should contain the task title
-    await expect(page.locator('[data-testid="agent-task-detail"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-052: Create → expand → cancel → verify status change ═══
