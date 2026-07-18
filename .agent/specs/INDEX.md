@@ -62,6 +62,9 @@
 | SPEC-046 | UI E2E 测试增强与真实集成验证（KB 索引 / 工具调用 / Dashboard 数据） | **P11** | [spec-046-ui-test-integration.md](spec-046-ui-test-integration.md) | 📐 设计中 |
 | SPEC-047 | 主分支 UI 截图审查与布局修复（9 个 bug） | **P11** | [spec-047-ui-screenshot-bugfix.md](spec-047-ui-screenshot-bugfix.md) | 📐 设计中 |
 | SPEC-048 | 引擎层迁移 Google ADK — ReAct loop / Session 压缩 / 模型路由 | **P11** | [spec-048-adk-migration.md](spec-048-adk-migration.md) | 📐 设计中 |
+| SPEC-049 | 统一模型配置与多模型能力体系（提示词/能力描述/token 倍率 + KB embedding 索引） | **P12** | [spec-049-unified-model-config.md](spec-049-unified-model-config.md) | 📐 设计中 |
+| SPEC-050 | Go 1.26 升级与 adk-go-memory 迁移（含记忆相似度合并） | **P12** | [spec-050-go126-memory-migration.md](spec-050-go126-memory-migration.md) | 📐 设计中 |
+| SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | **P12** | [spec-051-llm-token-stats-cache.md](spec-051-llm-token-stats-cache.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -89,6 +92,9 @@
 | **P11** | SPEC-048 | 引擎层迁移 Google ADK | SPEC-004, SPEC-006, SPEC-008, SPEC-043 |
 | **P11** | SPEC-046 | UI E2E 真实集成验证 | **SPEC-048 (ADK 迁移)**, SPEC-022, SPEC-028, SPEC-043 |
 | **P11** | SPEC-047 | UI 截图审查与布局修复 | SPEC-017~042, SPEC-046 (联动) |
+| **P12** | SPEC-049 | 统一模型配置与多模型能力体系 | SPEC-003, SPEC-006, SPEC-025, **SPEC-048** |
+| **P12** | SPEC-050 | Go 1.26 升级与 adk-go-memory 迁移 | **SPEC-048, SPEC-049** |
+| **P12** | SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | SPEC-009, SPEC-010, **SPEC-048, SPEC-049** |
 
 ### 依赖流向（简化）
 
