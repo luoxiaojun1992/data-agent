@@ -1345,81 +1345,19 @@ func chatEnhanceHandler(c *gin.Context) {
 
 	// Cache check
 	deps := getDeps(c)
-	if deps.llmCache != nil {
-		model := getEnvOrDefault("LLM_MODEL", defaultModel)
-		if cached, ok := deps.llmCache.GetEnhance(c.Request.Context(), model, req.Prompt); ok {
-			_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
-				CallPoint: "enhance", Model: model,
-				PromptTokens: llmstats.EstimateTokens(req.Prompt),
-				CacheHit:     true,
-			})
-			c.JSON(http.StatusOK, gin.H{"enhanced": cached, "cache": "hit"})
-			return
-		}
-	}
-
-	// Call LLM
-	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
-	apiKey := os.Getenv("LLM_API_KEY")
-	if apiKey == "" {
-		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
+	if cached, ok := tryEnhanceCache(c, deps, req.Prompt); ok {
+		c.JSON(http.StatusOK, gin.H{"enhanced": cached, "cache": "hit"})
 		return
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	body, _ := json.Marshal(map[string]interface{}{
-		"model": getEnvOrDefault("LLM_MODEL", defaultModel),
-		"messages": []map[string]string{
-			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
-			{"role": "user", "content": req.Prompt},
-		},
-		"max_tokens": 256,
-	})
-	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/chat/completions", bytes.NewReader(body))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-		return
-	}
-	defer resp.Body.Close()
+	enhanced, usage := doEnhanceCall(c, deps, req.Prompt)
 
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-		} `json:"usage"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&result)
-
-	enhanced := req.Prompt
-	if len(result.Choices) > 0 && result.Choices[0].Message.Content != "" {
-		enhanced = result.Choices[0].Message.Content
-	}
-
-	// Record token usage
 	model := getEnvOrDefault("LLM_MODEL", defaultModel)
-	promptTk := result.Usage.PromptTokens
-	if promptTk == 0 {
-		promptTk = llmstats.EstimateTokens(req.Prompt)
-	}
-	compTk := result.Usage.CompletionTokens
-	if compTk == 0 {
-		compTk = llmstats.EstimateTokens(enhanced)
-	}
 	_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
 		CallPoint: "enhance", Model: model,
-		PromptTokens: promptTk, CompletionTokens: compTk,
-		Estimated: result.Usage.PromptTokens == 0,
+		PromptTokens: usage.prompt, CompletionTokens: usage.completion,
+		Estimated: usage.estimated,
 	})
-
-	// Cache result
 	if deps.llmCache != nil {
 		deps.llmCache.SetEnhance(c.Request.Context(), model, req.Prompt, enhanced)
 	}
