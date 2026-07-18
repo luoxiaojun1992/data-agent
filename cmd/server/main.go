@@ -19,7 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	adkmemory "github.com/luoxiaojun1992/data-agent/internal/adk/memory"
-	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
+	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	adksession "github.com/luoxiaojun1992/data-agent/internal/adk/session"
 	adktools "github.com/luoxiaojun1992/data-agent/internal/adk/tools"
@@ -34,6 +34,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
 	vaultinfra "github.com/luoxiaojun1992/data-agent/internal/infra/vault"
+	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
@@ -53,7 +54,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
-	adkmodelface "google.golang.org/adk/model"
+
 	adksessionIF "google.golang.org/adk/session"
 )
 
@@ -80,7 +81,8 @@ type serverDependencies struct {
 	systemConfigRepo *mongoinfra.SystemConfigRepository
 	vaultClient      *vaultinfra.Client
 	authHandler      *handler.AuthHandler
-	adkModel         adkmodelface.LLM
+	modelCfg         *modelcfg.Provider
+	qdrantClient      *qdrantinfra.Client
 	adkRuntime       *adkruntime.Runtime
 	adkSessions      *adksession.Service
 	memoryService    *adkmemory.Service
@@ -152,6 +154,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 
 	// SeaweedFS must be initialized before initArtifacts
 	deps.swClient = seaweedfs.NewClient(cfg.SeaweedFS.Master, cfg.SeaweedFS.Filer)
+	deps.qdrantClient = qdrantinfra.NewClient(getEnvOrDefault("QDRANT_URL", "qdrant:6334"))
 
 	initAuthService(&deps, mongoClient, logger)
 	initADKModel(&deps)
@@ -202,38 +205,7 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 // initADKModel builds the ADK model.LLM from env config, with an optional
 // fallback chain (LLM_FALLBACK_BASE_URLS, comma-separated).
 func initADKModel(deps *serverDependencies) {
-	modelName := getEnvOrDefault("LLM_MODEL", "mock-gpt-4o")
-	primary := adkmodel.NewOpenAIModel(adkmodel.Backend{
-		Model:       modelName,
-		BaseURL:     getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com"),
-		APIKey:      os.Getenv("LLM_API_KEY"),
-		MaxTokens:   4096,
-		Temperature: 0.7,
-	})
-
-	backends := []adkmodelface.LLM{primary}
-	if raw := os.Getenv("LLM_FALLBACK_BASE_URLS"); raw != "" {
-		for _, u := range strings.Split(raw, ",") {
-			u = strings.TrimSpace(u)
-			if u == "" {
-				continue
-			}
-			backends = append(backends, adkmodel.NewOpenAIModel(adkmodel.Backend{
-				Model:       modelName,
-				BaseURL:     u,
-				APIKey:      os.Getenv("LLM_API_KEY"),
-				MaxTokens:   4096,
-				Temperature: 0.7,
-			}))
-		}
-	}
-
-	chain, err := adkmodel.NewFallbackLLM(backends...)
-	if err != nil {
-		deps.adkModel = primary
-		return
-	}
-	deps.adkModel = chain
+	deps.modelCfg = modelcfg.NewProvider(deps.systemConfigRepo)
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {
@@ -259,27 +231,33 @@ func initAgentEngine(deps *serverDependencies) {
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoClient.DB(), 24*time.Hour)
 
+	// Build LLM from model config (Provider reads system_config or env).
+	llm, llmErr := deps.modelCfg.BuildLLM(context.Background())
+	if llmErr != nil {
+		logger.Fatal("Failed to build LLM from model config", zap.Error(llmErr))
+	}
+
 	// ADK session service (MongoDB) with LLM-summarization compaction.
 	deps.adkSessions = adksession.NewService(mongoClient.DB()).WithCompaction(
 		adksession.CompactionConfig{MaxEvents: 100, MaxTokens: 4000, KeepRecent: 20},
-		adksession.NewLLMSummarizer(deps.adkModel),
+		adksession.NewLLMSummarizer(llm),
 	)
 
-	// Long-term memory (MongoDB + embedding). Embedding is optional — without
-	// EMBEDDING_BASE_URL the service degrades to keyword search.
+	// Long-term memory (MongoDB + embedding).
+	embedCfg := deps.modelCfg.EmbeddingConfig()
 	var embed adkmemory.EmbeddingFunc
-	if baseURL := os.Getenv("EMBEDDING_BASE_URL"); baseURL != "" {
+	if embedCfg.BaseURL != "" {
 		embed = adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
-			BaseURL: baseURL,
-			Model:   getEnvOrDefault("EMBEDDING_MODEL", "nomic-embed-text"),
-			APIKey:  os.Getenv("EMBEDDING_API_KEY"),
+			BaseURL: embedCfg.BaseURL,
+			Model:   embedCfg.Model,
+			APIKey:  embedCfg.APIKey,
 		})
 	} else {
 		logger.Info("EMBEDDING_BASE_URL not set — memory search falls back to keyword matching")
 	}
 	deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
 
-	// ADK tools (skills rewritten as function tools).
+	// ADK tools.
 	toolDeps := &adktools.Deps{
 		KBService: deps.kbService,
 		Memory:    deps.memoryService,
@@ -290,14 +268,15 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		logger.Fatal("Failed to build ADK tools", zap.Error(err))
 	}
 
-	// ADK runtime (llmagent ReAct loop + runner).
+	// ADK runtime.
 	rt, err := adkruntime.New(adkruntime.Config{
 		AppName:        appName,
-		Model:          deps.adkModel,
+		Model:          llm,
 		SessionService: deps.adkSessions,
 		MemoryService:  deps.memoryService,
 		Tools:          tools,
 		Auditor:        deps.secAuditor,
+		Instruction:    deps.modelCfg.DefaultInstruction(context.Background()),
 	})
 	if err != nil {
 		logger.Fatal("Failed to build ADK runtime", zap.Error(err))
@@ -328,6 +307,15 @@ func initArtifacts(deps *serverDependencies, mongoClient *mongoinfra.Client, cfg
 
 func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.kbService = knowledge.NewService(mongoClient.DB())
+	embCfg := deps.modelCfg.EmbeddingConfig()
+	if embCfg.BaseURL != "" && deps.qdrantClient != nil {
+		embedFn := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
+			BaseURL: embCfg.BaseURL, Model: embCfg.Model, APIKey: embCfg.APIKey,
+		})
+		deps.kbService.WithVectorIndex(deps.qdrantClient, func(ctx context.Context, text string) ([]float32, error) {
+			return embedFn(ctx, text)
+		})
+	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }
 
@@ -1036,72 +1024,17 @@ func getModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) 
 }
 
 func handleGetModelConfig(c *gin.Context, systemConfigRepo *mongoinfra.SystemConfigRepository) {
-	configs := gin.H{
-		"api_url":        "https://api.openai.com/v1",
-		"api_key_exists": false,
-		"model_name":     "gpt-4o",
-		"context_len":    128000,
-		"max_output":     16000,
-		"temperature":    0.7,
-		"top_p":          0.95,
-		"hermes_url":     "http://hermes:8081",
-		"hermes_model":   "hermes-3-70b",
-	}
-	if systemConfigRepo != nil {
-		dbConfigs, _ := systemConfigRepo.GetAll(c.Request.Context(), "model")
-		result := gin.H{}
-		for _, cfg := range dbConfigs {
-			if cfg.Key == "api_key" || cfg.Key == "hermes_api_key" {
-				result[cfg.Key] = cfg.Value
-				result["api_key_exists"] = true
-			} else {
-				result[cfg.Key] = cfg.Value
-			}
-		}
-		fillModelConfigDefaults(result)
-		result["api_key_exists"] = result["api_key"] != nil && result["api_key"] != ""
-		c.JSON(http.StatusOK, result)
+	provider := modelcfg.NewProvider(systemConfigRepo)
+	result, err := provider.GetRawModelConfig(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, configs)
+	result["api_key_exists"] = result["api_key"] != nil && result["api_key"] != ""
+	c.JSON(http.StatusOK, result)
 }
 
-func fillModelConfigDefaults(result gin.H) {
-	if result["api_url"] == nil {
-		result["api_url"] = "https://api.openai.com/v1"
-	}
-	if result["model_name"] == nil {
-		result["model_name"] = "gpt-4o"
-	}
-	if result["context_len"] == nil {
-		result["context_len"] = "128000"
-	}
-	if result["max_output"] == nil {
-		result["max_output"] = "16000"
-	}
-	if result["temperature"] == nil {
-		result["temperature"] = "0.7"
-	}
-	if result["top_p"] == nil {
-		result["top_p"] = "0.95"
-	}
-	if result["hermes_url"] == nil {
-		result["hermes_url"] = "http://hermes:8081"
-	}
-	if result["hermes_model"] == nil {
-		result["hermes_model"] = "hermes-3-70b"
-	}
-	// Embedding model defaults (same env-override pattern as LLM config).
-	if result["embedding_base_url"] == nil || result["embedding_base_url"] == "" {
-		result["embedding_base_url"] = getEnvOrDefault("EMBEDDING_BASE_URL", "http://ollama:11434/v1")
-	}
-	if result["embedding_model"] == nil || result["embedding_model"] == "" {
-		result["embedding_model"] = getEnvOrDefault("EMBEDDING_MODEL", "nomic-embed-text")
-	}
-	if result["embedding_api_key"] == nil {
-		result["embedding_api_key"] = os.Getenv("EMBEDDING_API_KEY")
-	}
-}
+
 
 func putModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository, vaultClient *vaultinfra.Client) gin.HandlerFunc {
 	return func(c *gin.Context) { handlePutModelConfig(c, systemConfigRepo, vaultClient) }
@@ -1117,7 +1050,27 @@ func handlePutModelConfig(c *gin.Context, systemConfigRepo *mongoinfra.SystemCon
 		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
 		return
 	}
+	provider := modelcfg.NewProvider(systemConfigRepo)
+	// Structured configs.
+	if rawModels, ok := body["models"]; ok {
+		var entries []modelcfg.ModelEntry
+		b, _ := json.Marshal(rawModels)
+		if err := json.Unmarshal(b, &entries); err == nil {
+			_ = provider.SetModels(c.Request.Context(), entries)
+		}
+	}
+	if rawEmb, ok := body["embedding"]; ok {
+		var emb modelcfg.EmbeddingEntry
+		b, _ := json.Marshal(rawEmb)
+		if err := json.Unmarshal(b, &emb); err == nil {
+			_ = provider.SetEmbedding(c.Request.Context(), emb)
+		}
+	}
+	// Legacy flat keys.
 	for key, val := range body {
+		if key == "models" || key == "embedding" {
+			continue
+		}
 		upsertModelConfigKey(c, systemConfigRepo, vaultClient, key, val)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})

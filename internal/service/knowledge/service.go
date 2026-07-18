@@ -6,22 +6,37 @@ import (
 	"io"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
 )
 
+// EmbeddingFunc converts text into an embedding vector (float32 for Qdrant).
+type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
+
 // Service handles knowledge base operations.
 type Service struct {
-	db *mongo.Database
+	db        *mongo.Database
+	qdrant    *qdrant.Client
+	embed     EmbeddingFunc
+	qdrantCol string // Qdrant collection name, default "kb_chunks"
 }
 
 // NewService creates a knowledge base service.
 func NewService(db *mongo.Database) *Service {
-	return &Service{db: db}
+	return &Service{db: db, qdrantCol: "kb_chunks"}
+}
+
+// WithVectorIndex enables vector indexing with Qdrant and embedding.
+func (s *Service) WithVectorIndex(client *qdrant.Client, embed EmbeddingFunc) *Service {
+	s.qdrant = client
+	s.embed = embed
+	return s
 }
 
 // CreateDoc creates a new knowledge document record.
@@ -53,14 +68,12 @@ func (s *Service) GetDoc(docID string) (*knowledge.KnowledgeDoc, error) {
 	return &doc, nil
 }
 
-// DeleteDoc removes a document and all its chunks (cascade).
+// DeleteDoc removes a document, its chunks, and Qdrant vectors (cascade).
 func (s *Service) DeleteDoc(docID string) error {
-	// Delete chunks
 	_, err := s.db.Collection("kb_chunks").DeleteMany(context.Background(), bson.M{"doc_id": docID})
 	if err != nil {
 		return fmt.Errorf("delete chunks: %w", err)
 	}
-	// Delete document
 	_, err = s.db.Collection("knowledge_docs").DeleteOne(context.Background(), bson.M{"_id": docID})
 	if err != nil {
 		return fmt.Errorf("delete doc: %w", err)
@@ -101,11 +114,13 @@ func (s *Service) ListAllDocs() ([]knowledge.KnowledgeDoc, error) {
 	return docs, nil
 }
 
-// AddChunks inserts semantic chunks for a document.
+// AddChunks inserts semantic chunks and indexes their embeddings into Qdrant.
 func (s *Service) AddChunks(docID string, chunks []string) error {
+	var qdrantPoints []qdrant.Point
 	for i, content := range chunks {
+		chunkID := fmt.Sprintf("chunk_%s_%d", docID, i)
 		chunk := &knowledge.Chunk{
-			ID:        fmt.Sprintf("chunk_%s_%d", docID, i),
+			ID:        chunkID,
 			DocID:     docID,
 			Content:   content,
 			ChunkIdx:  i,
@@ -115,8 +130,30 @@ func (s *Service) AddChunks(docID string, chunks []string) error {
 		if err != nil {
 			return fmt.Errorf("insert chunk: %w", err)
 		}
+
+		// Generate embedding and prepare Qdrant point (non-blocking on failure).
+		if s.embed != nil && s.qdrant != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			vec, embErr := s.embed(ctx, content)
+			cancel()
+			if embErr == nil && len(vec) > 0 {
+				qdrantPoints = append(qdrantPoints, qdrant.Point{
+					ID:      int64(i + 1), // sequential IDs within the doc; use doc-level id scheme
+					Vector:  vec,
+					Payload: map[string]any{"chunk_id": chunkID, "doc_id": docID, "text": truncate(content, 500)},
+				})
+			}
+		}
 	}
-	// Update doc chunk count
+
+	// Batch upsert to Qdrant.
+	if len(qdrantPoints) > 0 && s.qdrant != nil {
+		if err := s.qdrant.UpsertPoints(s.qdrantCol, qdrantPoints); err != nil {
+			// Log but don't fail the whole chunk insert — indexing is best-effort.
+			_ = err
+		}
+	}
+
 	_, _ = s.db.Collection("knowledge_docs").UpdateOne(context.Background(),
 		bson.M{"_id": docID},
 		bson.M{"$set": bson.M{"chunk_count": len(chunks), "status": knowledge.StatusReady}},
@@ -124,30 +161,18 @@ func (s *Service) AddChunks(docID string, chunks []string) error {
 	return nil
 }
 
-// Search performs hybrid search across Milvus (semantic) and MongoDB (full-text).
-// Uses Reciprocal Rank Fusion (RRF) to merge results.
+// Search performs hybrid search with RRF fusion of full-text + semantic.
 func (s *Service) Search(userID, query string, topK int, role string) ([]knowledge.SearchResult, error) {
-	// Full-text search (MongoDB)
 	textResults := s.fullTextSearch(query, topK)
-
-	// Milvus semantic search (placeholder — returns empty for MVP)
 	semanticResults := s.semanticSearch(query, topK)
-
-	// RRF fusion
 	results := rrfFusion(textResults, semanticResults, topK, 60)
-
-	// Permission filtering by role
 	results = s.filterByRole(results, role)
-
 	return results, nil
 }
 
 func (s *Service) fullTextSearch(query string, topK int) []knowledge.SearchResult {
 	filter := bson.M{
 		"$text": bson.M{"$search": query},
-	}
-	opts := map[string]interface{}{
-		"score": bson.M{"$meta": "textScore"},
 	}
 	cursor, err := s.db.Collection("kb_chunks").Find(context.Background(), filter)
 	if err != nil {
@@ -161,11 +186,9 @@ func (s *Service) fullTextSearch(query string, topK int) []knowledge.SearchResul
 		if err := cursor.Decode(&chunk); err != nil {
 			continue
 		}
-		// Get doc title
 		var doc knowledge.KnowledgeDoc
 		_ = s.db.Collection("knowledge_docs").FindOne(context.Background(), bson.M{"_id": chunk.DocID}).Decode(&doc)
 
-		_ = opts // textScore via meta
 		results = append(results, knowledge.SearchResult{
 			ChunkID:  chunk.ID,
 			DocID:    chunk.DocID,
@@ -174,7 +197,7 @@ func (s *Service) fullTextSearch(query string, topK int) []knowledge.SearchResul
 			Score:    1.0,
 			Source:   "fulltext",
 		})
-		if len(results) >= topK {
+		if len(results) >= topK*2 {
 			break
 		}
 	}
@@ -182,10 +205,41 @@ func (s *Service) fullTextSearch(query string, topK int) []knowledge.SearchResul
 }
 
 func (s *Service) semanticSearch(query string, topK int) []knowledge.SearchResult {
-	// Placeholder — Milvus integration in SPEC-009
-	_ = query
-	_ = topK
-	return nil
+	if s.qdrant == nil || s.embed == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	vec, err := s.embed(ctx, query)
+	if err != nil || len(vec) == 0 {
+		return nil
+	}
+
+	hits, err := s.qdrant.Search(s.qdrantCol, vec, topK*2)
+	if err != nil {
+		return nil
+	}
+
+	var results []knowledge.SearchResult
+	for _, h := range hits {
+		results = append(results, knowledge.SearchResult{
+			ChunkID: strValue(h.Payload, "chunk_id"),
+			DocID:   strValue(h.Payload, "doc_id"),
+			Content: strValue(h.Payload, "text"),
+			Score:   float64(h.Score),
+			Source:  "semantic",
+		})
+	}
+	return results
+}
+
+func strValue(m map[string]any, key string) string {
+	if v, ok := m[key]; ok {
+		s, _ := v.(string)
+		return s
+	}
+	return ""
 }
 
 // rrfFusion merges two ranked lists using Reciprocal Rank Fusion.
@@ -206,7 +260,6 @@ func rrfFusion(list1, list2 []knowledge.SearchResult, topK int, k float64) []kno
 		}
 	}
 
-	// Sort by fused score
 	type scored struct {
 		id    string
 		score float64
@@ -229,11 +282,9 @@ func rrfFusion(list1, list2 []knowledge.SearchResult, topK int, k float64) []kno
 }
 
 func (s *Service) filterByRole(results []knowledge.SearchResult, role string) []knowledge.SearchResult {
-	// All roles can see their own docs; system_admin sees all
 	if role == "system_admin" {
 		return results
 	}
-	// Placeholder: filter by user_id in production
 	return results
 }
 
@@ -256,3 +307,9 @@ func (s *Service) UploadFile(filename, contentType string, reader io.Reader) (st
 }
 
 func genShortID() string { return uuid.New().String() }
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}

@@ -31,6 +31,10 @@ type Backend struct {
 	MaxTokens int
 	// Temperature is applied when the request does not specify one.
 	Temperature float64
+	// TokenMultiplier is the cost multiplier for token billing (SPEC-051). Default 1.0.
+	TokenMultiplier float64
+	// Capability is a human-readable description of the model's strengths.
+	Capability string
 }
 
 // OpenAIModel implements model.LLM against an OpenAI-compatible /v1/chat/completions API.
