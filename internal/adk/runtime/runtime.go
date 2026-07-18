@@ -136,20 +136,36 @@ func auditInputCallback(a Auditor) llmagent.BeforeModelCallback {
 			return nil, nil
 		}
 		for _, c := range req.Contents {
-			if c == nil || c.Role != "user" {
-				continue
-			}
-			for _, p := range c.Parts {
-				if p == nil || p.Text == "" {
-					continue
-				}
-				if err := a.AuditInput(p.Text); err != nil {
-					return nil, fmt.Errorf("input audit failed: %w", err)
-				}
+			if err := auditContent(a, c); err != nil {
+				return nil, err
 			}
 		}
 		return nil, nil
 	}
+}
+
+// auditContent runs input audit on user-role content parts.
+func auditContent(a Auditor, c *genai.Content) error {
+	if c == nil || c.Role != "user" {
+		return nil
+	}
+	for _, p := range c.Parts {
+		if err := auditPart(a, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// auditPart audits a single text part.
+func auditPart(a Auditor, p *genai.Part) error {
+	if p == nil || p.Text == "" {
+		return nil
+	}
+	if err := a.AuditInput(p.Text); err != nil {
+		return fmt.Errorf("input audit failed: %w", err)
+	}
+	return nil
 }
 
 // auditOutputCallback sanitizes model output text in place.

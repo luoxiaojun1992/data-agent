@@ -57,6 +57,9 @@ import (
 	adksessionIF "google.golang.org/adk/session"
 )
 
+// appName namespaces ADK sessions, memory entries, and tool registration.
+const appName = "data-agent"
+
 // ===================== main =====================
 
 func main() {
@@ -280,7 +283,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	toolDeps := &adktools.Deps{
 		KBService: deps.kbService,
 		Memory:    deps.memoryService,
-		AppName:   "data-agent",
+		AppName:   appName,
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -289,7 +292,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 
 	// ADK runtime (llmagent ReAct loop + runner).
 	rt, err := adkruntime.New(adkruntime.Config{
-		AppName:        "data-agent",
+		AppName:        appName,
 		Model:          deps.adkModel,
 		SessionService: deps.adkSessions,
 		MemoryService:  deps.memoryService,
@@ -1020,7 +1023,7 @@ func handleMemorySearch(c *gin.Context, memSvc *adkmemory.Service) {
 		userID, _ = uid.(string)
 	}
 
-	results, err := memSvc.AdminSearch(c.Request.Context(), "data-agent", userID, query)
+	results, err := memSvc.AdminSearch(c.Request.Context(), appName, userID, query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

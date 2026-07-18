@@ -230,38 +230,46 @@ func memorySearch(deps *Deps) functiontool.Func[MemorySearchArgs, MemorySearchRe
 			return MemorySearchResult{Memories: []string{}, Note: "memory service not configured"}, nil
 		}
 
-		userID := stateString(tc, "user_id")
 		resp, err := deps.Memory.SearchMemory(tc, &memory.SearchRequest{
 			AppName: deps.AppName,
-			UserID:  userID,
+			UserID:  stateString(tc, "user_id"),
 			Query:   args.Query,
 		})
 		if err != nil {
 			return MemorySearchResult{}, fmt.Errorf("memory_search: %w", err)
 		}
-
-		limit := args.Limit
-		if limit <= 0 {
-			limit = 5
-		}
-		out := MemorySearchResult{Memories: []string{}}
-		for i, m := range resp.Memories {
-			if i >= limit {
-				break
-			}
-			var text strings.Builder
-			if m.Content != nil {
-				for _, p := range m.Content.Parts {
-					if p != nil {
-						text.WriteString(p.Text)
-					}
-				}
-			}
-			out.Memories = append(out.Memories, text.String())
-		}
-		out.Count = len(out.Memories)
-		return out, nil
+		return formatMemories(resp, args.Limit), nil
 	}
+}
+
+// formatMemories converts memory entries into the tool result, honoring the limit.
+func formatMemories(resp *memory.SearchResponse, limit int) MemorySearchResult {
+	if limit <= 0 {
+		limit = 5
+	}
+	out := MemorySearchResult{Memories: []string{}}
+	for i, m := range resp.Memories {
+		if i >= limit {
+			break
+		}
+		out.Memories = append(out.Memories, memoryEntryText(m))
+	}
+	out.Count = len(out.Memories)
+	return out
+}
+
+// memoryEntryText concatenates the text parts of one memory entry.
+func memoryEntryText(m memory.Entry) string {
+	if m.Content == nil {
+		return ""
+	}
+	var text strings.Builder
+	for _, p := range m.Content.Parts {
+		if p != nil {
+			text.WriteString(p.Text)
+		}
+	}
+	return text.String()
 }
 
 // ---- registry ----

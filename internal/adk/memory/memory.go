@@ -204,28 +204,30 @@ func (s *Service) DeleteBySession(ctx context.Context, sessionID string) error {
 func extractTexts(sess session.Session) []string {
 	var texts []string
 	for ev := range sess.Events().All() {
-		if ev == nil || ev.Content == nil {
-			continue
+		if text := eventText(ev); text != "" {
+			texts = append(texts, text)
 		}
-		if ev.Author == "compaction" {
-			continue
-		}
-		var sb strings.Builder
-		for _, p := range ev.Content.Parts {
-			if p != nil && p.Text != "" {
-				sb.WriteString(p.Text)
-			}
-		}
-		text := strings.TrimSpace(sb.String())
-		if text == "" {
-			continue
-		}
-		if len(text) > 1000 {
-			text = text[:1000]
-		}
-		texts = append(texts, text)
 	}
 	return texts
+}
+
+// eventText renders the text content of one event, skipping compaction events
+// and truncating to 1000 chars.
+func eventText(ev *session.Event) string {
+	if ev == nil || ev.Content == nil || ev.Author == "compaction" {
+		return ""
+	}
+	var sb strings.Builder
+	for _, p := range ev.Content.Parts {
+		if p != nil && p.Text != "" {
+			sb.WriteString(p.Text)
+		}
+	}
+	text := strings.TrimSpace(sb.String())
+	if len(text) > 1000 {
+		text = text[:1000]
+	}
+	return text
 }
 
 func (s *Service) textsForSession(ctx context.Context, sessionID string) (map[string]struct{}, error) {

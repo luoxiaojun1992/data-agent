@@ -188,59 +188,74 @@ func contentToMessages(c *genai.Content) []chatMessage {
 		role = "assistant"
 	}
 
-	var out []chatMessage
-	var textBuf strings.Builder
-	var calls []toolCall
-	callIdx := 0
-
-	flush := func() {
-		if textBuf.Len() == 0 && len(calls) == 0 {
-			return
-		}
-		msg := chatMessage{Role: role, Content: textBuf.String()}
-		if len(calls) > 0 {
-			msg.ToolCalls = calls
-		}
-		out = append(out, msg)
-		textBuf.Reset()
-		calls = nil
-	}
-
+	conv := &contentConverter{role: role}
 	for _, p := range c.Parts {
-		if p == nil {
-			continue
-		}
-		switch {
-		case p.FunctionResponse != nil:
-			// Flush pending assistant content before emitting tool result.
-			flush()
-			respJSON, err := json.Marshal(p.FunctionResponse.Response)
-			if err != nil {
-				respJSON = []byte(`{"error":"marshal failed"}`)
-			}
-			out = append(out, chatMessage{
-				Role:       "tool",
-				Content:    string(respJSON),
-				ToolCallID: functionCallID(p.FunctionResponse.ID, p.FunctionResponse.Name, callIdx),
-			})
-			callIdx++
-		case p.FunctionCall != nil:
-			args, err := json.Marshal(p.FunctionCall.Args)
-			if err != nil {
-				args = []byte("{}")
-			}
-			tc := toolCall{ID: functionCallID(p.FunctionCall.ID, p.FunctionCall.Name, callIdx), Type: "function"}
-			tc.Function.Name = p.FunctionCall.Name
-			tc.Function.Arguments = string(args)
-			calls = append(calls, tc)
-			callIdx++
-		default:
-			textBuf.WriteString(p.Text)
+		if p != nil {
+			conv.addPart(p)
 		}
 	}
-	flush()
+	conv.flush()
+	return conv.out
+}
 
-	return out
+// contentConverter accumulates text and tool calls into OpenAI messages.
+type contentConverter struct {
+	role    string
+	out     []chatMessage
+	textBuf strings.Builder
+	calls   []toolCall
+	callIdx int
+}
+
+func (cv *contentConverter) addPart(p *genai.Part) {
+	switch {
+	case p.FunctionResponse != nil:
+		cv.addFunctionResponse(p.FunctionResponse)
+	case p.FunctionCall != nil:
+		cv.addFunctionCall(p.FunctionCall)
+	default:
+		cv.textBuf.WriteString(p.Text)
+	}
+}
+
+func (cv *contentConverter) addFunctionCall(fc *genai.FunctionCall) {
+	args, err := json.Marshal(fc.Args)
+	if err != nil {
+		args = []byte("{}")
+	}
+	tc := toolCall{ID: functionCallID(fc.ID, fc.Name, cv.callIdx), Type: "function"}
+	tc.Function.Name = fc.Name
+	tc.Function.Arguments = string(args)
+	cv.calls = append(cv.calls, tc)
+	cv.callIdx++
+}
+
+func (cv *contentConverter) addFunctionResponse(fr *genai.FunctionResponse) {
+	// Flush pending assistant content before emitting the tool result.
+	cv.flush()
+	respJSON, err := json.Marshal(fr.Response)
+	if err != nil {
+		respJSON = []byte(`{"error":"marshal failed"}`)
+	}
+	cv.out = append(cv.out, chatMessage{
+		Role:       "tool",
+		Content:    string(respJSON),
+		ToolCallID: functionCallID(fr.ID, fr.Name, cv.callIdx),
+	})
+	cv.callIdx++
+}
+
+func (cv *contentConverter) flush() {
+	if cv.textBuf.Len() == 0 && len(cv.calls) == 0 {
+		return
+	}
+	msg := chatMessage{Role: cv.role, Content: cv.textBuf.String()}
+	if len(cv.calls) > 0 {
+		msg.ToolCalls = cv.calls
+	}
+	cv.out = append(cv.out, msg)
+	cv.textBuf.Reset()
+	cv.calls = nil
 }
 
 // functionCallID returns a stable tool call id.
@@ -337,66 +352,81 @@ func parseJSONResponse(r io.Reader) (*model.LLMResponse, error) {
 
 // aggregateSSE consumes an OpenAI SSE stream and returns one aggregated response.
 func aggregateSSE(r io.Reader) (*model.LLMResponse, error) {
-	var textBuf strings.Builder
-	callBufs := map[int]*toolCall{}
-	finish := false
-
-	err := consumeSSE(r, func(data string) {
-		if finish {
-			return
-		}
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content   string `json:"content"`
-					ToolCalls []struct {
-						Index    int    `json:"index"`
-						ID       string `json:"id"`
-						Type     string `json:"type"`
-						Function struct {
-							Name      string `json:"name"`
-							Arguments string `json:"arguments"`
-						} `json:"function"`
-					} `json:"tool_calls"`
-				} `json:"delta"`
-				FinishReason string `json:"finish_reason"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			return
-		}
-		for _, choice := range chunk.Choices {
-			textBuf.WriteString(choice.Delta.Content)
-			for _, dtc := range choice.Delta.ToolCalls {
-				buf, ok := callBufs[dtc.Index]
-				if !ok {
-					buf = &toolCall{ID: dtc.ID, Type: "function"}
-					callBufs[dtc.Index] = buf
-				}
-				if dtc.ID != "" {
-					buf.ID = dtc.ID
-				}
-				if dtc.Function.Name != "" {
-					buf.Function.Name = dtc.Function.Name
-				}
-				buf.Function.Arguments += dtc.Function.Arguments
-			}
-			if choice.FinishReason != "" {
-				finish = true
-			}
-		}
-	})
-	if err != nil {
+	acc := &sseAccumulator{callBufs: map[int]*toolCall{}}
+	if err := consumeSSE(r, acc.processChunk); err != nil {
 		return nil, err
 	}
+	return acc.result(), nil
+}
 
+// sseAccumulator aggregates streamed text and tool call deltas.
+type sseAccumulator struct {
+	textBuf  strings.Builder
+	callBufs map[int]*toolCall
+	finished bool
+}
+
+// streamChunk mirrors the OpenAI streaming chunk payload.
+type streamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content   string `json:"content"`
+			ToolCalls []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+}
+
+func (a *sseAccumulator) processChunk(data string) {
+	if a.finished {
+		return
+	}
+	var chunk streamChunk
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		return
+	}
+	for _, choice := range chunk.Choices {
+		a.textBuf.WriteString(choice.Delta.Content)
+		for _, dtc := range choice.Delta.ToolCalls {
+			a.appendToolCallDelta(dtc.Index, dtc.ID, dtc.Function.Name, dtc.Function.Arguments)
+		}
+		if choice.FinishReason != "" {
+			a.finished = true
+		}
+	}
+}
+
+func (a *sseAccumulator) appendToolCallDelta(index int, id, name, args string) {
+	buf, ok := a.callBufs[index]
+	if !ok {
+		buf = &toolCall{Type: "function"}
+		a.callBufs[index] = buf
+	}
+	if id != "" {
+		buf.ID = id
+	}
+	if name != "" {
+		buf.Function.Name = name
+	}
+	buf.Function.Arguments += args
+}
+
+func (a *sseAccumulator) result() *model.LLMResponse {
 	var calls []toolCall
-	for i := 0; i < len(callBufs); i++ {
-		if tc, ok := callBufs[i]; ok {
+	for i := 0; i < len(a.callBufs); i++ {
+		if tc, ok := a.callBufs[i]; ok {
 			calls = append(calls, *tc)
 		}
 	}
-	return buildLLMResponse(textBuf.String(), calls, false), nil
+	return buildLLMResponse(a.textBuf.String(), calls, false)
 }
 
 // consumeSSE reads an SSE stream line by line, invoking fn for each data payload.
@@ -407,21 +437,10 @@ func consumeSSE(r io.Reader, fn func(data string)) error {
 		n, err := r.Read(buf)
 		if n > 0 {
 			remaining = append(remaining, buf[:n]...)
-			for {
-				idx := bytes.Index(remaining, []byte("\n"))
-				if idx == -1 {
-					break
-				}
-				line := strings.TrimRight(string(remaining[:idx]), "\r")
-				remaining = remaining[idx+1:]
-				if !strings.HasPrefix(line, "data: ") {
-					continue
-				}
-				data := line[6:]
-				if data == "[DONE]" {
-					return nil
-				}
-				fn(data)
+			var done bool
+			remaining, done = drainSSELines(remaining, fn)
+			if done {
+				return nil
 			}
 		}
 		if err == io.EOF {
@@ -431,6 +450,35 @@ func consumeSSE(r io.Reader, fn func(data string)) error {
 			return fmt.Errorf("read stream: %w", err)
 		}
 	}
+}
+
+// drainSSELines processes all complete lines in the buffer, returning the
+// unconsumed remainder and whether [DONE] was seen.
+func drainSSELines(remaining []byte, fn func(data string)) ([]byte, bool) {
+	for {
+		idx := bytes.Index(remaining, []byte("\n"))
+		if idx == -1 {
+			return remaining, false
+		}
+		line := strings.TrimRight(string(remaining[:idx]), "\r")
+		remaining = remaining[idx+1:]
+		if done := dispatchSSELine(line, fn); done {
+			return remaining, true
+		}
+	}
+}
+
+// dispatchSSELine handles a single SSE line, returning true for [DONE].
+func dispatchSSELine(line string, fn func(data string)) bool {
+	if !strings.HasPrefix(line, "data: ") {
+		return false
+	}
+	data := line[6:]
+	if data == "[DONE]" {
+		return true
+	}
+	fn(data)
+	return false
 }
 
 // buildLLMResponse assembles an ADK LLMResponse from content and tool calls.

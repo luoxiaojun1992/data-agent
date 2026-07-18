@@ -43,28 +43,44 @@ func (f *FallbackLLM) GenerateContent(ctx context.Context, req *model.LLMRequest
 	return func(yield func(*model.LLMResponse, error) bool) {
 		var errs []string
 		for _, m := range f.models {
-			failed := false
-			yielded := false
-			for resp, err := range m.GenerateContent(ctx, req, stream) {
-				if err != nil {
-					if !yielded {
-						// Backend failed cleanly — try next one.
-						errs = append(errs, fmt.Sprintf("%s: %v", m.Name(), err))
-						failed = true
-						break
-					}
-					yield(nil, err)
-					return
-				}
-				yielded = true
-				if !yield(resp, nil) {
-					return
-				}
+			done, tryNext := f.runBackend(ctx, m, req, stream, yield, &errs)
+			if done {
+				return
 			}
-			if !failed {
+			if !tryNext {
 				return
 			}
 		}
 		yield(nil, fmt.Errorf("all %d model backends failed: %s", len(f.models), strings.Join(errs, "; ")))
 	}
+}
+
+// runBackend executes one backend. It returns (done=true) when the caller
+// should stop iterating (success or consumer break or mid-stream failure),
+// and (tryNext=true) when the backend failed before producing any response.
+func (f *FallbackLLM) runBackend(
+	ctx context.Context,
+	m model.LLM,
+	req *model.LLMRequest,
+	stream bool,
+	yield func(*model.LLMResponse, error) bool,
+	errs *[]string,
+) (done, tryNext bool) {
+	yielded := false
+	for resp, err := range m.GenerateContent(ctx, req, stream) {
+		if err != nil {
+			if yielded {
+				// Mid-stream failure — propagate, never fall back.
+				yield(nil, err)
+				return true, false
+			}
+			*errs = append(*errs, fmt.Sprintf("%s: %v", m.Name(), err))
+			return false, true
+		}
+		yielded = true
+		if !yield(resp, nil) {
+			return true, false // consumer stopped early
+		}
+	}
+	return true, false // backend completed successfully
 }

@@ -37,6 +37,14 @@ func (s *LLMSummarizer) Summarize(ctx context.Context, events []*session.Event) 
 		transcript = transcript[:s.MaxInputChars]
 	}
 
+	if text := s.callLLM(ctx, transcript); text != "" {
+		return text, nil
+	}
+	return fallbackSummary(transcript), nil
+}
+
+// callLLM requests the summary from the model, returning "" on any failure.
+func (s *LLMSummarizer) callLLM(ctx context.Context, transcript string) string {
 	req := &model.LLMRequest{
 		Model: s.llm.Name(),
 		Contents: []*genai.Content{
@@ -49,22 +57,27 @@ func (s *LLMSummarizer) Summarize(ctx context.Context, events []*session.Event) 
 
 	for resp, err := range s.llm.GenerateContent(ctx, req, false) {
 		if err != nil {
-			// Fallback: keep a truncated extractive transcript rather than failing compaction.
-			return fallbackSummary(transcript), nil
+			return ""
 		}
-		if resp != nil && resp.Content != nil {
-			var sb strings.Builder
-			for _, p := range resp.Content.Parts {
-				if p != nil {
-					sb.WriteString(p.Text)
-				}
-			}
-			if text := strings.TrimSpace(sb.String()); text != "" {
-				return text, nil
-			}
+		if text := responseText(resp); text != "" {
+			return text
 		}
 	}
-	return fallbackSummary(transcript), nil
+	return ""
+}
+
+// responseText extracts trimmed text from an LLM response.
+func responseText(resp *model.LLMResponse) string {
+	if resp == nil || resp.Content == nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, p := range resp.Content.Parts {
+		if p != nil {
+			sb.WriteString(p.Text)
+		}
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // fallbackSummary keeps the head and tail of a long transcript.
@@ -81,30 +94,42 @@ func fallbackSummary(transcript string) string {
 func transcriptOf(events []*session.Event) string {
 	var sb strings.Builder
 	for _, e := range events {
-		if e == nil || e.Content == nil {
-			continue
+		if line := eventLine(e); line != "" {
+			sb.WriteString(line)
+			sb.WriteString("\n")
 		}
-		var text strings.Builder
-		for _, p := range e.Content.Parts {
-			if p == nil {
-				continue
-			}
-			if p.Text != "" {
-				text.WriteString(p.Text)
-			}
-			if p.FunctionCall != nil {
-				fmt.Fprintf(&text, "[tool call: %s]", p.FunctionCall.Name)
-			}
-		}
-		line := strings.TrimSpace(text.String())
-		if line == "" {
-			continue
-		}
-		author := e.Author
-		if author == "" {
-			author = e.Content.Role
-		}
-		fmt.Fprintf(&sb, "%s: %s\n", author, line)
 	}
 	return sb.String()
+}
+
+// eventLine renders one event as an "author: text" line ("" when skippable).
+func eventLine(e *session.Event) string {
+	if e == nil || e.Content == nil {
+		return ""
+	}
+	var text strings.Builder
+	for _, p := range e.Content.Parts {
+		if p == nil {
+			continue
+		}
+		if p.Text != "" {
+			text.WriteString(p.Text)
+		}
+		if p.FunctionCall != nil {
+			fmt.Fprintf(&text, "[tool call: %s]", p.FunctionCall.Name)
+		}
+	}
+	line := strings.TrimSpace(text.String())
+	if line == "" {
+		return ""
+	}
+	return eventAuthor(e) + ": " + line
+}
+
+// eventAuthor resolves the display author of an event.
+func eventAuthor(e *session.Event) string {
+	if e.Author != "" {
+		return e.Author
+	}
+	return e.Content.Role
 }
