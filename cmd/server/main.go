@@ -453,7 +453,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	chatRoutes := router.Group("/api/v1/chat")
 	chatRoutes.Use(deps.jwtManager.AuthMiddleware())
 	chatRoutes.POST("", deps.agentService.HandleChat)
-	setupChatEnhance(chatRoutes)
+	setupChatEnhance(chatRoutes, deps)
 
 	// Agent routes
 	setupAgentRoutes(router, deps.jwtManager, deps.agentService)
@@ -1329,61 +1329,90 @@ func renewSessionHandler(sessionManager *chat.Manager) gin.HandlerFunc {
 
 // ===================== Chat Enhance =====================
 
-func setupChatEnhance(chatRoutes *gin.RouterGroup) {
-	chatRoutes.POST("/enhance", chatEnhanceHandler)
+func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
+	chatRoutes.POST("/enhance", makeEnhanceHandler(deps))
 }
 
 // defaultModel is the fallback model name for enhance/embedding.
 const defaultModel = "gpt-4o"
 
-func chatEnhanceHandler(c *gin.Context) {
-	var req struct {
-		Prompt string `json:"prompt"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
-		return
-	}
+func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
+			return
+		}
 
-	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
-	apiKey := os.Getenv("LLM_API_KEY")
-	if apiKey == "" {
-		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-		return
-	}
+		baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
+		apiKey := os.Getenv("LLM_API_KEY")
+		if apiKey == "" {
+			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
+			return
+		}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	body, _ := json.Marshal(map[string]interface{}{
-		"model": getEnvOrDefault("LLM_MODEL", defaultModel),
-		"messages": []map[string]string{
-			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
-			{"role": "user", "content": req.Prompt},
-		},
-		"max_tokens": 256,
-	})
-	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/chat/completions", bytes.NewReader(body))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-		return
-	}
-	defer resp.Body.Close()
+		client := &http.Client{Timeout: 30 * time.Second}
+		body, _ := json.Marshal(map[string]interface{}{
+			"model": getEnvOrDefault("LLM_MODEL", defaultModel),
+			"messages": []map[string]string{
+				{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
+				{"role": "user", "content": req.Prompt},
+			},
+			"max_tokens": 256,
+		})
+		httpReq, _ := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/chat/completions", bytes.NewReader(body))
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
+			return
+		}
+		defer resp.Body.Close()
 
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		var result struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+			Usage struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&result)
+
+		if len(result.Choices) == 0 {
+			c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
+			return
+		}
+		enhanced := result.Choices[0].Message.Content
+
+		// Record token usage (non-blocking, best-effort).
+		if deps.llmRecorder != nil {
+			model := getEnvOrDefault("LLM_MODEL", defaultModel)
+			pt := result.Usage.PromptTokens
+			if pt == 0 {
+				pt = llmstats.EstimateTokens(req.Prompt)
+			}
+			ct := result.Usage.CompletionTokens
+			if ct == 0 {
+				ct = llmstats.EstimateTokens(enhanced)
+			}
+			_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
+				CallPoint: "enhance", Model: model,
+				PromptTokens:     pt,
+				CompletionTokens: ct,
+				Estimated:        result.Usage.PromptTokens == 0,
+			})
+		}
+
+		// Same response format as pre-SPEC-051 — backward compatible with UI-158.
+		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&result)
-	if len(result.Choices) == 0 {
-		c.JSON(http.StatusOK, gin.H{"enhanced": req.Prompt})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"enhanced": result.Choices[0].Message.Content})
 }
 func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	api.POST("/change-password", jwtManager.AuthMiddleware(), changePasswordHandler(mongoClient))
