@@ -101,6 +101,27 @@ services:
       retries: 10
       start_period: 5s
 
+  ollama:
+    build:
+      context: docker/ollama
+      dockerfile: Dockerfile
+    restart: always
+    image: data-agent-ollama:latest
+    expose:
+      - "11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
   data-agent:
     build:
       context: .
@@ -119,6 +140,8 @@ services:
       - HERMES_URL=http://mockllm:8082
       - VAULT_ADDR=http://vault:8200
       - VAULT_TOKEN=dev-root-token
+      - EMBEDDING_BASE_URL=http://ollama:11434/v1
+      - EMBEDDING_MODEL=nomic-embed-text
     depends_on:
       mongodb:
         condition: service_healthy
@@ -131,6 +154,8 @@ services:
       vault:
         condition: service_healthy
       mockllm:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -172,3 +197,4 @@ volumes:
   mongodb-data:
   qdrant-data:
   seaweedfs-data:
+  ollama-data:

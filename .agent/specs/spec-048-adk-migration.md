@@ -2,6 +2,13 @@
 
 > **SPEC-048** | Status: 设计中 | Date: 2026-07-17 | Phase: P11
 
+> **实现说明（2026-07-18）**：实现基于 ADK Go SDK v1.5.0，与本文档原始假设有以下偏差：
+> 1. **LiteLlm 不存在于 Go SDK**（仅 Python ADK 有）。Go SDK 仅内置 `model/gemini`。模型路由由 `internal/adk/model` 自实现：OpenAI 兼容 `model.LLM` + `FallbackLLM` fallback 链（`LLM_FALLBACK_BASE_URLS`）。
+> 2. **CompactionPlugin 不存在于 Go SDK 公开 API**。Session 压缩由 `internal/adk/session` 的 `WithCompaction` 实现：事件数/token 双阈值触发，`LLMSummarizer` 摘要压缩，保留最近 N 条。
+> 3. **`ieshan/adk-go-memory` 全部版本要求 go ≥ 1.26**（项目锁定 go 1.25），改为自实现 `internal/adk/memory`：MongoDB 存储 + Ollama embedding（OpenAI 兼容 `/v1/embeddings`）+ 余弦相似度检索，写自动（chat 完成后 `AddSessionToMemory`）、读通过 `memory_search` tool。
+> 4. 核心目标全部达成：ReAct loop（llmagent 内置）、Session 压缩（LLM 摘要）、模型路由（fallback 链）、Skill 绑定 session state（`tool.Context.State()` 注入 user_id/role/kb_id）。
+> 5. 旧代码已删除：`engine.go` / `provider.go` / `skill_adapter.go` / `context_manager.go` / `skills/*` / `internal/domain/skill/`。
+
 ## 1. 目标
 
 将 data-agent 手写 `Engine`（`internal/domain/agent/engine.go`）替换为 Google ADK Go SDK（`google.golang.org/adk`），一次性获得：

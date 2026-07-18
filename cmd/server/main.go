@@ -18,14 +18,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	adkmemory "github.com/luoxiaojun1992/data-agent/internal/adk/memory"
+	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
+	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
+	adksession "github.com/luoxiaojun1992/data-agent/internal/adk/session"
+	adktools "github.com/luoxiaojun1992/data-agent/internal/adk/tools"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/consts"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
@@ -47,13 +50,11 @@ import (
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
-	kbskill "github.com/luoxiaojun1992/data-agent/skills/knowledge_search"
-	saveskill "github.com/luoxiaojun1992/data-agent/skills/save_report"
-	sqlskill "github.com/luoxiaojun1992/data-agent/skills/sql_executor"
-	statsskill "github.com/luoxiaojun1992/data-agent/skills/stats_engine"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
+	adkmodelface "google.golang.org/adk/model"
+	adksessionIF "google.golang.org/adk/session"
 )
 
 // ===================== main =====================
@@ -76,12 +77,13 @@ type serverDependencies struct {
 	systemConfigRepo *mongoinfra.SystemConfigRepository
 	vaultClient      *vaultinfra.Client
 	authHandler      *handler.AuthHandler
-	llmRouter        *agent.Router
-	engine           *agent.Engine
+	adkModel         adkmodelface.LLM
+	adkRuntime       *adkruntime.Runtime
+	adkSessions      *adksession.Service
+	memoryService    *adkmemory.Service
 	sessionManager   *chat.Manager
 	chatService      *chat.Service
 	agentService     *agent_svc.Service
-	skillRegistry    *skill.Registry
 	secAuditor       *security.Auditor
 	cbRegistry       *security.CircuitBreakerRegistry
 	kbService        *knowledge.Service
@@ -149,15 +151,14 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	deps.swClient = seaweedfs.NewClient(cfg.SeaweedFS.Master, cfg.SeaweedFS.Filer)
 
 	initAuthService(&deps, mongoClient, logger)
-	initLLMRouter(&deps)
+	initADKModel(&deps)
 	initVault(&deps, logger)
 	initAgentEngine(&deps)
+	initKnowledgeBase(&deps, mongoClient)
 	initServices(&deps, mongoClient, logger)
 	initArtifacts(&deps, mongoClient, cfg)
-	initKnowledgeBase(&deps, mongoClient)
 	initAuditAndNotifications(&deps, mongoClient)
 	initTaskQueue(&deps, cfg, mongoClient, logger)
-	initSkills(&deps, logger)
 
 	return cfg, logger, mongoClient, deps
 }
@@ -195,18 +196,41 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 	deps.authHandler = handler.NewAuthHandler(authService)
 }
 
-func initLLMRouter(deps *serverDependencies) {
-	deps.llmRouter = agent.NewRouter()
-	if model := os.Getenv("LLM_MODEL"); model != "" {
-		deps.llmRouter.RegisterModel("default", &agent.ModelConfig{
-			Model:       model,
-			BaseURL:     getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com"),
-			APIKey:      os.Getenv("LLM_API_KEY"),
-			MaxTokens:   4096,
-			Temperature: 0.7,
-			IsDefault:   true,
-		})
+// initADKModel builds the ADK model.LLM from env config, with an optional
+// fallback chain (LLM_FALLBACK_BASE_URLS, comma-separated).
+func initADKModel(deps *serverDependencies) {
+	modelName := getEnvOrDefault("LLM_MODEL", "mock-gpt-4o")
+	primary := adkmodel.NewOpenAIModel(adkmodel.Backend{
+		Model:       modelName,
+		BaseURL:     getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com"),
+		APIKey:      os.Getenv("LLM_API_KEY"),
+		MaxTokens:   4096,
+		Temperature: 0.7,
+	})
+
+	backends := []adkmodelface.LLM{primary}
+	if raw := os.Getenv("LLM_FALLBACK_BASE_URLS"); raw != "" {
+		for _, u := range strings.Split(raw, ",") {
+			u = strings.TrimSpace(u)
+			if u == "" {
+				continue
+			}
+			backends = append(backends, adkmodel.NewOpenAIModel(adkmodel.Backend{
+				Model:       modelName,
+				BaseURL:     u,
+				APIKey:      os.Getenv("LLM_API_KEY"),
+				MaxTokens:   4096,
+				Temperature: 0.7,
+			}))
+		}
 	}
+
+	chain, err := adkmodel.NewFallbackLLM(backends...)
+	if err != nil {
+		deps.adkModel = primary
+		return
+	}
+	deps.adkModel = chain
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {
@@ -227,15 +251,70 @@ func initVault(deps *serverDependencies, logger *zap.Logger) {
 func initAgentEngine(deps *serverDependencies) {
 	deps.secAuditor = security.NewAuditor(nil)
 	deps.cbRegistry = security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	deps.skillRegistry = skill.NewRegistry()
 }
 
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoClient.DB(), 24*time.Hour)
-	deps.engine = agent.NewEngine(deps.llmRouter, agent.NewSkillRegistryFromDomain(deps.skillRegistry), deps.secAuditor)
-	deps.chatService = chat.NewService(deps.engine, deps.sessionManager, deps.secAuditor, deps.cbRegistry)
-	deps.agentService = agent_svc.NewService(deps.engine, deps.chatService, deps.sessionManager, deps.cbRegistry)
-	deps.agentService.WithSkillRegistry(agent.NewSkillRegistryFromDomain(deps.skillRegistry))
+
+	// ADK session service (MongoDB) with LLM-summarization compaction.
+	deps.adkSessions = adksession.NewService(mongoClient.DB()).WithCompaction(
+		adksession.CompactionConfig{MaxEvents: 100, MaxTokens: 4000, KeepRecent: 20},
+		adksession.NewLLMSummarizer(deps.adkModel),
+	)
+
+	// Long-term memory (MongoDB + embedding). Embedding is optional — without
+	// EMBEDDING_BASE_URL the service degrades to keyword search.
+	var embed adkmemory.EmbeddingFunc
+	if baseURL := os.Getenv("EMBEDDING_BASE_URL"); baseURL != "" {
+		embed = adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
+			BaseURL: baseURL,
+			Model:   getEnvOrDefault("EMBEDDING_MODEL", "nomic-embed-text"),
+			APIKey:  os.Getenv("EMBEDDING_API_KEY"),
+		})
+	} else {
+		logger.Info("EMBEDDING_BASE_URL not set — memory search falls back to keyword matching")
+	}
+	deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
+
+	// ADK tools (skills rewritten as function tools).
+	toolDeps := &adktools.Deps{
+		KBService: deps.kbService,
+		Memory:    deps.memoryService,
+		AppName:   "data-agent",
+	}
+	tools, err := adktools.All(toolDeps)
+	if err != nil {
+		logger.Fatal("Failed to build ADK tools", zap.Error(err))
+	}
+
+	// ADK runtime (llmagent ReAct loop + runner).
+	rt, err := adkruntime.New(adkruntime.Config{
+		AppName:        "data-agent",
+		Model:          deps.adkModel,
+		SessionService: deps.adkSessions,
+		MemoryService:  deps.memoryService,
+		Tools:          tools,
+		Auditor:        deps.secAuditor,
+	})
+	if err != nil {
+		logger.Fatal("Failed to build ADK runtime", zap.Error(err))
+	}
+	deps.adkRuntime = rt
+
+	deps.chatService = chat.NewService(rt, deps.adkSessions, deps.sessionManager, deps.cbRegistry).
+		WithMemoryWrite(func(ctx context.Context, sess adksessionIF.Session) {
+			if err := deps.memoryService.AddSessionToMemory(ctx, sess); err != nil {
+				logger.Warn("memory write failed", zap.Error(err))
+			}
+		})
+	deps.agentService = agent_svc.NewService(deps.chatService, deps.sessionManager, deps.cbRegistry)
+	deps.agentService.WithToolLister(agent_svc.ToolListerFunc(func() []string {
+		names, err := adktools.Names(toolDeps)
+		if err != nil {
+			return []string{}
+		}
+		return names
+	}))
 }
 
 func initArtifacts(deps *serverDependencies, mongoClient *mongoinfra.Client, cfg *config.Config) {
@@ -297,19 +376,6 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	logger.Info("Task queue and worker pool started", zap.Int("workers", 4))
 }
 
-func initSkills(deps *serverDependencies, logger *zap.Logger) {
-	registerSkill(deps.skillRegistry, &sqlskill.SQLExecutor{}, logger)
-	registerSkill(deps.skillRegistry, &statsskill.StatsEngine{}, logger)
-	registerSkill(deps.skillRegistry, &saveskill.SaveReport{}, logger)
-	registerSkill(deps.skillRegistry, kbskill.NewKnowledgeSearch(deps.kbService), logger)
-}
-
-func registerSkill(reg *skill.Registry, s skill.Skill, logger *zap.Logger) {
-	if err := reg.Register(s); err != nil {
-		logger.Warn("Failed to register skill", zap.Error(err))
-	}
-}
-
 func buildRouter(cfg *config.Config) *gin.Engine {
 	if cfg.Log.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
@@ -351,6 +417,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	setupUserManagement(api, deps.userRepo)
 	setupRoleManagement(api, deps.roleRepo)
 	setupModelConfig(api, deps.systemConfigRepo, deps.vaultClient)
+	setupMemorySearch(api, deps.memoryService)
 	setupSysConfig(api, deps.systemConfigRepo)
 	setupChangePassword(api, deps.jwtManager, deps.mongoClient)
 
@@ -931,6 +998,36 @@ func setupModelConfig(api *gin.RouterGroup, systemConfigRepo *mongoinfra.SystemC
 	api.POST("/vault/decrypt", middleware.RequirePermission(model.PermUserManage), vaultDecryptHandler(vaultClient))
 }
 
+// setupMemorySearch registers the admin memory search endpoint used to verify
+// Mem0-style long-term memory writes (SPEC-048/SPEC-046).
+func setupMemorySearch(api *gin.RouterGroup, memSvc *adkmemory.Service) {
+	api.GET("/memory/search", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+		handleMemorySearch(c, memSvc)
+	})
+}
+
+// handleMemorySearch searches long-term memory for a user.
+// Query params: q (required), user_id (defaults to the caller).
+func handleMemorySearch(c *gin.Context, memSvc *adkmemory.Service) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' required"})
+		return
+	}
+	userID := c.Query("user_id")
+	if userID == "" {
+		uid, _ := c.Get("user_id")
+		userID, _ = uid.(string)
+	}
+
+	results, err := memSvc.AdminSearch(c.Request.Context(), "data-agent", userID, query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"results": results, "count": len(results)})
+}
+
 func getModelConfigHandler(systemConfigRepo *mongoinfra.SystemConfigRepository) gin.HandlerFunc {
 	return func(c *gin.Context) { handleGetModelConfig(c, systemConfigRepo) }
 }
@@ -990,6 +1087,16 @@ func fillModelConfigDefaults(result gin.H) {
 	}
 	if result["hermes_model"] == nil {
 		result["hermes_model"] = "hermes-3-70b"
+	}
+	// Embedding model defaults (same env-override pattern as LLM config).
+	if result["embedding_base_url"] == nil || result["embedding_base_url"] == "" {
+		result["embedding_base_url"] = getEnvOrDefault("EMBEDDING_BASE_URL", "http://ollama:11434/v1")
+	}
+	if result["embedding_model"] == nil || result["embedding_model"] == "" {
+		result["embedding_model"] = getEnvOrDefault("EMBEDDING_MODEL", "nomic-embed-text")
+	}
+	if result["embedding_api_key"] == nil {
+		result["embedding_api_key"] = os.Getenv("EMBEDDING_API_KEY")
 	}
 }
 

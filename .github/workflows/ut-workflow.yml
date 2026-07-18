@@ -25,8 +25,8 @@ jobs:
       - name: Run Tests with Coverage
         run: |
           go test -race -gcflags=all=-l -count=1 -coverprofile=coverage.out \
-            -coverpkg=./internal/api/...,./internal/config/...,./internal/domain/...,./internal/logic/...,./internal/service/...,./skills/... \
-            ./internal/... ./skills/...
+            -coverpkg=./internal/adk/...,./internal/api/...,./internal/config/...,./internal/domain/...,./internal/logic/...,./internal/service/... \
+            ./internal/...
 
       - name: Coverage Gate
         run: |
