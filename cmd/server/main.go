@@ -1806,9 +1806,3 @@ func tryEnhanceCache(c *gin.Context, deps *serverDependencies, prompt string) (s
 	}
 	return cached, ok
 }
-
-// getDeps retrieves serverDependencies from the gin context.
-func getDeps(c *gin.Context) *serverDependencies {
-	deps, _ := c.Get("deps")
-	return deps.(*serverDependencies)
-}
