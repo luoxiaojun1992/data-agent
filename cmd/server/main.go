@@ -1785,6 +1785,67 @@ func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
 	return nil
 }
 
+type enhanceUsage struct {
+	prompt, completion int
+	estimated          bool
+}
+
+// doEnhanceCall calls the LLM to enhance a prompt and returns the result with token usage.
+func doEnhanceCall(c *gin.Context, deps *serverDependencies, prompt string) (string, enhanceUsage) {
+	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
+	apiKey := os.Getenv("LLM_API_KEY")
+	if apiKey == "" {
+		return prompt, enhanceUsage{}
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": getEnvOrDefault("LLM_MODEL", defaultModel),
+		"messages": []map[string]string{
+			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
+			{"role": "user", "content": prompt},
+		},
+		"max_tokens": 256,
+	})
+	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), "POST", baseURL+"/chat/completions", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return prompt, enhanceUsage{}
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+
+	enhanced := prompt
+	if len(result.Choices) > 0 && result.Choices[0].Message.Content != "" {
+		enhanced = result.Choices[0].Message.Content
+	}
+	u := enhanceUsage{
+		prompt:     result.Usage.PromptTokens,
+		completion: result.Usage.CompletionTokens,
+		estimated:  result.Usage.PromptTokens == 0,
+	}
+	if u.prompt == 0 {
+		u.prompt = llmstats.EstimateTokens(prompt)
+	}
+	if u.completion == 0 {
+		u.completion = llmstats.EstimateTokens(enhanced)
+	}
+	return enhanced, u
+}
+
 // tryEnhanceCache checks the Redis cache for a previously enhanced prompt.
 func tryEnhanceCache(c *gin.Context, deps *serverDependencies, prompt string) (string, bool) {
 	if deps.llmCache == nil {
