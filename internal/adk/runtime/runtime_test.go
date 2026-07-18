@@ -369,3 +369,33 @@ func TestNew_WithMemoryService(t *testing.T) {
 }
 
 var _ = agent.RunConfig{} // keep agent import used
+
+// TestRun_ContentsIncludeUserMessage is a regression test for the CI UI
+// failure where the LLM request contained only the system instruction — the
+// user message must always be present in the request contents.
+func TestRun_ContentsIncludeUserMessage(t *testing.T) {
+	llm := &scriptedLLM{name: "m", queue: []*model.LLMResponse{textResp("answer")}}
+	rt := newRuntime(t, llm, nil, nil)
+
+	texts, err := drainEvents(rt.Run(context.Background(), "u1", "s1", "用户消息内容", RunConfig{}))
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if len(texts) != 1 {
+		t.Fatalf("texts = %v", texts)
+	}
+	if len(llm.calls) == 0 {
+		t.Fatal("LLM was not called")
+	}
+	found := false
+	for _, c := range llm.calls[0].Contents {
+		for _, p := range c.Parts {
+			if p != nil && p.Text == "用户消息内容" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("LLM request contents must include the user message")
+	}
+}

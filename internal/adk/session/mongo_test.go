@@ -577,3 +577,31 @@ func TestNewService(t *testing.T) {
 		t.Error("collection should come from db.Collection")
 	}
 }
+
+func TestAppendEvent_SyncsInMemorySnapshot(t *testing.T) {
+	svc, coll := newServiceWithMockColl()
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(coll, "UpdateOne", &mongo.UpdateResult{MatchedCount: 1}, nil)
+
+	sess := (&sessionDoc{ID: "s1", AppName: "app", UserID: "u1", State: map[string]any{}, Events: []*session.Event{}}).toSession()
+	evt := textEvent("user", "hello")
+	evt.Actions.StateDelta = map[string]any{"kb_id": "kb1"}
+
+	if err := svc.AppendEvent(context.Background(), sess, evt); err != nil {
+		t.Fatalf("AppendEvent failed: %v", err)
+	}
+
+	// The caller's snapshot must reflect the appended event — this is what the
+	// ADK runner reads when building LLM request contents.
+	if sess.Events().Len() != 1 {
+		t.Fatalf("snapshot events = %d, want 1", sess.Events().Len())
+	}
+	if sess.Events().At(0).Content.Parts[0].Text != "hello" {
+		t.Errorf("snapshot event text = %v", sess.Events().At(0).Content.Parts[0].Text)
+	}
+	v, err := sess.State().Get("kb_id")
+	if err != nil || v != "kb1" {
+		t.Errorf("snapshot state kb_id = %v, %v", v, err)
+	}
+}

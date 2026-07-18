@@ -178,6 +178,19 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 		return fmt.Errorf("session %q not found", sess.ID())
 	}
 
+	// Keep the caller's in-memory snapshot in sync — the ADK runner builds
+	// LLM request contents from session.Events() of the object it holds.
+	if ms, ok := sess.(*mongoSession); ok {
+		ms.doc.Events = append(ms.doc.Events, event)
+		for k, v := range event.Actions.StateDelta {
+			if strings.Contains(k, ".") || strings.HasPrefix(k, "$") {
+				continue
+			}
+			ms.doc.State[k] = v
+		}
+		ms.doc.UpdatedAt = time.Now()
+	}
+
 	if s.summarizer != nil {
 		return s.maybeCompact(ctx, sess)
 	}
