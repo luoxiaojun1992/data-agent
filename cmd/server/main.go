@@ -1345,7 +1345,7 @@ func chatEnhanceHandler(c *gin.Context) {
 	if deps.llmCache != nil {
 		model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
 		if cached, ok := deps.llmCache.GetEnhance(c.Request.Context(), model, req.Prompt); ok {
-			deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
+			_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
 				CallPoint: "enhance", Model: model,
 				PromptTokens: llmstats.EstimateTokens(req.Prompt),
 				CacheHit:     true,
@@ -1410,7 +1410,7 @@ func chatEnhanceHandler(c *gin.Context) {
 	if compTk == 0 {
 		compTk = llmstats.EstimateTokens(enhanced)
 	}
-	deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
+	_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
 		CallPoint: "enhance", Model: model,
 		PromptTokens: promptTk, CompletionTokens: compTk,
 		Estimated: result.Usage.PromptTokens == 0,
