@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -1752,7 +1753,11 @@ func doEnhanceCall(c *gin.Context, deps *serverDependencies, prompt string) (str
 		return prompt, enhanceUsage{}
 	}
 	defer resp.Body.Close()
+	return parseEnhanceResponse(resp.Body, prompt)
+}
 
+// parseEnhanceResponse decodes the LLM response JSON for prompt enhance.
+func parseEnhanceResponse(body io.Reader, prompt string) (string, enhanceUsage) {
 	var result struct {
 		Choices []struct {
 			Message struct {
@@ -1764,16 +1769,14 @@ func doEnhanceCall(c *gin.Context, deps *serverDependencies, prompt string) (str
 			CompletionTokens int `json:"completion_tokens"`
 		} `json:"usage"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&result)
-
+	_ = json.NewDecoder(body).Decode(&result)
 	enhanced := prompt
 	if len(result.Choices) > 0 && result.Choices[0].Message.Content != "" {
 		enhanced = result.Choices[0].Message.Content
 	}
 	u := enhanceUsage{
-		prompt:     result.Usage.PromptTokens,
-		completion: result.Usage.CompletionTokens,
-		estimated:  result.Usage.PromptTokens == 0,
+		prompt: result.Usage.PromptTokens, completion: result.Usage.CompletionTokens,
+		estimated: result.Usage.PromptTokens == 0,
 	}
 	if u.prompt == 0 {
 		u.prompt = llmstats.EstimateTokens(prompt)
