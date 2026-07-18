@@ -303,3 +303,35 @@ func TestTrimSpace(t *testing.T) {
 		t.Error("no space")
 	}
 }
+
+func TestProvider_EmbeddingConfig_WithDB(t *testing.T) {
+	mockRepo := &mongoinfra.SystemConfigRepository{}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{
+		Value: `{"base_url":"http://db-emb","model":"bge-m3"}`,
+	}, nil)
+	p := NewProvider(mockRepo)
+	cfg := p.EmbeddingConfig()
+	if cfg.BaseURL != "http://db-emb" || cfg.Model != "bge-m3" {
+		t.Errorf("EmbeddingConfig from DB: %+v", cfg)
+	}
+}
+
+func TestProvider_GetRawModelConfig_OnlyEmbedding(t *testing.T) {
+	mockRepo := &mongoinfra.SystemConfigRepository{}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockRepo, "GetAll", []model.SystemConfig{
+		{Key: "embedding", Value: `{"base_url":"http://e","model":"m"}`},
+		{Key: "api_url", Value: "http://custom"},
+	}, nil)
+	p := NewProvider(mockRepo)
+	cfg, err := p.GetRawModelConfig(context.Background())
+	if err != nil {
+		t.Fatalf("GetRawModelConfig: %v", err)
+	}
+	if cfg["api_url"] != "http://custom" {
+		t.Errorf("legacy key: %v", cfg["api_url"])
+	}
+}
