@@ -454,7 +454,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	chatRoutes := router.Group("/api/v1/chat")
 	chatRoutes.Use(deps.jwtManager.AuthMiddleware())
 	chatRoutes.POST("", deps.agentService.HandleChat)
-	setupChatEnhance(chatRoutes)
+	setupChatEnhance(chatRoutes, deps)
 
 	// Agent routes
 	setupAgentRoutes(router, deps.jwtManager, deps.agentService)
@@ -1330,41 +1330,42 @@ func renewSessionHandler(sessionManager *chat.Manager) gin.HandlerFunc {
 
 // ===================== Chat Enhance =====================
 
-func setupChatEnhance(chatRoutes *gin.RouterGroup) {
-	chatRoutes.POST("/enhance", chatEnhanceHandler)
+func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
+	chatRoutes.POST("/enhance", makeChatEnhanceHandler(deps))
 }
 
 // defaultModel is the fallback model name for enhance/embedding.
 const defaultModel = "gpt-4o"
 
-func chatEnhanceHandler(c *gin.Context) {
-	var req struct {
-		Prompt string `json:"prompt"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
-		return
-	}
+func makeChatEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
+			return
+		}
 
-	// Cache check
-	deps := getDeps(c)
-	if cached, ok := tryEnhanceCache(c, deps, req.Prompt); ok {
-		c.JSON(http.StatusOK, gin.H{"enhanced": cached})
-		return
-	}
+		// Cache check
+		if cached, ok := tryEnhanceCache(c, deps, req.Prompt); ok {
+			c.JSON(http.StatusOK, gin.H{"enhanced": cached})
+			return
+		}
 
-	enhanced, usage := doEnhanceCall(c, deps, req.Prompt)
+		enhanced, usage := doEnhanceCall(c, deps, req.Prompt)
 
-	model := getEnvOrDefault("LLM_MODEL", defaultModel)
-	_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
-		CallPoint: "enhance", Model: model,
-		PromptTokens: usage.prompt, CompletionTokens: usage.completion,
-		Estimated: usage.estimated,
-	})
-	if deps.llmCache != nil {
-		deps.llmCache.SetEnhance(c.Request.Context(), model, req.Prompt, enhanced)
+		model := getEnvOrDefault("LLM_MODEL", defaultModel)
+		_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
+			CallPoint: "enhance", Model: model,
+			PromptTokens: usage.prompt, CompletionTokens: usage.completion,
+			Estimated: usage.estimated,
+		})
+		if deps.llmCache != nil {
+			deps.llmCache.SetEnhance(c.Request.Context(), model, req.Prompt, enhanced)
+		}
+		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 	}
-	c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 }
 func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	api.POST("/change-password", jwtManager.AuthMiddleware(), changePasswordHandler(mongoClient))
