@@ -1338,22 +1338,25 @@ const defaultModel = "gpt-4o"
 
 // callEnhanceLLM calls the LLM to enhance a prompt. Falls back to original on error.
 func callEnhanceLLM(ctx context.Context, prompt string) string {
+	model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
 	baseURL := getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com")
 	apiKey := os.Getenv("LLM_API_KEY")
-	if apiKey == "" {
-		return prompt
-	}
-	body, _ := json.Marshal(map[string]interface{}{
-		"model": getEnvOrDefault("LLM_MODEL", defaultModel),
+
+	llmReq := map[string]interface{}{
+		"model": model,
 		"messages": []map[string]string{
-			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
+			{"role": "system", "content": "你是一个提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"},
 			{"role": "user", "content": prompt},
 		},
-		"max_tokens": 256,
-	})
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/chat/completions", bytes.NewReader(body))
+		"temperature": 0.3,
+		"max_tokens":  512,
+	}
+	body, _ := json.Marshal(llmReq)
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
 	if err != nil {
 		return prompt
