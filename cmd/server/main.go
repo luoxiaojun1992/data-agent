@@ -1331,6 +1331,9 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup) {
 	chatRoutes.POST("/enhance", chatEnhanceHandler)
 }
 
+// defaultModel is the fallback model name for enhance/embedding.
+const defaultModel = "gpt-4o"
+
 func chatEnhanceHandler(c *gin.Context) {
 	var req struct {
 		Prompt string `json:"prompt"`
@@ -1343,7 +1346,7 @@ func chatEnhanceHandler(c *gin.Context) {
 	// Cache check
 	deps := getDeps(c)
 	if deps.llmCache != nil {
-		model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
+		model := getEnvOrDefault("LLM_MODEL", defaultModel)
 		if cached, ok := deps.llmCache.GetEnhance(c.Request.Context(), model, req.Prompt); ok {
 			_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
 				CallPoint: "enhance", Model: model,
@@ -1365,7 +1368,7 @@ func chatEnhanceHandler(c *gin.Context) {
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	body, _ := json.Marshal(map[string]interface{}{
-		"model": getEnvOrDefault("LLM_MODEL", "gpt-4o"),
+		"model": getEnvOrDefault("LLM_MODEL", defaultModel),
 		"messages": []map[string]string{
 			{"role": "system", "content": "You are a helpful assistant. Enhance the following prompt to be more specific and detailed, while preserving the original intent. Return ONLY the enhanced prompt, no explanation."},
 			{"role": "user", "content": req.Prompt},
@@ -1401,7 +1404,7 @@ func chatEnhanceHandler(c *gin.Context) {
 	}
 
 	// Record token usage
-	model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
+	model := getEnvOrDefault("LLM_MODEL", defaultModel)
 	promptTk := result.Usage.PromptTokens
 	if promptTk == 0 {
 		promptTk = llmstats.EstimateTokens(req.Prompt)
@@ -1780,6 +1783,23 @@ func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
 	_ = ctx
 	_ = t
 	return nil
+}
+
+// tryEnhanceCache checks the Redis cache for a previously enhanced prompt.
+func tryEnhanceCache(c *gin.Context, deps *serverDependencies, prompt string) (string, bool) {
+	if deps.llmCache == nil {
+		return "", false
+	}
+	model := getEnvOrDefault("LLM_MODEL", defaultModel)
+	cached, ok := deps.llmCache.GetEnhance(c.Request.Context(), model, prompt)
+	if ok {
+		_ = deps.llmRecorder.Record(c.Request.Context(), llmstats.Record{
+			CallPoint: "enhance", Model: model,
+			PromptTokens: llmstats.EstimateTokens(prompt),
+			CacheHit:     true,
+		})
+	}
+	return cached, ok
 }
 
 // getDeps retrieves serverDependencies from the gin context.
