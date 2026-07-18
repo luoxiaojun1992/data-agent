@@ -505,3 +505,18 @@ func TestFallbackLLM_AllFail(t *testing.T) {
 		t.Errorf("error should include both backends: %v", err)
 	}
 }
+
+func TestBackend_Fields(t *testing.T) {
+	b := Backend{
+		Model:           "gpt-4",
+		BaseURL:         "http://api/v1",
+		APIKey:          "sk-key",
+		MaxTokens:       8192,
+		Temperature:     0.3,
+		TokenMultiplier: 2.0,
+		Capability:      "reasoning",
+	}
+	if b.TokenMultiplier != 2.0 || b.Capability != "reasoning" {
+		t.Errorf("Backend fields: %+v", b)
+	}
+}
