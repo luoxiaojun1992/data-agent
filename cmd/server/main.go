@@ -60,6 +60,7 @@ import (
 	"go.uber.org/zap"
 
 	"google.golang.org/adk/memory"
+	adkmodel "google.golang.org/adk/model"
 	adksessionIF "google.golang.org/adk/session"
 )
 
@@ -236,6 +237,37 @@ func initAgentEngine(deps *serverDependencies) {
 	deps.cbRegistry = security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
 }
 
+func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client, llm adkmodel.LLM, logger *zap.Logger) {
+	embedFn := buildEmbedFn(deps)
+	if os.Getenv("MEMORY_BACKEND") == "legacy" {
+		logger.Info("Using legacy memory backend")
+		var embed adkmemory.EmbeddingFunc
+		if embedFn != nil {
+			embed = embedFn
+		}
+		deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
+		return
+	}
+	logger.Info("Using adk-go-memory backend (SPEC-050)")
+	kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
+	if err != nil {
+		logger.Fatal("Failed to create adk-go-memory Kit", zap.Error(err))
+	}
+	deps.memoryService = kit.Service()
+	deps.memoryKit = kit
+}
+
+func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text string) ([]float32, error) {
+	cfg := deps.modelCfg.EmbeddingConfig()
+	if cfg.BaseURL == "" {
+		return nil
+	}
+	e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
+		BaseURL: cfg.BaseURL, Model: cfg.Model, APIKey: cfg.APIKey,
+	})
+	return func(ctx context.Context, text string) ([]float32, error) { return e(ctx, text) }
+}
+
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoClient.DB(), 24*time.Hour)
 	deps.llmRecorder = llmstats.NewRecorder(mongoClient.DB())
@@ -256,37 +288,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	)
 
 	// Long-term memory (MongoDB + embedding).
-	// MEMORY_BACKEND=adk-memory (default) → adk-go-memory with LLM deriver + similarity merge.
-	// MEMORY_BACKEND=legacy → SPEC-048 self-implemented memory.Service.
-	embedCfg := deps.modelCfg.EmbeddingConfig()
-	var embedFn func(ctx context.Context, text string) ([]float32, error)
-	if embedCfg.BaseURL != "" {
-		e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
-			BaseURL: embedCfg.BaseURL,
-			Model:   embedCfg.Model,
-			APIKey:  embedCfg.APIKey,
-		})
-		embedFn = func(ctx context.Context, text string) ([]float32, error) { return e(ctx, text) }
-	} else {
-		logger.Info("EMBEDDING_BASE_URL not set — memory search falls back to keyword matching")
-	}
-
-	if os.Getenv("MEMORY_BACKEND") == "legacy" {
-		logger.Info("Using legacy memory backend (SPEC-048 self-implemented)")
-		var embed adkmemory.EmbeddingFunc
-		if embedFn != nil {
-			embed = embedFn
-		}
-		deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
-	} else {
-		logger.Info("Using adk-go-memory backend (SPEC-050)")
-		kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
-		if err != nil {
-			logger.Fatal("Failed to create adk-go-memory Kit", zap.Error(err))
-		}
-		deps.memoryService = kit.Service()
-		deps.memoryKit = kit
-	}
+	initMemoryBackend(deps, mongoClient, llm, logger)
 
 	// ADK tools.
 	toolDeps := &adktools.Deps{
