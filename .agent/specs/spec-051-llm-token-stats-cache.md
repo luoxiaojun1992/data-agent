@@ -1,6 +1,6 @@
 # LLM 全链路 Token 统计与 Redis 缓存
 
-> **SPEC-051** | Status: 设计中 | Date: 2026-07-18 | Phase: P12
+> **SPEC-051** | Status: ✅ 已实现 | Date: 2026-07-18 | Phase: P12
 
 ## 1. 目标
 
