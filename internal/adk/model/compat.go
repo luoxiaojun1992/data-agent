@@ -23,6 +23,9 @@ func NewCompatLLM(inner model.LLM) model.LLM {
 
 // EnsureResponseParts wraps a genai.Part's FunctionResponse to ensure Parts is populated.
 func EnsureResponseParts(p *genai.Part) {
+	if p == nil {
+		return
+	}
 	fr := p.FunctionResponse
 	if fr == nil || len(fr.Parts) > 0 || fr.Response == nil {
 		return

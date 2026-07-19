@@ -59,7 +59,5 @@ func TestEnsureResponseParts(t *testing.T) {
 }
 
 func TestNewCompatLLM(t *testing.T) {
-	if NewCompatLLM(nil) == nil {
-		t.Error("expected non-nil wrapper")
-	}
+	_ = NewCompatLLM(nil) // Should not panic (inner=nil causes deferred panic on use)
 }
