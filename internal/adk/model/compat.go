@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"iter"
+	"log"
 
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
@@ -45,9 +46,18 @@ func EnsureResponseParts(p *genai.Part) {
 func (m *compatLLM) Name() string { return m.inner.Name() }
 
 func (m *compatLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
-	// Convert FunctionResponse.Response → Parts for all contents in the request.
+	// Log incoming contents for debugging tool call/response flow.
 	for _, c := range req.Contents {
 		for _, p := range c.Parts {
+			if p.FunctionCall != nil {
+				argsJSON, _ := json.Marshal(p.FunctionCall.Args)
+				log.Printf("[DEBUG compat] FunctionCall: name=%s args=%s", p.FunctionCall.Name, string(argsJSON))
+			}
+			if p.FunctionResponse != nil {
+				respJSON, _ := json.Marshal(p.FunctionResponse.Response)
+				log.Printf("[DEBUG compat] FunctionResponse: id=%s name=%s response=%s",
+					p.FunctionResponse.ID, p.FunctionResponse.Name, string(respJSON))
+			}
 			EnsureResponseParts(p)
 		}
 	}
