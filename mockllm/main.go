@@ -31,7 +31,8 @@ type FunctionCall struct {
 
 // ToolCall represents a tool call in the newer OpenAI tool_calls format.
 type ToolCall struct {
-	ID       string        `json:"id"`
+	Index    *int          `json:"index,omitempty"`
+	ID       string        `json:"id,omitempty"`
 	Type     string        `json:"type"`
 	Function *FunctionCall `json:"function"`
 }
@@ -286,6 +287,18 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 	}
 
 	// Send full tool_calls delta in one chunk with finish_reason
+	// Map message ToolCalls to SSE delta format (MUST include index)
+	toolCalls := make([]ToolCall, len(msg.ToolCalls))
+	for i, tc := range msg.ToolCalls {
+		idx := i
+		toolCalls[i] = ToolCall{
+			Index:    &idx,
+			ID:       tc.ID,
+			Type:     tc.Type,
+			Function: tc.Function,
+		}
+	}
+
 	chunk := sseChunk{
 		ID:      chatID,
 		Object:  "chat.completion.chunk",
@@ -300,7 +313,7 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 				Index: 0,
 				Delta: sseDelta{
 					Role:      msg.Role,
-					ToolCalls: msg.ToolCalls,
+					ToolCalls: toolCalls,
 				},
 				FinishReason: "tool_calls",
 			},
