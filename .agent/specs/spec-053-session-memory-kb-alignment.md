@@ -57,8 +57,16 @@ Chat 完成
   → scheduleMemoryWrite (异步 goroutine, 30s timeout)
     → memoryService.AddSessionToMemory
       → LLM 对对话记录切片
-        → Embedding 模型向量化
+        → Embedding 向量化 (Redis 缓存: emb:{model}:{text_hash})
           → 写入 Qdrant
+
+```
+```
+提示词增强
+  → callEnhanceLLM (POST /chat/enhance)
+    → LLM 调用 (非流式)
+      → Redis 缓存: enhance:{model}:{prompt_hash} (TTL 1h)
+    → recordEnhanceTokens
 ```
 
 ### 3.3 Session 压缩流程
@@ -141,8 +149,20 @@ Chat 完成
 | `internal/adk/memory/` | AddSessionToMemory (KB 索引 + session 压缩) | Review |
 | `internal/api/session/` | session 删除/恢复 API | Review |
 | `internal/service/hermes/` | Hermes session 管理 | Review |
+| `internal/infra/llmcache/` | Embedding + Enhance Redis 缓存 | Review |
 
 ## 9. UI Test / E2E 验收规则
 
 - 无新增 UI 用例（纯后端逻辑对齐 spec）
 - 若发现差异需修改代码，相关 UT 覆盖变更路径
+
+## 10. Redis 缓存场景
+
+以下场景使用 Redis 缓存，减少重复 LLM/Embedding 调用：
+
+| 场景 | 缓存 Key | TTL | 备注 |
+|------|---------|-----|------|
+| KB 索引 Embedding 向量化 | `emb:{model}:{text_hash}` | 待确认 | 同一文本段落在不同 session 中复用向量，避免重复调 embedding 模型 |
+| 提示词增强 (Enhance) | `enhance:{model}:{prompt_hash}` | 1h | `llmcache.SetEnhance` / `GetEnhance`，相同 prompt 跨 session/session 复用 |
+
+> 两个缓存链路都在 `internal/infra/llmcache/` 中实现。
