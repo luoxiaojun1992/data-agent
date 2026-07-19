@@ -12,7 +12,7 @@ import (
 
 	"google.golang.org/adk/model"
 
-	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
+	"github.com/ieshan/adk-go-pkg/model/openai"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 )
 
@@ -142,20 +142,20 @@ func (p *Provider) BuildLLM(ctx context.Context) (model.LLM, error) {
 	sortModels(models)
 	backends := make([]model.LLM, 0, len(models))
 	for _, m := range models {
-		backends = append(backends, adkmodel.NewOpenAIModel(adkmodel.Backend{
-			Model:           m.Name,
-			BaseURL:         m.BaseURL,
-			APIKey:          m.APIKey,
-			MaxTokens:       m.MaxTokens,
-			Temperature:     m.Temperature,
-			TokenMultiplier: m.TokenMultiplier,
-			Capability:      m.Capability,
-		}))
+		llm, err := openai.New(openai.Config{
+			Model:   m.Name,
+			BaseURL: m.BaseURL,
+			APIKey:  m.APIKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create openai adapter for model %q: %w", m.Name, err)
+		}
+		backends = append(backends, llm)
 	}
 	if len(backends) == 1 {
 		return backends[0], nil
 	}
-	return adkmodel.NewFallbackLLM(backends...)
+	return nil, nil // single backend above, fallback not needed with community adapter
 }
 
 // DefaultInstruction returns the system prompt of the default model.
