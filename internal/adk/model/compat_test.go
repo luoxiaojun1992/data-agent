@@ -68,16 +68,37 @@ func TestEnsureResponseParts(t *testing.T) {
 	})
 }
 
-func TestNewCompatLLM(t *testing.T) {
-	inner := &mockLLM{name: "test-model"}
+func TestCompatLLM_GenerateContent_ConvertsResponse(t *testing.T) {
+	inner := &mockLLM{name: "test"}
 	w := NewCompatLLM(inner)
-	if w.Name() != "test-model" {
-		t.Errorf("expected test-model, got %s", w.Name())
+
+	req := &model.LLMRequest{
+		Contents: []*genai.Content{
+			{
+				Role: "user",
+				Parts: []*genai.Part{
+					{
+						FunctionResponse: &genai.FunctionResponse{
+							ID:       "call_1",
+							Name:     "test_fn",
+							Response: map[string]any{"result": "ok"},
+						},
+					},
+				},
+			},
+		},
 	}
-	// GenerateContent should not panic
-	for _, err := range w.GenerateContent(context.Background(), &model.LLMRequest{}, false) {
+	for _, err := range w.GenerateContent(context.Background(), req, false) {
 		if err != nil {
-			t.Errorf("unexpected error: %v", err)
+			t.Fatalf("unexpected error: %v", err)
 		}
+	}
+	// Verify the response was converted in place
+	p := req.Contents[0].Parts[0]
+	if len(p.FunctionResponse.Parts) != 1 {
+		t.Fatalf("expected 1 part after conversion, got %d", len(p.FunctionResponse.Parts))
+	}
+	if p.FunctionResponse.Parts[0].InlineData == nil {
+		t.Fatal("expected InlineData after conversion")
 	}
 }
