@@ -14,7 +14,6 @@ import (
 func TestProvider_EnvOnly(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4")
 	t.Setenv("LLM_BASE_URL", "http://api.test/v1")
-	t.Setenv("LLM_FALLBACK_BASE_URLS", "http://fb1,http://fb2")
 	t.Setenv("EMBEDDING_BASE_URL", "http://emb.test")
 	t.Setenv("EMBEDDING_MODEL", "text-embed")
 	t.Setenv("EMBEDDING_API_KEY", "ek")

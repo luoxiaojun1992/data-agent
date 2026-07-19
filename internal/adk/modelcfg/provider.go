@@ -13,7 +13,6 @@ import (
 	"google.golang.org/adk/model"
 
 	"github.com/ieshan/adk-go-pkg/model/openai"
-	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 )
 
@@ -153,10 +152,8 @@ func (p *Provider) BuildLLM(ctx context.Context) (model.LLM, error) {
 		}
 		backends = append(backends, llm)
 	}
-	if len(backends) == 1 {
-		return backends[0], nil
-	}
-	return adkmodel.NewFallbackLLM(backends...)
+	// Return first backend; multi-model selection (capability/cost) is future work.
+	return backends[0], nil
 }
 
 // DefaultInstruction returns the system prompt of the default model.
