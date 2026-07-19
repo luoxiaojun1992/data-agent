@@ -52,7 +52,7 @@ func NewProvider(repo *mongoinfra.SystemConfigRepository) *Provider {
 
 // ---- LLM models ----
 
-const defaultBaseURL = "https://api.openai.com"
+const defaultBaseURL = "https://api.openai.com/v1"
 
 // models returns the configured LLM model list. DB has priority; env fallback.
 func (p *Provider) models() []ModelEntry {
