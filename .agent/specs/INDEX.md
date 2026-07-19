@@ -65,6 +65,7 @@
 | SPEC-049 | 统一模型配置与多模型能力体系（提示词/能力描述/token 倍率 + KB embedding 索引） | **P12** | [spec-049-unified-model-config.md](spec-049-unified-model-config.md) | ✅ 已实现 |
 | SPEC-050 | Go 1.26 升级与 adk-go-memory 迁移（含记忆相似度合并） | **P12** | [spec-050-go126-memory-migration.md](spec-050-go126-memory-migration.md) | ✅ 已实现 |
 | SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | **P12** | [spec-051-llm-token-stats-cache.md](spec-051-llm-token-stats-cache.md) | ✅ 已实现 |
+| SPEC-052 | 多模型路由与用途关联（Chat/Task/Embedding/压缩摘要） | **P13** | [spec-052-model-routing.md](spec-052-model-routing.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -95,6 +96,7 @@
 | **P12** | SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | SPEC-009, SPEC-010, **SPEC-048, SPEC-049** |
 | **P11** | SPEC-046 | UI E2E 真实集成验证 | **SPEC-048, SPEC-049, SPEC-050, SPEC-051**, SPEC-022, SPEC-028, SPEC-043 |
 | **P11** | SPEC-047 | UI 截图审查与布局修复 | SPEC-017~042, SPEC-046 (联动) |
+| **P13** | SPEC-052 | 多模型路由与用途关联 | SPEC-003, SPEC-025, SPEC-048, SPEC-049 |
 
 > **实施顺序（2026-07-18 晓军确认）**: SPEC-048 → **SPEC-049 → SPEC-050 → SPEC-051** → SPEC-046 → SPEC-047。049/050/051 在 046 之前，因为 046 的 E2E 用例（KB embedding 索引、Mem0、Dashboard 真实数据、token 统计）依赖这三个 spec 的能力就绪。
 
