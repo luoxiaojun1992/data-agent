@@ -66,6 +66,7 @@
 | SPEC-050 | Go 1.26 升级与 adk-go-memory 迁移（含记忆相似度合并） | **P12** | [spec-050-go126-memory-migration.md](spec-050-go126-memory-migration.md) | ✅ 已实现 |
 | SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | **P12** | [spec-051-llm-token-stats-cache.md](spec-051-llm-token-stats-cache.md) | ✅ 已实现 |
 | SPEC-052 | 多模型路由与用途关联（Chat/Task/Embedding/压缩摘要） | **P13** | [spec-052-model-routing.md](spec-052-model-routing.md) | 📐 设计中 |
+| SPEC-053 | 会话存储、记忆压缩与 KB 索引逻辑对齐（Chat/Hermes 双轨） | **P13** | [spec-053-session-memory-kb-alignment.md](spec-053-session-memory-kb-alignment.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -169,4 +170,7 @@ SPEC-006│               │
            ▼
 [P11] SPEC-047 ─── UI 截图审查与布局修复
                    (与 SPEC-046 联动，修复后验证布局)
+
+[P13] SPEC-053 ─── 会话存储/记忆压缩/KB 索引逻辑对齐
+                   (Chat/Hermes 双轨梳理、删除恢复策略)
 ```
