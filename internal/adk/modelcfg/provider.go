@@ -13,6 +13,7 @@ import (
 	"google.golang.org/adk/model"
 
 	"github.com/ieshan/adk-go-pkg/model/openai"
+	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 )
 
@@ -155,7 +156,7 @@ func (p *Provider) BuildLLM(ctx context.Context) (model.LLM, error) {
 	if len(backends) == 1 {
 		return backends[0], nil
 	}
-	return nil, nil // single backend above, fallback not needed with community adapter
+	return adkmodel.NewFallbackLLM(backends...)
 }
 
 // DefaultInstruction returns the system prompt of the default model.
