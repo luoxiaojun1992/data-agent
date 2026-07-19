@@ -239,6 +239,10 @@ func (s *Service) runAndCollect(ctx context.Context, userID, sessionID, message 
 				finalText.WriteString(p.Text)
 			}
 		}
+		// Got model response. Return immediately; ADK will produce
+		// internal agent events after this but the request context
+		// cancel will stop them.
+		return finalText.String(), nil
 	}
 	if runErr != nil {
 		return "", runErr
