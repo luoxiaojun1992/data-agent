@@ -69,6 +69,7 @@
 | `task` | LLM | Agent 任务（数据分析） |
 | `enhance` | LLM | 提示词增强 |
 | `compaction` | LLM | 会话压缩摘要（summarization） |
+| `kb_chunking` | LLM | KB 索引语义切片（SPEC-053，可选开关） |
 | `embedding` | Embedding | 向量嵌入（KB 索引） |
 
 Provider API：
@@ -100,7 +101,7 @@ type ModelEntry struct {
     Type            ModelType `json:"type"`            // "llm" or "embedding"
     Instruction     string    `json:"instruction"`     // 仅 LLM
     Capability      string    `json:"capability"`      // 仅 LLM
-    UseCases        []string  `json:"use_cases"`       // 强制：Type=llm → 选 ["chat","task","enhance","compaction"], Type=embedding → 只能 ["embedding"]
+    UseCases        []string  `json:"use_cases"`       // 强制：Type=llm → 选 ["chat","task","enhance","compaction","kb_chunking"], Type=embedding → 只能 ["embedding"]
     TokenMultiplier float64   `json:"token_multiplier"`
     Temperature     float64   `json:"temperature"`     // 仅 LLM
     MaxTokens       int       `json:"max_tokens"`      // 仅 LLM
@@ -111,7 +112,7 @@ type ModelEntry struct {
 **UseCases 约束**：
 | Type | 可选 UseCase | 说明 |
 |------|-------------|------|
-| `llm` | `chat`, `task`, `enhance`, `compaction` | 不能选 `embedding` |
+| `llm` | `chat`, `task`, `enhance`, `compaction`, `kb_chunking` | 不能选 `embedding` |
 | `embedding` | `embedding` | 只能选 `embedding`，不能选 LLM 用途 |
 
 **废弃旧结构**：`EmbeddingEntry` 删除，`embedding` 系统配置 key 删除。所有模型统一存在 `system_config["model"]["models"]`。
@@ -161,6 +162,7 @@ func (p *Provider) EmbeddingConfig() EmbeddingConfig
 | `cmd/server/main.go` — Agent | 同上 | `deps.modelCfg.BuildLLM(ctx, "task")` |
 | `cmd/server/main.go` — Enhance | `buildEnhanceHandler` 用全局 LLM | `deps.modelCfg.BuildLLM(ctx, "enhance")` |
 | `cmd/server/main.go` — Session | 无 compaction 模型配置 | `deps.modelCfg.BuildLLM(ctx, "compaction")` |
+| `cmd/server/main.go` — KB Chunk | 新增 | `deps.modelCfg.BuildLLM(ctx, "kb_chunking")` （SPEC-053 开关开启时） |
 | `internal/adk/session/summarizer.go` | 接受 `model.LLM` | 不变（已有参数，传入 compaction 模型即可） |
 | Embedding 初始化 | 从 `EmbeddingEntry` 读 | 从 `models` 列表过滤 `Type="embedding"` |
 
