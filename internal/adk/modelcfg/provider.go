@@ -13,6 +13,7 @@ import (
 	"google.golang.org/adk/model"
 
 	"github.com/ieshan/adk-go-pkg/model/openai"
+	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 )
 
@@ -150,7 +151,7 @@ func (p *Provider) BuildLLM(ctx context.Context) (model.LLM, error) {
 		if err != nil {
 			return nil, fmt.Errorf("create openai adapter for model %q: %w", m.Name, err)
 		}
-		backends = append(backends, llm)
+		backends = append(backends, adkmodel.NewCompatLLM(llm))
 	}
 	// Return first backend; multi-model selection (capability/cost) is future work.
 	return backends[0], nil
