@@ -185,7 +185,9 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message 
 	fmt.Fprintf(c.Writer, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
+	var eventCount int
 	for evt, err := range s.rt.Run(c.Request.Context(), userID, req.SessionID, message, runCfg) {
+		eventCount++
 		if err != nil {
 			log.Printf("[chat] run error: %v", err)
 			errData, _ := json.Marshal(map[string]string{"error": err.Error()})
@@ -234,6 +236,7 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message 
 		}
 	}
 
+	log.Printf("[DEBUG stream] total events=%d", eventCount)
 	fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
 	flusher.Flush()
 
