@@ -426,13 +426,9 @@ func handleStream(w http.ResponseWriter, content string, chunkDelayMs int) {
 		}
 	}
 
-	// Send final chunk with finish_reason and content.
-	// ADK's runOneStep skips responses with nil Content, so this must be non-empty.
-	// Use the last chunk as the content or the full content if only one chunk.
-	lastText := ""
-	if len(chunks) > 0 {
-		lastText = chunks[len(chunks)-1]
-	}
+	// Send final chunk with finish_reason and FULL content.
+	// ADK only accumulates IsFinalResponse() events; Partial chunks are skipped.
+	// The final chunk must carry the entire text so the frontend gets it all.
 	finalDelta := ChatCompletionResponse{
 		ID:      chatID,
 		Object:  "chat.completion.chunk",
@@ -442,7 +438,7 @@ func handleStream(w http.ResponseWriter, content string, chunkDelayMs int) {
 			{
 				Index: 0,
 				Delta: &ChatMessage{
-					Content: lastText,
+					Content: content,
 				},
 				FinishReason: "stop",
 			},
