@@ -53,13 +53,17 @@
 ### 3.2 KB 索引流程
 
 ```
-Chat 完成
-  → scheduleMemoryWrite (异步 goroutine, 30s timeout)
-    → memoryService.AddSessionToMemory
-      → LLM 对对话记录切片 → (统计 token)
-        → Embedding 向量化 (Redis 缓存) → (统计 token)
-          → 写入 Qdrant
-```
+KB 索引写入（AddSessionToMemory）
+  → extractTexts (简单截断 / 可选 LLM 语义切片)
+    → 逐段: Redis 查 emb:{model}:{text_hash}
+      → 命中: 复用向量
+      → 未命中: Embedding (独立客户端) → 统计 token → 写缓存
+    → 写入 Qdrant
+
+KB 索引检索（SearchMemory）
+  → Redis 查 emb:{model}:{query_hash}
+    → 未命中: Embedding → 统计 token → 写缓存
+  → Qdrant 语义搜索 (cosine similarity)
 ```
 Session 压缩
   → LLM 摘要生成 → (统计 token)
@@ -166,12 +170,28 @@ Chat 完成
 
 | 场景 | 缓存 Key | TTL | 备注 |
 |------|---------|-----|------|
-| KB 索引 Embedding 向量化 | `emb:{model}:{text_hash}` | 待确认 | 同一文本段落在不同 session 中复用向量，避免重复调 embedding 模型 |
-| 提示词增强 (Enhance) | `enhance:{model}:{prompt_hash}` | 1h | `llmcache.SetEnhance` / `GetEnhance`，相同 prompt 跨 session/session 复用 |
+| KB 索引写入 Embedding | `emb:{model}:{text_hash}` | 待确认 | `AddSessionToMemory` 中文本向量化时查缓存，命中则跳过 embedding 调用 |
+| KB 索引检索 Embedding | `emb:{model}:{query_hash}` | 待确认 | `SearchMemory` 中查询向量化时查缓存，命中则跳过 embedding 调用 |
+| 提示词增强 (Enhance) | `enhance:{model}:{prompt_hash}` | 1h | `llmcache.SetEnhance` / `GetEnhance`，相同 prompt 跨 session 复用 |
 
-> 两个缓存链路都在 `internal/infra/llmcache/` 中实现。
+> 写入和检索都需要 embedding，两边都要缓存。已缓存在 `internal/infra/llmcache/` 中实现。
 
-## 11. 统一 LLM/Embedding 调用路径
+## 11. KB 索引文本切片策略
+
+当前 `extractTexts` 直接从 session events 提取文本并按 1000 字符截断。后续可引入 LLM 辅助切片：
+
+| 策略 | 描述 | 状态 |
+|------|------|:---:|
+| 简单截断 | `extractTexts`：按事件文本 + 1000 字符上限 | ✅ 当前 |
+| LLM 语义切片 | LLM 按语义边界切分长文本，生成多个独立片段 | 📐 可选增强 |
+
+> LLM 切片考虑：
+> - 长对话可能跨越多个主题，简单截断会丢失语义边界
+> - LLM 可识别自然段落/话题切换点，切出多个独立片段
+> - 每个片段独立 embedding 写入 Qdrant，提升检索精度
+> - LLM 切片调用走 ADK 适配器，享受路由/fallback/token 统计
+
+## 12. 统一 LLM/Embedding 调用路径
 
 所有 LLM 调用**必须**通过 ADK 社区适配器（`openai.New` → `model.LLM`），Embedding 调用使用独立统一客户端：
 
