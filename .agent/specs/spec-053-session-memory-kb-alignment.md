@@ -177,10 +177,10 @@ Chat 完成
 
 | 场景 | 调用路径 | 适配器 | 备注 |
 |------|---------|:---:|------|
-| Chat 对话 | `handleStream/handleNonStreamChat` → `s.rt.Run()` | ADK | 流式/非流式 |
+| Chat 对话 | `handleStream/handleNonStreamChat` → `s.rt.Run()` | ADK ✅ | 流式/非流式 |
 | Session 压缩摘要 | `adksession.NewLLMSummarizer(llm)` → `llm.GenerateContent` | ADK ✅ | 已统一 |
 | 提示词增强 (Enhance) | `callEnhanceLLM` → **直接 HTTP** | ❌ 待统一 | 改为 `modelCfg.BuildLLM` + `GenerateContent(stream=false)` |
-| KB 索引 Embedding | `buildEmbedFn` → `adkmemory.NewOpenAIEmbedding` | 独立 Embedding 客户端 | `/v1/embeddings` 端点不同，不能共用 chat 适配器 |
+| KB 索引 Embedding | `buildEmbedFn` → `adkmemory.NewOpenAIEmbedding` | 独立客户端 ✅ | ADK 不支持 `/v1/embeddings`，必须用独立 HTTP 客户端；配置仍从 `modelCfg.EmbeddingConfig()` 读取，享受统一模型路由 |
 | KB 索引文本提取 | `extractTexts` → 纯文本截断 | N/A | 无 LLM 调用 |
 
 > **待办**: 提示词增强改为走 `modelCfg.BuildLLM(context.Background())` 返回的 `model.LLM`，非流式 `GenerateContent`。统一后享受以下能力：
