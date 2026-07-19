@@ -74,7 +74,7 @@ func Load(path string) (*Config, error) {
 	// Set defaults
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.read_timeout", "10s")
-	v.SetDefault("server.write_timeout", "10s")
+	v.SetDefault("server.write_timeout", "1800s") // 30min for SSE + ReAct tool execution
 	v.SetDefault("mongo.uri", "mongodb://localhost:27017")
 	v.SetDefault("mongo.database", "data_agent")
 	v.SetDefault("redis.addr", "localhost:6379")

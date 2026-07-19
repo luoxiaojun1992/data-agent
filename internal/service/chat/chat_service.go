@@ -189,18 +189,7 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message 
 	fmt.Fprintf(c.Writer, "data: %s\n\n", string(sessionData))
 	flusher.Flush()
 
-	// Derive from background to avoid WriteTimeout=10s killing tool execution,
-	// but cancel if the HTTP request context is done.
-	runCtx, runCancel := context.WithCancel(context.Background())
-	defer runCancel()
-	go func() {
-		select {
-		case <-c.Request.Context().Done():
-			runCancel()
-		case <-runCtx.Done():
-		}
-	}()
-	text, runErr := s.runAndCollect(runCtx, userID, req.SessionID, message, runCfg)
+	text, runErr := s.runAndCollect(c.Request.Context(), userID, req.SessionID, message, runCfg)
 	if runErr != nil {
 		log.Printf("[chat] run error: %v", runErr)
 		errData, marshalErr := json.Marshal(map[string]string{"error": runErr.Error()})
