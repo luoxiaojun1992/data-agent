@@ -1352,7 +1352,7 @@ func callEnhanceLLM(ctx context.Context, prompt string) string {
 		"max_tokens":  512,
 	}
 	body, _ := json.Marshal(llmReq)
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/chat/completions", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	if apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
