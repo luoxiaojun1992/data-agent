@@ -189,7 +189,11 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message 
 	fmt.Fprintf(c.Writer, "data: %s\n\n", string(sessionData))
 	flusher.Flush()
 
-	text, runErr := s.runAndCollect(c.Request.Context(), userID, req.SessionID, message, runCfg)
+	// Use background context — HTTP request ctx may expire (WriteTimeout=10s)
+	// while ADK runner is executing ReAct tools.
+	runCtx, runCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer runCancel()
+	text, runErr := s.runAndCollect(runCtx, userID, req.SessionID, message, runCfg)
 	if runErr != nil {
 		log.Printf("[chat] run error: %v", runErr)
 		errData, marshalErr := json.Marshal(map[string]string{"error": runErr.Error()})
