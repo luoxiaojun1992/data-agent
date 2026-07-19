@@ -1,10 +1,20 @@
 package adkmodel
 
 import (
+	"context"
+	"iter"
 	"testing"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
+
+type mockLLM struct{ name string }
+
+func (m *mockLLM) Name() string { return m.name }
+func (m *mockLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {}
+}
 
 func TestEnsureResponseParts(t *testing.T) {
 	t.Run("nil", func(t *testing.T) {
@@ -59,5 +69,15 @@ func TestEnsureResponseParts(t *testing.T) {
 }
 
 func TestNewCompatLLM(t *testing.T) {
-	_ = NewCompatLLM(nil) // Should not panic (inner=nil causes deferred panic on use)
+	inner := &mockLLM{name: "test-model"}
+	w := NewCompatLLM(inner)
+	if w.Name() != "test-model" {
+		t.Errorf("expected test-model, got %s", w.Name())
+	}
+	// GenerateContent should not panic
+	for _, err := range w.GenerateContent(context.Background(), &model.LLMRequest{}, false) {
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
 }
