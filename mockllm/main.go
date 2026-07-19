@@ -167,7 +167,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // chatHandler handles OpenAI-compatible chat completions.
 func chatHandler(rdb *redis.Client) http.HandlerFunc {
-	chunkDelay := envOrDefaultInt("MOCK_CHUNK_DELAY_MS", 5)
 	defaultReply := envOrDefault("MOCK_DEFAULT_REPLY", "Mock LLM: no response configured")
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +208,7 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 		}
 
 		if req.Stream {
-			handleStream(w, response, chunkDelay)
+			handleStream(w, response)
 		} else {
 			handleNonStream(w, response, req.Model)
 		}
@@ -383,8 +382,8 @@ func handleNonStream(w http.ResponseWriter, content string, model string) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// handleStream writes SSE streaming response with configurable chunk delay.
-func handleStream(w http.ResponseWriter, content string, chunkDelayMs int) {
+// handleStream writes SSE streaming response: one chunk with full content + finish_reason.
+func handleStream(w http.ResponseWriter, content string) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -397,39 +396,9 @@ func handleStream(w http.ResponseWriter, content string, chunkDelayMs int) {
 
 	chatID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
 	created := time.Now().Unix()
-	chunks := splitIntoChunks(content, 10) // 10 chars per chunk
 
-	for chunkIdx, chunk := range chunks {
-		delta := ChatCompletionResponse{
-			ID:      chatID,
-			Object:  "chat.completion.chunk",
-			Created: created,
-			Model:   "mock-gpt-4o",
-			Choices: []ChatCompletionChoice{
-				{
-					Index: chunkIdx,
-					Delta: &ChatMessage{
-						Role:    "assistant",
-						Content: chunk,
-					},
-					FinishReason: "",
-				},
-			},
-		}
-
-		data, _ := json.Marshal(delta)
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		flusher.Flush()
-
-		if chunkDelayMs > 0 {
-			time.Sleep(time.Duration(chunkDelayMs) * time.Millisecond)
-		}
-	}
-
-	// Send final chunk with finish_reason and FULL content.
-	// ADK only accumulates IsFinalResponse() events; Partial chunks are skipped.
-	// The final chunk must carry the entire text so the frontend gets it all.
-	finalDelta := ChatCompletionResponse{
+	// Send full content in one chunk with finish_reason.
+	delta := ChatCompletionResponse{
 		ID:      chatID,
 		Object:  "chat.completion.chunk",
 		Created: created,
@@ -438,37 +407,19 @@ func handleStream(w http.ResponseWriter, content string, chunkDelayMs int) {
 			{
 				Index: 0,
 				Delta: &ChatMessage{
+					Role:    "assistant",
 					Content: content,
 				},
 				FinishReason: "stop",
 			},
 		},
 	}
-
-	data, _ := json.Marshal(finalDelta)
+	data, _ := json.Marshal(delta)
 	fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
-}
-
-// splitIntoChunks splits a string into chunks of given size.
-func splitIntoChunks(s string, size int) []string {
-	if size <= 0 {
-		return []string{s}
-	}
-
-	runes := []rune(s)
-	var chunks []string
-	for i := 0; i < len(runes); i += size {
-		end := i + size
-		if end > len(runes) {
-			end = len(runes)
-		}
-		chunks = append(chunks, string(runes[i:end]))
-	}
-	return chunks
 }
 
 // responsesHandler handles POST/GET/DELETE on /responses (list operations).
