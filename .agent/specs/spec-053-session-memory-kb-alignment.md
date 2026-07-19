@@ -182,14 +182,26 @@ Chat 完成
 
 | 策略 | 描述 | 状态 |
 |------|------|:---:|
-| 简单截断 | `extractTexts`：按事件文本 + 1000 字符上限 | ✅ 当前 |
+| 简单截断 | `extractTexts`：按事件文本 + 1000 字符上限 | ✅ 当前（默认） |
 | LLM 语义切片 | LLM 按语义边界切分长文本，生成多个独立片段 | 📐 可选增强 |
+
+### 11.1 LLM 语义切片配置
+
+| 配置项 | 来源 | 说明 |
+|--------|------|------|
+| 开关 | `KB_SEMANTIC_CHUNK_ENABLED` 环境变量 / 系统配置 | `true` 启用 LLM 切片，`false` 回退简单截断 |
+| 模型选择 | 模型配置页面 → **Use Case: kb_chunking** | 遵循 SPEC-052 模型路由，从用途关联表中选对应模型 |
+
+> - 开关关闭时：使用当前 `extractTexts` 简单截断，无需 LLM 调用
+> - 开关开启时：每个 session event 文本通过 `modelCfg.BuildLLMForUseCase("kb_chunking")` 获取 LLM，走 ADK 适配器
+> - 模型配置页新增 use case `kb_chunking`，与 `chat`/`task`/`compression` 等并列
+> - 享受 SPEC-052 的模型路由/fallback/token 统计/Redis 缓存等能力
 
 > LLM 切片考虑：
 > - 长对话可能跨越多个主题，简单截断会丢失语义边界
 > - LLM 可识别自然段落/话题切换点，切出多个独立片段
 > - 每个片段独立 embedding 写入 Qdrant，提升检索精度
-> - LLM 切片调用走 ADK 适配器，享受路由/fallback/token 统计
+> - 切片结果可 Redis 缓存 `chunk:{model}:{text_hash}`，相同文本跨 session 复用
 
 ## 12. 统一 LLM/Embedding 调用路径
 
