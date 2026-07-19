@@ -168,8 +168,7 @@ func (s *Service) handleNonStreamChat(c *gin.Context, req ChatRequest, userID, m
 }
 
 // handleStream handles SSE streaming responses.
-// It iterates ADK runner events in real-time, sending intermediate tool calls,
-// tool results, and text chunks to the frontend as they occur.
+// Forwards every ADK event (tool_call, tool_result, text) to the frontend in real-time.
 func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message string, runCfg adkruntime.RunConfig) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -182,22 +181,15 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message 
 	}
 
 	// Send session ID as first event
-	sessionData, err := json.Marshal(map[string]string{"session_id": req.SessionID})
-	if err != nil {
-		fmt.Fprintf(c.Writer, "data: {\"error\":\"marshal failed\"}\n\n")
-		flusher.Flush()
-		return
-	}
-	fmt.Fprintf(c.Writer, "data: %s\n\n", string(sessionData))
+	sessionData, _ := json.Marshal(map[string]string{"session_id": req.SessionID})
+	fmt.Fprintf(c.Writer, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
-	// Iterate runner events and stream them incrementally.
-	var finalText strings.Builder
 	for evt, err := range s.rt.Run(c.Request.Context(), userID, req.SessionID, message, runCfg) {
 		if err != nil {
 			log.Printf("[chat] run error: %v", err)
 			errData, _ := json.Marshal(map[string]string{"error": err.Error()})
-			fmt.Fprintf(c.Writer, "data: %s\n\n", string(errData))
+			fmt.Fprintf(c.Writer, "data: %s\n\n", errData)
 			flusher.Flush()
 			fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
 			flusher.Flush()
@@ -207,44 +199,40 @@ func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message 
 			continue
 		}
 
-		// Stream tool calls as they happen.
+		// Forward every part to the frontend as-is.
 		for _, p := range evt.Content.Parts {
-			if p.FunctionCall != nil {
+			if p == nil {
+				continue
+			}
+			switch {
+			case p.FunctionCall != nil:
 				argsJSON, _ := json.Marshal(p.FunctionCall.Args)
-				tcData, _ := json.Marshal(map[string]any{
+				data, _ := json.Marshal(map[string]any{
 					"type": "tool_call",
 					"name": p.FunctionCall.Name,
 					"args": json.RawMessage(argsJSON),
 				})
-				fmt.Fprintf(c.Writer, "data: %s\n\n", string(tcData))
+				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 				flusher.Flush()
-			}
-			if p.FunctionResponse != nil {
+			case p.FunctionResponse != nil:
 				respJSON, _ := json.Marshal(p.FunctionResponse.Response)
-				trData, _ := json.Marshal(map[string]any{
+				data, _ := json.Marshal(map[string]any{
 					"type":     "tool_result",
 					"name":     p.FunctionResponse.Name,
 					"response": json.RawMessage(respJSON),
 				})
-				fmt.Fprintf(c.Writer, "data: %s\n\n", string(trData))
+				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+				flusher.Flush()
+			case p.Text != "":
+				data, _ := json.Marshal(map[string]string{
+					"type":    "text",
+					"content": p.Text,
+				})
+				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 				flusher.Flush()
 			}
 		}
-
-		// Accumulate final text.
-		if evt.IsFinalResponse() {
-			for _, p := range evt.Content.Parts {
-				if p != nil && p.Text != "" {
-					finalText.WriteString(p.Text)
-				}
-			}
-		}
 	}
-
-	// Send collected text.
-	data, _ := json.Marshal(map[string]string{"content": finalText.String()})
-	fmt.Fprintf(c.Writer, "data: %s\n\n", string(data))
-	flusher.Flush()
 
 	fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
 	flusher.Flush()

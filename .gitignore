@@ -58,3 +58,4 @@ tests/ui/coverage/
 tmp/
 temp/
 /hermes
+mockllm/mockllm
