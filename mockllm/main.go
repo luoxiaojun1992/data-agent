@@ -288,18 +288,14 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 
 	// Send full tool_calls delta in one chunk with finish_reason
 	// Map message ToolCalls to SSE delta format (MUST include index)
-	toolCalls := make([]ToolCall, len(msg.ToolCalls))
-	for i, tc := range msg.ToolCalls {
-		idx := i
-		toolCalls[i] = ToolCall{
-			Index:    &idx,
-			ID:       tc.ID,
-			Type:     tc.Type,
-			Function: tc.Function,
-		}
-	}
+	callID := msg.ToolCalls[0].ID
+	callType := msg.ToolCalls[0].Type
+	callName := msg.ToolCalls[0].Function.Name
+	callArgs := msg.ToolCalls[0].Function.Arguments
 
-	chunk := sseChunk{
+	// Step 1: send role + tool call header with empty arguments (index required)
+	idx0 := 0
+	chunk1 := sseChunk{
 		ID:      chatID,
 		Object:  "chat.completion.chunk",
 		Created: created,
@@ -312,17 +308,52 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 			{
 				Index: 0,
 				Delta: sseDelta{
-					Role:      msg.Role,
-					ToolCalls: toolCalls,
+					Role: msg.Role,
+					ToolCalls: []ToolCall{
+						{
+							Index:    &idx0,
+							ID:       callID,
+							Type:     callType,
+							Function: &FunctionCall{Name: callName, Arguments: ""},
+						},
+					},
+				},
+			},
+		},
+	}
+	data1, _ := json.Marshal(chunk1)
+	fmt.Fprintf(w, "data: %s\n\n", data1)
+	flusher.Flush()
+
+	// Step 2: send arguments chunk with finish_reason
+	chunk2 := sseChunk{
+		ID:      chatID,
+		Object:  "chat.completion.chunk",
+		Created: created,
+		Model:   model,
+		Choices: []struct {
+			Index        int      `json:"index"`
+			Delta        sseDelta `json:"delta"`
+			FinishReason string   `json:"finish_reason"`
+		}{
+			{
+				Index: 0,
+				Delta: sseDelta{
+					ToolCalls: []ToolCall{
+						{
+							Index:    &idx0,
+							Function: &FunctionCall{Arguments: callArgs},
+						},
+					},
 				},
 				FinishReason: "tool_calls",
 			},
 		},
 	}
-
-	data, _ := json.Marshal(chunk)
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	data2, _ := json.Marshal(chunk2)
+	fmt.Fprintf(w, "data: %s\n\n", data2)
 	flusher.Flush()
+
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 	log.Printf("[DEBUG] stream function_call: name=%s", msg.ToolCalls[0].Function.Name)
