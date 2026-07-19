@@ -171,7 +171,25 @@ Chat 完成
 
 > 两个缓存链路都在 `internal/infra/llmcache/` 中实现。
 
-## 11. Token 消耗统计
+## 11. 统一 LLM/Embedding 调用路径
+
+所有 LLM 调用**必须**通过 ADK 社区适配器（`openai.New` → `model.LLM`），Embedding 调用使用独立统一客户端：
+
+| 场景 | 调用路径 | 适配器 | 备注 |
+|------|---------|:---:|------|
+| Chat 对话 | `handleStream/handleNonStreamChat` → `s.rt.Run()` | ADK | 流式/非流式 |
+| Session 压缩摘要 | `adksession.NewLLMSummarizer(llm)` → `llm.GenerateContent` | ADK ✅ | 已统一 |
+| 提示词增强 (Enhance) | `callEnhanceLLM` → **直接 HTTP** | ❌ 待统一 | 改为 `modelCfg.BuildLLM` + `GenerateContent(stream=false)` |
+| KB 索引 Embedding | `buildEmbedFn` → `adkmemory.NewOpenAIEmbedding` | 独立 Embedding 客户端 | `/v1/embeddings` 端点不同，不能共用 chat 适配器 |
+| KB 索引文本提取 | `extractTexts` → 纯文本截断 | N/A | 无 LLM 调用 |
+
+> **待办**: 提示词增强改为走 `modelCfg.BuildLLM(context.Background())` 返回的 `model.LLM`，非流式 `GenerateContent`。统一后享受以下能力：
+> - 模型路由/fallback 链（SPEC-052）
+> - 统一连接池
+> - Token 统计自动触发（SPEC-051）
+> - Redis 缓存命中时跳过 LLM 调用
+
+## 12. Token 消耗统计
 
 所有 LLM 和 Embedding 调用**必须**统计 token 消耗，覆盖以下场景：
 
