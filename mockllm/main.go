@@ -76,7 +76,7 @@ type toolCallResponse struct {
 }
 
 // tryAsFunctionCall checks if the response content is a tool_call JSON block.
-// If so, it builds a ChatMessage with function_call instead of text content.
+// If so, it builds a ChatMessage with tool_calls instead of text content.
 func tryAsFunctionCall(content string) *ChatMessage {
 	var tc toolCallResponse
 	if err := json.Unmarshal([]byte(content), &tc); err != nil || tc.Type != "tool_call" || tc.Name == "" {
@@ -86,12 +86,20 @@ func tryAsFunctionCall(content string) *ChatMessage {
 	if err != nil {
 		return nil
 	}
+	callID := fmt.Sprintf("call_%d", time.Now().UnixNano())
 	log.Printf("[DEBUG] tool call detected: name=%s args=%s", tc.Name, string(argsJSON))
 	return &ChatMessage{
-		Role: "assistant",
-		FunctionCall: &FunctionCall{
-			Name:      tc.Name,
-			Arguments: string(argsJSON),
+		Role:    "assistant",
+		Content: "",
+		ToolCalls: []ToolCall{
+			{
+				ID:   callID,
+				Type: "function",
+				Function: &FunctionCall{
+					Name:      tc.Name,
+					Arguments: string(argsJSON),
+				},
+			},
 		},
 	}
 }
@@ -220,7 +228,7 @@ func popResponse(ctx context.Context, rdb *redis.Client, exactKey, defaultReply 
 	return defaultReply
 }
 
-// handleFunctionCall writes a response with function_call format,
+// handleFunctionCall writes a response with tool_calls format,
 // enabling ADK to detect and execute tools via ReAct loop.
 func handleFunctionCall(w http.ResponseWriter, msg *ChatMessage, model string) {
 	resp := ChatCompletionResponse{
@@ -232,7 +240,7 @@ func handleFunctionCall(w http.ResponseWriter, msg *ChatMessage, model string) {
 			{
 				Index:   0,
 				Message: msg,
-				FinishReason: "function_call",
+				FinishReason: "tool_calls",
 			},
 		},
 	}
