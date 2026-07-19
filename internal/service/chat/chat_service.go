@@ -231,16 +231,6 @@ func (s *Service) runAndCollect(ctx context.Context, userID, sessionID, message 
 		if evt == nil || evt.Content == nil {
 			continue
 		}
-		// DEBUG: dump all event parts to trace tool call flow
-		for _, p := range evt.Content.Parts {
-			if p.FunctionCall != nil {
-				b, _ := json.Marshal(p.FunctionCall.Args)
-				log.Printf("[DEBUG chat] event author=%s FunctionCall: name=%s args=%s", evt.Author, p.FunctionCall.Name, string(b))
-			}
-			if p.FunctionResponse != nil {
-				log.Printf("[DEBUG chat] event author=%s FunctionResponse: id=%s name=%s", evt.Author, p.FunctionResponse.ID, p.FunctionResponse.Name)
-			}
-		}
 		if !evt.IsFinalResponse() {
 			continue
 		}
