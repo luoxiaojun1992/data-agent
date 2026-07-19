@@ -56,17 +56,21 @@
 Chat 完成
   → scheduleMemoryWrite (异步 goroutine, 30s timeout)
     → memoryService.AddSessionToMemory
-      → LLM 对对话记录切片
-        → Embedding 向量化 (Redis 缓存: emb:{model}:{text_hash})
+      → LLM 对对话记录切片 → (统计 token)
+        → Embedding 向量化 (Redis 缓存) → (统计 token)
           → 写入 Qdrant
-
+```
+```
+Session 压缩
+  → LLM 摘要生成 → (统计 token)
+    → 写入 ADK Session History (LLM session state)
 ```
 ```
 提示词增强
   → callEnhanceLLM (POST /chat/enhance)
     → LLM 调用 (非流式)
       → Redis 缓存: enhance:{model}:{prompt_hash} (TTL 1h)
-    → recordEnhanceTokens
+    → recordEnhanceTokens → (统计 token)
 ```
 
 ### 3.3 Session 压缩流程
@@ -166,3 +170,20 @@ Chat 完成
 | 提示词增强 (Enhance) | `enhance:{model}:{prompt_hash}` | 1h | `llmcache.SetEnhance` / `GetEnhance`，相同 prompt 跨 session/session 复用 |
 
 > 两个缓存链路都在 `internal/infra/llmcache/` 中实现。
+
+## 11. Token 消耗统计
+
+所有 LLM 和 Embedding 调用**必须**统计 token 消耗，覆盖以下场景：
+
+| 场景 | 调用类型 | Token 统计入口 | 备注 |
+|------|----------|---------------|------|
+| Chat 对话 | LLM (流式/非流式) | ADK runner 内置 | SPEC-051 已覆盖 |
+| 工具调用 | LLM (ReAct loop) | ADK runner 内置 | 每次 LLM call 独立统计 |
+| 提示词增强 | LLM (非流式) | `recordEnhanceTokens` | 增强请求/响应 token |
+| Session 压缩摘要 | LLM | 待确认 | Memory deriver 内部调用需补统计 |
+| KB 索引文本切片 | LLM | 待确认 | Memory deriver 内部调用需补统计 |
+| KB 索引 Embedding | Embedding 模型 | 待确认 | 向量化 token 量统计 |
+| Hermes 探索 | LLM (自由模式) | ADK runner | SPEC-012，需确认是否独立统计 |
+
+> Token 统计写入 `token_usage` 集合（MongoDB），字段包含 model / prompt_tokens / completion_tokens / purpose / session_id / timestamp。
+> Redis 缓存命中时不计 token（未实际调用 LLM/Embedding）。
