@@ -200,7 +200,7 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 		// If the response is a tool_call JSON, return as OpenAI function_call
 		if fc := tryAsFunctionCall(response); fc != nil {
 			if req.Stream {
-				handleStream(w, response, chunkDelay) // fallback to text stream
+				handleStreamFunctionCall(w, fc, req.Model)
 			} else {
 				handleFunctionCall(w, fc, req.Model)
 			}
@@ -249,6 +249,70 @@ func handleFunctionCall(w http.ResponseWriter, msg *ChatMessage, model string) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 	log.Printf("[DEBUG] function_call response: name=%s", msg.FunctionCall.Name)
+}
+
+// handleStreamFunctionCall sends tool_calls in SSE delta format.
+// ADK uses streaming mode — tool_calls must appear as delta.tool_calls chunks.
+func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	chatID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+	created := time.Now().Unix()
+
+	// Map message ToolCalls to SSE delta format
+	type sseDelta struct {
+		Role      string    `json:"role,omitempty"`
+		ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	}
+
+	type sseChunk struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Index        int      `json:"index"`
+			Delta        sseDelta `json:"delta"`
+			FinishReason string   `json:"finish_reason"`
+		} `json:"choices"`
+	}
+
+	// Send full tool_calls delta in one chunk with finish_reason
+	chunk := sseChunk{
+		ID:      chatID,
+		Object:  "chat.completion.chunk",
+		Created: created,
+		Model:   model,
+		Choices: []struct {
+			Index        int      `json:"index"`
+			Delta        sseDelta `json:"delta"`
+			FinishReason string   `json:"finish_reason"`
+		}{
+			{
+				Index: 0,
+				Delta: sseDelta{
+					Role:      msg.Role,
+					ToolCalls: msg.ToolCalls,
+				},
+				FinishReason: "tool_calls",
+			},
+		},
+	}
+
+	data, _ := json.Marshal(chunk)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flusher.Flush()
+	log.Printf("[DEBUG] stream function_call: name=%s", msg.ToolCalls[0].Function.Name)
 }
 
 // handleNonStream writes a single JSON response.
