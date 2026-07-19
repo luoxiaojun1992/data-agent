@@ -397,7 +397,6 @@ func handleStream(w http.ResponseWriter, content string) {
 	chatID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
 	created := time.Now().Unix()
 
-	log.Printf("[DEBUG] handleStream V2: content_len=%d", len(content))
 
 	// Send full content in one chunk with finish_reason.
 	delta := ChatCompletionResponse{
