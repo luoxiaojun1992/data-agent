@@ -1019,8 +1019,6 @@ func handleMemorySearch(c *gin.Context, memSvc memory.Service) {
 }
 
 func setupAdminRoutes(admin *gin.RouterGroup, authHandler *handler.AuthHandler) {
-	admin.GET("/dashboard", middleware.RequirePermission(model.PermSystemConfig), adminDashboardHandler)
-
 	if authHandler != nil {
 		admin.POST("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.CreateInvite)
 		admin.GET("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.ListInvites)
@@ -1042,11 +1040,6 @@ func hermesProxyHandler(hermesURL string) gin.HandlerFunc {
 		p.ServeHTTP(c.Writer, c.Request)
 	}
 }
-
-func adminDashboardHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "admin dashboard placeholder"})
-}
-
 
 func getImBindHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
