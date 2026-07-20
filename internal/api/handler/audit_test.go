@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/mock"
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
+	mockaudit "github.com/luoxiaojun1992/data-agent/internal/service/audit/mocks"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -19,12 +20,12 @@ func init() { gin.SetMode(gin.TestMode) }
 // ── NewAuditHandler ──
 
 func TestNewAuditHandler(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 	if h == nil {
 		t.Fatal("NewAuditHandler returned nil")
 	}
-	if h.svc != svc {
+	if h.svc == nil {
 		t.Error("svc not set correctly")
 	}
 }
@@ -32,7 +33,7 @@ func TestNewAuditHandler(t *testing.T) {
 // ── ListAuditLogs ──
 
 func TestListAuditLogs_Success(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	now := time.Now()
@@ -52,8 +53,7 @@ func TestListAuditLogs_Success(t *testing.T) {
 		Total: 1,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", result, nil)
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( result, nil)
 
 	c, w := newGinContext("GET", "/audit/logs", "")
 	h.ListAuditLogs(c)
@@ -67,7 +67,7 @@ func TestListAuditLogs_Success(t *testing.T) {
 }
 
 func TestListAuditLogs_WithFilters(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	result := &auditsvc.ListResult{
@@ -75,8 +75,7 @@ func TestListAuditLogs_WithFilters(t *testing.T) {
 		Total: 0,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", result, nil)
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( result, nil)
 
 	c, w := newGinContext("GET", "/audit/logs?action=user.login&user_id=user-1&start=2024-01-01&end=2024-12-31&skip=10&limit=50", "")
 	h.ListAuditLogs(c)
@@ -87,7 +86,7 @@ func TestListAuditLogs_WithFilters(t *testing.T) {
 }
 
 func TestListAuditLogs_DefaultPagination(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	result := &auditsvc.ListResult{
@@ -95,8 +94,7 @@ func TestListAuditLogs_DefaultPagination(t *testing.T) {
 		Total: 0,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", result, nil)
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( result, nil)
 
 	// No pagination params — defaults to skip=0, limit=20
 	c, w := newGinContext("GET", "/audit/logs", "")
@@ -108,11 +106,10 @@ func TestListAuditLogs_DefaultPagination(t *testing.T) {
 }
 
 func TestListAuditLogs_ServiceError(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", (*auditsvc.ListResult)(nil), fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( (*auditsvc.ListResult)(nil), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/audit/logs", "")
 	h.ListAuditLogs(c)
@@ -125,7 +122,7 @@ func TestListAuditLogs_ServiceError(t *testing.T) {
 // ── ExportAuditLogs ──
 
 func TestExportAuditLogs_Success(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	now := time.Now()
@@ -144,8 +141,7 @@ func TestExportAuditLogs_Success(t *testing.T) {
 		Total: 1,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", result, nil)
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( result, nil)
 
 	body := `{"action":"user.login","limit":100}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
@@ -161,7 +157,7 @@ func TestExportAuditLogs_Success(t *testing.T) {
 }
 
 func TestExportAuditLogs_DefaultLimit(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	result := &auditsvc.ListResult{
@@ -169,8 +165,7 @@ func TestExportAuditLogs_DefaultLimit(t *testing.T) {
 		Total: 0,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", result, nil)
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( result, nil)
 
 	// No limit specified — defaults to 5000
 	body := `{}`
@@ -183,7 +178,7 @@ func TestExportAuditLogs_DefaultLimit(t *testing.T) {
 }
 
 func TestExportAuditLogs_LimitExceeded(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	body := `{"limit":60000}`
@@ -199,7 +194,7 @@ func TestExportAuditLogs_LimitExceeded(t *testing.T) {
 }
 
 func TestExportAuditLogs_InvalidJSON(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	c, w := newGinContext("POST", "/audit/logs/export", "bad")
@@ -211,11 +206,10 @@ func TestExportAuditLogs_InvalidJSON(t *testing.T) {
 }
 
 func TestExportAuditLogs_ServiceError(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", (*auditsvc.ListResult)(nil), fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( (*auditsvc.ListResult)(nil), fmt.Errorf("db error"))
 
 	body := `{"limit":10}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
@@ -227,7 +221,7 @@ func TestExportAuditLogs_ServiceError(t *testing.T) {
 }
 
 func TestExportAuditLogs_ContentTypeHeader(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	result := &auditsvc.ListResult{
@@ -235,8 +229,7 @@ func TestExportAuditLogs_ContentTypeHeader(t *testing.T) {
 		Total: 0,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", result, nil)
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( result, nil)
 
 	body := `{"start":"2024-01-01","end":"2024-12-31"}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
@@ -256,7 +249,7 @@ func TestExportAuditLogs_ContentTypeHeader(t *testing.T) {
 }
 
 func TestExportAuditLogs_MultipleLogs(t *testing.T) {
-	svc := &auditsvc.Service{}
+	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
 	now := time.Now()
@@ -269,8 +262,7 @@ func TestExportAuditLogs_MultipleLogs(t *testing.T) {
 		Total: 3,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "List", result, nil)
-	defer patches.Reset()
+	svc.On("List", mock.Anything).Return( result, nil)
 
 	body := `{"limit":100}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)

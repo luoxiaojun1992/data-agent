@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/mock"
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
-	tasksvc "github.com/luoxiaojun1992/data-agent/internal/service/task"
+	mocktasksvc "github.com/luoxiaojun1992/data-agent/internal/service/task/mocks"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -18,12 +18,12 @@ func init() { gin.SetMode(gin.TestMode) }
 // ── NewTaskHandler ──
 
 func TestNewTaskHandler(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 	if h == nil {
 		t.Fatal("NewTaskHandler returned nil")
 	}
-	if h.svc != svc {
+	if h.svc == nil {
 		t.Error("svc not set correctly")
 	}
 }
@@ -31,7 +31,7 @@ func TestNewTaskHandler(t *testing.T) {
 // ── CreateTask ──
 
 func TestCreateTask_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	now := time.Now()
@@ -45,8 +45,7 @@ func TestCreateTask_Success(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateTask", mockTask, nil)
-	defer patches.Reset()
+	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"agent_exec","session_id":"sess-1","skill_chain":["sql","report"]}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -59,13 +58,12 @@ func TestCreateTask_Success(t *testing.T) {
 }
 
 func TestCreateTask_DefaultType(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	mockTask := &task.Task{ID: "task_2", Type: "agent_exec"}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateTask", mockTask, nil)
-	defer patches.Reset()
+	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
 
 	// Empty title and type → defaults to "agent_exec"
 	body := `{}`
@@ -79,13 +77,12 @@ func TestCreateTask_DefaultType(t *testing.T) {
 }
 
 func TestCreateTask_FromFrontend(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	mockTask := &task.Task{ID: "task_3", Type: "agent_exec"}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateTask", mockTask, nil)
-	defer patches.Reset()
+	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
 
 	// Frontend sends "title" and "skills" (not "type" and "skill_chain")
 	body := `{"title":"My Task","skills":["sql","chart"],"description":"Do something"}`
@@ -99,13 +96,12 @@ func TestCreateTask_FromFrontend(t *testing.T) {
 }
 
 func TestCreateTask_WithParams(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	mockTask := &task.Task{ID: "task_4", Type: "agent_exec"}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateTask", mockTask, nil)
-	defer patches.Reset()
+	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"Task","skill_chain":["sql"],"params":{"key":"value"}}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -118,13 +114,12 @@ func TestCreateTask_WithParams(t *testing.T) {
 }
 
 func TestCreateTask_WithCronExpr(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	mockTask := &task.Task{ID: "task_5", Type: "agent_exec"}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateTask", mockTask, nil)
-	defer patches.Reset()
+	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"Scheduled","skill_chain":["sql"],"cron_expr":"0 0 * * *"}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -137,7 +132,7 @@ func TestCreateTask_WithCronExpr(t *testing.T) {
 }
 
 func TestCreateTask_InvalidJSON(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	c, w := newGinContext("POST", "/tasks", "not-json")
@@ -150,11 +145,10 @@ func TestCreateTask_InvalidJSON(t *testing.T) {
 }
 
 func TestCreateTask_ServiceError(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateTask", nil, fmt.Errorf("queue full"))
-	defer patches.Reset()
+	svc.On("CreateTask", mock.Anything).Return( nil, fmt.Errorf("queue full"))
 
 	body := `{"title":"agent_exec"}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -169,7 +163,7 @@ func TestCreateTask_ServiceError(t *testing.T) {
 // ── GetTask ──
 
 func TestGetTask_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	mockTask := &task.Task{
@@ -179,8 +173,7 @@ func TestGetTask_Success(t *testing.T) {
 		Status:    task.StatusCompleted,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "GetTask", mockTask, nil)
-	defer patches.Reset()
+	svc.On("GetTask", mock.Anything).Return( mockTask, nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -192,11 +185,10 @@ func TestGetTask_Success(t *testing.T) {
 }
 
 func TestGetTask_NotFound(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "GetTask", nil, fmt.Errorf("not found"))
-	defer patches.Reset()
+	svc.On("GetTask", mock.Anything).Return( nil, fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/tasks/missing", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
@@ -210,11 +202,10 @@ func TestGetTask_NotFound(t *testing.T) {
 // ── CancelTask ──
 
 func TestCancelTask_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CancelTask", nil)
-	defer patches.Reset()
+	svc.On("CancelTask", mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -229,11 +220,10 @@ func TestCancelTask_Success(t *testing.T) {
 }
 
 func TestCancelTask_Error(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CancelTask", fmt.Errorf("cannot cancel completed"))
-	defer patches.Reset()
+	svc.On("CancelTask", mock.Anything).Return( fmt.Errorf("cannot cancel completed"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -247,7 +237,7 @@ func TestCancelTask_Error(t *testing.T) {
 // ── ListTasks ──
 
 func TestListTasks_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	tasks := []task.Task{
@@ -255,8 +245,7 @@ func TestListTasks_Success(t *testing.T) {
 		{ID: "task_2", UserID: "user-1", Status: task.StatusRunning},
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", tasks, int64(len(tasks)), nil)
-	defer patches.Reset()
+	svc.On("ListTasks", mock.Anything).Return( tasks, int64(len(tasks)), nil)
 
 	c, w := newGinContext("GET", "/tasks", "")
 	c.Set("user_id", "user-1")
@@ -268,11 +257,10 @@ func TestListTasks_Success(t *testing.T) {
 }
 
 func TestListTasks_Error(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", ([]*task.Task)(nil), int64(0), fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("ListTasks", mock.Anything).Return( ([]*task.Task)(nil), int64(0), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/tasks", "")
 	c.Set("user_id", "user-1")
@@ -284,11 +272,10 @@ func TestListTasks_Error(t *testing.T) {
 }
 
 func TestListTasks_Empty(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", ([]*task.Task)(nil), int64(0), nil)
-	defer patches.Reset()
+	svc.On("ListTasks", mock.Anything).Return( ([]*task.Task)(nil), int64(0), nil)
 
 	c, w := newGinContext("GET", "/tasks", "")
 	c.Set("user_id", "user-1")
@@ -302,11 +289,10 @@ func TestListTasks_Empty(t *testing.T) {
 // ── PauseTask ──
 
 func TestPauseTask_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "UpdateStatus", nil)
-	defer patches.Reset()
+	svc.On("UpdateStatus", mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -321,11 +307,10 @@ func TestPauseTask_Success(t *testing.T) {
 }
 
 func TestPauseTask_Error(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "UpdateStatus", fmt.Errorf("invalid status transition"))
-	defer patches.Reset()
+	svc.On("UpdateStatus", mock.Anything).Return( fmt.Errorf("invalid status transition"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -339,11 +324,10 @@ func TestPauseTask_Error(t *testing.T) {
 // ── ResumeTask ──
 
 func TestResumeTask_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "UpdateStatus", nil)
-	defer patches.Reset()
+	svc.On("UpdateStatus", mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -358,11 +342,10 @@ func TestResumeTask_Success(t *testing.T) {
 }
 
 func TestResumeTask_Error(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "UpdateStatus", fmt.Errorf("task not found"))
-	defer patches.Reset()
+	svc.On("UpdateStatus", mock.Anything).Return( fmt.Errorf("task not found"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -376,13 +359,12 @@ func TestResumeTask_Error(t *testing.T) {
 // ── DownloadArtifacts ──
 
 func TestDownloadArtifacts_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	mockTask := &task.Task{ID: "task_1", UserID: "user-1", Status: task.StatusCompleted}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "GetTask", mockTask, nil)
-	defer patches.Reset()
+	svc.On("GetTask", mock.Anything).Return( mockTask, nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -398,11 +380,10 @@ func TestDownloadArtifacts_Success(t *testing.T) {
 }
 
 func TestDownloadArtifacts_TaskNotFound(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "GetTask", nil, fmt.Errorf("not found"))
-	defer patches.Reset()
+	svc.On("GetTask", mock.Anything).Return( nil, fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/tasks/missing/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
@@ -414,11 +395,10 @@ func TestDownloadArtifacts_TaskNotFound(t *testing.T) {
 }
 
 func TestDownloadArtifacts_NilTask(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "GetTask", (*task.Task)(nil), nil)
-	defer patches.Reset()
+	svc.On("GetTask", mock.Anything).Return( (*task.Task)(nil), nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -432,7 +412,7 @@ func TestDownloadArtifacts_NilTask(t *testing.T) {
 // ── ListAllTasks ──
 
 func TestListAllTasks_All(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	tasks := []task.Task{
@@ -441,8 +421,7 @@ func TestListAllTasks_All(t *testing.T) {
 		{ID: "task_3", UserID: "user-3", Status: task.StatusFailed},
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListAllTasks", tasks, nil)
-	defer patches.Reset()
+	svc.On("ListAllTasks", mock.Anything).Return( tasks, nil)
 
 	c, w := newGinContext("GET", "/admin/tasks", "")
 	h.ListAllTasks(c)
@@ -453,15 +432,14 @@ func TestListAllTasks_All(t *testing.T) {
 }
 
 func TestListAllTasks_WithStatusFilter(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	tasks := []task.Task{
 		{ID: "task_1", UserID: "user-1", Status: task.StatusRunning},
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListAllTasks", tasks, nil)
-	defer patches.Reset()
+	svc.On("ListAllTasks", mock.Anything).Return( tasks, nil)
 
 	c, w := newGinContext("GET", "/admin/tasks?status=running", "")
 	h.ListAllTasks(c)
@@ -472,11 +450,10 @@ func TestListAllTasks_WithStatusFilter(t *testing.T) {
 }
 
 func TestListAllTasks_Error(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListAllTasks", nil, fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("ListAllTasks", mock.Anything).Return( nil, fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/admin/tasks", "")
 	h.ListAllTasks(c)
@@ -487,11 +464,10 @@ func TestListAllTasks_Error(t *testing.T) {
 }
 
 func TestListAllTasks_Empty(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListAllTasks", []task.Task{}, nil)
-	defer patches.Reset()
+	svc.On("ListAllTasks", mock.Anything).Return( []task.Task{}, nil)
 
 	c, w := newGinContext("GET", "/admin/tasks", "")
 	h.ListAllTasks(c)
@@ -504,11 +480,10 @@ func TestListAllTasks_Empty(t *testing.T) {
 // ── RetryTask ──
 
 func TestRetryTask_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "RetryTask", nil)
-	defer patches.Reset()
+	svc.On("RetryTask", mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/retry", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -523,11 +498,10 @@ func TestRetryTask_Success(t *testing.T) {
 }
 
 func TestRetryTask_Error(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "RetryTask", fmt.Errorf("only failed tasks can be retried"))
-	defer patches.Reset()
+	svc.On("RetryTask", mock.Anything).Return( fmt.Errorf("only failed tasks can be retried"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/retry", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -541,11 +515,10 @@ func TestRetryTask_Error(t *testing.T) {
 // ── BatchCancelTasks ──
 
 func TestBatchCancelTasks_Success(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "BatchCancelTasks", nil)
-	defer patches.Reset()
+	svc.On("BatchCancelTasks", mock.Anything).Return( nil)
 
 	body := `{"task_ids":["task_1","task_2","task_3"]}`
 	c, w := newGinContext("POST", "/tasks/batch-cancel", body)
@@ -560,11 +533,10 @@ func TestBatchCancelTasks_Success(t *testing.T) {
 }
 
 func TestBatchCancelTasks_SingleTask(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "BatchCancelTasks", nil)
-	defer patches.Reset()
+	svc.On("BatchCancelTasks", mock.Anything).Return( nil)
 
 	body := `{"task_ids":["task_1"]}`
 	c, w := newGinContext("POST", "/tasks/batch-cancel", body)
@@ -579,7 +551,7 @@ func TestBatchCancelTasks_SingleTask(t *testing.T) {
 }
 
 func TestBatchCancelTasks_InvalidJSON(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
 	c, w := newGinContext("POST", "/tasks/batch-cancel", "bad")
@@ -591,11 +563,10 @@ func TestBatchCancelTasks_InvalidJSON(t *testing.T) {
 }
 
 func TestBatchCancelTasks_ServiceError(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "BatchCancelTasks", fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("BatchCancelTasks", mock.Anything).Return( fmt.Errorf("db error"))
 
 	body := `{"task_ids":["task_1"]}`
 	c, w := newGinContext("POST", "/tasks/batch-cancel", body)
@@ -607,11 +578,10 @@ func TestBatchCancelTasks_ServiceError(t *testing.T) {
 }
 
 func TestBatchCancelTasks_EmptyList(t *testing.T) {
-	svc := &tasksvc.Service{}
+	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "BatchCancelTasks", nil)
-	defer patches.Reset()
+	svc.On("BatchCancelTasks", mock.Anything).Return( nil)
 
 	body := `{"task_ids":[]}`
 	c, w := newGinContext("POST", "/tasks/batch-cancel", body)
