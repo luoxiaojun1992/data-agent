@@ -1496,7 +1496,8 @@ func enhanceViaADK(ctx context.Context, deps *serverDependencies, prompt string)
 	temp := float32(0.3)
 	adkReq := &adkmodel.LLMRequest{
 		Contents: []*genai.Content{
-			{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(sys + "\n" + prompt)}},
+			{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(sys)}},
+			{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(prompt)}},
 		},
 		Config: &genai.GenerateContentConfig{MaxOutputTokens: 512, Temperature: &temp},
 	}
