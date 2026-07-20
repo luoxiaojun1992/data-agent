@@ -28,7 +28,7 @@ func TestNewService(t *testing.T) {
 	patches := gomonkey.ApplyMethodReturn(db, "Collection", &coll)
 	defer patches.Reset()
 
-	s := NewService(db)
+	s := NewService(mongoinfra.NewAPIReviewRepository(db))
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}
@@ -43,7 +43,7 @@ func TestCreate_Success(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(&coll, "InsertOne", &mongo.InsertOneResult{}, nil)
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	r, err := svc.Create("test-api", "test.json", "example.com", "3.0", 10, 100, "user1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -86,7 +86,7 @@ func TestCreate_InsertError(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(&coll, "InsertOne", (*mongo.InsertOneResult)(nil), errors.New("insert failed"))
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	_, err := svc.Create("test-api", "test.json", "example.com", "3.0", 10, 100, "user1")
 	if err == nil {
 		t.Fatal("expected error")
@@ -110,7 +110,7 @@ func TestListAll_Success(t *testing.T) {
 		return nil
 	})
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	reviews, err := svc.ListAll()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -129,7 +129,7 @@ func TestListAll_FindError(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(&coll, "Find", (*mongo.Cursor)(nil), errors.New("find failed"))
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	_, err := svc.ListAll()
 	if err == nil {
 		t.Fatal("expected error")
@@ -146,7 +146,7 @@ func TestListAll_CursorAllError(t *testing.T) {
 	patches.ApplyMethodFunc(&cur, "Close", func(ctx context.Context) error { return nil })
 	patches.ApplyMethodReturn(&cur, "All", errors.New("cursor all failed"))
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	_, err := svc.ListAll()
 	if err == nil {
 		t.Fatal("expected error")
@@ -183,7 +183,7 @@ func TestApprove_Success(t *testing.T) {
 		return &mongo.UpdateResult{}, nil
 	})
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Approve("apirev_test1234", "reviewer1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -201,7 +201,7 @@ func TestApprove_FindError(t *testing.T) {
 	})
 	patches.ApplyMethodReturn(&sr, "Decode", mongo.ErrNoDocuments)
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Approve("apirev_test1234", "reviewer1")
 	if err == nil {
 		t.Fatal("expected error")
@@ -225,7 +225,7 @@ func TestApprove_NotPending(t *testing.T) {
 		return nil
 	})
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Approve("apirev_test1234", "reviewer1")
 	if err == nil {
 		t.Fatal("expected error for non-pending review")
@@ -249,7 +249,7 @@ func TestApprove_SelfReview(t *testing.T) {
 		return nil
 	})
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Approve("apirev_test1234", "reviewer1")
 	if err == nil {
 		t.Fatal("expected error for self-review")
@@ -274,7 +274,7 @@ func TestApprove_UpdateError(t *testing.T) {
 	})
 	patches.ApplyMethodReturn(&coll, "UpdateOne", (*mongo.UpdateResult)(nil), errors.New("update failed"))
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Approve("apirev_test1234", "reviewer1")
 	if err == nil {
 		t.Fatal("expected error")
@@ -311,7 +311,7 @@ func TestReject_Success(t *testing.T) {
 		return &mongo.UpdateResult{}, nil
 	})
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Reject("apirev_test1234", "reviewer1", "not good enough")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -337,7 +337,7 @@ func TestReject_FindError(t *testing.T) {
 	})
 	patches.ApplyMethodReturn(&sr, "Decode", mongo.ErrNoDocuments)
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Reject("apirev_test1234", "reviewer1", "reason")
 	if err == nil {
 		t.Fatal("expected error")
@@ -360,7 +360,7 @@ func TestReject_NotPending(t *testing.T) {
 		return nil
 	})
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Reject("apirev_test1234", "reviewer1", "reason")
 	if err == nil {
 		t.Fatal("expected error for non-pending review")
@@ -384,7 +384,7 @@ func TestReject_UpdateError(t *testing.T) {
 	})
 	patches.ApplyMethodReturn(&coll, "UpdateOne", (*mongo.UpdateResult)(nil), errors.New("update failed"))
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	err := svc.Reject("apirev_test1234", "reviewer1", "reason")
 	if err == nil {
 		t.Fatal("expected error")
@@ -403,7 +403,7 @@ func TestListAll_NilReviews(t *testing.T) {
 		return nil
 	})
 
-	svc := &Service{coll: &coll}
+	svc := &Service{coll: nil // coll removed}
 	reviews, err := svc.ListAll()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

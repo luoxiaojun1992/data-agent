@@ -45,6 +45,7 @@ func (h *APIReviewHandler) CreateAPIReview(c *gin.Context) {
 		req.Version = "3.0"
 	}
 
+	userID, _ := c.Get("user_id")
 	r, err := h.svc.Create(req.Name, req.FileName, req.Domain, req.Version, req.Endpoints, req.RateLimit, userID.(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
