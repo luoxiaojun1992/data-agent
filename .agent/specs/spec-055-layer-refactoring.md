@@ -79,21 +79,23 @@
      │                       │                       │
      ▼                       ▼                       ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                      repository/                             │
-│  UserRepository interface ─── mongo.UserRepo (impl)          │
-│  TaskRepository interface ─── mongo.TaskRepo (impl)          │
-│  KBRepository   interface ─── mongo.KBRepo (impl)            │
-│  VectorRepository interface ─── qdrant.VectorStore (impl)    │
-│  FileRepository  interface ─── seaweedfs.FileStore (impl)    │
-│  CacheRepository interface ─── redis.CacheStore (impl)       │
-│  ... 所有数据访问抽象                                         │
+│                   repository/ (接口层，零依赖)                  │
+│  UserRepository interface ─── 实现在 infra/mongo/             │
+│  TaskRepository interface ─── 实现在 infra/mongo/             │
+│  KBRepository   interface ─── 实现在 infra/mongo/             │
+│  VectorRepository interface ─── 实现在 infra/qdrant/          │
+│  FileRepository  interface ─── 实现在 infra/seaweedfs/        │
+│  CacheRepository interface ─── 实现在 infra/redis/            │
+│  ... 所有数据访问抽象（纯 Go interface，不 import 任何 SDK）     │
 └──────────────────────────────────────────────────────────────┘
-     │
-     ▼
+     ▲ 实现                              │ 依赖（反向）
+     │                                   ▼
 ┌─────────────┐  ┌──────────┐  ┌───────────┐  ┌──────────┐
 │ infra/mongo/ │  │ infra/   │  │ infra/    │  │ infra/   │
 │              │  │ qdrant/  │  │ seaweedfs │  │ redis/   │
-│ (纯实现层)    │  │ (纯实现)  │  │ (纯实现)   │  │ (纯实现)  │
+│ (实现 repo   │  │ (实现     │  │ (实现      │  │ (实现    │
+│  接口，调    │  │  Vector   │  │  File      │  │  Cache   │
+│  mongo-drvr) │  │  Repo)    │  │  Repo)     │  │  Repo)   │
 └─────────────┘  └──────────┘  └───────────┘  └──────────┘
 ```
 
@@ -101,11 +103,25 @@
 
 | 层 | 可以 import | 禁止 import |
 |----|-----------|------------|
-| **handler/** | service 接口, `gin`, `net/http` | infra, mongo-driver, redis, qdrant |
-| **service/** | repository 接口, logic 纯函数, domain | infra, mongo-driver, redis, qdrant, seaweedfs, gin |
-| **repository/** | infra, mongo-driver | gin, handler |
-| **infra/** | 外部 SDK (mongo-driver, redis, qdrant-go) | 项目内部任何包 |
-| **logic/** | 无外部依赖, domain | 所有 side-effect 包 |
+| **handler/** | service 的接口（同包或单独 interface 包） | infra, mongo-driver, redis, qdrant |
+| **service/** | `repository/` 接口, `logic/`, `domain/` | infra, mongo-driver, redis, qdrant, seaweedfs, gin |
+| **repository/** | 纯 Go 类型、`domain/` | **所有外部 SDK**（mongo-driver, redis, qdrant-go），infra |
+| **infra/** | `repository/` 接口（用来实现）, 外部 SDK | handler, service |
+
+**关键**：`repository/` 只定义接口，零外部依赖。`infra/` 实现这些接口，把 `*mongo.Collection` / `*redis.Client` / `*qdrant.Client` 封装在实现内部。Service 只看到 `repository.UserRepository`，不知道底层是 MongoDB 还是 mock。
+
+```
+service/auth/Login()
+    │ 调用
+    ▼
+repository.UserRepository (interface)
+    │ 实现在
+    ▼
+infra/mongo/user_repo.go (struct)
+    │ 调用
+    ▼
+go.mongodb.org/mongo-driver
+```
 
 ### 3.3 与当前架构的对比
 
@@ -147,21 +163,37 @@ internal/repository/
 ### 4.2 接口设计原则
 
 ```go
-// ✅ 正确：接收接口，返回接口
+// ✅ 正确：repository 接口 — 纯 Go 类型，零外部 SDK 依赖
+// 文件: internal/repository/user.go
 type UserRepository interface {
     FindByID(ctx context.Context, id string) (*domain.User, error)
     FindByUsername(ctx context.Context, username string) (*domain.User, error)
     Create(ctx context.Context, user *domain.User) error
-    Update(ctx context.Context, id string, update bson.M) error
+    Update(ctx context.Context, id string, fields map[string]interface{}) error
     Delete(ctx context.Context, id string) error
     List(ctx context.Context, filter UserFilter) ([]*domain.User, error)
 }
 
-// ❌ 错误：暴露 infra 细节
-type UserRepository interface {
-    Collection() *mongo.Collection  // 禁止！暴露实现
+// ✅ 正确：infra 实现 repository 接口，封装 mongo-driver 细节
+// 文件: internal/infra/mongo/user_repo.go
+type userRepo struct {
+    coll *mongo.Collection
 }
-```
+func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
+    // 内部使用 bson.M、FindOne — 调用方不需要知道
+    var u domain.User
+    objID, _ := primitive.ObjectIDFromHex(id)
+    err := r.coll.FindOne(ctx, bson.M{"_id": objID}).Decode(&u)
+    return &u, err
+}
+func NewUserRepository(db *mongo.Database) repository.UserRepository {
+    return &userRepo{coll: db.Collection("users")}
+}
+
+// ❌ 错误：接口暴露 infra 细节
+type UserRepository interface {
+    Collection() *mongo.Collection  // 禁止！
+}
 
 所有 repository 接口的输入/输出使用 `domain/` 包或纯 Go 类型，不使用 `bson.M`/`primitive.ObjectID` 等 MongoDB 类型。如果 update 参数需要灵活性，使用 `map[string]interface{}`。
 
@@ -236,12 +268,17 @@ func main() {
     qdrantClient := infraQdrant.Connect(cfg.QdrantURL)
     seaweedClient := infraSeaweed.Connect(cfg.SeaweedURL)
     
-    // Repositories (implement interfaces)
-    userRepo := mongo.NewUserRepository(mongoClient)
+    // Repositories: infra 实现 repository 接口
+    userRepo := mongo.NewUserRepository(mongoClient)  // 返回 repository.UserRepository
     taskRepo := mongo.NewTaskRepository(mongoClient)
     kbRepo := mongo.NewKBRepository(mongoClient)
-    vectorStore := qdrant.NewVectorStore(qdrantClient)
-    fileStore := seaweed.NewFileStore(seaweedClient)
+    vectorStore := qdrant.NewVectorStore(qdrantClient)  // 返回 repository.VectorRepository
+    fileStore := seaweed.NewFileStore(seaweedClient)    // 返回 repository.FileRepository
+    
+    // Services: 依赖 repository 接口（不知道底层是 mongo/qdrant/seaweedfs）
+    authSvc := auth.NewService(userRepo, inviteRepo, ...)
+    taskSvc := task.NewService(taskRepo, queueRepo, ...)
+    kbSvc := knowledge.NewService(kbRepo, vectorStore, ...)
     
     // Services
     authSvc := auth.NewService(userRepo, inviteRepo, ...)
