@@ -269,7 +269,7 @@ func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text strin
 }
 
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
-	deps.sessionManager = chat.NewManager(mongoClient.DB(), 24*time.Hour)
+	deps.sessionManager = chat.NewManager(mongoinfra.NewSessionRepository(mongoClient.DB()), 24*time.Hour)
 	deps.llmRecorder = llmstats.NewRecorder(mongoClient.DB())
 	if deps.redisClient != nil {
 		deps.llmCache = llmcache.New(deps.redisClient.Client())
@@ -340,32 +340,34 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 }
 
 func initArtifacts(deps *serverDependencies, mongoClient *mongoinfra.Client, cfg *config.Config) {
-	deps.artifactStorage = artifact_svc.NewStorage(deps.swClient, mongoClient.DB())
+	artifactRepo := mongoinfra.NewArtifactRepository(mongoClient.DB())
+	fileStore := seaweedfs.NewFileStore(deps.swClient)
+	deps.artifactStorage = artifact_svc.NewStorage(fileStore, artifactRepo)
 	deps.workspaceMgr = workspace.NewManager(deps.artifactStorage)
 	deps.artifactHandler = handler.NewArtifactHandler(deps.artifactStorage, deps.workspaceMgr)
 }
 
 func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client) {
-	deps.kbService = knowledge.NewService(mongoClient.DB())
+	deps.kbService = knowledge.NewService(mongoinfra.NewKBRepository(mongoClient.DB()))
 	embCfg := deps.modelCfg.EmbeddingConfig()
 	if embCfg.BaseURL != "" && deps.qdrantClient != nil {
 		embedFn := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
 			BaseURL: embCfg.BaseURL, Model: embCfg.Model, APIKey: embCfg.APIKey,
 		})
 		rawEmbed := func(ctx context.Context, text string) ([]float32, error) { return embedFn(ctx, text) }
-		// Wrap with Redis cache + token recording.
 		kEmbedFn := cachedEmbedFn(rawEmbed, deps.llmCache, deps.llmRecorder, embCfg.Model)
-		deps.kbService.WithVectorIndex(deps.qdrantClient, knowledge.EmbeddingFunc(kEmbedFn))
+		vectorStore := qdrantinfra.NewVectorStore(deps.qdrantClient)
+		deps.kbService.WithVectorIndex(vectorStore, knowledge.EmbeddingFunc(kEmbedFn))
 	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }
 
 func initAuditAndNotifications(deps *serverDependencies, mongoClient *mongoinfra.Client) {
-	deps.auditService = auditsvc.NewService(mongoClient.DB())
+	deps.auditService = auditsvc.NewService(mongoinfra.NewAuditRepository(mongoClient.DB()))
 	deps.auditHandler = handler.NewAuditHandler(deps.auditService)
-	deps.apiReviewSvc = apireview.NewService(mongoClient.DB())
+	deps.apiReviewSvc = apireview.NewService(mongoinfra.NewAPIReviewRepository(mongoClient.DB()))
 	deps.apiReviewHandler = handler.NewAPIReviewHandler(deps.apiReviewSvc)
-	deps.notifSvc = notifsvc.NewService(mongoClient.DB())
+	deps.notifSvc = notifsvc.NewService(mongoinfra.NewNotificationRepository(mongoClient.DB()))
 	deps.notifHandler = handler.NewNotificationHandler(deps.notifSvc)
 }
 
