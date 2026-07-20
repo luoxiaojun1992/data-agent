@@ -1419,9 +1419,9 @@ func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
 
 		ctx := c.Request.Context()
 		prompt := req.Prompt
-
-		// Redis cache lookup for enhance results.
 		modelName := getEnvOrDefault("LLM_MODEL", "default")
+
+		// Redis cache lookup.
 		if deps.llmCache != nil {
 			if cached, ok := deps.llmCache.GetEnhance(ctx, modelName, prompt); ok {
 				c.JSON(http.StatusOK, gin.H{"enhanced": cached})
@@ -1429,39 +1429,39 @@ func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
 			}
 		}
 
-		// Use ADK model router for enhance use case.
-		enhanced := prompt
-		llm, lErr := deps.modelCfg.BuildLLM(ctx, modelcfg.UseCaseEnhance)
-		if lErr == nil {
-			sys := "你是提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"
-			temp := float32(0.3)
-			adkReq := &adkmodel.LLMRequest{
-				Contents: []*genai.Content{
-					{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(sys + "\n" + prompt)}},
-				},
-				Config: &genai.GenerateContentConfig{MaxOutputTokens: 512, Temperature: &temp},
-			}
-			for resp, err := range llm.GenerateContent(ctx, adkReq, false) {
-				if err != nil {
-					break
-				}
-				if resp.Content != nil && len(resp.Content.Parts) > 0 {
-					enhanced = resp.Content.Parts[0].Text
-				}
-			}
-		} else {
-			// Fallback: direct HTTP call (backward compat with old callEnhanceLLM).
-			enhanced = callEnhanceLLM(ctx, prompt)
-		}
-
-		// Cache result.
+		enhanced := enhanceViaADK(ctx, deps, prompt)
 		if deps.llmCache != nil {
 			deps.llmCache.SetEnhance(ctx, modelName, prompt, enhanced)
 		}
-
 		recordEnhanceTokens(ctx, deps, prompt, enhanced)
 		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 	}
+}
+
+// enhanceViaADK uses the ADK model router for prompt enhancement, falling back to
+// direct HTTP on error.
+func enhanceViaADK(ctx context.Context, deps *serverDependencies, prompt string) string {
+	llm, lErr := deps.modelCfg.BuildLLM(ctx, modelcfg.UseCaseEnhance)
+	if lErr != nil {
+		return callEnhanceLLM(ctx, prompt)
+	}
+	sys := "你是提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"
+	temp := float32(0.3)
+	adkReq := &adkmodel.LLMRequest{
+		Contents: []*genai.Content{
+			{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(sys + "\n" + prompt)}},
+		},
+		Config: &genai.GenerateContentConfig{MaxOutputTokens: 512, Temperature: &temp},
+	}
+	for resp, err := range llm.GenerateContent(ctx, adkReq, false) {
+		if err != nil {
+			return callEnhanceLLM(ctx, prompt)
+		}
+		if resp.Content != nil && len(resp.Content.Parts) > 0 {
+			return resp.Content.Parts[0].Text
+		}
+	}
+	return callEnhanceLLM(ctx, prompt)
 }
 func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	api.POST("/change-password", jwtManager.AuthMiddleware(), changePasswordHandler(mongoClient))
