@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -54,8 +53,6 @@ import (
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 
 	"google.golang.org/adk/memory"
@@ -877,21 +874,40 @@ func setupTaskRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, task
 // ===================== Dashboard Routes =====================
 
 func dashboardHandler(taskService *task_svc.Service, taskHandler *handler.TaskHandler, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
-	return func(c *gin.Context) { handleDashboard(c, taskService, taskHandler, sessionManager, kbService) }
+	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		var tasks []*task.Task
+		if taskService != nil {
+			tasks, _, _ = taskService.ListTasks(userID.(string), "", 0, 0)
+		}
+		sessions, _ := sessionManager.ListByUser(userID.(string))
+		var docs int
+		if kbService != nil {
+			d, err := kbService.ListDocs(userID.(string))
+			if err == nil {
+				docs = len(d)
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"tasks":    len(tasks),
+			"sessions": len(sessions),
+			"docs":     docs,
+		})
+	}
 }
 
 
 func dashboardTrendsHandler(taskService *task_svc.Service, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
-		var allTasks []task.Task
+		var allTasks []*task.Task
 
 		if taskService != nil {
-			allTasks, _ = taskService.ListTasks(userID.(string))
+			allTasks, _, _ = taskService.ListTasks(userID.(string), "", 0, 100)
 		}
 
 		var docs int
-		userSessions := sessionManager.ListByUser(userID.(string))
+		userSessions, _ := sessionManager.ListByUser(userID.(string))
 		if kbService != nil {
 			d, err := kbService.ListDocs(userID.(string))
 			if err == nil {
@@ -899,7 +915,7 @@ func dashboardTrendsHandler(taskService *task_svc.Service, sessionManager *chat.
 			}
 		}
 
-		trends := monitor.ComputeTrends(allTasks, make([]interface{}, len(userSessions)), docs)
+		trends := monitor.ComputeTrends(convertPtrSlice(allTasks), make([]interface{}, len(userSessions)), docs)
 		c.JSON(http.StatusOK, trends)
 	}
 }
@@ -1008,8 +1024,6 @@ func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
 
 // doEnhanceCall calls the LLM to enhance a prompt and returns the result with token usage.
 
-// === Restored setup functions (migrated handlers delegate here) ===
-
 func setupIMBind(router *gin.Engine, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	imBindGroup := router.Group("/api/v1/im/bind")
 	imBindGroup.Use(jwtManager.AuthMiddleware())
@@ -1080,50 +1094,36 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
 	chatRoutes.POST("/enhance", makeEnhanceHandler(deps))
 }
 
-func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
+
+func convertPtrSlice(ptrs []*task.Task) []task.Task {
+	out := make([]task.Task, len(ptrs))
+	for i, p := range ptrs {
+		out[i] = *p
+	}
+	return out
+}
+
+func hermesProxyHandler(hermesURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			Prompt string `json:"prompt"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
-			return
-		}
-
-		ctx := c.Request.Context()
-		prompt := req.Prompt
-		modelName := getEnvOrDefault("LLM_MODEL", "default")
-
-		// Redis cache lookup.
-		if deps.llmCache != nil {
-			if cached, ok := deps.llmCache.GetEnhance(ctx, modelName, prompt); ok {
-				c.JSON(http.StatusOK, gin.H{"enhanced": cached})
-				return
-			}
-		}
-
-		enhanced := enhanceViaADK(ctx, deps, prompt)
-		if deps.llmCache != nil {
-			deps.llmCache.SetEnhance(ctx, modelName, prompt, enhanced)
-		}
-		recordEnhanceTokens(ctx, deps, prompt, enhanced)
-		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
+		target, _ := url.Parse(hermesURL)
+		p := httputil.NewSingleHostReverseProxy(target)
+		c.Request.URL.Path = c.Param("path")
+		p.ServeHTTP(c.Writer, c.Request)
 	}
 }
 
-func setupAuthRoutes(authGroup *gin.RouterGroup, authHandler *handler.AuthHandler) {
-	if authHandler != nil {
-		authGroup.POST("/login", authHandler.Login)
-		authGroup.POST(consts.PathRegister, authHandler.Register)
-		authGroup.GET(consts.PathRegister, authHandler.VerifyInvite)
-		authGroup.POST("/complete-registration", authHandler.CompleteRegistration)
-	} else {
-		authGroup.POST("/login", dbUnavailableHandler)
-		authGroup.POST(consts.PathRegister, dbUnavailableHandler)
-	}
+func adminDashboardHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "admin dashboard placeholder"})
 }
 
-func setupAuthProtected(api *gin.RouterGroup, authHandler *handler.AuthHandler) {
-	api.POST("/auth/refresh", refreshTokenHandler(authHandler))
-	api.GET("/auth/profile", profileHandler(authHandler))
+
+func getImBindHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(200, gin.H{"binds": []interface{}{}})
+	}
+}
+func updateImBindHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	}
 }
