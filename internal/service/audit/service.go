@@ -2,6 +2,8 @@ package audit
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
@@ -37,7 +39,10 @@ type ListResult struct {
 // List returns audit logs matching the filter params.
 func (s *Service) List(p ListParams) (*ListResult, error) {
 	p.Limit = normalizeAuditLimit(p.Limit)
-	filterMap := auditFilterToMap(p)
+	filterMap, err := auditFilterToMap(p)
+	if err != nil {
+		return nil, err
+	}
 
 	total, err := s.repo.Count(context.Background(), filterMap)
 	if err != nil {
@@ -49,21 +54,18 @@ func (s *Service) List(p ListParams) (*ListResult, error) {
 		return nil, err
 	}
 
-	var logs []model.AuditLog
+	logs := make([]model.AuditLog, 0, len(rawLogs))
 	for _, raw := range rawLogs {
-		var log model.AuditLog
+		var l model.AuditLog
 		b, _ := bson.Marshal(raw)
-		bson.Unmarshal(b, &log)
-		logs = append(logs, log)
-	}
-	if logs == nil {
-		logs = []model.AuditLog{}
+		_ = bson.Unmarshal(b, &l)
+		logs = append(logs, l)
 	}
 
 	return &ListResult{Logs: logs, Total: total}, nil
 }
 
-func auditFilterToMap(p ListParams) map[string]interface{} {
+func auditFilterToMap(p ListParams) (map[string]interface{}, error) {
 	m := map[string]interface{}{}
 	if p.Action != "" {
 		m["action"] = p.Action
@@ -71,13 +73,38 @@ func auditFilterToMap(p ListParams) map[string]interface{} {
 	if p.UserID != "" {
 		m["user_id"] = p.UserID
 	}
-	if p.Start != "" {
-		m["start"] = p.Start
+	dateFilter, err := buildDateFilter(p.Start, p.End)
+	if err != nil {
+		return nil, err
 	}
-	if p.End != "" {
-		m["end"] = p.End
+	if len(dateFilter) > 0 {
+		for k, v := range dateFilter {
+			m[k] = v
+		}
 	}
-	return m
+	return m, nil
+}
+
+func buildDateFilter(start, end string) (map[string]interface{}, error) {
+	if start == "" && end == "" {
+		return nil, nil
+	}
+	m := map[string]interface{}{}
+	if start != "" {
+		t, err := time.Parse("2006-01-02", start)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start date %q: must be YYYY-MM-DD", start)
+		}
+		m["$gte"] = t
+	}
+	if end != "" {
+		t, err := time.Parse("2006-01-02", end)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end date %q: must be YYYY-MM-DD", end)
+		}
+		m["$lt"] = t.Add(24 * time.Hour)
+	}
+	return m, nil
 }
 
 func normalizeAuditLimit(limit int64) int64 {
