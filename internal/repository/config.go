@@ -11,19 +11,19 @@ import (
 // RoleRepository defines the data access contract for roles.
 type RoleRepository interface {
 	Create(ctx context.Context, role *model.Role) error
-	List(ctx context.Context) ([]*model.Role, error)
+	List(ctx context.Context) ([]model.Role, error)
 	FindByID(ctx context.Context, id string) (*model.Role, error)
-	Update(ctx context.Context, id string, fields map[string]interface{}) error
-	Delete(ctx context.Context, id string) error
+	Update(ctx context.Context, roleID string, permissions []string) error
+	Delete(ctx context.Context, roleID string) error
 }
 
 //go:generate mockery --name SysConfigRepository --output ./mocks --outpkg mocks
 
 // SysConfigRepository defines the data access contract for system configuration.
 type SysConfigRepository interface {
-	Get(ctx context.Context, key string) (*model.SystemConfig, error)
-	GetAll(ctx context.Context) ([]*model.SystemConfig, error)
-	Upsert(ctx context.Context, cfg *model.SystemConfig) error
+	Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error)
+	GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error)
+	Upsert(ctx context.Context, namespace, key, value string) error
 }
 
 //go:generate mockery --name ModelConfigRepository --output ./mocks --outpkg mocks

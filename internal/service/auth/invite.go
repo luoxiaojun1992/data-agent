@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 )
 
@@ -81,7 +81,7 @@ type UpdateHMACSecretRequest struct {
 
 // SetInviteRepo sets the invite repository on the service.
 // Called after service construction when the database is available.
-func (s *Service) SetInviteRepo(inviteRepo *mongo.InviteRepository) {
+func (s *Service) SetInviteRepo(inviteRepo repository.InviteRepository) {
 	s.inviteRepo = inviteRepo
 }
 

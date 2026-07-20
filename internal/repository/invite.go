@@ -15,5 +15,5 @@ type InviteRepository interface {
 	FindByTokenHash(ctx context.Context, hash string) (*model.Invite, error)
 	MarkAccepted(ctx context.Context, inviteID string, userID string) error
 	Revoke(ctx context.Context, inviteID string) error
-	List(ctx context.Context, createdBy string, skip, limit int64) ([]*model.Invite, error)
+	List(ctx context.Context, createdBy string, skip, limit int64) ([]model.Invite, int64, error)
 }

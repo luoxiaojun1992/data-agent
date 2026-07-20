@@ -6,19 +6,19 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
 // Service handles authentication and authorization business logic.
 type Service struct {
-	userRepo   *mongo.UserRepository
-	inviteRepo *mongo.InviteRepository
+	userRepo   repository.UserRepository
+	inviteRepo repository.InviteRepository
 	jwtManager *middleware.JWTManager
 	hmacSecret []byte
 }
 
 // NewService creates a new auth service.
-func NewService(userRepo *mongo.UserRepository, jwtManager *middleware.JWTManager) *Service {
+func NewService(userRepo repository.UserRepository, jwtManager *middleware.JWTManager) *Service {
 	return &Service{
 		userRepo:   userRepo,
 		jwtManager: jwtManager,
