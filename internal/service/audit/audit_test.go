@@ -7,6 +7,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"go.mongodb.org/mongo-driver/mongo"
+	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 )
 
 func TestNewService(t *testing.T) {

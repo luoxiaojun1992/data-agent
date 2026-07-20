@@ -14,6 +14,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
+	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"google.golang.org/adk/model"
 	adksession "google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -322,7 +323,7 @@ func TestLastUserMessage(t *testing.T) {
 
 func newManagerWithMockColl() (*Manager, *mongo.Collection) {
 	var coll mongo.Collection
-	return &Manager{coll: &coll, ttl: 24 * time.Hour}, &coll
+	return &Manager{ttl: 24 * time.Hour}, &coll
 }
 
 func TestManager_Create(t *testing.T) {

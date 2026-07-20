@@ -12,6 +12,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	qdrant "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"go.mongodb.org/mongo-driver/mongo"
+	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
