@@ -167,30 +167,45 @@ func (p *Provider) BuildLLM(ctx context.Context, useCase UseCase) (model.LLM, er
 	if len(models) == 0 {
 		return nil, fmt.Errorf("no LLM models configured")
 	}
+	selected := p.selectModelsByUseCase(models, useCase)
+	backends := p.buildBackends(selected)
+	return backends[0], nil
+}
 
-	// When a use case is specified, filter by type and use cases.
-	if useCase != "" {
-		var candidates []ModelEntry
-		for _, m := range models {
-			if m.Type != ModelTypeLLM {
-				continue
-			}
-			for _, uc := range m.UseCases {
-				if uc == string(useCase) {
-					candidates = append(candidates, m)
-					break
-				}
-			}
-		}
-		if len(candidates) > 0 {
-			// Sort by TokenMultiplier (cheaper first).
-			sortModelsByCost(candidates)
-			models = candidates
-		}
-		// If no match found, fall through to use all LLM models.
+// selectModelsByUseCase returns the candidate model entries for a use case.
+// Empty useCase returns all models. Filtered to LLM type with matching UseCases.
+func (p *Provider) selectModelsByUseCase(models []ModelEntry, useCase UseCase) []ModelEntry {
+	if useCase == "" {
+		return models
 	}
+	var candidates []ModelEntry
+	for _, m := range models {
+		if m.Type != ModelTypeLLM {
+			continue
+		}
+		if hasUseCase(m, useCase) {
+			candidates = append(candidates, m)
+		}
+	}
+	if len(candidates) == 0 {
+		return models
+	}
+	sortModelsByCost(candidates)
+	return candidates
+}
 
-	// Sort by FallbackOrder.
+// hasUseCase reports whether the model declares the given use case.
+func hasUseCase(m ModelEntry, useCase UseCase) bool {
+	for _, uc := range m.UseCases {
+		if uc == string(useCase) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildBackends creates the model.LLM chain sorted by FallbackOrder.
+func (p *Provider) buildBackends(models []ModelEntry) []model.LLM {
 	sortModels(models)
 	backends := make([]model.LLM, 0, len(models))
 	for _, m := range models {
@@ -200,11 +215,11 @@ func (p *Provider) BuildLLM(ctx context.Context, useCase UseCase) (model.LLM, er
 			APIKey:  m.APIKey,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("create openai adapter for model %q: %w", m.Name, err)
+			continue
 		}
 		backends = append(backends, adkmodel.NewCompatLLM(llm))
 	}
-	return backends[0], nil
+	return backends
 }
 
 // sortModelsByCost sorts candidates by token cost (ascending).
