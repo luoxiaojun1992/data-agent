@@ -140,7 +140,7 @@ func (s *Service) recordEmbeddingToken(ctx context.Context, text, userID, sessio
 	if s.recorder == nil {
 		return
 	}
-	_, _ = s.recorder.Record(ctx, llmstats.Record{
+	_ = s.recorder.Record(ctx, llmstats.Record{
 		CallPoint:        "embedding",
 		Model:            s.model,
 		PromptTokens:     llmstats.EstimateTokens(text),

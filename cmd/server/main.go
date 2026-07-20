@@ -1382,7 +1382,7 @@ func recordEmbeddingCall(ctx context.Context, rec *llmstats.Recorder, model, tex
 	if rec == nil {
 		return
 	}
-	_, _ = rec.Record(ctx, llmstats.Record{
+	_ = rec.Record(ctx, llmstats.Record{
 		CallPoint:    "embedding",
 		Model:        model,
 		PromptTokens: llmstats.EstimateTokens(text),
