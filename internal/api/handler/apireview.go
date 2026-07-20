@@ -58,7 +58,7 @@ func (h *APIReviewHandler) CreateAPIReview(c *gin.Context) {
 func (h *APIReviewHandler) ApproveAPIReview(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	reviewID := c.Param("id")
-	if err := h.svc.Approve(reviewID, userID.(string)); err != nil {
+	if err := h.svc.Approve(reviewID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -76,7 +76,7 @@ func (h *APIReviewHandler) RejectAPIReview(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "驳回原因不能为空"})
 		return
 	}
-	if err := h.svc.Reject(reviewID, userID.(string), req.Reason); err != nil {
+	if err := h.svc.Reject(reviewID, req.Reason); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
