@@ -249,7 +249,7 @@ func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client,
 		logger.Warn("MEMORY_BACKEND=legacy is deprecated, using adk-go-memory")
 	}
 	logger.Info("Using adk-go-memory backend (SPEC-050)")
-	kit, err := memoryx.NewKit(mongoClient.DB(), appName, compactionLLM, embedFn)
+	kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
 	if err != nil {
 		logger.Fatal("Failed to create adk-go-memory Kit", zap.Error(err))
 	}
@@ -355,7 +355,7 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 		rawEmbed := func(ctx context.Context, text string) ([]float32, error) { return embedFn(ctx, text) }
 		// Wrap with Redis cache + token recording.
 		kEmbedFn := cachedEmbedFn(rawEmbed, deps.llmCache, deps.llmRecorder, embCfg.Model)
-		deps.kbService.WithVectorIndex(deps.qdrantClient, kEmbedFn)
+		deps.kbService.WithVectorIndex(deps.qdrantClient, knowledge.EmbeddingFunc(kEmbedFn))
 	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }
