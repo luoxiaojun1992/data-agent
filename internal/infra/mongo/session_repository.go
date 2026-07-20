@@ -6,7 +6,6 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -27,12 +26,8 @@ func (r *SessionRepository) Create(ctx context.Context, s repository.SessionReco
 }
 
 func (r *SessionRepository) Get(ctx context.Context, id string) (*repository.SessionRecord, error) {
-	objID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return nil, err
-	}
 	var s repository.SessionRecord
-	err = r.coll.FindOne(ctx, bson.M{"_id": objID}).Decode(&s)
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&s)
 	if err != nil {
 		return nil, err
 	}
@@ -40,8 +35,7 @@ func (r *SessionRepository) Get(ctx context.Context, id string) (*repository.Ses
 }
 
 func (r *SessionRepository) Renew(ctx context.Context, id string, newExpiry time.Time) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"expires_at": newExpiry}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"expires_at": newExpiry}})
 	return err
 }
 
@@ -67,14 +61,12 @@ func (r *SessionRepository) Cleanup(ctx context.Context, before time.Time) (int6
 }
 
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"deleted_at": time.Now()}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"deleted_at": time.Now()}})
 	return err
 }
 
 func (r *SessionRepository) Restore(ctx context.Context, id string) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$unset": bson.M{"deleted_at": ""}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$unset": bson.M{"deleted_at": ""}})
 	return err
 }
 

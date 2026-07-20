@@ -6,7 +6,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -24,15 +23,13 @@ func (r *ArtifactRepository) Create(ctx context.Context, a *artifact.Artifact) e
 }
 
 func (r *ArtifactRepository) FindByID(ctx context.Context, id string) (*artifact.Artifact, error) {
-	objID, _ := primitive.ObjectIDFromHex(id)
 	var a artifact.Artifact
-	err := r.coll.FindOne(ctx, bson.M{"_id": objID}).Decode(&a)
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&a)
 	return &a, err
 }
 
 func (r *ArtifactRepository) Delete(ctx context.Context, id string) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.DeleteOne(ctx, bson.M{"_id": objID})
+	_, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
 	return err
 }
 

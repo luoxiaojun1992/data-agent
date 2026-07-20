@@ -6,7 +6,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -25,15 +24,13 @@ func (r *TaskRepository) Create(ctx context.Context, t *task.Task) error {
 }
 
 func (r *TaskRepository) Get(ctx context.Context, id string) (*task.Task, error) {
-	objID, _ := primitive.ObjectIDFromHex(id)
 	var t task.Task
-	err := r.coll.FindOne(ctx, bson.M{"_id": objID}).Decode(&t)
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&t)
 	return &t, err
 }
 
 func (r *TaskRepository) Cancel(ctx context.Context, id string) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"status": task.StatusCancelled}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"status": task.StatusCancelled}})
 	return err
 }
 
@@ -73,20 +70,17 @@ func (r *TaskRepository) ListAll(ctx context.Context, userID string) ([]*task.Ta
 }
 
 func (r *TaskRepository) UpdateProgress(ctx context.Context, id string, p *task.TaskProgress) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"progress": p}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"progress": p}})
 	return err
 }
 
 func (r *TaskRepository) UpdateResult(ctx context.Context, id string, result map[string]interface{}) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"result": result, "status": task.StatusCompleted}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"result": result, "status": task.StatusCompleted}})
 	return err
 }
 
 func (r *TaskRepository) Retry(ctx context.Context, id string, t *task.Task) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.ReplaceOne(ctx, bson.M{"_id": objID}, t)
+	_, err := r.coll.ReplaceOne(ctx, bson.M{"_id": id}, t)
 	return err
 }
 

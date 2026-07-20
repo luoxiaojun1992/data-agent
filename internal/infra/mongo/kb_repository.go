@@ -6,7 +6,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -25,15 +24,13 @@ func (r *KBRepository) CreateDoc(ctx context.Context, doc *knowledge.KnowledgeDo
 }
 
 func (r *KBRepository) GetDoc(ctx context.Context, id string) (*knowledge.KnowledgeDoc, error) {
-	objID, _ := primitive.ObjectIDFromHex(id)
 	var doc knowledge.KnowledgeDoc
-	err := r.db.Collection("knowledge_docs").FindOne(ctx, bson.M{"_id": objID}).Decode(&doc)
+	err := r.db.Collection("knowledge_docs").FindOne(ctx, bson.M{"_id": id}).Decode(&doc)
 	return &doc, err
 }
 
 func (r *KBRepository) DeleteDoc(ctx context.Context, id string) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.db.Collection("knowledge_docs").DeleteOne(ctx, bson.M{"_id": objID})
+	_, err := r.db.Collection("knowledge_docs").DeleteOne(ctx, bson.M{"_id": id})
 	return err
 }
 
@@ -67,8 +64,7 @@ func (r *KBRepository) ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeD
 }
 
 func (r *KBRepository) UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount int) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.db.Collection("knowledge_docs").UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{
+	_, err := r.db.Collection("knowledge_docs").UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{
 		"status":      status,
 		"chunk_count": chunkCount,
 	}})
