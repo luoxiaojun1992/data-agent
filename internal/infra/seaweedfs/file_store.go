@@ -25,11 +25,7 @@ func (f *FileStore) Upload(ctx context.Context, path string, data []byte, conten
 
 // Download implements repository.FileRepository.
 func (f *FileStore) Download(ctx context.Context, path string) ([]byte, error) {
-	reader, err := f.client.Download(path)
-	if err != nil {
-		return nil, err
-	}
-	return io.ReadAll(reader)
+	return f.client.Download(path)
 }
 
 // Delete implements repository.FileRepository.
