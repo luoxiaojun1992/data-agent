@@ -11,12 +11,13 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/mock"
 	"go.mongodb.org/mongo-driver/mongo"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
-	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
+	task_mocks "github.com/luoxiaojun1992/data-agent/internal/service/task/mocks"
 )
 
 // ── helpers ──
@@ -148,8 +149,7 @@ func TestCreateAgentTask_WithTaskService(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(svc.sessions, "Create", &chat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	ts := &taskSvcStub{}
-	svc.WithTaskService(ts.real(patches))
+	svc.WithTaskService(newTaskStubOK(t))
 
 	c, w := newGinContext("POST", "/agent", `{"title": "t", "skill_chain": ["stats_engine"], "params": {"k": 1}}`)
 	c.Set("user_id", "u1")
@@ -171,8 +171,7 @@ func TestCreateAgentTask_TaskServiceError(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(svc.sessions, "Create", &chat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	ts := &taskSvcStub{err: fmt.Errorf("redis down")}
-	svc.WithTaskService(ts.real(patches))
+	svc.WithTaskService(newTaskStubErr(t))
 
 	c, w := newGinContext("POST", "/agent", `{"title": "t"}`)
 	c.Set("user_id", "u1")
@@ -198,8 +197,7 @@ func TestGetAgentTask_Found(t *testing.T) {
 	svc := newTestService()
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	ts := &taskSvcStub{}
-	svc.WithTaskService(ts.real(patches))
+	svc.WithTaskService(newTaskStubOK(t))
 
 	c, w := newGinContext("GET", "/agent/task_1", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -218,8 +216,7 @@ func TestGetAgentTask_Error(t *testing.T) {
 	svc := newTestService()
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	ts := &taskSvcStub{err: fmt.Errorf("not found")}
-	svc.WithTaskService(ts.real(patches))
+	svc.WithTaskService(newTaskStubErr(t))
 
 	c, w := newGinContext("GET", "/agent/missing", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
@@ -308,21 +305,19 @@ func TestContains(t *testing.T) {
 	}
 }
 
-// ── task service stub (via gomonkey on the real type) ──
+// ── task service stub (uses mockery TaskService) ──
 
-type taskSvcStub struct {
-	err error
+func newTaskStubOK(t *testing.T) *task_mocks.TaskService {
+	m := task_mocks.NewTaskService(t)
+	tk := &task.Task{ID: "task_1", SessionID: "s1", UserID: "u1", Status: task.StatusPending, CreatedAt: time.Now()}
+	m.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tk, nil)
+	m.On("GetTask", mock.Anything).Return(tk, nil)
+	return m
 }
 
-func (s *taskSvcStub) real(patches *gomonkey.Patches) *task_svc.Service {
-	real := &task_svc.Service{}
-	if s.err != nil {
-		patches.ApplyMethodReturn(real, "CreateTask", (*task.Task)(nil), s.err)
-		patches.ApplyMethodReturn(real, "GetTask", (*task.Task)(nil), s.err)
-	} else {
-		tk := &task.Task{ID: "task_1", SessionID: "s1", UserID: "u1", Status: task.StatusPending, CreatedAt: time.Now()}
-		patches.ApplyMethodReturn(real, "CreateTask", tk, nil)
-		patches.ApplyMethodReturn(real, "GetTask", tk, nil)
-	}
-	return real
+func newTaskStubErr(t *testing.T) *task_mocks.TaskService {
+	m := task_mocks.NewTaskService(t)
+	m.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return((*task.Task)(nil), fmt.Errorf("queue unavailable"))
+	m.On("GetTask", mock.Anything).Return((*task.Task)(nil), fmt.Errorf("queue unavailable"))
+	return m
 }

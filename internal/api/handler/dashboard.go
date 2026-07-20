@@ -10,16 +10,14 @@ import (
 )
 
 type DashboardHandler struct {
-	taskService    *task.Service
-	taskHandler    *TaskHandler
-	sessionManager *chat.Manager
-	kbService      *knowledge.Service
+	taskService    task.TaskService
+	sessionManager chat.SessionService
+	kbService      knowledge.KnowledgeService
 }
 
-func NewDashboardHandler(taskSvc *task.Service, taskHdl *TaskHandler, sessMgr *chat.Manager, kbSvc *knowledge.Service) *DashboardHandler {
+func NewDashboardHandler(taskSvc task.TaskService, sessMgr chat.SessionService, kbSvc knowledge.KnowledgeService) *DashboardHandler {
 	return &DashboardHandler{
-		taskService: taskSvc, taskHandler: taskHdl,
-		sessionManager: sessMgr, kbService: kbSvc,
+		taskService: taskSvc, sessionManager: sessMgr, kbService: kbSvc,
 	}
 }
 

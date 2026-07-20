@@ -4,24 +4,27 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	"github.com/luoxiaojun1992/data-agent/internal/service/config"
 )
 
+// ModelConfigHandler handles model configuration HTTP endpoints.
 type ModelConfigHandler struct {
-	repo repository.SysConfigRepository
+	cfgSvc config.Service
 }
 
-func NewModelConfigHandler(repo repository.SysConfigRepository) *ModelConfigHandler {
-	return &ModelConfigHandler{repo: repo}
+// NewModelConfigHandler creates a new ModelConfigHandler.
+func NewModelConfigHandler(cfgSvc config.Service) *ModelConfigHandler {
+	return &ModelConfigHandler{cfgSvc: cfgSvc}
 }
 
+// RegisterModelConfigRoutes registers model config management routes.
 func RegisterModelConfigRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
 	api.GET("/models", h.Get)
 	api.PUT("/models", h.Put)
 }
 
 func (h *ModelConfigHandler) Get(c *gin.Context) {
-	cfgs, err := h.repo.GetAll(c.Request.Context(), "models")
+	cfgs, err := h.cfgSvc.GetAll(c.Request.Context(), "models")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -38,7 +41,7 @@ func (h *ModelConfigHandler) Put(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.repo.Upsert(c.Request.Context(), "models", req.Key, req.Value); err != nil {
+	if err := h.cfgSvc.Upsert(c.Request.Context(), "models", req.Key, req.Value); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

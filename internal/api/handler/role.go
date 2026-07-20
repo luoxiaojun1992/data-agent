@@ -4,18 +4,20 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	"github.com/luoxiaojun1992/data-agent/internal/service/role"
 )
 
+// RoleHandler handles role management HTTP endpoints.
 type RoleHandler struct {
-	repo repository.RoleRepository
+	svc role.Service
 }
 
-func NewRoleHandler(repo repository.RoleRepository) *RoleHandler {
-	return &RoleHandler{repo: repo}
+// NewRoleHandler creates a new RoleHandler.
+func NewRoleHandler(svc role.Service) *RoleHandler {
+	return &RoleHandler{svc: svc}
 }
 
+// RegisterRoleRoutes registers role management routes.
 func RegisterRoleRoutes(api *gin.RouterGroup, h *RoleHandler) {
 	api.GET("/roles", h.List)
 	api.GET("/roles/permissions", h.ListPermissions)
@@ -25,7 +27,7 @@ func RegisterRoleRoutes(api *gin.RouterGroup, h *RoleHandler) {
 }
 
 func (h *RoleHandler) List(c *gin.Context) {
-	roles, err := h.repo.List(c.Request.Context())
+	roles, err := h.svc.List(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -34,7 +36,7 @@ func (h *RoleHandler) List(c *gin.Context) {
 }
 
 func (h *RoleHandler) ListPermissions(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"permissions": model.GetAllPermissions()})
+	c.JSON(http.StatusOK, gin.H{"permissions": h.svc.ListPermissions()})
 }
 
 func (h *RoleHandler) Create(c *gin.Context) {
@@ -46,9 +48,9 @@ func (h *RoleHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数解析失败"})
 		return
 	}
-	role := &model.Role{Name: req.Name, Permissions: req.Permissions}
-	if err := h.repo.Create(c.Request.Context(), role); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建角色失败"})
+	role, err := h.svc.Create(c.Request.Context(), req.Name, req.Permissions)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"role": role})
@@ -62,7 +64,7 @@ func (h *RoleHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数解析失败"})
 		return
 	}
-	if err := h.repo.Update(c.Request.Context(), c.Param("id"), req.Permissions); err != nil {
+	if err := h.svc.Update(c.Request.Context(), c.Param("id"), req.Permissions); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新角色失败"})
 		return
 	}
@@ -70,7 +72,7 @@ func (h *RoleHandler) Update(c *gin.Context) {
 }
 
 func (h *RoleHandler) Delete(c *gin.Context) {
-	if err := h.repo.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), c.Param("id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除角色失败"})
 		return
 	}

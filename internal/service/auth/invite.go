@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
 // CreateInviteRequest represents an invite creation request.
@@ -209,7 +208,7 @@ func (s *Service) VerifyInviteToken(ctx context.Context, token string) (*VerifyI
 	}
 
 	// Verify HMAC signature (try current secret only for verification endpoint)
-	payload, err := logic.VerifyInviteToken(token, [][]byte{s.hmacSecret})
+	payload, err := s.inviteVerifier(token, [][]byte{s.hmacSecret})
 	if err != nil {
 		return &VerifyInviteResponse{Valid: false}, nil
 	}
@@ -262,7 +261,7 @@ func (s *Service) validateCompleteRegistration(ctx context.Context, req *Complet
 		return nil, fmt.Errorf("invite hmac secret not configured")
 	}
 
-	payload, err := logic.VerifyInviteToken(req.Token, [][]byte{s.hmacSecret})
+	payload, err := s.inviteVerifier(req.Token, [][]byte{s.hmacSecret})
 	if err != nil {
 		return nil, fmt.Errorf("invalid or expired invite token")
 	}
@@ -296,7 +295,7 @@ func (s *Service) createUserFromCompleteRegistration(ctx context.Context, req *C
 		return nil, fmt.Errorf("username already exists")
 	}
 
-	passwordHash, err := middleware.HashPassword(req.Password)
+	passwordHash, err := s.pwd.Hash(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}

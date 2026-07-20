@@ -14,7 +14,7 @@ import (
 
 	"github.com/ieshan/adk-go-pkg/model/openai"
 	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
-	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
 // ModelType distinguishes LLM and Embedding models.
@@ -64,12 +64,12 @@ type EmbeddingEntry struct {
 // It is the single source of truth for building the ADK model.LLM chain and
 // retrieving the agent's system instruction.
 type Provider struct {
-	repo  *mongoinfra.SystemConfigRepository
+	repo  repository.SysConfigRepository
 	cfgNS string // system_config namespace, default "model"
 }
 
 // NewProvider creates a config provider. Passing nil repo means "env only".
-func NewProvider(repo *mongoinfra.SystemConfigRepository) *Provider {
+func NewProvider(repo repository.SysConfigRepository) *Provider {
 	return &Provider{repo: repo, cfgNS: "model"}
 }
 

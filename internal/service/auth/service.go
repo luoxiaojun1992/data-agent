@@ -3,18 +3,46 @@ package auth
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
+// PasswordHasher abstracts password operations for testability.
+type PasswordHasher interface {
+	Check(hash, password string) error
+	Hash(password string) (string, error)
+}
+
+// TokenManager abstracts JWT operations for testability.
+type TokenManager interface {
+	GenerateToken(userID, username, role string) (string, error)
+	GetExpiration() time.Duration
+}
+
+// InviteTokenVerifier is a function that verifies an invite token.
+type InviteTokenVerifier func(token string, secrets [][]byte) (*logic.InviteTokenPayload, error)
+
+type defaultPasswordHasher struct{}
+
+func (defaultPasswordHasher) Check(hash, password string) error {
+	return middleware.CheckPassword(hash, password)
+}
+func (defaultPasswordHasher) Hash(password string) (string, error) {
+	return middleware.HashPassword(password)
+}
+
 // Service handles authentication and authorization business logic.
 type Service struct {
-	userRepo   repository.UserRepository
-	inviteRepo repository.InviteRepository
-	jwtManager *middleware.JWTManager
-	hmacSecret []byte
+	userRepo       repository.UserRepository
+	inviteRepo     repository.InviteRepository
+	jwtManager     TokenManager
+	hmacSecret     []byte
+	pwd            PasswordHasher
+	inviteVerifier InviteTokenVerifier
 }
 
 // NewService creates a new auth service.
@@ -22,6 +50,10 @@ func NewService(userRepo repository.UserRepository, jwtManager *middleware.JWTMa
 	return &Service{
 		userRepo:   userRepo,
 		jwtManager: jwtManager,
+		pwd:        defaultPasswordHasher{},
+		inviteVerifier: func(token string, secrets [][]byte) (*logic.InviteTokenPayload, error) {
+			return logic.VerifyInviteToken(token, secrets)
+		},
 	}
 }
 
@@ -67,7 +99,7 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 		return nil, fmt.Errorf("invalid username or password")
 	}
 
-	if err := middleware.CheckPassword(user.PasswordHash, req.Password); err != nil {
+	if err := s.pwd.Check(user.PasswordHash, req.Password); err != nil {
 		return nil, fmt.Errorf("invalid username or password")
 	}
 
@@ -98,7 +130,7 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*Register
 		return nil, fmt.Errorf("username already exists")
 	}
 
-	passwordHash, err := middleware.HashPassword(req.Password)
+	passwordHash, err := s.pwd.Hash(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}

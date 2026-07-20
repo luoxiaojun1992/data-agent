@@ -47,11 +47,14 @@ import (
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	configsvc "github.com/luoxiaojun1992/data-agent/internal/service/config"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
+	"github.com/luoxiaojun1992/data-agent/internal/service/role"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
+	"github.com/luoxiaojun1992/data-agent/internal/service/user"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
 	"go.uber.org/zap"
 
@@ -383,7 +386,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	}
 	deps.taskStream = taskStream
 
-	deps.taskService = task_svc.NewService(mongoinfra.NewTaskRepository(mongoClient.DB()), taskStream)
+	deps.taskService = task_svc.NewService(mongoinfra.NewTaskRepository(mongoClient.DB()), queue.QueueRepository(taskStream))
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService)
 	deps.agentService.WithTaskService(deps.taskService)
 
@@ -445,11 +448,13 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	api.Use(deps.jwtManager.AuthMiddleware())
 
 	setupAuthProtected(api, deps.authHandler)
-	handler.RegisterUserRoutes(api, handler.NewUserHandler(deps.userRepo))
-	handler.RegisterRoleRoutes(api, handler.NewRoleHandler(deps.roleRepo))
-	handler.RegisterModelConfigRoutes(api, handler.NewModelConfigHandler(deps.systemConfigRepo))
+	handler.RegisterUserRoutes(api, handler.NewUserHandler(user.NewService(deps.userRepo)))
+	handler.RegisterRoleRoutes(api, handler.NewRoleHandler(role.NewService(deps.roleRepo)))
+	cfgSvc := configsvc.NewService(deps.systemConfigRepo)
+	handler.RegisterModelConfigRoutes(api, handler.NewModelConfigHandler(cfgSvc))
 	setupMemorySearch(api, deps.memoryService)
-	sysCfgHandler := handler.NewConfigHandler(deps.systemConfigRepo, deps.roleRepo)
+	roleSvc := role.NewService(deps.roleRepo)
+	sysCfgHandler := handler.NewConfigHandler(cfgSvc, roleSvc)
 	handler.RegisterSysConfigRoutes(api, sysCfgHandler)
 
 	// Admin routes
@@ -502,7 +507,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	}
 
 	// Dashboard routes
-	handler.RegisterDashboardRoutes(router, deps.jwtManager.AuthMiddleware(), handler.NewDashboardHandler(deps.taskService, deps.taskHandler, deps.sessionManager, deps.kbService))
+	handler.RegisterDashboardRoutes(router, deps.jwtManager.AuthMiddleware(), handler.NewDashboardHandler(deps.taskService, deps.sessionManager, deps.kbService))
 }
 
 func startServer(router *gin.Engine, cfg *config.Config, logger *zap.Logger) {

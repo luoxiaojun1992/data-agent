@@ -8,10 +8,10 @@ import (
 )
 
 type SessionHandler struct {
-	mgr *chat.Manager
+	mgr chat.SessionService
 }
 
-func NewSessionHandler(mgr *chat.Manager) *SessionHandler {
+func NewSessionHandler(mgr chat.SessionService) *SessionHandler {
 	return &SessionHandler{mgr: mgr}
 }
 

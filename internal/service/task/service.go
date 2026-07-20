@@ -6,19 +6,18 @@ import (
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
-	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
 // Service handles task lifecycle operations.
 type Service struct {
-	repo   repository.TaskRepository
-	stream *queue.Stream
+	repo      repository.TaskRepository
+	queueRepo repository.QueueRepository
 }
 
 // NewService creates a task service.
-func NewService(repo repository.TaskRepository, stream *queue.Stream) *Service {
-	return &Service{repo: repo, stream: stream}
+func NewService(repo repository.TaskRepository, queueRepo repository.QueueRepository) *Service {
+	return &Service{repo: repo, queueRepo: queueRepo}
 }
 
 // CreateTask creates a new task, persists it and enqueues it.
@@ -28,8 +27,8 @@ func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []st
 	if err := s.repo.Create(context.Background(), t); err != nil {
 		return nil, fmt.Errorf("insert task: %w", err)
 	}
-	if s.stream != nil {
-		if err := s.stream.Enqueue(context.Background(), t); err != nil {
+	if s.queueRepo != nil {
+		if err := s.queueRepo.Enqueue(context.Background(), t); err != nil {
 			return t, nil // best-effort
 		}
 	}

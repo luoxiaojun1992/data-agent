@@ -9,6 +9,8 @@ import (
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
 
+//go:generate mockery --name ToolLister --output ./mocks --outpkg mocks
+
 // ToolLister provides the names of registered ADK tools for the skills API.
 type ToolLister interface {
 	List() []string
@@ -26,7 +28,7 @@ type Service struct {
 	chatSvc     *chat.Service
 	sessions    *chat.Manager
 	cbReg       *security.CircuitBreakerRegistry
-	taskService *task_svc.Service // optional — requires Redis
+	taskService task_svc.TaskService // optional — requires Redis
 	toolLister  ToolLister        // ADK tool names for the skills API
 }
 
@@ -41,7 +43,7 @@ func NewService(chatSvc *chat.Service, sessions *chat.Manager, cbReg *security.C
 }
 
 // WithTaskService injects the task service for Redis Stream-based async tasks.
-func (s *Service) WithTaskService(ts *task_svc.Service) *Service {
+func (s *Service) WithTaskService(ts task_svc.TaskService) *Service {
 	s.taskService = ts
 	return s
 }
