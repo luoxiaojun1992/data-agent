@@ -42,8 +42,7 @@ type APIReviewRepository interface {
 	Create(ctx context.Context, review map[string]interface{}) error
 	List(ctx context.Context, skip, limit int64) ([]map[string]interface{}, error)
 	FindByID(ctx context.Context, id string) (map[string]interface{}, error)
-	Approve(ctx context.Context, id string) error
-	Reject(ctx context.Context, id string, reason string) error
+	UpdateStatus(ctx context.Context, id string, update map[string]interface{}) error
 }
 
 //go:generate mockery --name IMBindRepository --output ./mocks --outpkg mocks

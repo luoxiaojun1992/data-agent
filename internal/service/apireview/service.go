@@ -35,7 +35,7 @@ func (s *Service) Create(name, fileName, domain string, version string, endpoint
 	}
 	doc := map[string]interface{}{}
 	b, _ := bson.Marshal(r)
-	bson.Unmarshal(b, &doc)
+	_ = bson.Unmarshal(b, &doc)
 	if err := s.repo.Create(context.Background(), doc); err != nil {
 		return nil, fmt.Errorf("insert api review: %w", err)
 	}
@@ -50,27 +50,61 @@ func (s *Service) ListAll() ([]apireview.APIReview, error) {
 	var reviews []apireview.APIReview
 	for _, raw := range rawList {
 		var r apireview.APIReview
-		b, _ := bson.Marshal(raw)
-		bson.Unmarshal(b, &r)
+		bb, _ := bson.Marshal(raw)
+		_ = bson.Unmarshal(bb, &r)
 		reviews = append(reviews, r)
+	}
+	if reviews == nil {
+		reviews = []apireview.APIReview{}
 	}
 	return reviews, nil
 }
 
-func (s *Service) Approve(id string) error {
-	_, err := s.repo.FindByID(context.Background(), id)
+func (s *Service) Approve(id, reviewer string) error {
+	raw, err := s.repo.FindByID(context.Background(), id)
 	if err != nil {
-		return fmt.Errorf("review not found: %w", err)
+		return fmt.Errorf("find api review: %w", err)
 	}
-	return s.repo.Approve(context.Background(), id)
+	var r apireview.APIReview
+	bb, _ := bson.Marshal(raw)
+	_ = bson.Unmarshal(bb, &r)
+	if r.Status != apireview.StatusPending {
+		return fmt.Errorf("only pending reviews can be approved")
+	}
+	if r.Submitter == reviewer {
+		return fmt.Errorf("不可审核自己提交的转换")
+	}
+	now := time.Now()
+	return s.repo.UpdateStatus(context.Background(), id, map[string]interface{}{
+		"status":      apireview.StatusApproved,
+		"reviewer":    reviewer,
+		"reviewed_at": now,
+		"updated_at":  now,
+	})
 }
 
-func (s *Service) Reject(id string, reason string) error {
-	_, err := s.repo.FindByID(context.Background(), id)
-	if err != nil {
-		return fmt.Errorf("review not found: %w", err)
+func (s *Service) Reject(id, reviewer, reason string) error {
+	if reason == "" {
+		return fmt.Errorf("驳回原因不能为空")
 	}
-	return s.repo.Reject(context.Background(), id, reason)
+	raw, err := s.repo.FindByID(context.Background(), id)
+	if err != nil {
+		return fmt.Errorf("find api review: %w", err)
+	}
+	var r apireview.APIReview
+	bb, _ := bson.Marshal(raw)
+	_ = bson.Unmarshal(bb, &r)
+	if r.Status != apireview.StatusPending {
+		return fmt.Errorf("only pending reviews can be rejected")
+	}
+	now := time.Now()
+	return s.repo.UpdateStatus(context.Background(), id, map[string]interface{}{
+		"status":        apireview.StatusRejected,
+		"reviewer":      reviewer,
+		"reject_reason": reason,
+		"reviewed_at":   now,
+		"updated_at":    now,
+	})
 }
 
 func genShortID() string {

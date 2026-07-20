@@ -3,7 +3,6 @@ package mongo
 import (
 	"context"
 
-	"github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -41,21 +40,13 @@ func (r *APIReviewRepository) List(ctx context.Context, skip, limit int64) ([]ma
 }
 
 func (r *APIReviewRepository) FindByID(ctx context.Context, id string) (map[string]interface{}, error) {
-	objID, _ := primitive.ObjectIDFromHex(id)
 	var result map[string]interface{}
-	err := r.coll.FindOne(ctx, bson.M{"_id": objID}).Decode(&result)
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&result)
 	return result, err
 }
 
-func (r *APIReviewRepository) Approve(ctx context.Context, id string) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"status": apireview.StatusApproved}})
-	return err
-}
-
-func (r *APIReviewRepository) Reject(ctx context.Context, id string, reason string) error {
-	objID, _ := primitive.ObjectIDFromHex(id)
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"status": apireview.StatusRejected, "reason": reason}})
+func (r *APIReviewRepository) UpdateStatus(ctx context.Context, id string, update map[string]interface{}) error {
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": update})
 	return err
 }
 

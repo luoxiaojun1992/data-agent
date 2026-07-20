@@ -13,24 +13,6 @@ type APIReviewRepository struct {
 	mock.Mock
 }
 
-// Approve provides a mock function with given fields: ctx, id
-func (_m *APIReviewRepository) Approve(ctx context.Context, id string) error {
-	ret := _m.Called(ctx, id)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Approve")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, id)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // Create provides a mock function with given fields: ctx, review
 func (_m *APIReviewRepository) Create(ctx context.Context, review map[string]interface{}) error {
 	ret := _m.Called(ctx, review)
@@ -109,17 +91,17 @@ func (_m *APIReviewRepository) List(ctx context.Context, skip int64, limit int64
 	return r0, r1
 }
 
-// Reject provides a mock function with given fields: ctx, id, reason
-func (_m *APIReviewRepository) Reject(ctx context.Context, id string, reason string) error {
-	ret := _m.Called(ctx, id, reason)
+// UpdateStatus provides a mock function with given fields: ctx, id, update
+func (_m *APIReviewRepository) UpdateStatus(ctx context.Context, id string, update map[string]interface{}) error {
+	ret := _m.Called(ctx, id, update)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Reject")
+		panic("no return value specified for UpdateStatus")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, id, reason)
+	if rf, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) error); ok {
+		r0 = rf(ctx, id, update)
 	} else {
 		r0 = ret.Error(0)
 	}
