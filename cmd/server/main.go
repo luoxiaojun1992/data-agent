@@ -60,6 +60,7 @@ import (
 
 	"google.golang.org/adk/memory"
 	adkmodel "google.golang.org/adk/model"
+	genai "google.golang.org/genai"
 	adksessionIF "google.golang.org/adk/session"
 )
 
@@ -244,7 +245,15 @@ func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client,
 		if embedFn != nil {
 			embed = embedFn
 		}
-		deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
+		svc := adkmemory.NewService(mongoClient.DB(), embed)
+		if deps.llmCache != nil {
+			embModel := getEnvOrDefault("EMBEDDING_MODEL", "embedding")
+			svc.WithCache(deps.llmCache, embModel)
+		}
+		if deps.llmRecorder != nil {
+			svc.WithRecorder(deps.llmRecorder)
+		}
+		deps.memoryService = svc
 		return
 	}
 	logger.Info("Using adk-go-memory backend (SPEC-050)")
@@ -1408,8 +1417,49 @@ func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
 			return
 		}
 
-		enhanced := callEnhanceLLM(c.Request.Context(), req.Prompt)
-		recordEnhanceTokens(c.Request.Context(), deps, req.Prompt, enhanced)
+		ctx := c.Request.Context()
+		prompt := req.Prompt
+
+		// Redis cache lookup for enhance results.
+		modelName := getEnvOrDefault("LLM_MODEL", "default")
+		if deps.llmCache != nil {
+			if cached, ok := deps.llmCache.GetEnhance(ctx, modelName, prompt); ok {
+				c.JSON(http.StatusOK, gin.H{"enhanced": cached})
+				return
+			}
+		}
+
+		// Use ADK model router for enhance use case.
+		enhanced := prompt
+		llm, lErr := deps.modelCfg.BuildLLM(ctx, modelcfg.UseCaseEnhance)
+		if lErr == nil {
+			sys := "你是提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"
+			temp := float32(0.3)
+			adkReq := &adkmodel.LLMRequest{
+				Contents: []*genai.Content{
+					{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(sys + "\n" + prompt)}},
+				},
+				Config: &genai.GenerateContentConfig{MaxOutputTokens: 512, Temperature: &temp},
+			}
+			for resp, err := range llm.GenerateContent(ctx, adkReq, false) {
+				if err != nil {
+					break
+				}
+				if resp.Content != nil && len(resp.Content.Parts) > 0 {
+					enhanced = resp.Content.Parts[0].Text
+				}
+			}
+		} else {
+			// Fallback: direct HTTP call (backward compat with old callEnhanceLLM).
+			enhanced = callEnhanceLLM(ctx, prompt)
+		}
+
+		// Cache result.
+		if deps.llmCache != nil {
+			deps.llmCache.SetEnhance(ctx, modelName, prompt, enhanced)
+		}
+
+		recordEnhanceTokens(ctx, deps, prompt, enhanced)
 		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 	}
 }
