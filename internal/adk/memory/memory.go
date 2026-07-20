@@ -119,7 +119,7 @@ func (s *Service) embedAndCache(ctx context.Context, text, userID, sessionID str
 	cacheHit := false
 	if s.cache != nil {
 		if cached, ok := s.cache.GetEmbedding(ctx, s.model, text); ok {
-			vec, cacheHit = parseEmbeddingCache(cached), true
+			vec, cacheHit = ParseCachedEmbedding(cached), true
 		}
 	}
 	if !cacheHit {
@@ -127,7 +127,7 @@ func (s *Service) embedAndCache(ctx context.Context, text, userID, sessionID str
 	}
 	s.recordEmbeddingToken(ctx, text, userID, sessionID, cacheHit)
 	if !cacheHit && err == nil && s.cache != nil {
-		s.cache.SetEmbedding(ctx, s.model, text, marshalEmbeddingCache(vec))
+		s.cache.SetEmbedding(ctx, s.model, text, MarshalCachedEmbedding(vec))
 	}
 	if err != nil {
 		vec = nil
@@ -308,7 +308,7 @@ func (s *Service) embedQuery(ctx context.Context, query string) []float32 {
 	cacheHit := false
 	if s.cache != nil {
 		if cached, ok := s.cache.GetEmbedding(ctx, s.model, query); ok {
-			vec = parseEmbeddingCache(cached)
+			vec = ParseCachedEmbedding(cached)
 			cacheHit = true
 		}
 	}
@@ -321,7 +321,7 @@ func (s *Service) embedQuery(ctx context.Context, query string) []float32 {
 	}
 	s.recordEmbeddingToken(ctx, query, "", "", cacheHit)
 	if !cacheHit && s.cache != nil {
-		s.cache.SetEmbedding(ctx, s.model, query, marshalEmbeddingCache(vec))
+		s.cache.SetEmbedding(ctx, s.model, query, MarshalCachedEmbedding(vec))
 	}
 	return vec
 }
@@ -387,8 +387,8 @@ func float64To32(v []float64) []float32 {
 	return out
 }
 
-// marshalEmbeddingCache serializes an embedding vector to JSON for Redis.
-func marshalEmbeddingCache(v []float32) string {
+// MarshalCachedEmbedding serializes an embedding vector to JSON for Redis.
+func MarshalCachedEmbedding(v []float32) string {
 	if len(v) == 0 {
 		return "[]"
 	}
@@ -396,8 +396,8 @@ func marshalEmbeddingCache(v []float32) string {
 	return string(b)
 }
 
-// parseEmbeddingCache deserializes a cached embedding vector from Redis.
-func parseEmbeddingCache(s string) []float32 {
+// ParseCachedEmbedding deserializes a cached embedding vector from Redis.
+func ParseCachedEmbedding(s string) []float32 {
 	if s == "" || s == "[]" {
 		return nil
 	}

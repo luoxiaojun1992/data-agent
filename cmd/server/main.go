@@ -239,6 +239,40 @@ func initAgentEngine(deps *serverDependencies) {
 
 func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client, llm adkmodel.LLM, logger *zap.Logger) {
 	embedFn := buildEmbedFn(deps)
+	// Wrap embedFn with Redis cache + token recording (works for both legacy & memoryx).
+	if deps.llmCache != nil || deps.llmRecorder != nil {
+		embModel := getEnvOrDefault("EMBEDDING_MODEL", "embedding")
+		cache := deps.llmCache
+		rec := deps.llmRecorder
+		raw := embedFn
+		embedFn = func(ctx context.Context, text string) ([]float32, error) {
+			cacheHit := false
+			var vec []float32
+			var err error
+			if cache != nil {
+				if cached, ok := cache.GetEmbedding(ctx, embModel, text); ok {
+					vec = adkmemory.ParseCachedEmbedding(cached)
+					cacheHit = true
+				}
+			}
+			if !cacheHit {
+				vec, err = raw(ctx, text)
+			}
+			if rec != nil {
+				rec.Record(ctx, llmstats.Record{
+					CallPoint:    "embedding",
+					Model:        embModel,
+					PromptTokens: llmstats.EstimateTokens(text),
+					Estimated:    true,
+					CacheHit:     cacheHit,
+				})
+			}
+			if !cacheHit && err == nil && cache != nil {
+				cache.SetEmbedding(ctx, embModel, text, adkmemory.MarshalCachedEmbedding(vec))
+			}
+			return vec, err
+		}
+	}
 	if os.Getenv("MEMORY_BACKEND") == "legacy" {
 		logger.Info("Using legacy memory backend")
 		var embed adkmemory.EmbeddingFunc
