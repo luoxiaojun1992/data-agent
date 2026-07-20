@@ -396,7 +396,7 @@ export default function ChatPage() {
 
         {/* Session Panel */}
         {showSessions && (
-          <div className="border-t border-[var(--border-glass)]" data-testid="session-sidebar">
+          <div className="w-72 flex-shrink-0 border-l border-[var(--border-glass)] h-full overflow-y-auto bg-[var(--bg-secondary)]/30" data-testid="session-sidebar">
             <div className="p-3">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-[var(--text-primary)]">历史会话</p>

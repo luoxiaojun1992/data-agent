@@ -351,31 +351,34 @@ export default function UsersPage() {
                         {user.status === 'enabled' ? '🟢 启用' : '🔴 停用'}
                       </span>
                     </td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                    <td style={{ ...tdStyle, minWidth: '120px', padding: '4px 8px' }}>
+                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                         <button
                           data-testid={`user-edit-btn-${user.id}`}
                           onClick={() => openEdit(user)}
-                          style={actionBtnStyle('#5c7cfa')}
+                          style={{ ...iconBtnStyle, color: '#5c7cfa' }}
+                          title="编辑"
                         >
-                          编辑
+                          ✏️
                         </button>
                         {user.role !== 'system_admin' && (
                           <button
                             data-testid={`user-toggle-btn-${user.id}`}
                             onClick={() => openToggle(user)}
-                            style={actionBtnStyle(user.status === 'enabled' ? '#f59e0b' : '#10b981')}
+                            style={{ ...iconBtnStyle, color: user.status === 'enabled' ? '#f59e0b' : '#10b981' }}
+                            title={user.status === 'enabled' ? '停用' : '启用'}
                           >
-                            {user.status === 'enabled' ? '停用' : '启用'}
+                            {user.status === 'enabled' ? '⏸' : '▶'}
                           </button>
                         )}
                         {user.role !== 'system_admin' && (
                           <button
                             data-testid={`user-delete-btn-${user.id}`}
                             onClick={() => openDelete(user)}
-                            style={actionBtnStyle('#ef4444')}
+                            style={{ ...iconBtnStyle, color: '#ef4444' }}
+                            title="删除"
                           >
-                            删除
+                            🗑
                           </button>
                         )}
                       </div>
@@ -675,6 +678,20 @@ const actionBtnStyle = (color: string): React.CSSProperties => ({
   cursor: 'pointer',
   transition: 'all 0.15s',
 });
+
+const iconBtnStyle: React.CSSProperties = {
+  width: '28px',
+  height: '28px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'transparent',
+  border: 'none',
+  borderRadius: '4px',
+  fontSize: '14px',
+  cursor: 'pointer',
+  padding: 0,
+};
 
 const modalStyle: React.CSSProperties = {
   background: '#1a1a2e',

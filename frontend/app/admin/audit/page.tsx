@@ -56,8 +56,8 @@ export default function AuditPage() {
       } else {
         setError('加载失败');
       }
-    } catch {
-      setError('加载失败');
+    } catch (err: any) {
+      setError(`审计日志加载失败 — ${err?.message || err?.status || '未知错误'} (${err?.status ? `HTTP ${err.status}` : '/api/v1/audit'})`);
     }
   }, [apiFetch, page, filterAction, filterUser, dateStart, dateEnd]);
 
