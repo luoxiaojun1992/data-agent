@@ -4,6 +4,7 @@
 package adktools
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -21,11 +22,18 @@ import (
 type Deps struct {
 	// KBService backs the knowledge_search tool. Required.
 	KBService *knowledgepkg.Service
-	// Memory backs the memory_search tool. Optional: tool returns an
-	// explanatory result when nil.
+	// Memory backs the memory_search and memory_write tools.
 	Memory memory.Service
+	// MemoryWriter is an optional writer for agent-triggered memory_write.
+	// If nil, memory_write returns an explanatory error.
+	MemoryWriter MemoryWriter
 	// AppName scopes memory searches.
 	AppName string
+}
+
+// MemoryWriter writes content to long-term memory on agent request.
+type MemoryWriter interface {
+	WriteMemory(ctx context.Context, userID, content string) error
 }
 
 // stateString reads a string value from the tool session state.
@@ -242,6 +250,35 @@ func memorySearch(deps *Deps) functiontool.Func[MemorySearchArgs, MemorySearchRe
 	}
 }
 
+// ---- memory_write ----
+
+// MemoryWriteArgs are the arguments for the memory_write tool.
+type MemoryWriteArgs struct {
+	Content string `json:"content" jsonschema:"信息内容，要写入长期记忆的具体信息"`
+}
+
+// MemoryWriteResult is the memory_write tool output.
+type MemoryWriteResult struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+func memoryWrite(deps *Deps) functiontool.Func[MemoryWriteArgs, MemoryWriteResult] {
+	return func(tc agent.ToolContext, args MemoryWriteArgs) (MemoryWriteResult, error) {
+		if strings.TrimSpace(args.Content) == "" {
+			return MemoryWriteResult{}, fmt.Errorf("memory_write: missing required parameter 'content'")
+		}
+		if deps.MemoryWriter == nil {
+			return MemoryWriteResult{Status: "skipped", Message: "memory writer not configured"}, nil
+		}
+		userID := stateString(tc, "user_id")
+		if err := deps.MemoryWriter.WriteMemory(tc, userID, args.Content); err != nil {
+			return MemoryWriteResult{}, fmt.Errorf("memory_write: %w", err)
+		}
+		return MemoryWriteResult{Status: "written", Message: "memory stored"}, nil
+	}
+}
+
 // formatMemories converts memory entries into the tool result, honoring the limit.
 func formatMemories(resp *memory.SearchResponse, limit int) MemorySearchResult {
 	if limit <= 0 {
@@ -309,6 +346,13 @@ func specs(deps *Deps) []toolSpec {
 			description: "Searches long-term memory for information from past conversations",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{Name: "memory_search", Description: "Searches long-term memory for information from past conversations"}, memorySearch(deps))
+			},
+		},
+		{
+			name:        "memory_write",
+			description: "Writes a piece of information to long-term memory for later retrieval",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "memory_write", Description: "Writes a piece of information to long-term memory for later retrieval"}, memoryWrite(deps))
 			},
 		},
 	}

@@ -9,6 +9,7 @@ package adkmemory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -21,6 +22,9 @@ import (
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
+
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 )
 
 // CollectionName is the MongoDB collection holding memory entries.
@@ -46,7 +50,23 @@ type memoryDoc struct {
 type Service struct {
 	coll     *mongo.Collection
 	embed    EmbeddingFunc
+	cache    *llmcache.Cache
+	recorder *llmstats.Recorder
+	model    string
 	maxChars int
+}
+
+// WithCache attaches a Redis cache for embedding results.
+func (s *Service) WithCache(cache *llmcache.Cache, model string) *Service {
+	s.cache = cache
+	s.model = model
+	return s
+}
+
+// WithRecorder attaches a token usage recorder for embedding calls.
+func (s *Service) WithRecorder(recorder *llmstats.Recorder) *Service {
+	s.recorder = recorder
+	return s
 }
 
 // NewService creates a memory.Service. embed may be nil, in which case
@@ -83,18 +103,54 @@ func (s *Service) AddSessionToMemory(ctx context.Context, sess session.Session) 
 			CreatedAt: time.Now(),
 		}
 		if s.embed != nil {
-			vec, err := s.embed(ctx, text)
-			if err != nil {
-				// Embedding backend unavailable — store without vector rather than dropping memory.
-				vec = nil
-			}
-			doc.Embedding = float32To64(vec)
+			doc.Embedding = s.embedAndCache(ctx, text, sess.UserID(), sess.ID())
 		}
 		if _, err := s.coll.InsertOne(ctx, doc); err != nil {
 			return fmt.Errorf("store memory: %w", err)
 		}
 	}
 	return nil
+}
+
+// embedAndCache wraps the embedding call with Redis cache and token recording.
+func (s *Service) embedAndCache(ctx context.Context, text, userID, sessionID string) []float64 {
+	var vec []float32
+	var err error
+	cacheHit := false
+	if s.cache != nil {
+		if cached, ok := s.cache.GetEmbedding(ctx, s.model, text); ok {
+			vec, cacheHit = ParseCachedEmbedding(cached), true
+		}
+	}
+	if !cacheHit {
+		vec, err = s.embed(ctx, text)
+	}
+	s.recordEmbeddingToken(ctx, text, userID, sessionID, cacheHit)
+	if !cacheHit && err == nil && s.cache != nil {
+		s.cache.SetEmbedding(ctx, s.model, text, MarshalCachedEmbedding(vec))
+	}
+	if err != nil {
+		vec = nil
+	}
+	return float32To64(vec)
+}
+
+// recordEmbeddingToken records token usage for an embedding call.
+func (s *Service) recordEmbeddingToken(ctx context.Context, text, userID, sessionID string, cacheHit bool) {
+	if s.recorder == nil {
+		return
+	}
+	_ = s.recorder.Record(ctx, llmstats.Record{
+		CallPoint:        "embedding",
+		Model:            s.model,
+		PromptTokens:     llmstats.EstimateTokens(text),
+		CompletionTokens: 0,
+		Multiplier:       1.0,
+		Estimated:        true,
+		UserID:           userID,
+		SessionID:        sessionID,
+		CacheHit:         cacheHit,
+	})
 }
 
 // SearchMemory returns memory entries relevant to the query, scoped to the user.
@@ -111,12 +167,7 @@ func (s *Service) SearchMemory(ctx context.Context, req *memory.SearchRequest) (
 		return resp, nil
 	}
 
-	var queryVec []float32
-	if s.embed != nil {
-		if vec, err := s.embed(ctx, req.Query); err == nil {
-			queryVec = vec
-		}
-	}
+	queryVec := s.embedQuery(ctx, req.Query)
 
 	type scored struct {
 		doc   memoryDoc
@@ -248,6 +299,33 @@ func (s *Service) textsForSession(ctx context.Context, sessionID string) (map[st
 	return existing, cursor.Err()
 }
 
+// embedQuery embeds a search query with cache + token recording.
+func (s *Service) embedQuery(ctx context.Context, query string) []float32 {
+	if s.embed == nil {
+		return nil
+	}
+	var vec []float32
+	cacheHit := false
+	if s.cache != nil {
+		if cached, ok := s.cache.GetEmbedding(ctx, s.model, query); ok {
+			vec = ParseCachedEmbedding(cached)
+			cacheHit = true
+		}
+	}
+	if !cacheHit {
+		var err error
+		vec, err = s.embed(ctx, query)
+		if err != nil {
+			return nil
+		}
+	}
+	s.recordEmbeddingToken(ctx, query, "", "", cacheHit)
+	if !cacheHit && s.cache != nil {
+		s.cache.SetEmbedding(ctx, s.model, query, MarshalCachedEmbedding(vec))
+	}
+	return vec
+}
+
 func (s *Service) docsForUser(ctx context.Context, appName, userID string) ([]memoryDoc, error) {
 	filter := bson.M{"user_id": userID}
 	if appName != "" {
@@ -307,4 +385,25 @@ func float64To32(v []float64) []float32 {
 		out[i] = float32(x)
 	}
 	return out
+}
+
+// MarshalCachedEmbedding serializes an embedding vector to JSON for Redis.
+func MarshalCachedEmbedding(v []float32) string {
+	if len(v) == 0 {
+		return "[]"
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// ParseCachedEmbedding deserializes a cached embedding vector from Redis.
+func ParseCachedEmbedding(s string) []float32 {
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var v []float32
+	if json.Unmarshal([]byte(s), &v) != nil {
+		return nil
+	}
+	return v
 }

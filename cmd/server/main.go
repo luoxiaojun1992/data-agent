@@ -60,6 +60,7 @@ import (
 
 	"google.golang.org/adk/memory"
 	adkmodel "google.golang.org/adk/model"
+	genai "google.golang.org/genai"
 	adksessionIF "google.golang.org/adk/session"
 )
 
@@ -238,14 +239,14 @@ func initAgentEngine(deps *serverDependencies) {
 
 func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client, llm adkmodel.LLM, logger *zap.Logger) {
 	embedFn := buildEmbedFn(deps)
+	// Wrap embedFn with Redis cache + token recording.
+	if deps.llmCache != nil || deps.llmRecorder != nil {
+		embedFn = cachedEmbedFn(embedFn, deps.llmCache, deps.llmRecorder,
+			getEnvOrDefault("EMBEDDING_MODEL", "embedding"))
+	}
 	if os.Getenv("MEMORY_BACKEND") == "legacy" {
-		logger.Info("Using legacy memory backend")
-		var embed adkmemory.EmbeddingFunc
-		if embedFn != nil {
-			embed = embedFn
-		}
-		deps.memoryService = adkmemory.NewService(mongoClient.DB(), embed)
-		return
+		// Legacy path removed per SPEC-053: only adk-go-memory (memoryx) supported.
+		logger.Warn("MEMORY_BACKEND=legacy is deprecated, using adk-go-memory")
 	}
 	logger.Info("Using adk-go-memory backend (SPEC-050)")
 	kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
@@ -293,13 +294,14 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	)
 
 	// Long-term memory (MongoDB + embedding).
-	initMemoryBackend(deps, mongoClient, llm, logger)
+	initMemoryBackend(deps, mongoClient, compactionLLM, logger)
 
 	// ADK tools.
 	toolDeps := &adktools.Deps{
-		KBService: deps.kbService,
-		Memory:    deps.memoryService,
-		AppName:   appName,
+		KBService:    deps.kbService,
+		Memory:       deps.memoryService,
+		MemoryWriter: deps.memoryKit,
+		AppName:      appName,
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -350,9 +352,10 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 		embedFn := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
 			BaseURL: embCfg.BaseURL, Model: embCfg.Model, APIKey: embCfg.APIKey,
 		})
-		deps.kbService.WithVectorIndex(deps.qdrantClient, func(ctx context.Context, text string) ([]float32, error) {
-			return embedFn(ctx, text)
-		})
+		rawEmbed := func(ctx context.Context, text string) ([]float32, error) { return embedFn(ctx, text) }
+		// Wrap with Redis cache + token recording.
+		kEmbedFn := cachedEmbedFn(rawEmbed, deps.llmCache, deps.llmRecorder, embCfg.Model)
+		deps.kbService.WithVectorIndex(deps.qdrantClient, knowledge.EmbeddingFunc(kEmbedFn))
 	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }
@@ -1342,6 +1345,59 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
 // defaultModel is the fallback model name for enhance/embedding.
 const defaultModel = "gpt-4o"
 
+// cachedEmbedFn wraps an embedding function with Redis cache and token recording.
+func cachedEmbedFn(raw adkmemory.EmbeddingFunc, cache *llmcache.Cache, rec *llmstats.Recorder, model string) adkmemory.EmbeddingFunc {
+	if cache == nil && rec == nil {
+		return raw
+	}
+	return func(ctx context.Context, text string) ([]float32, error) {
+		vec, cacheHit := lookupEmbeddingCache(ctx, cache, model, text)
+		if !cacheHit {
+			var err error
+			vec, err = raw(ctx, text)
+			if err != nil {
+				return nil, err
+			}
+		}
+		recordEmbeddingCall(ctx, rec, model, text, cacheHit)
+		if !cacheHit {
+			storeEmbeddingCache(ctx, cache, model, text, vec)
+		}
+		return vec, nil
+	}
+}
+
+func lookupEmbeddingCache(ctx context.Context, cache *llmcache.Cache, model, text string) ([]float32, bool) {
+	if cache == nil {
+		return nil, false
+	}
+	cached, ok := cache.GetEmbedding(ctx, model, text)
+	if !ok {
+		return nil, false
+	}
+	return adkmemory.ParseCachedEmbedding(cached), true
+}
+
+func recordEmbeddingCall(ctx context.Context, rec *llmstats.Recorder, model, text string, cacheHit bool) {
+	if rec == nil {
+		return
+	}
+	_ = rec.Record(ctx, llmstats.Record{
+		CallPoint:    "embedding",
+		Model:        model,
+		PromptTokens: llmstats.EstimateTokens(text),
+		Estimated:    true,
+		CacheHit:     cacheHit,
+	})
+}
+
+func storeEmbeddingCache(ctx context.Context, cache *llmcache.Cache, model, text string, vec []float32) {
+	if cache == nil {
+		return
+	}
+	cache.SetEmbedding(ctx, model, text, adkmemory.MarshalCachedEmbedding(vec))
+}
+
 // callEnhanceLLM calls the LLM to enhance a prompt. Falls back to original on error.
 func callEnhanceLLM(ctx context.Context, prompt string) string {
 	model := getEnvOrDefault("LLM_MODEL", "gpt-4o")
@@ -1408,10 +1464,52 @@ func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
 			return
 		}
 
-		enhanced := callEnhanceLLM(c.Request.Context(), req.Prompt)
-		recordEnhanceTokens(c.Request.Context(), deps, req.Prompt, enhanced)
+		ctx := c.Request.Context()
+		prompt := req.Prompt
+		modelName := getEnvOrDefault("LLM_MODEL", "default")
+
+		// Redis cache lookup.
+		if deps.llmCache != nil {
+			if cached, ok := deps.llmCache.GetEnhance(ctx, modelName, prompt); ok {
+				c.JSON(http.StatusOK, gin.H{"enhanced": cached})
+				return
+			}
+		}
+
+		enhanced := enhanceViaADK(ctx, deps, prompt)
+		if deps.llmCache != nil {
+			deps.llmCache.SetEnhance(ctx, modelName, prompt, enhanced)
+		}
+		recordEnhanceTokens(ctx, deps, prompt, enhanced)
 		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
 	}
+}
+
+// enhanceViaADK uses the ADK model router for prompt enhancement, falling back to
+// direct HTTP on error.
+func enhanceViaADK(ctx context.Context, deps *serverDependencies, prompt string) string {
+	llm, lErr := deps.modelCfg.BuildLLM(ctx, modelcfg.UseCaseEnhance)
+	if lErr != nil {
+		return callEnhanceLLM(ctx, prompt)
+	}
+	sys := "你是提示词优化专家。把用户输入的模糊查询转化为结构化、可操作的数据分析提示词，包含具体指标、维度、时限和期望输出格式。直接输出优化后的提示词，不要解释。"
+	temp := float32(0.3)
+	adkReq := &adkmodel.LLMRequest{
+		Contents: []*genai.Content{
+			{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(sys)}},
+			{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(prompt)}},
+		},
+		Config: &genai.GenerateContentConfig{MaxOutputTokens: 512, Temperature: &temp},
+	}
+	for resp, err := range llm.GenerateContent(ctx, adkReq, false) {
+		if err != nil {
+			return callEnhanceLLM(ctx, prompt)
+		}
+		if resp.Content != nil && len(resp.Content.Parts) > 0 {
+			return resp.Content.Parts[0].Text
+		}
+	}
+	return callEnhanceLLM(ctx, prompt)
 }
 func setupChangePassword(api *gin.RouterGroup, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
 	api.POST("/change-password", jwtManager.AuthMiddleware(), changePasswordHandler(mongoClient))

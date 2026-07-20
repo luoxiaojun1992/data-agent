@@ -288,8 +288,8 @@ func TestAllAndNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("All failed: %v", err)
 	}
-	if len(tools) != 5 {
-		t.Errorf("expected 5 tools, got %d", len(tools))
+	if len(tools) != 6 {
+		t.Errorf("expected 6 tools, got %d", len(tools))
 	}
 
 	names, err := Names(deps)
@@ -298,7 +298,7 @@ func TestAllAndNames(t *testing.T) {
 	}
 	want := map[string]bool{
 		"sql_validate": true, "stats_compute": true, "save_report": true,
-		"knowledge_search": true, "memory_search": true,
+		"knowledge_search": true, "memory_search": true, "memory_write": true,
 	}
 	for _, n := range names {
 		if !want[n] {
@@ -315,8 +315,8 @@ func TestAllAndNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("All failed: %v", err)
 	}
-	if len(tools) != 4 {
-		t.Errorf("expected 4 tools without KB, got %d", len(tools))
+	if len(tools) != 5 {
+		t.Errorf("expected 5 tools without KB, got %d", len(tools))
 	}
 }
 
@@ -398,8 +398,8 @@ func TestAll_BuildError(t *testing.T) {
 }
 
 func TestSpecs_Content(t *testing.T) {
-	// Without KB: 4 tools.
-	if got := specs(&Deps{}); len(got) != 4 {
+	// Without KB: 5 tools (memory_write + memory_search + sql + stats + report).
+	if got := specs(&Deps{}); len(got) != 5 {
 		t.Errorf("specs without KB = %d", len(got))
 	}
 	// With KB: 5 tools and knowledge_search present.
