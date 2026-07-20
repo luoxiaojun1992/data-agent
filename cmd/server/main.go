@@ -274,21 +274,8 @@ func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client,
 		}
 	}
 	if os.Getenv("MEMORY_BACKEND") == "legacy" {
-		logger.Info("Using legacy memory backend")
-		var embed adkmemory.EmbeddingFunc
-		if embedFn != nil {
-			embed = embedFn
-		}
-		svc := adkmemory.NewService(mongoClient.DB(), embed)
-		if deps.llmCache != nil {
-			embModel := getEnvOrDefault("EMBEDDING_MODEL", "embedding")
-			svc.WithCache(deps.llmCache, embModel)
-		}
-		if deps.llmRecorder != nil {
-			svc.WithRecorder(deps.llmRecorder)
-		}
-		deps.memoryService = svc
-		return
+		// Legacy path removed per SPEC-053: only adk-go-memory (memoryx) supported.
+		logger.Warn("MEMORY_BACKEND=legacy is deprecated, using adk-go-memory")
 	}
 	logger.Info("Using adk-go-memory backend (SPEC-050)")
 	kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
@@ -340,9 +327,10 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 
 	// ADK tools.
 	toolDeps := &adktools.Deps{
-		KBService: deps.kbService,
-		Memory:    deps.memoryService,
-		AppName:   appName,
+		KBService:    deps.kbService,
+		Memory:       deps.memoryService,
+		MemoryWriter: deps.memoryKit,
+		AppName:      appName,
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
