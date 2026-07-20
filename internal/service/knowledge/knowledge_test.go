@@ -12,7 +12,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	qdrant "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"go.mongodb.org/mongo-driver/mongo"
-	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -149,7 +148,7 @@ func setupMockDB(patches *gomonkey.Patches) {
 // the correct db reference.
 func TestNewService_Knowledge(t *testing.T) {
 	db := &mongo.Database{}
-	s := NewService(mongoinfra.NewKBRepository(db))
+	s := NewService(db)
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}

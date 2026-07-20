@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/mock"
+	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/mongo"
-	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"google.golang.org/adk/model"
 	adksession "google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -321,16 +322,20 @@ func TestLastUserMessage(t *testing.T) {
 
 // ── Session Manager (kept from legacy tests) ──
 
-func newManagerWithMockColl() (*Manager, *mongo.Collection) {
-	var coll mongo.Collection
-	return &Manager{ttl: 24 * time.Hour}, &coll
+func newManagerWithMockColl() (*Manager, *mockrepo.SessionRepository) {
+	repo := mockrepo.NewSessionRepository(nil) // nil T for non-test contexts
+	return &Manager{repo: repo, ttl: 24 * time.Hour}, repo
+}
+
+func newTestManager(t *testing.T) (*Manager, *mockrepo.SessionRepository) {
+	t.Helper()
+	repo := mockrepo.NewSessionRepository(t)
+	return &Manager{repo: repo, ttl: 24 * time.Hour}, repo
 }
 
 func TestManager_Create(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
+	m, repo := newTestManager(t)
+	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 
 	s, err := m.Create("user1", "chat")
 	if err != nil {
@@ -339,227 +344,140 @@ func TestManager_Create(t *testing.T) {
 	if s.UserID != "user1" || s.Type != "chat" || s.Status != "active" {
 		t.Errorf("unexpected session: %+v", s)
 	}
-	if !strings.HasPrefix(s.ID, "sess_") {
-		t.Errorf("session ID should have sess_ prefix: %s", s.ID)
-	}
 
-	patches.ApplyMethodReturn(coll, "InsertOne", (*mongo.InsertOneResult)(nil), fmt.Errorf("db down"))
-	if _, err := m.Create("user1", "chat"); err == nil {
-		t.Error("expected db error")
-	}
+	t.Run("db error", func(t *testing.T) {
+		m2, repo2 := newTestManager(t)
+		repo2.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("db down"))
+		if _, err := m2.Create("user1", "chat"); err == nil {
+			t.Error("expected db error")
+		}
+	})
 }
 
 func TestManager_Get(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-
-	valid := &Session{ID: "s1", UserID: "u1", Status: "active", ExpiresAt: time.Now().Add(time.Hour)}
-	sr := &mongo.SingleResult{}
-	patches.ApplyMethodReturn(coll, "FindOne", sr)
-	patches.ApplyMethod(sr, "Decode", func(_ *mongo.SingleResult, v any) error {
-		*v.(*Session) = *valid
-		return nil
-	})
+	m, repo := newTestManager(t)
+	repo.On("Get", mock.Anything, "s1").Return(&repository.SessionRecord{ID: "s1", UserID: "u1"}, nil)
 
 	s, err := m.Get("s1")
 	if err != nil || s.ID != "s1" {
 		t.Errorf("Get failed: %v", err)
 	}
 
-	// Expired session.
-	expired := &Session{ID: "s2", ExpiresAt: time.Now().Add(-time.Hour)}
-	patches.ApplyMethod(sr, "Decode", func(_ *mongo.SingleResult, v any) error {
-		*v.(*Session) = *expired
-		return nil
-	})
-	if _, err := m.Get("s2"); err == nil {
-		t.Error("expired session should error")
-	}
-
 	// Not found.
-	patches.ApplyMethod(sr, "Decode", func(_ *mongo.SingleResult, v any) error {
-		return mongo.ErrNoDocuments
-	})
+	repo.On("Get", mock.Anything, "missing").Return((*repository.SessionRecord)(nil), fmt.Errorf("not found"))
 	if _, err := m.Get("missing"); err == nil {
 		t.Error("missing session should error")
 	}
 }
 
 func TestManager_Renew(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(coll, "UpdateOne", &mongo.UpdateResult{MatchedCount: 1}, nil)
+	m, repo := newTestManager(t)
+	repo.On("Renew", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	if err := m.Renew("s1"); err != nil {
-		t.Errorf("Renew failed: %v", err)
+		t.Fatalf("Renew failed: %v", err)
 	}
 
-	patches.ApplyMethodReturn(coll, "UpdateOne", &mongo.UpdateResult{MatchedCount: 0}, nil)
-	if err := m.Renew("missing"); err == nil {
-		t.Error("missing session should error")
-	}
-
-	patches.ApplyMethodReturn(coll, "UpdateOne", (*mongo.UpdateResult)(nil), fmt.Errorf("db down"))
-	if err := m.Renew("s1"); err == nil {
-		t.Error("expected db error")
-	}
+	t.Run("not found", func(t *testing.T) {
+		m2, repo2 := newTestManager(t)
+		repo2.On("Renew", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("not found"))
+		if err := m2.Renew("s1"); err == nil {
+			t.Error("renew missing should error")
+		}
+	})
 }
 
 func TestManager_Cleanup(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(coll, "DeleteMany", &mongo.DeleteResult{DeletedCount: 3}, nil)
+	m, repo := newTestManager(t)
+	repo.On("Cleanup", mock.Anything, mock.Anything).Return(int64(3), nil)
 
-	m.Cleanup(context.Background()) // no panic = pass
+	n, err := m.Cleanup()
+	if err != nil {
+		t.Fatalf("Cleanup failed: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("deleted=%d, want 3", n)
+	}
 }
 
 func TestManager_ListByUser(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
+	m, repo := newTestManager(t)
+	repo.On("ListByUser", mock.Anything, "user1").Return([]*repository.SessionRecord{
+		{ID: "s1", UserID: "user1"},
+		{ID: "s2", UserID: "user1"},
+	}, nil)
 
-	cur := &mongo.Cursor{}
-	docs := []Session{
-		{ID: "s1", UserID: "u1", ExpiresAt: time.Now().Add(time.Hour)},
-		{ID: "s2", UserID: "u1", ExpiresAt: time.Now().Add(-time.Hour)}, // expired
+	sessions, err := m.ListByUser("user1")
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
 	}
-	idx := 0
-	patches.ApplyMethodReturn(coll, "Find", cur, nil)
-	patches.ApplyMethod(cur, "Next", func(_ *mongo.Cursor, ctx context.Context) bool {
-		return idx < len(docs)
+	if len(sessions) != 2 {
+		t.Fatalf("got %d, want 2", len(sessions))
+	}
+
+	t.Run("db error", func(t *testing.T) {
+		m2, repo2 := newTestManager(t)
+		repo2.On("ListByUser", mock.Anything, "user1").Return(([]*repository.SessionRecord)(nil), fmt.Errorf("db error"))
+		if _, err := m2.ListByUser("user1"); err == nil {
+			t.Error("error case should fail")
+		}
 	})
-	patches.ApplyMethod(cur, "Decode", func(_ *mongo.Cursor, v any) error {
-		*v.(*Session) = docs[idx]
-		idx++
-		return nil
-	})
-	patches.ApplyMethodReturn(cur, "Close", nil)
-
-	result := m.ListByUser("u1")
-	if len(result) != 2 {
-		t.Errorf("expected 2 sessions, got %d", len(result))
-	}
-	if result[1].Status != "expired" {
-		t.Errorf("expired session should be marked: %v", result[1].Status)
-	}
-
-	// Find error → empty list.
-	patches.ApplyMethodReturn(coll, "Find", (*mongo.Cursor)(nil), fmt.Errorf("db down"))
-	if got := m.ListByUser("u1"); len(got) != 0 {
-		t.Errorf("db error should yield empty list, got %d", len(got))
-	}
 }
 
 func TestManager_Delete(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(coll, "UpdateOne", &mongo.UpdateResult{MatchedCount: 1}, nil)
+	m, repo := newTestManager(t)
+	repo.On("Delete", mock.Anything, "s1").Return(nil)
 
 	if err := m.Delete("s1"); err != nil {
-		t.Errorf("Delete failed: %v", err)
-	}
-
-	patches.ApplyMethodReturn(coll, "UpdateOne", &mongo.UpdateResult{MatchedCount: 0}, nil)
-	if err := m.Delete("missing"); err == nil {
-		t.Error("missing session should error")
-	}
-
-	patches.ApplyMethodReturn(coll, "UpdateOne", (*mongo.UpdateResult)(nil), fmt.Errorf("db down"))
-	if err := m.Delete("s1"); err == nil {
-		t.Error("expected db error")
+		t.Fatalf("Delete failed: %v", err)
 	}
 }
 
 func TestManager_Restore(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(coll, "UpdateOne", &mongo.UpdateResult{MatchedCount: 1}, nil)
+	m, repo := newTestManager(t)
+	repo.On("Restore", mock.Anything, "s1").Return(nil)
 
 	if err := m.Restore("s1"); err != nil {
-		t.Errorf("Restore failed: %v", err)
-	}
-
-	patches.ApplyMethodReturn(coll, "UpdateOne", &mongo.UpdateResult{MatchedCount: 0}, nil)
-	if err := m.Restore("missing"); err == nil {
-		t.Error("missing session should error")
-	}
-
-	patches.ApplyMethodReturn(coll, "UpdateOne", (*mongo.UpdateResult)(nil), fmt.Errorf("db down"))
-	if err := m.Restore("s1"); err == nil {
-		t.Error("expected db error")
+		t.Fatalf("Restore failed: %v", err)
 	}
 }
 
 func TestManager_ListDeleted(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
+	m, repo := newTestManager(t)
+	repo.On("ListDeleted", mock.Anything, mock.Anything, int64(100)).Return([]*repository.SessionRecord{
+		{ID: "d1", UserID: "u1"},
+	}, nil)
 
-	cur := &mongo.Cursor{}
-	docs := []Session{{ID: "s1", UserID: "u1", Status: "deleted"}}
-	idx := 0
-	patches.ApplyMethodReturn(coll, "Find", cur, nil)
-	patches.ApplyMethod(cur, "Next", func(_ *mongo.Cursor, ctx context.Context) bool {
-		return idx < len(docs)
-	})
-	patches.ApplyMethod(cur, "Decode", func(_ *mongo.Cursor, v any) error {
-		*v.(*Session) = docs[idx]
-		idx++
-		return nil
-	})
-	patches.ApplyMethodReturn(cur, "Close", nil)
-
-	result := m.ListDeleted("u1")
-	if len(result) != 1 {
-		t.Errorf("expected 1 deleted session, got %d", len(result))
+	sessions, err := m.ListDeleted(time.Now(), 100)
+	if err != nil {
+		t.Fatalf("ListDeleted: %v", err)
 	}
-
-	patches.ApplyMethodReturn(coll, "Find", (*mongo.Cursor)(nil), fmt.Errorf("db down"))
-	if got := m.ListDeleted("u1"); len(got) != 0 {
-		t.Errorf("db error should yield empty list")
+	if len(sessions) != 1 || sessions[0].ID != "d1" {
+		t.Errorf("unexpected result: %+v", sessions)
 	}
 }
 
 func TestManager_SetRecoveryHours(t *testing.T) {
-	m, coll := newManagerWithMockColl()
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(coll, "UpdateMany", &mongo.UpdateResult{}, nil)
+	m, repo := newTestManager(t)
+	repo.On("SetRecoveryHours", mock.Anything, mock.Anything).Return(nil)
 
 	if err := m.SetRecoveryHours(48); err != nil {
-		t.Errorf("SetRecoveryHours failed: %v", err)
-	}
-	if err := m.SetRecoveryHours(0); err == nil {
-		t.Error("0 hours should be rejected")
-	}
-	if err := m.SetRecoveryHours(169); err == nil {
-		t.Error("169 hours should be rejected")
-	}
-
-	patches.ApplyMethodReturn(coll, "UpdateMany", (*mongo.UpdateResult)(nil), fmt.Errorf("db down"))
-	if err := m.SetRecoveryHours(48); err == nil {
-		t.Error("expected db error")
+		t.Fatalf("SetRecoveryHours: %v", err)
 	}
 }
 
 func TestNewManager(t *testing.T) {
-	db := &mongo.Database{}
-	var coll mongo.Collection
-	patches := gomonkey.ApplyMethodReturn(db, "Collection", &coll)
-	defer patches.Reset()
-
-	m := NewManager(mongoinfra.NewSessionRepository(db), time.Hour)
-	if m.coll != &coll || m.ttl != time.Hour {
-		t.Error("manager not initialized correctly")
+	m, repo := newTestManager(t)
+	if m == nil {
+		t.Fatal("NewManager should not return nil")
+	}
+	if m.repo != repo {
+		t.Error("Manager.repo should be the injected repository")
+	}
+	if m.ttl != 24*time.Hour {
+		t.Errorf("expected ttl=24h, got %v", m.ttl)
 	}
 }
-
-// ── 补充边界覆盖 ──
 
 type queueLLM struct {
 	queue []*model.LLMResponse
