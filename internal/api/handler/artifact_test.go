@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/mock"
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
-	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
-	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	mockartifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact/mocks"
+	mockwm "github.com/luoxiaojun1992/data-agent/internal/logic/workspace/mocks"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -44,8 +44,8 @@ func newMultipartCtx(filename, fileContent, sessionID, persistent string) (*gin.
 // ── NewArtifactHandler ──
 
 func TestNewArtifactHandler(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 	if h == nil {
 		t.Fatal("NewArtifactHandler returned nil")
@@ -61,8 +61,8 @@ func TestNewArtifactHandler(t *testing.T) {
 // ── Upload ──
 
 func TestUpload_Success(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	now := time.Now()
@@ -77,8 +77,7 @@ func TestUpload_Success(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Upload", mockArt, nil)
-	defer patches.Reset()
+	storage.On("Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockArt, nil)
 
 	c, w := newMultipartCtx("test.txt", "Hello, World!", "sess-1", "true")
 	c.Set("user_id", "user-1")
@@ -93,8 +92,8 @@ func TestUpload_Success(t *testing.T) {
 }
 
 func TestUpload_NoFile(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	c, w := newGinContext("POST", "/artifacts", "")
@@ -107,12 +106,11 @@ func TestUpload_NoFile(t *testing.T) {
 }
 
 func TestUpload_StorageError(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Upload", nil, fmt.Errorf("storage full"))
-	defer patches.Reset()
+	storage.On("Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("storage full"))
 
 	c, w := newMultipartCtx("bigfile.bin", "content", "sess-1", "")
 	c.Set("user_id", "user-1")
@@ -124,8 +122,8 @@ func TestUpload_StorageError(t *testing.T) {
 }
 
 func TestUpload_WithoutSessionID(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	mockArt := &artifact.Artifact{
@@ -134,8 +132,7 @@ func TestUpload_WithoutSessionID(t *testing.T) {
 		MimeType: "text/plain",
 	}
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Upload", mockArt, nil)
-	defer patches.Reset()
+	storage.On("Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockArt, nil)
 
 	// File upload without optional fields
 	c, w := newMultipartCtx("test.txt", "data", "", "")
@@ -150,8 +147,8 @@ func TestUpload_WithoutSessionID(t *testing.T) {
 // ── Download ──
 
 func TestDownload_Success(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	mockArt := &artifact.Artifact{
@@ -161,9 +158,8 @@ func TestDownload_Success(t *testing.T) {
 	}
 	fileData := []byte("PDF content")
 
-	patches := gomonkey.ApplyMethodReturn(storage, "FindByID", mockArt, nil)
-	patches.ApplyMethodReturn(storage, "Download", fileData, nil)
-	defer patches.Reset()
+	storage.On("FindByID", mock.Anything).Return(mockArt, nil)
+	storage.On("Download", mock.Anything).Return(fileData, nil)
 
 	c, w := newGinContext("GET", "/artifacts/artifact_1", "")
 	c.Params = gin.Params{{Key: "id", Value: "artifact_1"}}
@@ -182,12 +178,11 @@ func TestDownload_Success(t *testing.T) {
 }
 
 func TestDownload_NotFound(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "FindByID", (*artifact.Artifact)(nil), fmt.Errorf("not found"))
-	defer patches.Reset()
+	storage.On("FindByID", mock.Anything).Return((*artifact.Artifact)(nil), fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/artifacts/missing", "")
 	c.Params = gin.Params{{Key: "id", Value: "missing"}}
@@ -201,12 +196,11 @@ func TestDownload_NotFound(t *testing.T) {
 // ── Delete ──
 
 func TestDelete_Success(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Delete", nil)
-	defer patches.Reset()
+	storage.On("Delete", mock.Anything).Return(nil)
 
 	c, w := newGinContext("DELETE", "/artifacts/artifact_1", "")
 	c.Params = gin.Params{{Key: "id", Value: "artifact_1"}}
@@ -221,12 +215,11 @@ func TestDelete_Success(t *testing.T) {
 }
 
 func TestDelete_StorageError(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Delete", fmt.Errorf("seaweedfs error"))
-	defer patches.Reset()
+	storage.On("Delete", mock.Anything).Return(fmt.Errorf("seaweedfs error"))
 
 	c, w := newGinContext("DELETE", "/artifacts/artifact_1", "")
 	c.Params = gin.Params{{Key: "id", Value: "artifact_1"}}
@@ -240,8 +233,8 @@ func TestDelete_StorageError(t *testing.T) {
 // ── ListSession ──
 
 func TestListSession_Success(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	arts := []*artifact.Artifact{
@@ -249,8 +242,7 @@ func TestListSession_Success(t *testing.T) {
 		{ID: "a2", Name: "file2.txt"},
 	}
 
-	patches := gomonkey.ApplyMethodReturn(storage, "ListBySession", arts, nil)
-	defer patches.Reset()
+	storage.On("ListBySession", mock.Anything).Return(arts, nil)
 
 	c, w := newGinContext("GET", "/artifacts?session_id=sess-1", "")
 	h.ListSession(c)
@@ -264,8 +256,8 @@ func TestListSession_Success(t *testing.T) {
 }
 
 func TestListSession_MissingSessionID(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	c, w := newGinContext("GET", "/artifacts", "")
@@ -277,12 +269,11 @@ func TestListSession_MissingSessionID(t *testing.T) {
 }
 
 func TestListSession_StorageError(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "ListBySession", nil, fmt.Errorf("db error"))
-	defer patches.Reset()
+	storage.On("ListBySession", mock.Anything).Return(nil, fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/artifacts?session_id=sess-1", "")
 	h.ListSession(c)
@@ -293,12 +284,11 @@ func TestListSession_StorageError(t *testing.T) {
 }
 
 func TestListSession_Empty(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "ListBySession", []*artifact.Artifact{}, nil)
-	defer patches.Reset()
+	storage.On("ListBySession", mock.Anything).Return([]*artifact.Artifact{}, nil)
 
 	c, w := newGinContext("GET", "/artifacts?session_id=sess-empty", "")
 	h.ListSession(c)
@@ -311,14 +301,13 @@ func TestListSession_Empty(t *testing.T) {
 // ── ListWorkspace ──
 
 func TestListWorkspace_Success(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	files := []string{"report.xlsx", "data.csv"}
 
-	patches := gomonkey.ApplyMethodReturn(wm, "List", files, nil)
-	defer patches.Reset()
+	wm.On("List", mock.Anything, mock.Anything).Return(files, nil)
 
 	c, w := newGinContext("GET", "/workspace/sess-1", "")
 	c.Set("user_id", "user-1")
@@ -334,12 +323,11 @@ func TestListWorkspace_Success(t *testing.T) {
 }
 
 func TestListWorkspace_Error(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(wm, "List", nil, fmt.Errorf("workspace error"))
-	defer patches.Reset()
+	wm.On("List", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("workspace error"))
 
 	c, w := newGinContext("GET", "/workspace/sess-1", "")
 	c.Set("user_id", "user-1")
@@ -352,12 +340,11 @@ func TestListWorkspace_Error(t *testing.T) {
 }
 
 func TestListWorkspace_Empty(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(wm, "List", []string{}, nil)
-	defer patches.Reset()
+	wm.On("List", mock.Anything, mock.Anything).Return([]string{}, nil)
 
 	c, w := newGinContext("GET", "/workspace/sess-1", "")
 	c.Set("user_id", "user-1")
@@ -372,14 +359,13 @@ func TestListWorkspace_Empty(t *testing.T) {
 // ── ReadWorkspaceFile ──
 
 func TestReadWorkspaceFile_Success(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	data := []byte("workspace file content")
 
-	patches := gomonkey.ApplyMethodReturn(wm, "ReadFile", data, nil)
-	defer patches.Reset()
+	wm.On("ReadFile", mock.Anything, mock.Anything, mock.Anything).Return(data, nil)
 
 	c, w := newGinContext("GET", "/workspace/sess-1/read/file.txt", "")
 	c.Set("user_id", "user-1")
@@ -398,12 +384,11 @@ func TestReadWorkspaceFile_Success(t *testing.T) {
 }
 
 func TestReadWorkspaceFile_NotFound(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(wm, "ReadFile", nil, fmt.Errorf("not found"))
-	defer patches.Reset()
+	wm.On("ReadFile", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/workspace/sess-1/read/missing.txt", "")
 	c.Set("user_id", "user-1")
@@ -421,12 +406,11 @@ func TestReadWorkspaceFile_NotFound(t *testing.T) {
 // ── WriteWorkspaceFile ──
 
 func TestWriteWorkspaceFile_Success(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(wm, "WriteFile", nil)
-	defer patches.Reset()
+	wm.On("WriteFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	body := "new file data"
 	c, w := newGinContext("POST", "/workspace/sess-1/write/newfile.txt", body)
@@ -446,12 +430,11 @@ func TestWriteWorkspaceFile_Success(t *testing.T) {
 }
 
 func TestWriteWorkspaceFile_Error(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(wm, "WriteFile", fmt.Errorf("disk full"))
-	defer patches.Reset()
+	wm.On("WriteFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("disk full"))
 
 	c, w := newGinContext("POST", "/workspace/sess-1/write/file.txt", "data")
 	c.Set("user_id", "user-1")
@@ -467,12 +450,11 @@ func TestWriteWorkspaceFile_Error(t *testing.T) {
 }
 
 func TestWriteWorkspaceFile_EmptyBody(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(wm, "WriteFile", nil)
-	defer patches.Reset()
+	wm.On("WriteFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	c, w := newGinContext("POST", "/workspace/sess-1/write/empty.txt", "")
 	c.Set("user_id", "user-1")
@@ -490,8 +472,8 @@ func TestWriteWorkspaceFile_EmptyBody(t *testing.T) {
 // ── Upload Missing File Field ──
 
 func TestUpload_EmptyContentType(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	mockArt := &artifact.Artifact{
@@ -503,8 +485,7 @@ func TestUpload_EmptyContentType(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Upload", mockArt, nil)
-	defer patches.Reset()
+	storage.On("Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockArt, nil)
 
 	// Build multipart form where file part has filename but NO Content-Type
 	body := &bytes.Buffer{}
@@ -528,8 +509,8 @@ func TestUpload_EmptyContentType(t *testing.T) {
 }
 
 func TestUpload_MissingFileField(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
 	body := &bytes.Buffer{}
@@ -553,20 +534,22 @@ func TestUpload_MissingFileField(t *testing.T) {
 
 // ── WriteWorkspaceFile ReadError ──
 
+type errorBodyReader struct{}
+
+func (errorBodyReader) Read(p []byte) (int, error) { return 0, fmt.Errorf("read error") }
+
 func TestWriteWorkspaceFile_ReadError(t *testing.T) {
-	storage := &artifact_svc.Storage{}
-	wm := &workspace.Manager{}
+	storage := mockartifact_svc.NewStorageService(t)
+	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyFuncReturn(io.ReadAll, []byte(nil), fmt.Errorf("read error"))
-	defer patches.Reset()
-
-	c, w := newGinContext("POST", "/workspace/sess-1/write/file.txt", "data")
+	c, w := newGinContext("POST", "/workspace/sess-1/write/file.txt", "")
 	c.Set("user_id", "user-1")
 	c.Params = gin.Params{
 		{Key: "session_id", Value: "sess-1"},
 		{Key: "filename", Value: "file.txt"},
 	}
+	c.Request.Body = io.NopCloser(errorBodyReader{})
 	h.WriteWorkspaceFile(c)
 
 	if w.Code != http.StatusBadRequest {
