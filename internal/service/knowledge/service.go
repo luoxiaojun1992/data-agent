@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"time"
 
@@ -141,4 +142,42 @@ type SearchResult struct {
 
 func genShortID() string {
 	return fmt.Sprintf("%x", time.Now().UnixNano())[:12]
+}
+
+func rrfFusion(list1, list2 []knowledge.SearchResult, topK int, k float64) []knowledge.SearchResult {
+	scores := make(map[string]float64)
+	results := make(map[string]knowledge.SearchResult)
+
+	for i, r := range list1 {
+		score := 1.0 / (k + float64(i+1))
+		scores[r.ChunkID] += score
+		results[r.ChunkID] = r
+	}
+	for i, r := range list2 {
+		score := 1.0 / (k + float64(i+1))
+		scores[r.ChunkID] += score
+		if _, exists := results[r.ChunkID]; !exists {
+			results[r.ChunkID] = r
+		}
+	}
+
+	type scored struct {
+		id    string
+		score float64
+	}
+	var sorted []scored
+	for id, score := range scores {
+		sorted = append(sorted, scored{id, score})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].score > sorted[j].score
+	})
+
+	var fused []knowledge.SearchResult
+	for i := 0; i < int(math.Min(float64(topK), float64(len(sorted)))); i++ {
+		r := results[sorted[i].id]
+		r.Score = sorted[i].score
+		fused = append(fused, r)
+	}
+	return fused
 }
