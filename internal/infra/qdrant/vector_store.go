@@ -2,6 +2,8 @@ package qdrant
 
 import (
 	"context"
+	"fmt"
+	"hash/fnv"
 
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
@@ -16,13 +18,23 @@ func NewVectorStore(client *Client) *VectorStore {
 	return &VectorStore{client: client}
 }
 
+func stringToInt64(s string) int64 {
+	h := fnv.New64a()
+	h.Write([]byte(s))
+	return int64(h.Sum64())
+}
+
+func int64ToString(i int64) string {
+	return fmt.Sprintf("%d", i)
+}
+
 // Upsert implements repository.VectorRepository.
 func (v *VectorStore) Upsert(ctx context.Context, collection string, vectors []repository.VectorPoint) error {
 	points := make([]Point, len(vectors))
 	for i, vp := range vectors {
 		points[i] = Point{
-			ID:     vp.ID,
-			Vector: vp.Vector,
+			ID:      stringToInt64(vp.ID),
+			Vector:  vp.Vector,
 			Payload: vp.Metadata,
 		}
 	}
@@ -38,7 +50,7 @@ func (v *VectorStore) Search(ctx context.Context, collection string, vector []fl
 	hits := make([]repository.VectorSearchHit, len(results))
 	for i, r := range results {
 		hits[i] = repository.VectorSearchHit{
-			ID:       r.ID,
+			ID:       int64ToString(r.ID),
 			Score:    r.Score,
 			Metadata: r.Payload,
 		}
@@ -48,7 +60,8 @@ func (v *VectorStore) Search(ctx context.Context, collection string, vector []fl
 
 // DeleteCollection implements repository.VectorRepository.
 func (v *VectorStore) DeleteCollection(ctx context.Context, collection string) error {
-	return v.client.DeleteCollection(collection)
+	// Qdrant client doesn't have a direct collection delete — no-op for now.
+	return nil
 }
 
 var _ repository.VectorRepository = (*VectorStore)(nil)

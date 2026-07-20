@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -170,8 +167,3 @@ func (s *Service) UploadFile(userID, title, fileName, fileType string, sizeBytes
 func genShortID() string {
 	return fmt.Sprintf("%x", time.Now().UnixNano())[:12]
 }
-
-// Keep unused imports for slice operations
-var _ = strings.Join
-var _ = sort.Float64s
-var _ = math.Abs

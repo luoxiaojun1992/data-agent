@@ -11,8 +11,8 @@ import (
 
 // Storage combines file storage with MongoDB metadata.
 type Storage struct {
-	files  repository.FileRepository
-	meta   repository.ArtifactRepository
+	files repository.FileRepository
+	meta  repository.ArtifactRepository
 }
 
 // NewStorage creates a new artifact storage adapter.
@@ -41,17 +41,25 @@ func (s *Storage) Upload(userID, sessionID, taskID, name, mimeType string, reade
 	return art, nil
 }
 
-// Download retrieves a file from storage.
-func (s *Storage) Download(storagePath string) ([]byte, error) {
-	return s.files.Download(context.Background(), storagePath)
+// Download retrieves an artifact by its ID (backward compat).
+func (s *Storage) Download(id string) ([]byte, error) {
+	art, err := s.meta.FindByID(context.Background(), id)
+	if err != nil {
+		return nil, err
+	}
+	return s.files.Download(context.Background(), art.StoragePath)
 }
 
-// Delete removes an artifact from storage and metadata.
-func (s *Storage) Delete(id, storagePath string) error {
+// Delete removes an artifact by its ID (backward compat).
+func (s *Storage) Delete(id string) error {
+	art, err := s.meta.FindByID(context.Background(), id)
+	if err != nil {
+		return fmt.Errorf("find artifact: %w", err)
+	}
 	if err := s.meta.Delete(context.Background(), id); err != nil {
 		return fmt.Errorf("delete metadata: %w", err)
 	}
-	_ = s.files.Delete(context.Background(), storagePath)
+	_ = s.files.Delete(context.Background(), art.StoragePath)
 	return nil
 }
 

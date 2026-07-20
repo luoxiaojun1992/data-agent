@@ -386,7 +386,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	}
 	deps.taskStream = taskStream
 
-	deps.taskService = task_svc.NewService(mongoClient.DB(), taskStream)
+	deps.taskService = task_svc.NewService(mongoinfra.NewTaskRepository(mongoClient.DB()), taskStream)
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService)
 	deps.agentService.WithTaskService(deps.taskService)
 
@@ -613,7 +613,6 @@ func profileHandler(authHandler *handler.AuthHandler) gin.HandlerFunc {
 
 // ===================== User Management =====================
 
-}
 
 // defaultModel is the fallback model name for enhance/embedding.
 const defaultModel = "gpt-4o"
@@ -885,7 +884,6 @@ func dashboardHandler(taskService *task_svc.Service, taskHandler *handler.TaskHa
 	return func(c *gin.Context) { handleDashboard(c, taskService, taskHandler, sessionManager, kbService) }
 }
 
-}
 
 func dashboardTrendsHandler(taskService *task_svc.Service, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -1013,3 +1011,123 @@ func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
 }
 
 // doEnhanceCall calls the LLM to enhance a prompt and returns the result with token usage.
+
+// === Restored setup functions (migrated handlers delegate here) ===
+
+func setupIMBind(router *gin.Engine, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
+	imBindGroup := router.Group("/api/v1/im/bind")
+	imBindGroup.Use(jwtManager.AuthMiddleware())
+	imBindGroup.GET("", getImBindHandler(mongoClient))
+	imBindGroup.PUT("", updateImBindHandler(mongoClient))
+}
+
+func setupHermesProxy(router *gin.Engine, logger *zap.Logger) {
+	hermesURL := os.Getenv("HERMES_URL")
+	if hermesURL != "" {
+		router.Any("/api/v1/hermes/*path", hermesProxyHandler(hermesURL))
+		logger.Info("Hermes proxy enabled", zap.String("hermes_url", hermesURL))
+	}
+}
+
+func setupMemorySearch(api *gin.RouterGroup, memSvc memory.Service) {
+	api.GET("/memory/search", middleware.RequirePermission(model.PermUserManage), func(c *gin.Context) {
+		handleMemorySearch(c, memSvc)
+	})
+}
+
+func handleMemorySearch(c *gin.Context, memSvc memory.Service) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' required"})
+		return
+	}
+	userID := c.Query("user_id")
+	if userID == "" {
+		uid, _ := c.Get("user_id")
+		userID, _ = uid.(string)
+	}
+
+	results, err := memSvc.SearchMemory(c.Request.Context(), &memory.SearchRequest{
+		Query:   query,
+		UserID:  userID,
+		AppName: appName,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var texts []string
+	for _, m := range results.Memories {
+		if m.Content != nil {
+			for _, p := range m.Content.Parts {
+				if p != nil {
+					texts = append(texts, p.Text)
+				}
+			}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"results": texts, "count": len(texts)})
+}
+
+func setupAdminRoutes(admin *gin.RouterGroup, authHandler *handler.AuthHandler) {
+	admin.GET("/dashboard", middleware.RequirePermission(model.PermSystemConfig), adminDashboardHandler)
+
+	if authHandler != nil {
+		admin.POST("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.CreateInvite)
+		admin.GET("/invites", middleware.RequirePermission(model.PermUserManage), authHandler.ListInvites)
+		admin.DELETE("/invites/:id", middleware.RequirePermission(model.PermUserManage), authHandler.RevokeInvite)
+		admin.PUT("/invites/hmac-secret", middleware.RequirePermission(model.PermSystemConfig), authHandler.UpdateHMACSecret)
+	}
+}
+
+func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
+	chatRoutes.POST("/enhance", makeEnhanceHandler(deps))
+}
+
+func makeEnhanceHandler(deps *serverDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.Prompt == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq})
+			return
+		}
+
+		ctx := c.Request.Context()
+		prompt := req.Prompt
+		modelName := getEnvOrDefault("LLM_MODEL", "default")
+
+		// Redis cache lookup.
+		if deps.llmCache != nil {
+			if cached, ok := deps.llmCache.GetEnhance(ctx, modelName, prompt); ok {
+				c.JSON(http.StatusOK, gin.H{"enhanced": cached})
+				return
+			}
+		}
+
+		enhanced := enhanceViaADK(ctx, deps, prompt)
+		if deps.llmCache != nil {
+			deps.llmCache.SetEnhance(ctx, modelName, prompt, enhanced)
+		}
+		recordEnhanceTokens(ctx, deps, prompt, enhanced)
+		c.JSON(http.StatusOK, gin.H{"enhanced": enhanced})
+	}
+}
+
+func setupAuthRoutes(authGroup *gin.RouterGroup, authHandler *handler.AuthHandler) {
+	if authHandler != nil {
+		authGroup.POST("/login", authHandler.Login)
+		authGroup.POST(consts.PathRegister, authHandler.Register)
+		authGroup.GET(consts.PathRegister, authHandler.VerifyInvite)
+		authGroup.POST("/complete-registration", authHandler.CompleteRegistration)
+	} else {
+		authGroup.POST("/login", dbUnavailableHandler)
+		authGroup.POST(consts.PathRegister, dbUnavailableHandler)
+	}
+}
+
+func setupAuthProtected(api *gin.RouterGroup, authHandler *handler.AuthHandler) {
+	api.POST("/auth/refresh", refreshTokenHandler(authHandler))
+	api.GET("/auth/profile", profileHandler(authHandler))
+}

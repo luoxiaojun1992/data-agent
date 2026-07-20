@@ -76,7 +76,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 	user := &model.User{
 		Username: req.Username,
 		Role:     model.UserRole(req.Role),
-		Status:   model.UserStatusActive,
+		Status:   model.StatusEnabled,
 	}
 	if err := h.repo.Create(c.Request.Context(), user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建用户失败"})
@@ -108,9 +108,9 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
-	newStatus := model.UserStatusActive
-	if user.Status == model.UserStatusActive {
-		newStatus = model.UserStatusDisabled
+	newStatus := model.StatusEnabled
+	if user.Status == model.StatusEnabled {
+		newStatus = model.StatusDisabled
 	}
 	if err := h.repo.UpdateStatus(c.Request.Context(), c.Param("id"), newStatus); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新状态失败"})
