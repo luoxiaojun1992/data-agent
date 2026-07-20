@@ -5,7 +5,6 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )

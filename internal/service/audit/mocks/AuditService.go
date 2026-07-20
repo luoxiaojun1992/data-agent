@@ -3,10 +3,7 @@
 package mocks
 
 import (
-	context "context"
-
 	audit "github.com/luoxiaojun1992/data-agent/internal/service/audit"
-
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -15,9 +12,9 @@ type AuditService struct {
 	mock.Mock
 }
 
-// List provides a mock function with given fields: ctx, p
-func (_m *AuditService) List(ctx context.Context, p audit.ListParams) (*audit.ListResult, error) {
-	ret := _m.Called(ctx, p)
+// List provides a mock function with given fields: p
+func (_m *AuditService) List(p audit.ListParams) (*audit.ListResult, error) {
+	ret := _m.Called(p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for List")
@@ -25,19 +22,19 @@ func (_m *AuditService) List(ctx context.Context, p audit.ListParams) (*audit.Li
 
 	var r0 *audit.ListResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, audit.ListParams) (*audit.ListResult, error)); ok {
-		return rf(ctx, p)
+	if rf, ok := ret.Get(0).(func(audit.ListParams) (*audit.ListResult, error)); ok {
+		return rf(p)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, audit.ListParams) *audit.ListResult); ok {
-		r0 = rf(ctx, p)
+	if rf, ok := ret.Get(0).(func(audit.ListParams) *audit.ListResult); ok {
+		r0 = rf(p)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*audit.ListResult)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, audit.ListParams) error); ok {
-		r1 = rf(ctx, p)
+	if rf, ok := ret.Get(1).(func(audit.ListParams) error); ok {
+		r1 = rf(p)
 	} else {
 		r1 = ret.Error(1)
 	}

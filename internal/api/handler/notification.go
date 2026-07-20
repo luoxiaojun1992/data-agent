@@ -10,11 +10,11 @@ import (
 
 // NotificationHandler provides HTTP handlers for notifications.
 type NotificationHandler struct {
-	svc *notifsvc.Service
+	svc notifsvc.NotificationService
 }
 
 // NewNotificationHandler creates a notification handler.
-func NewNotificationHandler(svc *notifsvc.Service) *NotificationHandler {
+func NewNotificationHandler(svc notifsvc.NotificationService) *NotificationHandler {
 	return &NotificationHandler{svc: svc}
 }
 

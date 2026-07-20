@@ -9,11 +9,11 @@ import (
 
 // APIReviewHandler provides HTTP handlers for API review.
 type APIReviewHandler struct {
-	svc *apireview.Service
+	svc apireview.APIReviewService
 }
 
 // NewAPIReviewHandler creates an API review handler.
-func NewAPIReviewHandler(svc *apireview.Service) *APIReviewHandler {
+func NewAPIReviewHandler(svc apireview.APIReviewService) *APIReviewHandler {
 	return &APIReviewHandler{svc: svc}
 }
 

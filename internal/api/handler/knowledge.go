@@ -10,11 +10,11 @@ import (
 
 // KnowledgeHandler provides HTTP handlers for knowledge base operations.
 type KnowledgeHandler struct {
-	svc *knowledge.Service
+	svc knowledge.KnowledgeService
 }
 
 // NewKnowledgeHandler creates a knowledge base handler.
-func NewKnowledgeHandler(svc *knowledge.Service) *KnowledgeHandler {
+func NewKnowledgeHandler(svc knowledge.KnowledgeService) *KnowledgeHandler {
 	return &KnowledgeHandler{svc: svc}
 }
 

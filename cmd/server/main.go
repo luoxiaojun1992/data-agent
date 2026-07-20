@@ -568,10 +568,6 @@ func setupIMWebhook(router *gin.Engine) {
 
 // ===================== IM Bind =====================
 
-		p.ServeHTTP(c.Writer, c.Request)
-	}
-}
-
 // ===================== Auth Routes =====================
 
 func setupAuthRoutes(authGroup *gin.RouterGroup, authHandler *handler.AuthHandler) {

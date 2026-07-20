@@ -9,11 +9,11 @@ import (
 
 // TaskHandler provides HTTP handlers for task operations.
 type TaskHandler struct {
-	svc *task.Service
+	svc task.TaskService
 }
 
 // NewTaskHandler creates a task handler.
-func NewTaskHandler(svc *task.Service) *TaskHandler {
+func NewTaskHandler(svc task.TaskService) *TaskHandler {
 	return &TaskHandler{svc: svc}
 }
 
