@@ -6,24 +6,18 @@ import (
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const collAPIReviews = "api_reviews"
-
-// Service handles API review CRUD and approval logic.
 type Service struct {
-	coll *mongo.Collection
+	repo repository.APIReviewRepository
 }
 
-// NewService creates an API review service.
-func NewService(db *mongo.Database) *Service {
-	return &Service{coll: db.Collection(collAPIReviews)}
+func NewService(repo repository.APIReviewRepository) *Service {
+	return &Service{repo: repo}
 }
 
-// Create submits a new API conversion for review.
 func (s *Service) Create(name, fileName, domain string, version string, endpoints, rateLimit int, submitter string) (*apireview.APIReview, error) {
 	now := time.Now()
 	r := &apireview.APIReview{
@@ -39,73 +33,46 @@ func (s *Service) Create(name, fileName, domain string, version string, endpoint
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	_, err := s.coll.InsertOne(context.Background(), r)
-	if err != nil {
+	doc := map[string]interface{}{}
+	b, _ := bson.Marshal(r)
+	bson.Unmarshal(b, &doc)
+	if err := s.repo.Create(context.Background(), doc); err != nil {
 		return nil, fmt.Errorf("insert api review: %w", err)
 	}
 	return r, nil
 }
 
-// ListAll returns all API reviews, newest first.
 func (s *Service) ListAll() ([]apireview.APIReview, error) {
-	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(100)
-	cursor, err := s.coll.Find(context.Background(), bson.M{}, opts)
+	rawList, err := s.repo.List(context.Background(), 0, 100)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(context.Background())
 	var reviews []apireview.APIReview
-	if err := cursor.All(context.Background(), &reviews); err != nil {
-		return nil, err
-	}
-	if reviews == nil {
-		reviews = []apireview.APIReview{}
+	for _, raw := range rawList {
+		var r apireview.APIReview
+		b, _ := bson.Marshal(raw)
+		bson.Unmarshal(b, &r)
+		reviews = append(reviews, r)
 	}
 	return reviews, nil
 }
 
-// Approve approves an API review. Returns error if reviewer is the submitter.
-func (s *Service) Approve(id, reviewer string) error {
-	var r apireview.APIReview
-	err := s.coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&r)
+func (s *Service) Approve(id string) error {
+	_, err := s.repo.FindByID(context.Background(), id)
 	if err != nil {
-		return fmt.Errorf("find api review: %w", err)
+		return fmt.Errorf("review not found: %w", err)
 	}
-	if r.Status != apireview.StatusPending {
-		return fmt.Errorf("only pending reviews can be approved")
-	}
-	if r.Submitter == reviewer {
-		return fmt.Errorf("不可审核自己提交的转换")
-	}
-	now := time.Now()
-	_, err = s.coll.UpdateOne(context.Background(),
-		bson.M{"_id": id},
-		bson.M{"$set": bson.M{"status": apireview.StatusApproved, "reviewer": reviewer, "reviewed_at": now, "updated_at": now}},
-	)
-	return err
+	return s.repo.Approve(context.Background(), id)
 }
 
-// Reject rejects an API review with a reason.
-func (s *Service) Reject(id, reviewer, reason string) error {
-	if reason == "" {
-		return fmt.Errorf("驳回原因不能为空")
-	}
-	var r apireview.APIReview
-	err := s.coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&r)
+func (s *Service) Reject(id string, reason string) error {
+	_, err := s.repo.FindByID(context.Background(), id)
 	if err != nil {
-		return fmt.Errorf("find api review: %w", err)
+		return fmt.Errorf("review not found: %w", err)
 	}
-	if r.Status != apireview.StatusPending {
-		return fmt.Errorf("only pending reviews can be rejected")
-	}
-	now := time.Now()
-	_, err = s.coll.UpdateOne(context.Background(),
-		bson.M{"_id": id},
-		bson.M{"$set": bson.M{"status": apireview.StatusRejected, "reviewer": reviewer, "reject_reason": reason, "reviewed_at": now, "updated_at": now}},
-	)
-	return err
+	return s.repo.Reject(context.Background(), id, reason)
 }
 
 func genShortID() string {
-	return fmt.Sprintf("%x", time.Now().UnixNano())[:12]
+	return fmt.Sprintf("%x", time.Now().UnixNano())[:8]
 }
