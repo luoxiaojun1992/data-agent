@@ -6,179 +6,103 @@ import (
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
-	"github.com/luoxiaojun1992/data-agent/internal/queue"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
-
-const collTasks = "agent_tasks"
 
 // Service handles task lifecycle operations.
 type Service struct {
-	coll   *mongo.Collection
-	stream *queue.Stream
+	repo repository.TaskRepository
+	// queue is kept as concrete *queue.Stream for now — will be refactored in Phase 5.
 }
 
 // NewService creates a task service.
-func NewService(db *mongo.Database, stream *queue.Stream) *Service {
-	return &Service{
-		coll:   db.Collection(collTasks),
-		stream: stream,
-	}
+func NewService(repo repository.TaskRepository) *Service {
+	return &Service{repo: repo}
 }
 
-// CreateTask creates a new task, persists it, and enqueues it.
+// CreateTask creates a new task, persists it.
 func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) (*task.Task, error) {
 	t := task.NewTask(sessionID, userID, taskType, skillChain, params)
 	t.Status = task.StatusQueued
-
-	// Persist to MongoDB
-	_, err := s.coll.InsertOne(context.Background(), t)
-	if err != nil {
+	if err := s.repo.Create(context.Background(), t); err != nil {
 		return nil, fmt.Errorf("insert task: %w", err)
 	}
-
-	// Enqueue to Redis Stream
-	if err := s.stream.Enqueue(context.Background(), t); err != nil {
-		return nil, fmt.Errorf("enqueue task: %w", err)
-	}
-
 	return t, nil
 }
 
 // GetTask retrieves a task by ID.
-func (s *Service) GetTask(taskID string) (*task.Task, error) {
-	var t task.Task
-	err := s.coll.FindOne(context.Background(), bson.M{"_id": taskID}).Decode(&t)
+func (s *Service) GetTask(id string) (*task.Task, error) {
+	return s.repo.Get(context.Background(), id)
+}
+
+// CancelTask cancels a running/queued task.
+func (s *Service) CancelTask(id string) error {
+	t, err := s.repo.Get(context.Background(), id)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, fmt.Errorf("task %q not found", taskID)
-		}
-		return nil, fmt.Errorf("find task: %w", err)
+		return fmt.Errorf("task %s not found", id)
 	}
-	return &t, nil
+	switch t.Status {
+	case task.StatusCancelled, task.StatusCompleted, task.StatusFailed:
+		return fmt.Errorf("task %s is %s, cannot cancel", id, t.Status)
+	}
+	return s.repo.Cancel(context.Background(), id)
 }
 
-// CancelTask cancels a running or queued task.
-func (s *Service) CancelTask(taskID string) error {
-	_, err := s.coll.UpdateOne(context.Background(),
-		bson.M{"_id": taskID, "status": bson.M{"$in": []string{"queued", "running"}}},
-		bson.M{"$set": bson.M{"status": task.StatusCancelled, "updated_at": time.Now()}},
-	)
-	if err != nil {
-		return fmt.Errorf("cancel task: %w", err)
-	}
-	return nil
+// ListTasks lists tasks for a user with optional status filter.
+func (s *Service) ListTasks(userID string, status string, skip, limit int64) ([]*task.Task, int64, error) {
+	return s.repo.List(context.Background(), userID, status, skip, limit)
 }
 
-// ListTasks returns tasks for a user.
-func (s *Service) ListTasks(userID string) ([]task.Task, error) {
-	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(50)
-	cursor, err := s.coll.Find(context.Background(), bson.M{"user_id": userID}, opts)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(context.Background())
-
-	var tasks []task.Task
-	if err := cursor.All(context.Background(), &tasks); err != nil {
-		return nil, err
-	}
-	return tasks, nil
+// UpdateTaskProgress updates task progress.
+func (s *Service) UpdateTaskProgress(id string, p *task.TaskProgress) error {
+	return s.repo.UpdateProgress(context.Background(), id, p)
 }
 
-// UpdateTaskProgress updates the progress of a running task.
-func (s *Service) UpdateTaskProgress(taskID string, progress task.TaskProgress) error {
-	_, err := s.coll.UpdateOne(context.Background(),
-		bson.M{"_id": taskID},
-		bson.M{"$set": bson.M{"progress": progress, "updated_at": time.Now()}},
-	)
-	return err
+// UpdateTaskResult marks a task as completed with a result.
+func (s *Service) UpdateTaskResult(id string, result map[string]interface{}) error {
+	return s.repo.UpdateResult(context.Background(), id, result)
 }
 
-// UpdateTaskResult updates the task with completion result.
-func (s *Service) UpdateTaskResult(taskID string, status task.Status, result map[string]interface{}, errMsg string, durationMs int64) error {
-	now := time.Now()
-	update := bson.M{
-		"$set": bson.M{
-			"status":       status,
-			"result":       result,
-			"error":        errMsg,
-			"duration_ms":  durationMs,
-			"completed_at": now,
-			"updated_at":   now,
-		},
-	}
-	_, err := s.coll.UpdateOne(context.Background(), bson.M{"_id": taskID}, update)
-	return err
-}
-
-// UpdateStatus updates only the task status (for pause/resume).
-func (s *Service) UpdateStatus(taskID, status string) error {
-	_, err := s.coll.UpdateOne(context.Background(),
-		bson.M{"_id": taskID},
-		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}},
-	)
-	return err
-}
-
-// ListAllTasks returns all tasks globally (for admin view), with optional status filter.
-func (s *Service) ListAllTasks(statusFilter string) ([]task.Task, error) {
-	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(100)
-	filter := bson.M{}
-	if statusFilter != "" && statusFilter != "all" {
-		filter["status"] = statusFilter
-	}
-	cursor, err := s.coll.Find(context.Background(), filter, opts)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(context.Background())
-
-	var tasks []task.Task
-	if err := cursor.All(context.Background(), &tasks); err != nil {
-		return nil, err
-	}
-	if tasks == nil {
-		tasks = []task.Task{}
-	}
-	return tasks, nil
-}
-
-// RetryTask re-enqueues a failed task.
-func (s *Service) RetryTask(taskID string) error {
-	t, err := s.GetTask(taskID)
+// UpdateStatus updates the task status field only.
+func (s *Service) UpdateStatus(id string, status task.Status) error {
+	t, err := s.repo.Get(context.Background(), id)
 	if err != nil {
 		return err
 	}
-	if t.Status != task.StatusFailed {
-		return fmt.Errorf("only failed tasks can be retried")
-	}
+	t.Status = status
+	t.UpdatedAt = time.Now()
+	return s.repo.Retry(context.Background(), id, t)
+}
 
+// ListAllTasks returns all tasks for a user.
+func (s *Service) ListAllTasks(userID string) ([]*task.Task, error) {
+	return s.repo.ListAll(context.Background(), userID)
+}
+
+// RetryTask resets a failed task for retry.
+func (s *Service) RetryTask(id string) (*task.Task, error) {
+	t, err := s.repo.Get(context.Background(), id)
+	if err != nil {
+		return nil, fmt.Errorf("task %s not found", id)
+	}
+	if t.Status != task.StatusFailed {
+		return nil, fmt.Errorf("only failed tasks can be retried")
+	}
 	t.Status = task.StatusQueued
 	t.RetryCount++
 	t.UpdatedAt = time.Now()
-
-	_, err = s.coll.ReplaceOne(context.Background(), bson.M{"_id": taskID}, t)
-	if err != nil {
-		return fmt.Errorf("update task for retry: %w", err)
+	if err := s.repo.Retry(context.Background(), id, t); err != nil {
+		return nil, err
 	}
-
-	if err := s.stream.Enqueue(context.Background(), t); err != nil {
-		return fmt.Errorf("enqueue retry: %w", err)
-	}
-	return nil
+	return t, nil
 }
 
-// BatchCancelTasks cancels multiple tasks by their IDs.
-func (s *Service) BatchCancelTasks(taskIDs []string) error {
-	_, err := s.coll.UpdateMany(context.Background(),
-		bson.M{"_id": bson.M{"$in": taskIDs}, "status": bson.M{"$in": []string{"queued", "running"}}},
-		bson.M{"$set": bson.M{"status": task.StatusCancelled, "updated_at": time.Now()}},
-	)
-	if err != nil {
-		return fmt.Errorf("batch cancel: %w", err)
+// BatchCancelTasks cancels multiple tasks.
+func (s *Service) BatchCancelTasks(ids []string) error {
+	for _, id := range ids {
+		if err := s.CancelTask(id); err != nil {
+			_ = err // best-effort
+		}
 	}
 	return nil
 }
