@@ -1,6 +1,6 @@
 # 多模型路由与用途关联
 
-> **SPEC-052** | Status: 设计中 | Date: 2026-07-19 | Phase: P13
+> **SPEC-052** | Status: 已实现 | Date: 2026-07-19 | Phase: P13
 
 ## 1. 目标
 

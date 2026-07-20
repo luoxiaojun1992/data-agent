@@ -17,18 +17,40 @@ import (
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 )
 
-// ModelEntry describes one LLM model in the admin config.
+// ModelType distinguishes LLM and Embedding models.
+type ModelType string
+
+const (
+	ModelTypeLLM       ModelType = "llm"
+	ModelTypeEmbedding ModelType = "embedding"
+)
+
+// UseCase identifies the intended use for a model.
+type UseCase string
+
+const (
+	UseCaseChat       UseCase = "chat"
+	UseCaseTask       UseCase = "task"
+	UseCaseEnhance    UseCase = "enhance"
+	UseCaseCompaction UseCase = "compaction"
+	UseCaseKBChunking UseCase = "kb_chunking"
+	UseCaseEmbedding  UseCase = "embedding"
+)
+
+// ModelEntry describes one model in the admin config.
 type ModelEntry struct {
-	Name            string  `json:"name"`
-	BaseURL         string  `json:"base_url"`
-	APIKey          string  `json:"-"` // Vault encrypt
-	Instruction     string  `json:"instruction"`
-	Capability      string  `json:"capability"`
-	TokenMultiplier float64 `json:"token_multiplier"`
-	Temperature     float64 `json:"temperature"`
-	MaxTokens       int     `json:"max_tokens"`
-	IsDefault       bool    `json:"is_default"`
-	FallbackOrder   int     `json:"fallback_order"`
+	Name            string    `json:"name"`
+	BaseURL         string    `json:"base_url"`
+	APIKey          string    `json:"-"` // Vault encrypt
+	Type            ModelType `json:"type"`
+	Instruction     string    `json:"instruction"` // LLM only
+	Capability      string    `json:"capability"`  // LLM only
+	UseCases        []string  `json:"use_cases"`
+	TokenMultiplier float64   `json:"token_multiplier"`
+	Temperature     float64   `json:"temperature"` // LLM only
+	MaxTokens       int       `json:"max_tokens"`   // LLM only
+	IsDefault       bool      `json:"is_default"`
+	FallbackOrder   int       `json:"fallback_order"`
 }
 
 // EmbeddingEntry describes the embedding model config.
@@ -89,6 +111,8 @@ func (p *Provider) modelsFromEnv() []ModelEntry {
 		Name:            envOrDefault("LLM_MODEL", "mock-gpt-4o"),
 		BaseURL:         envOrDefault("LLM_BASE_URL", defaultBaseURL),
 		APIKey:          os.Getenv("LLM_API_KEY"),
+		Type:            ModelTypeLLM,
+		UseCases:        []string{"chat", "task", "enhance", "compaction"},
 		Instruction:     "", // uses DefaultInstruction in runtime
 		Capability:      "",
 		TokenMultiplier: 1.0,
@@ -104,6 +128,8 @@ func (p *Provider) modelsFromEnv() []ModelEntry {
 				Name:            primary.Name,
 				BaseURL:         u,
 				APIKey:          primary.APIKey,
+				Type:            ModelTypeLLM,
+				UseCases:        primary.UseCases,
 				TokenMultiplier: 1.0,
 				Temperature:     primary.Temperature,
 				MaxTokens:       primary.MaxTokens,
@@ -133,13 +159,53 @@ func (p *Provider) applyEnvDefaults(m *ModelEntry) {
 	}
 }
 
-// BuildLLM constructs the FallbackLLM chain from the configured models.
-func (p *Provider) BuildLLM(ctx context.Context) (model.LLM, error) {
+// BuildLLM constructs an LLM from the configured models, filtered by UseCase.
+// When useCase is empty (""), returns the first/default model (backward compat).
+// Otherwise, filters by Type=llm and UseCases containing the given use case.
+func (p *Provider) BuildLLM(ctx context.Context, useCase UseCase) (model.LLM, error) {
 	models := p.models()
 	if len(models) == 0 {
 		return nil, fmt.Errorf("no LLM models configured")
 	}
-	// Sort by FallbackOrder.
+	selected := p.selectModelsByUseCase(models, useCase)
+	backends := p.buildBackends(selected)
+	return backends[0], nil
+}
+
+// selectModelsByUseCase returns the candidate model entries for a use case.
+// Empty useCase returns all models. Filtered to LLM type with matching UseCases.
+func (p *Provider) selectModelsByUseCase(models []ModelEntry, useCase UseCase) []ModelEntry {
+	if useCase == "" {
+		return models
+	}
+	var candidates []ModelEntry
+	for _, m := range models {
+		if m.Type != ModelTypeLLM {
+			continue
+		}
+		if hasUseCase(m, useCase) {
+			candidates = append(candidates, m)
+		}
+	}
+	if len(candidates) == 0 {
+		return models
+	}
+	sortModelsByCost(candidates)
+	return candidates
+}
+
+// hasUseCase reports whether the model declares the given use case.
+func hasUseCase(m ModelEntry, useCase UseCase) bool {
+	for _, uc := range m.UseCases {
+		if uc == string(useCase) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildBackends creates the model.LLM chain sorted by FallbackOrder.
+func (p *Provider) buildBackends(models []ModelEntry) []model.LLM {
 	sortModels(models)
 	backends := make([]model.LLM, 0, len(models))
 	for _, m := range models {
@@ -149,12 +215,22 @@ func (p *Provider) BuildLLM(ctx context.Context) (model.LLM, error) {
 			APIKey:  m.APIKey,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("create openai adapter for model %q: %w", m.Name, err)
+			continue
 		}
 		backends = append(backends, adkmodel.NewCompatLLM(llm))
 	}
-	// Return first backend; multi-model selection (capability/cost) is future work.
-	return backends[0], nil
+	return backends
+}
+
+// sortModelsByCost sorts candidates by token cost (ascending).
+func sortModelsByCost(entries []ModelEntry) {
+	for i := 0; i < len(entries)-1; i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[j].TokenMultiplier < entries[i].TokenMultiplier {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
 }
 
 // DefaultInstruction returns the system prompt of the default model.
