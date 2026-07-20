@@ -21,7 +21,15 @@ function Chart({ testid, title, children }: ChartProps) {
   );
 }
 
-function SimpleBar({ data }: { data: { label: string; value: number; color?: string }[] }) {
+function SimpleBar({ data, emptyText = '暂无数据' }: { data: { label: string; value: number; color?: string }[], emptyText?: string }) {
+  const hasData = data.some(d => d.value > 0);
+  if (!hasData) {
+    return (
+      <div className="flex items-center justify-center h-[100px] text-xs text-[var(--text-secondary)]">
+        {emptyText}
+      </div>
+    );
+  }
   const max = Math.max(...data.map(d => d.value), 1);
   return (
     <div className="flex items-end gap-2" style={{ height: '100px' }}>
@@ -30,7 +38,7 @@ function SimpleBar({ data }: { data: { label: string; value: number; color?: str
           <div className="w-full rounded-t" style={{
             height: `${Math.max(8, (d.value / max) * 80)}px`,
             backgroundColor: d.color || 'var(--accent)',
-            opacity: 0.7,
+            minHeight: '8px',
           }} />
           <span className="text-[9px] text-[var(--text-secondary)]">{d.label}</span>
         </div>

@@ -88,7 +88,7 @@ body::before {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.5s ease-out forwards;
 }
 
 .animate-pulse-glow {

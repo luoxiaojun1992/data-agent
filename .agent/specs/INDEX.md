@@ -67,6 +67,7 @@
 | SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | **P12** | [spec-051-llm-token-stats-cache.md](spec-051-llm-token-stats-cache.md) | ✅ 已实现 |
 | SPEC-052 | 多模型路由与用途关联（Chat/Task/Embedding/压缩摘要） | **P13** | [spec-052-model-routing.md](spec-052-model-routing.md) | 📐 设计中 |
 | SPEC-053 | 会话存储、记忆压缩与 KB 索引逻辑对齐（Chat/Hermes 双轨） | **P13** | [spec-053-session-memory-kb-alignment.md](spec-053-session-memory-kb-alignment.md) | 📐 设计中 |
+| SPEC-054 | Sysconfig RBAC 权限不足修复（admin 访问也显示 insufficient permissions） | **P13** | [spec-054-sysconfig-rbac-fix.md](spec-054-sysconfig-rbac-fix.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
