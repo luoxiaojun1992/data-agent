@@ -174,4 +174,13 @@ SPEC-006│               │
 
 [P13] SPEC-053 ─── 会话存储/记忆压缩/KB 索引逻辑对齐
                    (Chat/Hermes 双轨梳理、删除恢复策略)
+
+[P13] SPEC-052 ─── 多模型路由与用途关联
+                   (UseCase-based routing: chat/compaction/enhance/embedding)
+
+[P13] SPEC-054 ─── Sysconfig RBAC 权限修复
+                   (admin 用户 403 → permission 枚举对齐)
+
+[P14] SPEC-055 ─── 分层架构重构（Controller→Service→Repository→Infra）
+                   (main.go 减至 300 行、UT 无需 MongoDB 连接、接口化)
 ```
