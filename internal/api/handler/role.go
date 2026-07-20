@@ -34,7 +34,7 @@ func (h *RoleHandler) List(c *gin.Context) {
 }
 
 func (h *RoleHandler) ListPermissions(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"permissions": model.AllPermissions()})
+	c.JSON(http.StatusOK, gin.H{"permissions": model.GetAllPermissions()})
 }
 
 func (h *RoleHandler) Create(c *gin.Context) {

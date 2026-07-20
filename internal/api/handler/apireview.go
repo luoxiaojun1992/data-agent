@@ -29,7 +29,6 @@ func (h *APIReviewHandler) ListAPIReviews(c *gin.Context) {
 
 // CreateAPIReview submits a new API for review.
 func (h *APIReviewHandler) CreateAPIReview(c *gin.Context) {
-	userID, _ := c.Get("user_id")
 	var req struct {
 		Name      string `json:"name" binding:"required"`
 		FileName  string `json:"file_name" binding:"required"`
@@ -56,7 +55,6 @@ func (h *APIReviewHandler) CreateAPIReview(c *gin.Context) {
 
 // ApproveAPIReview approves an API review.
 func (h *APIReviewHandler) ApproveAPIReview(c *gin.Context) {
-	userID, _ := c.Get("user_id")
 	reviewID := c.Param("id")
 	if err := h.svc.Approve(reviewID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -67,7 +65,6 @@ func (h *APIReviewHandler) ApproveAPIReview(c *gin.Context) {
 
 // RejectAPIReview rejects an API review.
 func (h *APIReviewHandler) RejectAPIReview(c *gin.Context) {
-	userID, _ := c.Get("user_id")
 	reviewID := c.Param("id")
 	var req struct {
 		Reason string `json:"reason" binding:"required"`

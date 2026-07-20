@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"go.mongodb.org/mongo-driver/mongo"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/memory"
@@ -143,7 +144,7 @@ func TestKnowledgeSearch(t *testing.T) {
 	// KB service falls back to empty results on find errors.
 	patches.ApplyMethodReturn(&coll, "Find", (*mongo.Cursor)(nil), fmt.Errorf("no docs"))
 
-	kbSvc := knowledgepkg.NewService(db)
+	kbSvc := knowledgepkg.NewService(mongoinfra.NewKBRepository(db))
 	deps := &Deps{KBService: kbSvc, AppName: "data-agent"}
 	handler := knowledgeSearch(deps)
 
@@ -283,7 +284,7 @@ func TestAllAndNames(t *testing.T) {
 	patches := gomonkey.ApplyMethodReturn(db, "Collection", &coll)
 	defer patches.Reset()
 
-	deps := &Deps{KBService: knowledgepkg.NewService(db), AppName: "data-agent"}
+	deps := &Deps{KBService: knowledgepkg.NewService(mongoinfra.NewKBRepository(db)), AppName: "data-agent"}
 	tools, err := All(deps)
 	if err != nil {
 		t.Fatalf("All failed: %v", err)

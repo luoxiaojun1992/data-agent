@@ -52,9 +52,15 @@ func (h *ArtifactHandler) Upload(c *gin.Context) {
 // Download handles file download.
 func (h *ArtifactHandler) Download(c *gin.Context) {
 	artifactID := c.Param("id")
-	data, _, err := h.storage.Download(artifactID)
+
+	art, err := h.storage.FindByID(artifactID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := h.storage.Download(artifactID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
