@@ -8,6 +8,9 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.23.0
+	github.com/ieshan/adk-go-memory v1.0.8
+	github.com/ieshan/adk-go-pkg v1.0.13
+	github.com/ieshan/idx v1.3.0
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/spf13/viper v1.21.0
 	go.mongodb.org/mongo-driver v1.17.9
@@ -57,9 +60,6 @@ require (
 	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
-	github.com/ieshan/adk-go-memory v1.0.8 // indirect
-	github.com/ieshan/adk-go-pkg v1.0.13 // indirect
-	github.com/ieshan/idx v1.3.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

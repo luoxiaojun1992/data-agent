@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 
-	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
@@ -26,7 +25,7 @@ func newTestService() *Service {
 	var coll mongo.Collection
 	patches := gomonkey.ApplyMethodReturn(db, "Collection", &coll)
 	defer patches.Reset()
-	mgr := chat.NewManager(db, 24*time.Hour)
+	mgr := chat.NewManager(mongoinfra.NewSessionRepository(db), 24*time.Hour)
 	return NewService(nil, mgr, nil)
 }
 

@@ -148,7 +148,7 @@ func setupMockDB(patches *gomonkey.Patches) {
 // the correct db reference.
 func TestNewService_Knowledge(t *testing.T) {
 	db := &mongo.Database{}
-	s := NewService(db)
+	s := NewService(mongoinfra.NewKBRepository(db))
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}

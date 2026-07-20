@@ -552,7 +552,7 @@ func TestNewManager(t *testing.T) {
 	patches := gomonkey.ApplyMethodReturn(db, "Collection", &coll)
 	defer patches.Reset()
 
-	m := NewManager(db, time.Hour)
+	m := NewManager(mongoinfra.NewSessionRepository(db), time.Hour)
 	if m.coll != &coll || m.ttl != time.Hour {
 		t.Error("manager not initialized correctly")
 	}
