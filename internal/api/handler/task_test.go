@@ -45,7 +45,7 @@ func TestCreateTask_Success(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"agent_exec","session_id":"sess-1","skill_chain":["sql","report"]}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -63,7 +63,7 @@ func TestCreateTask_DefaultType(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_2", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( mockTask, nil)
 
 	// Empty title and type → defaults to "agent_exec"
 	body := `{}`
@@ -82,7 +82,7 @@ func TestCreateTask_FromFrontend(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_3", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( mockTask, nil)
 
 	// Frontend sends "title" and "skills" (not "type" and "skill_chain")
 	body := `{"title":"My Task","skills":["sql","chart"],"description":"Do something"}`
@@ -101,7 +101,7 @@ func TestCreateTask_WithParams(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_4", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"Task","skill_chain":["sql"],"params":{"key":"value"}}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -119,7 +119,7 @@ func TestCreateTask_WithCronExpr(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_5", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"Scheduled","skill_chain":["sql"],"cron_expr":"0 0 * * *"}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -148,7 +148,7 @@ func TestCreateTask_ServiceError(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("CreateTask", mock.Anything).Return( nil, fmt.Errorf("queue full"))
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( nil, fmt.Errorf("queue full"))
 
 	body := `{"title":"agent_exec"}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -173,7 +173,7 @@ func TestGetTask_Success(t *testing.T) {
 		Status:    task.StatusCompleted,
 	}
 
-	svc.On("GetTask", mock.Anything).Return( mockTask, nil)
+	svc.On("GetTask", mock.Anything).Return(mock.Anything).Return( mockTask, nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -188,7 +188,7 @@ func TestGetTask_NotFound(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("GetTask", mock.Anything).Return( nil, fmt.Errorf("not found"))
+	svc.On("GetTask", mock.Anything).Return(mock.Anything).Return( nil, fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/tasks/missing", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
@@ -205,7 +205,7 @@ func TestCancelTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("CancelTask", mock.Anything).Return( nil)
+	svc.On("CancelTask", mock.Anything).Return(mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -223,7 +223,7 @@ func TestCancelTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("CancelTask", mock.Anything).Return( fmt.Errorf("cannot cancel completed"))
+	svc.On("CancelTask", mock.Anything).Return(mock.Anything).Return( fmt.Errorf("cannot cancel completed"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -240,12 +240,12 @@ func TestListTasks_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	tasks := []task.Task{
+	tasks := []*task.Task{
 		{ID: "task_1", UserID: "user-1", Status: task.StatusCompleted},
 		{ID: "task_2", UserID: "user-1", Status: task.StatusRunning},
 	}
 
-	svc.On("ListTasks", mock.Anything).Return( tasks, int64(len(tasks)), nil)
+	svc.On("ListTasks", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( tasks, int64(len(tasks)), nil)
 
 	c, w := newGinContext("GET", "/tasks", "")
 	c.Set("user_id", "user-1")
@@ -260,7 +260,7 @@ func TestListTasks_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("ListTasks", mock.Anything).Return( ([]*task.Task)(nil), int64(0), fmt.Errorf("db error"))
+	svc.On("ListTasks", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( ([]*task.Task)(nil), int64(0), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/tasks", "")
 	c.Set("user_id", "user-1")
@@ -275,7 +275,7 @@ func TestListTasks_Empty(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("ListTasks", mock.Anything).Return( ([]*task.Task)(nil), int64(0), nil)
+	svc.On("ListTasks", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( ([]*task.Task)(nil), int64(0), nil)
 
 	c, w := newGinContext("GET", "/tasks", "")
 	c.Set("user_id", "user-1")
@@ -292,7 +292,7 @@ func TestPauseTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("UpdateStatus", mock.Anything).Return( nil)
+	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -310,7 +310,7 @@ func TestPauseTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("UpdateStatus", mock.Anything).Return( fmt.Errorf("invalid status transition"))
+	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(mock.Anything).Return( fmt.Errorf("invalid status transition"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -327,7 +327,7 @@ func TestResumeTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("UpdateStatus", mock.Anything).Return( nil)
+	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -345,7 +345,7 @@ func TestResumeTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("UpdateStatus", mock.Anything).Return( fmt.Errorf("task not found"))
+	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(mock.Anything).Return( fmt.Errorf("task not found"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -364,7 +364,7 @@ func TestDownloadArtifacts_Success(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_1", UserID: "user-1", Status: task.StatusCompleted}
 
-	svc.On("GetTask", mock.Anything).Return( mockTask, nil)
+	svc.On("GetTask", mock.Anything).Return(mock.Anything).Return( mockTask, nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -383,7 +383,7 @@ func TestDownloadArtifacts_TaskNotFound(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("GetTask", mock.Anything).Return( nil, fmt.Errorf("not found"))
+	svc.On("GetTask", mock.Anything).Return(mock.Anything).Return( nil, fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/tasks/missing/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
@@ -398,7 +398,7 @@ func TestDownloadArtifacts_NilTask(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("GetTask", mock.Anything).Return( (*task.Task)(nil), nil)
+	svc.On("GetTask", mock.Anything).Return(mock.Anything).Return( (*task.Task)(nil), nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -415,13 +415,13 @@ func TestListAllTasks_All(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	tasks := []task.Task{
+	tasks := []*task.Task{
 		{ID: "task_1", UserID: "user-1", Status: task.StatusCompleted},
 		{ID: "task_2", UserID: "user-2", Status: task.StatusRunning},
 		{ID: "task_3", UserID: "user-3", Status: task.StatusFailed},
 	}
 
-	svc.On("ListAllTasks", mock.Anything).Return( tasks, nil)
+	svc.On("ListAllTasks", mock.Anything).Return(mock.Anything).Return( tasks, nil)
 
 	c, w := newGinContext("GET", "/admin/tasks", "")
 	h.ListAllTasks(c)
@@ -435,11 +435,11 @@ func TestListAllTasks_WithStatusFilter(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	tasks := []task.Task{
+	tasks := []*task.Task{
 		{ID: "task_1", UserID: "user-1", Status: task.StatusRunning},
 	}
 
-	svc.On("ListAllTasks", mock.Anything).Return( tasks, nil)
+	svc.On("ListAllTasks", mock.Anything).Return(mock.Anything).Return( tasks, nil)
 
 	c, w := newGinContext("GET", "/admin/tasks?status=running", "")
 	h.ListAllTasks(c)
@@ -453,7 +453,7 @@ func TestListAllTasks_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("ListAllTasks", mock.Anything).Return( nil, fmt.Errorf("db error"))
+	svc.On("ListAllTasks", mock.Anything).Return(mock.Anything).Return( nil, fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/admin/tasks", "")
 	h.ListAllTasks(c)
@@ -467,7 +467,7 @@ func TestListAllTasks_Empty(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("ListAllTasks", mock.Anything).Return( []task.Task{}, nil)
+	svc.On("ListAllTasks", mock.Anything).Return([]*task.Task{}, nil)
 
 	c, w := newGinContext("GET", "/admin/tasks", "")
 	h.ListAllTasks(c)
@@ -483,7 +483,7 @@ func TestRetryTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("RetryTask", mock.Anything).Return( nil)
+	svc.On("RetryTask", mock.Anything).Return(mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/retry", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -501,7 +501,7 @@ func TestRetryTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("RetryTask", mock.Anything).Return( fmt.Errorf("only failed tasks can be retried"))
+	svc.On("RetryTask", mock.Anything).Return(mock.Anything).Return( fmt.Errorf("only failed tasks can be retried"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/retry", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
