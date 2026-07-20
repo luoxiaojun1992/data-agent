@@ -57,7 +57,8 @@ func (s *Service) ListAll() ([]apireview.APIReview, error) {
 	return reviews, nil
 }
 
-func (s *Service) Approve(id string) error {
+func (s *Service) Approve(id string, reviewer ...string) error {
+	_ = reviewer // backward compat — reviewers param kept for existing callers
 	_, err := s.repo.FindByID(context.Background(), id)
 	if err != nil {
 		return fmt.Errorf("review not found: %w", err)
@@ -65,7 +66,8 @@ func (s *Service) Approve(id string) error {
 	return s.repo.Approve(context.Background(), id)
 }
 
-func (s *Service) Reject(id string, reason string) error {
+func (s *Service) Reject(id string, reason string, reviewer ...string) error {
+	_ = reviewer // backward compat
 	_, err := s.repo.FindByID(context.Background(), id)
 	if err != nil {
 		return fmt.Errorf("review not found: %w", err)

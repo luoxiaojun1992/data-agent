@@ -41,13 +41,14 @@ func (s *Storage) Upload(userID, sessionID, taskID, name, mimeType string, reade
 	return art, nil
 }
 
-// Download retrieves an artifact by its ID (backward compat).
-func (s *Storage) Download(id string) ([]byte, error) {
+// Download retrieves an artifact by its ID (backward compat: returns data + artifact + error).
+func (s *Storage) Download(id string) ([]byte, *artifact.Artifact, error) {
 	art, err := s.meta.FindByID(context.Background(), id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return s.files.Download(context.Background(), art.StoragePath)
+	data, err := s.files.Download(context.Background(), art.StoragePath)
+	return data, art, err
 }
 
 // Delete removes an artifact by its ID (backward compat).
