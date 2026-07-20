@@ -171,7 +171,7 @@ export default function APIReviewPage() {
                 {r.reject_reason && <p style={{ fontSize: '12px', color: '#ef4444', marginTop: '4px' }}>驳回原因: {r.reject_reason}</p>}
               </div>
               <div>
-                <span data-testid={`api-status-${r.status}`} style={statusPill(r.status)}>{statusLabel(r.status)}</span>
+                <span data-testid="api-card-status" data-testid-status={`api-status-${r.status}`} style={statusPill(r.status)}>{statusLabel(r.status)}</span>
               </div>
               <div data-testid={`api-card-actions-${r.id}`} style={{ display: 'flex', gap: '6px' }}>
                 {r.status === 'pending' && !isOwn && (
