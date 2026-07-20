@@ -12,11 +12,11 @@ import (
 // ArtifactHandler provides HTTP handlers for artifact and workspace operations.
 type ArtifactHandler struct {
 	storage artifact.StorageService
-	wm      *workspace.Manager
+	wm      workspace.WorkspaceManager
 }
 
 // NewArtifactHandler creates a new HTTP handler.
-func NewArtifactHandler(storage artifact.StorageService, wm *workspace.Manager) *ArtifactHandler {
+func NewArtifactHandler(storage artifact.StorageService, wm workspace.WorkspaceManager) *ArtifactHandler {
 	return &ArtifactHandler{storage: storage, wm: wm}
 }
 
