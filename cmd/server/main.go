@@ -352,9 +352,10 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 		embedFn := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
 			BaseURL: embCfg.BaseURL, Model: embCfg.Model, APIKey: embCfg.APIKey,
 		})
-		deps.kbService.WithVectorIndex(deps.qdrantClient, func(ctx context.Context, text string) ([]float32, error) {
-			return embedFn(ctx, text)
-		})
+		rawEmbed := func(ctx context.Context, text string) ([]float32, error) { return embedFn(ctx, text) }
+		// Wrap with Redis cache + token recording.
+		kEmbedFn := cachedEmbedFn(rawEmbed, deps.llmCache, deps.llmRecorder, embCfg.Model)
+		deps.kbService.WithVectorIndex(deps.qdrantClient, kEmbedFn)
 	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }
