@@ -42,7 +42,7 @@ func TestUpload_Success(t *testing.T) {
 	// Mock Database.Collection
 	patches.ApplyMethodReturn(&db, "Collection", &coll)
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	reader := strings.NewReader("test content")
 	art, err := s.Upload("user1", "session1", "task1", "test.txt", "text/plain", reader, true)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestUpload_SeaweedfsError(t *testing.T) {
 	patches.ApplyMethodReturn(&sw, "Upload", int64(0), errors.New("seaweedfs upload: connection refused"))
 	patches.ApplyMethodReturn(&db, "Collection", &coll)
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	reader := strings.NewReader("test content")
 	_, err := s.Upload("user1", "session1", "task1", "test.txt", "text/plain", reader, true)
 	if err == nil {
@@ -94,7 +94,7 @@ func TestUpload_MongoInsertError(t *testing.T) {
 	// Database.Collection
 	patches.ApplyMethodReturn(&db, "Collection", &coll)
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	reader := strings.NewReader("test content")
 	_, err := s.Upload("user1", "session1", "task1", "test.txt", "text/plain", reader, true)
 	if err == nil {
@@ -211,7 +211,7 @@ func TestDelete_Success(t *testing.T) {
 	// DeleteOne from mongo succeeds
 	patches.ApplyMethodReturn(&coll, "DeleteOne", &mongo.DeleteResult{}, nil)
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	err := s.Delete("artifact_test123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -244,7 +244,7 @@ func TestDelete_SeaweedfsError(t *testing.T) {
 	// seaweedfs delete fails
 	patches.ApplyMethodReturn(&sw, "Delete", errors.New("seaweedfs delete: connection refused"))
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	err := s.Delete("artifact_test123")
 	if err == nil {
 		t.Fatal("expected error")
@@ -279,7 +279,7 @@ func TestDelete_MongoError(t *testing.T) {
 	// mongo delete fails
 	patches.ApplyMethodReturn(&coll, "DeleteOne", (*mongo.DeleteResult)(nil), errors.New("delete metadata failed"))
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	err := s.Delete("artifact_test123")
 	if err == nil {
 		t.Fatal("expected error")
@@ -395,7 +395,7 @@ func TestDownload_Success(t *testing.T) {
 	// Mock seaweedfs Download
 	patches.ApplyMethodReturn(&sw, "Download", []byte("file content"), nil)
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	data, art, err := s.Download("artifact_test123")
 
 	if err != nil {
@@ -427,7 +427,7 @@ func TestDownload_FindByIDError(t *testing.T) {
 	})
 	patches.ApplyMethodReturn(&sr, "Decode", mongo.ErrNoDocuments)
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	data, art, err := s.Download("nonexistent")
 
 	if err == nil {
@@ -466,7 +466,7 @@ func TestDownload_SeaweedfsError(t *testing.T) {
 	// seaweedfs Download fails
 	patches.ApplyMethodReturn(&sw, "Download", []byte(nil), errors.New("seaweedfs download: connection refused"))
 
-	s := NewStorage(seaweedfs.NewFileStore(NewStorage(&sw, &db)sw), mongoinfra.NewArtifactRepository(NewStorage(&sw, &db)db))
+	s := NewStorage(seaweedfs.NewFileStore(&sw), mongoinfra.NewArtifactRepository(&db))
 	data, art, err := s.Download("artifact_test123")
 
 	if err == nil {

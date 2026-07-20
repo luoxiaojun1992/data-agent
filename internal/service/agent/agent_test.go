@@ -15,10 +15,8 @@ import (
 
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
-	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
-	task_svc mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
-	"github.com/luoxiaojun1992/data-agent/internal/service/task"
+	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
 
 // ── helpers ──

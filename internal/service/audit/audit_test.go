@@ -15,7 +15,7 @@ func TestNewService(t *testing.T) {
 	patches := gomonkey.ApplyMethodReturn(db, "Collection", &coll)
 	defer patches.Reset()
 
-	s := NewService(db)
+	s := NewService(mongoinfra.NewAuditRepository(db))
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}
