@@ -161,7 +161,8 @@ func TestDownload_Success(t *testing.T) {
 	}
 	fileData := []byte("PDF content")
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Download", fileData, mockArt, nil)
+	patches := gomonkey.ApplyMethodReturn(storage, "FindByID", mockArt, nil)
+	patches.ApplyMethodReturn(storage, "Download", fileData, nil)
 	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/artifacts/artifact_1", "")
@@ -185,7 +186,7 @@ func TestDownload_NotFound(t *testing.T) {
 	wm := &workspace.Manager{}
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "Download", nil, nil, fmt.Errorf("not found"))
+	patches := gomonkey.ApplyMethodReturn(storage, "FindByID", (*artifact.Artifact)(nil), fmt.Errorf("not found"))
 	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/artifacts/missing", "")
@@ -243,7 +244,7 @@ func TestListSession_Success(t *testing.T) {
 	wm := &workspace.Manager{}
 	h := NewArtifactHandler(storage, wm)
 
-	arts := []artifact.Artifact{
+	arts := []*artifact.Artifact{
 		{ID: "a1", Name: "file1.txt"},
 		{ID: "a2", Name: "file2.txt"},
 	}
@@ -296,7 +297,7 @@ func TestListSession_Empty(t *testing.T) {
 	wm := &workspace.Manager{}
 	h := NewArtifactHandler(storage, wm)
 
-	patches := gomonkey.ApplyMethodReturn(storage, "ListBySession", []artifact.Artifact{}, nil)
+	patches := gomonkey.ApplyMethodReturn(storage, "ListBySession", []*artifact.Artifact{}, nil)
 	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/artifacts?session_id=sess-empty", "")

@@ -96,7 +96,7 @@ func TestReadFile(t *testing.T) {
 		patches := gomonkey.NewPatches()
 		defer patches.Reset()
 		patches.ApplyMethodReturn(storage, "FindByID", mockArt, nil)
-		patches.ApplyMethodReturn(storage, "Download", []byte("hello world"), (*artifact.Artifact)(nil), nil)
+		patches.ApplyMethodReturn(storage, "Download", []byte("hello world"), nil)
 
 		data, err := mgr.ReadFile("user", "session", "test.txt")
 		if err != nil {
@@ -243,7 +243,7 @@ func TestReadFile_DownloadError(t *testing.T) {
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 	patches.ApplyMethodReturn(storage, "FindByID", mockArt, nil)
-	patches.ApplyMethodReturn(storage, "Download", []byte(nil), (*artifact.Artifact)(nil), errDownload())
+	patches.ApplyMethodReturn(storage, "Download", []byte(nil), errDownload())
 
 	_, err := mgr.ReadFile("user", "session", "test.txt")
 	if err == nil {
@@ -264,7 +264,7 @@ func TestReadFile_PathSanitized(t *testing.T) {
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 	patches.ApplyMethodReturn(storage, "FindByID", mockArt, nil)
-	patches.ApplyMethodReturn(storage, "Download", []byte("safe data"), (*artifact.Artifact)(nil), nil)
+	patches.ApplyMethodReturn(storage, "Download", []byte("safe data"), nil)
 
 	// Path traversal in filename should be sanitized
 	data, err := mgr.ReadFile("user", "session", "../../etc/passwd")
@@ -295,7 +295,7 @@ func TestWriteFile_UploadError(t *testing.T) {
 // ── List Tests ──
 
 func TestList_Success(t *testing.T) {
-	artifacts := []artifact.Artifact{
+	artifacts := []*artifact.Artifact{
 		{Name: "file1.txt", StoragePath: "workspace/user1/sess1/file1.txt"},
 		{Name: "file2.txt", StoragePath: "workspace/user1/sess1/file2.txt"},
 		{Name: "other.txt", StoragePath: "workspace/user2/sess1/other.txt"},
@@ -324,7 +324,7 @@ func TestList_Success(t *testing.T) {
 }
 
 func TestList_NoMatchingFiles(t *testing.T) {
-	artifacts := []artifact.Artifact{
+	artifacts := []*artifact.Artifact{
 		{Name: "other.txt", StoragePath: "workspace/other/sess1/other.txt"},
 	}
 
@@ -350,7 +350,7 @@ func TestList_EmptyList(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(storage, "ListBySession", []artifact.Artifact{}, nil)
+	patches.ApplyMethodReturn(storage, "ListBySession", []*artifact.Artifact{}, nil)
 
 	files, err := mgr.List("user1", "sess1")
 	if err != nil {
@@ -367,7 +367,7 @@ func TestList_Error(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(storage, "ListBySession", []artifact.Artifact(nil), errList())
+	patches.ApplyMethodReturn(storage, "ListBySession", ([]*artifact.Artifact)(nil), errList())
 
 	_, err := mgr.List("user1", "sess1")
 	if err == nil {
@@ -378,7 +378,7 @@ func TestList_Error(t *testing.T) {
 // ── Cleanup Tests ──
 
 func TestCleanup_Success(t *testing.T) {
-	artifacts := []artifact.Artifact{
+	artifacts := []*artifact.Artifact{
 		{ID: "id1", Name: "file1.txt"},
 		{ID: "id2", Name: "file2.txt"},
 	}
@@ -403,7 +403,7 @@ func TestCleanup_EmptySession(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(storage, "ListBySession", []artifact.Artifact{}, nil)
+	patches.ApplyMethodReturn(storage, "ListBySession", []*artifact.Artifact{}, nil)
 
 	err := mgr.Cleanup("sess1")
 	if err != nil {
@@ -417,7 +417,7 @@ func TestCleanup_ListError(t *testing.T) {
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyMethodReturn(storage, "ListBySession", []artifact.Artifact(nil), errList())
+	patches.ApplyMethodReturn(storage, "ListBySession", ([]*artifact.Artifact)(nil), errList())
 
 	err := mgr.Cleanup("sess1")
 	if err == nil {
@@ -426,7 +426,7 @@ func TestCleanup_ListError(t *testing.T) {
 }
 
 func TestCleanup_DeleteError(t *testing.T) {
-	artifacts := []artifact.Artifact{
+	artifacts := []*artifact.Artifact{
 		{ID: "id1", Name: "file1.txt"},
 	}
 

@@ -255,7 +255,7 @@ func TestListTasks_Success(t *testing.T) {
 		{ID: "task_2", UserID: "user-1", Status: task.StatusRunning},
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", tasks, nil)
+	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", tasks, int64(len(tasks)), nil)
 	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/tasks", "")
@@ -271,7 +271,7 @@ func TestListTasks_Error(t *testing.T) {
 	svc := &tasksvc.Service{}
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", nil, fmt.Errorf("db error"))
+	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", ([]*task.Task)(nil), int64(0), fmt.Errorf("db error"))
 	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/tasks", "")
@@ -287,7 +287,7 @@ func TestListTasks_Empty(t *testing.T) {
 	svc := &tasksvc.Service{}
 	h := NewTaskHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", []task.Task{}, nil)
+	patches := gomonkey.ApplyMethodReturn(svc, "ListTasks", ([]*task.Task)(nil), int64(0), nil)
 	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/tasks", "")
