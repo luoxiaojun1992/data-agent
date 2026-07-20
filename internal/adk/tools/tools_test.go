@@ -288,7 +288,7 @@ func TestAllAndNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("All failed: %v", err)
 	}
-	if len(tools) != 5 {
+	if len(tools) != 6 {
 		t.Errorf("expected 6 tools, got %d", len(tools))
 	}
 
@@ -315,7 +315,7 @@ func TestAllAndNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("All failed: %v", err)
 	}
-	if len(tools) != 4 {
+	if len(tools) != 5 {
 		t.Errorf("expected 5 tools without KB, got %d", len(tools))
 	}
 }

@@ -239,39 +239,10 @@ func initAgentEngine(deps *serverDependencies) {
 
 func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client, llm adkmodel.LLM, logger *zap.Logger) {
 	embedFn := buildEmbedFn(deps)
-	// Wrap embedFn with Redis cache + token recording (works for both legacy & memoryx).
+	// Wrap embedFn with Redis cache + token recording.
 	if deps.llmCache != nil || deps.llmRecorder != nil {
-		embModel := getEnvOrDefault("EMBEDDING_MODEL", "embedding")
-		cache := deps.llmCache
-		rec := deps.llmRecorder
-		raw := embedFn
-		embedFn = func(ctx context.Context, text string) ([]float32, error) {
-			cacheHit := false
-			var vec []float32
-			var err error
-			if cache != nil {
-				if cached, ok := cache.GetEmbedding(ctx, embModel, text); ok {
-					vec = adkmemory.ParseCachedEmbedding(cached)
-					cacheHit = true
-				}
-			}
-			if !cacheHit {
-				vec, err = raw(ctx, text)
-			}
-			if rec != nil {
-				rec.Record(ctx, llmstats.Record{
-					CallPoint:    "embedding",
-					Model:        embModel,
-					PromptTokens: llmstats.EstimateTokens(text),
-					Estimated:    true,
-					CacheHit:     cacheHit,
-				})
-			}
-			if !cacheHit && err == nil && cache != nil {
-				cache.SetEmbedding(ctx, embModel, text, adkmemory.MarshalCachedEmbedding(vec))
-			}
-			return vec, err
-		}
+		embedFn = cachedEmbedFn(embedFn, deps.llmCache, deps.llmRecorder,
+			getEnvOrDefault("EMBEDDING_MODEL", "embedding"))
 	}
 	if os.Getenv("MEMORY_BACKEND") == "legacy" {
 		// Legacy path removed per SPEC-053: only adk-go-memory (memoryx) supported.
@@ -1372,6 +1343,59 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
 
 // defaultModel is the fallback model name for enhance/embedding.
 const defaultModel = "gpt-4o"
+
+// cachedEmbedFn wraps an embedding function with Redis cache and token recording.
+func cachedEmbedFn(raw adkmemory.EmbeddingFunc, cache *llmcache.Cache, rec *llmstats.Recorder, model string) adkmemory.EmbeddingFunc {
+	if cache == nil && rec == nil {
+		return raw
+	}
+	return func(ctx context.Context, text string) ([]float32, error) {
+		vec, cacheHit := lookupEmbeddingCache(ctx, cache, model, text)
+		if !cacheHit {
+			var err error
+			vec, err = raw(ctx, text)
+			if err != nil {
+				return nil, err
+			}
+		}
+		recordEmbeddingCall(ctx, rec, model, text, cacheHit)
+		if !cacheHit {
+			storeEmbeddingCache(ctx, cache, model, text, vec)
+		}
+		return vec, nil
+	}
+}
+
+func lookupEmbeddingCache(ctx context.Context, cache *llmcache.Cache, model, text string) ([]float32, bool) {
+	if cache == nil {
+		return nil, false
+	}
+	cached, ok := cache.GetEmbedding(ctx, model, text)
+	if !ok {
+		return nil, false
+	}
+	return adkmemory.ParseCachedEmbedding(cached), true
+}
+
+func recordEmbeddingCall(ctx context.Context, rec *llmstats.Recorder, model, text string, cacheHit bool) {
+	if rec == nil {
+		return
+	}
+	rec.Record(ctx, llmstats.Record{
+		CallPoint:    "embedding",
+		Model:        model,
+		PromptTokens: llmstats.EstimateTokens(text),
+		Estimated:    true,
+		CacheHit:     cacheHit,
+	})
+}
+
+func storeEmbeddingCache(ctx context.Context, cache *llmcache.Cache, model, text string, vec []float32) {
+	if cache == nil {
+		return
+	}
+	cache.SetEmbedding(ctx, model, text, adkmemory.MarshalCachedEmbedding(vec))
+}
 
 // callEnhanceLLM calls the LLM to enhance a prompt. Falls back to original on error.
 func callEnhanceLLM(ctx context.Context, prompt string) string {
