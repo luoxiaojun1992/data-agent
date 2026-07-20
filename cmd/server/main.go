@@ -249,7 +249,7 @@ func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client,
 		logger.Warn("MEMORY_BACKEND=legacy is deprecated, using adk-go-memory")
 	}
 	logger.Info("Using adk-go-memory backend (SPEC-050)")
-	kit, err := memoryx.NewKit(mongoClient.DB(), appName, llm, embedFn)
+	kit, err := memoryx.NewKit(mongoClient.DB(), appName, compactionLLM, embedFn)
 	if err != nil {
 		logger.Fatal("Failed to create adk-go-memory Kit", zap.Error(err))
 	}
@@ -294,7 +294,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	)
 
 	// Long-term memory (MongoDB + embedding).
-	initMemoryBackend(deps, mongoClient, llm, logger)
+	initMemoryBackend(deps, mongoClient, compactionLLM, logger)
 
 	// ADK tools.
 	toolDeps := &adktools.Deps{
