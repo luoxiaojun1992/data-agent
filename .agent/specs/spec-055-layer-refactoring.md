@@ -323,11 +323,35 @@ Handler 负责 gin → service 参数转换 + 响应写入。
 
 ## 7. 测试策略
 
+### Mock 工具选择
+
+| 场景 | 工具 | 说明 |
+|------|------|------|
+| Repository/Service 接口 mock | **mockery** (首选) | 基于 Go interface 自动生成 mock struct，零依赖 |
+| 无法接口化的遗留调用 | gomonkey | 仅用于 mockery 无法覆盖的场景（如 ADK runtime 内部） |
+| HTTP handler 测试 | `httptest` | Go 标准库，不依赖任何 mock 工具 |
+
+**mockery 使用示例**：
+
+```go
+//go:generate mockery --name UserRepository --output ./mocks --outpkg mocks
+
+// 测试中:
+mockRepo := mocks.NewUserRepository(t)
+mockRepo.On("FindByID", ctx, "user-1").Return(&domain.User{...}, nil)
+svc := auth.NewService(mockRepo, ...)
+result, err := svc.Login(ctx, req)
+assert.NoError(t, err)
+mockRepo.AssertExpectations(t)
+```
+
+### 测试编写
+
 1. **Unit tests**: 
-   - Repository 接口通过 mock（`gomock` 或手写 mock struct）注入 → 无需 MongoDB
-   - Service 层测试覆盖率目标 100%（纯接口依赖）
-   - Handler 层测试用 `httptest` + mock service
-   - L3 总覆盖率目标 98%
+   - 所有 repository/service 接口 mock 使用 **mockery** 自动生成
+   - Service 层依赖 repository 接口 → mock 注入 → 无需 MongoDB/Redis
+   - Handler 层用 `httptest.NewRecorder` + mock service → 无外部依赖
+   - gomonkey 仅用于 mockery 无法 mock 的场景（如 ADK `model.LLM`、`memory.Service` 等第 3 方接口）
 2. **Integration tests**: 条件使用 Docker Compose（`go test -tags=integration`）验证实际 MongoDB/Qdrant/Redis 交互
 3. **E2E tests**: 现有 UI 测试不变，API 行为一致
 4. **审计**: 使用 `.agent/skills/go-ut-audit` 审查 UT 质量
@@ -381,14 +405,18 @@ Handler 负责 gin → service 参数转换 + 响应写入。
 
 - [ ] `go test ./internal/...` 无需 MongoDB 即可全部通过
 - [ ] `go test -coverpkg=./internal/... ./internal/...` 覆盖率 ≥ 98%
-- [ ] 所有 service 测试使用 mock repository（非 gomonkey）
+- [ ] 所有 service 测试使用 **mockery** 生成的 mock repository（非 gomonkey）
+- [ ] gomonkey 仅用于 mockery 无法覆盖的场景（如 ADK `model.LLM`、`memory.Service` 接口）
 - [ ] 所有 handler 测试使用 `httptest` + mock service
+- [ ] 每个 repository 接口所在包包含 `//go:generate mockery ...` 指令
 
 ## 11. 验证标准
 
-1. `go test ./internal/...` 全部通过（本地，无 Docker）
+1. `go test ./internal/...` 全部通过（本地，无 Docker、无网络）
 2. `go test -race -coverprofile=coverage.out -coverpkg=./internal/... ./internal/...` → 覆盖率 ≥ 98%
 3. CI `ut-workflow.yml` + `sonarqube` + `golangci-lint` + `ui-tests` 全部通过
 4. main.go 从 ~1875 行缩减至 ~300 行
 5. 零个 inline HandlerFunc 留存 main.go
 6. 所有 service 构造函数接收接口而非 `*mongo.Collection`
+7. 所有 service 测试使用 mockery 生成的 mock（非 gomonkey）
+8. 每个 repository 接口包含 `//go:generate mockery --name XxxRepository` 指令
