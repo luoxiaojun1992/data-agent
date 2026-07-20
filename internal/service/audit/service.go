@@ -2,31 +2,28 @@ package audit
 
 import (
 	"context"
-	"fmt"
-	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Service handles audit log queries.
 type Service struct {
-	coll *mongo.Collection
+	repo repository.AuditRepository
 }
 
 // NewService creates an audit log service.
-func NewService(db *mongo.Database) *Service {
-	return &Service{coll: db.Collection(model.CollAuditLogs)}
+func NewService(repo repository.AuditRepository) *Service {
+	return &Service{repo: repo}
 }
 
 // ListParams are the filter parameters for listing audit logs.
 type ListParams struct {
 	Action string
 	UserID string
-	Start  string // ISO date
-	End    string // ISO date
+	Start  string
+	End    string
 	Skip   int64
 	Limit  int64
 }
@@ -39,27 +36,25 @@ type ListResult struct {
 
 // List returns audit logs matching the filter params.
 func (s *Service) List(p ListParams) (*ListResult, error) {
-	filter, err := buildAuditFilter(p)
-	if err != nil {
-		return nil, err
-	}
 	p.Limit = normalizeAuditLimit(p.Limit)
+	filterMap := auditFilterToMap(p)
 
-	total, err := s.coll.CountDocuments(context.Background(), filter)
+	total, err := s.repo.Count(context.Background(), filterMap)
 	if err != nil {
 		return nil, err
 	}
 
-	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetSkip(p.Skip).SetLimit(p.Limit)
-	cursor, err := s.coll.Find(context.Background(), filter, opts)
+	rawLogs, err := s.repo.List(context.Background(), filterMap, p.Skip, p.Limit)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(context.Background())
 
 	var logs []model.AuditLog
-	if err := cursor.All(context.Background(), &logs); err != nil {
-		return nil, err
+	for _, raw := range rawLogs {
+		var log model.AuditLog
+		b, _ := bson.Marshal(raw)
+		bson.Unmarshal(b, &log)
+		logs = append(logs, log)
 	}
 	if logs == nil {
 		logs = []model.AuditLog{}
@@ -68,49 +63,23 @@ func (s *Service) List(p ListParams) (*ListResult, error) {
 	return &ListResult{Logs: logs, Total: total}, nil
 }
 
-// buildAuditFilter builds the MongoDB filter from ListParams.
-func buildAuditFilter(p ListParams) (bson.M, error) {
-	filter := bson.M{}
+func auditFilterToMap(p ListParams) map[string]interface{} {
+	m := map[string]interface{}{}
 	if p.Action != "" {
-		filter["action"] = p.Action
+		m["action"] = p.Action
 	}
 	if p.UserID != "" {
-		filter["user_id"] = p.UserID
+		m["user_id"] = p.UserID
 	}
-	dateFilter, err := buildDateFilter(p.Start, p.End)
-	if err != nil {
-		return nil, err
+	if p.Start != "" {
+		m["start"] = p.Start
 	}
-	if len(dateFilter) > 0 {
-		filter["created_at"] = dateFilter
+	if p.End != "" {
+		m["end"] = p.End
 	}
-	return filter, nil
+	return m
 }
 
-// buildDateFilter builds a date range filter from start/end strings.
-func buildDateFilter(start, end string) (bson.M, error) {
-	if start == "" && end == "" {
-		return nil, nil
-	}
-	dateFilter := bson.M{}
-	if start != "" {
-		t, err := time.Parse("2006-01-02", start)
-		if err != nil {
-			return nil, fmt.Errorf("invalid start date %q: must be YYYY-MM-DD", start)
-		}
-		dateFilter["$gte"] = t
-	}
-	if end != "" {
-		t, err := time.Parse("2006-01-02", end)
-		if err != nil {
-			return nil, fmt.Errorf("invalid end date %q: must be YYYY-MM-DD", end)
-		}
-		dateFilter["$lt"] = t.Add(24 * time.Hour)
-	}
-	return dateFilter, nil
-}
-
-// normalizeAuditLimit clamps the limit parameter to valid bounds.
 func normalizeAuditLimit(limit int64) int64 {
 	if limit <= 0 {
 		return 20
