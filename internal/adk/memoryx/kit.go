@@ -62,6 +62,8 @@ func (k *Kit) WriteMemory(ctx context.Context, userID, content string) error {
 		ID:      NewID(),
 		Content: content,
 		Level:   adapter.LevelExplicit,
+		UserID:  userID,
+		AppName: k.storage.appName,
 	}
 	k.ensureEmbedding(ctx, &obs)
 	return k.storage.Store(ctx, &obs)
