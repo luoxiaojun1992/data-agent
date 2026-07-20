@@ -448,12 +448,12 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	api.Use(deps.jwtManager.AuthMiddleware())
 
 	setupAuthProtected(api, deps.authHandler)
-	setupUserManagement(api, deps.userRepo)
-	setupRoleManagement(api, deps.roleRepo)
+	handler.RegisterUserRoutes(api, handler.NewUserHandler(deps.userRepo))
+	handler.RegisterRoleRoutes(api, handler.NewRoleHandler(deps.roleRepo))
 	setupModelConfig(api, deps.systemConfigRepo, deps.vaultClient)
 	setupMemorySearch(api, deps.memoryService)
-	setupSysConfig(api, deps.systemConfigRepo)
-	setupChangePassword(api, deps.jwtManager, deps.mongoClient)
+	sysCfgHandler := handler.NewConfigHandler(deps.systemConfigRepo, deps.roleRepo)
+	handler.RegisterSysConfigRoutes(api, sysCfgHandler)
 
 	// Admin routes
 	admin := router.Group("/api/v1/admin")
@@ -472,7 +472,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	// Session routes
 	sessionRoutes := router.Group("/api/v1/sessions")
 	sessionRoutes.Use(deps.jwtManager.AuthMiddleware())
-	setupSessions(sessionRoutes, deps.sessionManager)
+	handler.RegisterSessionRoutes(sessionRoutes, handler.NewSessionHandler(deps.sessionManager))
 
 	// Artifact routes
 	setupArtifactRoutes(router, deps.jwtManager, deps.artifactHandler)
