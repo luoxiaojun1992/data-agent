@@ -39,7 +39,7 @@ func TestListNotifications_Success(t *testing.T) {
 		{ID: primitive.NewObjectID(), Title: "Test", Content: "Hello", Type: "info", CreatedAt: time.Now()},
 	}
 
-	svc.On("ListForUser", mock.Anything, mock.Anything).Return(mock.Anything).Return( notifs, nil)
+	svc.On("ListForUser", mock.Anything, mock.Anything).Return( notifs, nil)
 
 	c, w := newGinContext("GET", "/notifications", "")
 	c.Set("user_id", "user-1")
@@ -54,7 +54,7 @@ func TestListNotifications_WithLimit(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("ListForUser", mock.Anything, mock.Anything).Return(mock.Anything).Return( []model.Notification{}, nil)
+	svc.On("ListForUser", mock.Anything, mock.Anything).Return( []model.Notification{}, nil)
 
 	c, w := newGinContext("GET", "/notifications?limit=10", "")
 	c.Set("user_id", "user-1")
@@ -69,7 +69,7 @@ func TestListNotifications_DefaultLimit(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("ListForUser", mock.Anything, mock.Anything).Return(mock.Anything).Return( []model.Notification{}, nil)
+	svc.On("ListForUser", mock.Anything, mock.Anything).Return( []model.Notification{}, nil)
 
 	c, w := newGinContext("GET", "/notifications", "")
 	c.Set("user_id", "user-1")
@@ -84,7 +84,7 @@ func TestListNotifications_Error(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("ListForUser", mock.Anything, mock.Anything).Return(mock.Anything).Return( nil, fmt.Errorf("db error"))
+	svc.On("ListForUser", mock.Anything, mock.Anything).Return( nil, fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/notifications", "")
 	c.Set("user_id", "user-1")
@@ -101,7 +101,7 @@ func TestUnreadCount_Success(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("UnreadCount", mock.Anything).Return(mock.Anything).Return( int64(5), nil)
+	svc.On("UnreadCount", mock.Anything).Return( int64(5), nil)
 
 	c, w := newGinContext("GET", "/notifications/unread-count", "")
 	c.Set("user_id", "user-1")
@@ -119,7 +119,7 @@ func TestUnreadCount_Zero(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("UnreadCount", mock.Anything).Return(mock.Anything).Return( int64(0), nil)
+	svc.On("UnreadCount", mock.Anything).Return( int64(0), nil)
 
 	c, w := newGinContext("GET", "/notifications/unread-count", "")
 	c.Set("user_id", "user-1")
@@ -137,7 +137,7 @@ func TestUnreadCount_Error(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("UnreadCount", mock.Anything).Return(mock.Anything).Return( int64(0), fmt.Errorf("db error"))
+	svc.On("UnreadCount", mock.Anything).Return( int64(0), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/notifications/unread-count", "")
 	c.Set("user_id", "user-1")
@@ -154,7 +154,7 @@ func TestMarkRead_Success(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("MarkRead", mock.Anything, mock.Anything).Return(mock.Anything).Return( nil)
+	svc.On("MarkRead", mock.Anything, mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/notifications/notif-1/read", "")
 	c.Set("user_id", "user-1")
@@ -173,7 +173,7 @@ func TestMarkRead_Error(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("MarkRead", mock.Anything, mock.Anything).Return(mock.Anything).Return( fmt.Errorf("invalid id"))
+	svc.On("MarkRead", mock.Anything, mock.Anything).Return( fmt.Errorf("invalid id"))
 
 	c, w := newGinContext("POST", "/notifications/bad/read", "")
 	c.Set("user_id", "user-1")
@@ -191,7 +191,7 @@ func TestMarkAllRead_Success(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("MarkAllRead", mock.Anything).Return(mock.Anything).Return( nil)
+	svc.On("MarkAllRead", mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/notifications/read-all", "")
 	c.Set("user_id", "user-1")
@@ -209,7 +209,7 @@ func TestMarkAllRead_Error(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("MarkAllRead", mock.Anything).Return(mock.Anything).Return( fmt.Errorf("db error"))
+	svc.On("MarkAllRead", mock.Anything).Return( fmt.Errorf("db error"))
 
 	c, w := newGinContext("POST", "/notifications/read-all", "")
 	c.Set("user_id", "user-1")
@@ -235,7 +235,7 @@ func TestSendNotification_Success(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	svc.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( n, nil)
+	svc.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( n, nil)
 
 	body := `{"title":"System Update","content":"Maintenance tonight","type":"warning","target_ids":["user-1","user-2"]}`
 	c, w := newGinContext("POST", "/notifications/send", body)
@@ -252,7 +252,7 @@ func TestSendNotification_DefaultType(t *testing.T) {
 
 	n := &model.Notification{ID: primitive.NewObjectID(), Type: "info"}
 
-	svc.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( n, nil)
+	svc.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( n, nil)
 
 	body := `{"title":"Test","content":"Hello world"}`
 	c, w := newGinContext("POST", "/notifications/send", body)
@@ -305,7 +305,7 @@ func TestSendNotification_ServiceError(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( nil, fmt.Errorf("db error"))
+	svc.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( nil, fmt.Errorf("db error"))
 
 	body := `{"title":"Test","content":"Hello"}`
 	c, w := newGinContext("POST", "/notifications/send", body)
@@ -331,7 +331,7 @@ func TestBroadcastNotification_Success(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	svc.On("Broadcast", mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( n, nil)
+	svc.On("Broadcast", mock.Anything, mock.Anything, mock.Anything).Return( n, nil)
 
 	body := `{"title":"Broadcast","content":"All hands meeting","type":"info"}`
 	c, w := newGinContext("POST", "/notifications/broadcast", body)
@@ -348,7 +348,7 @@ func TestBroadcastNotification_DefaultType(t *testing.T) {
 
 	n := &model.Notification{ID: primitive.NewObjectID(), Type: "info"}
 
-	svc.On("Broadcast", mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( n, nil)
+	svc.On("Broadcast", mock.Anything, mock.Anything, mock.Anything).Return( n, nil)
 
 	body := `{"title":"Test","content":"Hello"}`
 	c, w := newGinContext("POST", "/notifications/broadcast", body)
@@ -401,7 +401,7 @@ func TestBroadcastNotification_ServiceError(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	svc.On("Broadcast", mock.Anything, mock.Anything, mock.Anything).Return(mock.Anything).Return( nil, fmt.Errorf("db error"))
+	svc.On("Broadcast", mock.Anything, mock.Anything, mock.Anything).Return( nil, fmt.Errorf("db error"))
 
 	body := `{"title":"Test","content":"Hello"}`
 	c, w := newGinContext("POST", "/notifications/broadcast", body)
