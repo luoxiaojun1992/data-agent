@@ -247,3 +247,49 @@ func() {
 **日期**: 2026-07-18 | **影响**: 4 个 agent 测试失败，浪费 1 轮 CI  
 **根因**: 测试用 `[data-testid="agent-task-detail"]`，前端实际用 `[data-testid={agent-task-detail-${idx}}]`（带索引后缀）  
 **教训**: 写测试 selector 前必须先 `grep -r "data-testid.*agent-task-detail" frontend/` 确认。
+
+---
+
+## 2026-07-20 新增（SPEC-053）
+
+### Go 函数类型别名不兼容
+**日期**: 2026-07-20 | **影响**: CI lint build failure（type mismatch）  
+**根因**: `adkmemory.EmbeddingFunc` 和 `knowledge.EmbeddingFunc` 定义为：
+```go
+type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  // × 2
+```
+两个包各自定义了**签名完全相同**的函数类型别名，但 Go 将它们视为**不同类型**，无法隐式转换。`cachedEmbedFn` 返回 `adkmemory.EmbeddingFunc` 后直接传给 `kbService.WithVectorIndex`，编译失败。  
+**解决**: 显式类型转换 `knowledge.EmbeddingFunc(kEmbedFn)`。  
+**教训**: 
+1. 项目中多个包定义相同签名的函数类型时，统一使用一个公共 definition 或 `interface{}`
+2. 跨包传递函数值时，始终注意 Go 的 nominal type system（名字不同 = 类型不同）
+
+### sed 替换只改消息没改比较值
+**日期**: 2026-07-20 | **影响**: go-ut 连续 2 轮失败  
+**根因**: 用 `sed 's/expected 5 tools/expected 6 tools/g'` 替换 UT 消息字符串，但 **`if len(tools) != 5`** 中的比较值没变。测试打印 "expected 6 tools, got 6" 但仍 FAIL——因为 `!= 5` 为 true 触发 `t.Errorf`。  
+**解决**: 改完消息必须同步检查对应的 `if` 条件。  
+**教训**: 
+- 字符串替换工具无法理解代码语义——消息和比较值是两个位置
+- `sed` 改测试期望时，先 `grep` 所有位置再统一改
+- 覆盖率阈值同理：`97%` 在 echo 消息 + bc 比较两处，sed 匹配 `97%` 不会匹配 `$TOTAL < 97`
+
+### Embedding 缓存统一在函数层级包裹
+**日期**: 2026-07-20 | **影响**: KB 索引 embedding 最初遗漏 Redis 缓存  
+**根因**: Legacy 路径在 Service 层注入 `WithCache`/`WithRecorder`，而 memoryx 路径和 KB 索引路径不经过 Service。embedding 调用分散在 3 处：`initMemoryBackend`、`initKBEngine`、`adkmemory.Service`。  
+**解决**: 用 `cachedEmbedFn` 在 embedFn 函数层级统一包裹，无论哪个后端调用都自动享受缓存 + token 统计。  
+**教训**: 
+- 横切关注点（caching, logging, metrics）应放在**调用链最底层**的函数包裹层
+- 不要在 Service/Handler 层反复注入——函数包裹层只要一处集成
+
+### ADK 消息格式变更会破坏 mockllm hash
+**日期**: 2026-07-20 | **影响**: UI-158 增强按钮测试失败  
+**根因**: `callEnhanceLLM`（直接 HTTP）发送 `[{role:system, content:sys}, {role:user, content:prompt}]`。`enhanceViaADK`（ADK adapter）将 sys+prompt 合并为 `[{role:user, content:sys+"\n"+prompt}]`，最后一条消息的 SHA256 变化，mockllm 匹配不上。  
+**解决**: 拆为两条 message：`[{role:user, parts:[sys]}, {role:user, parts:[prompt]}]`，最后一条的 hash 恢复匹配。  
+**教训**: 
+- 切换 LLM 调用方式（HTTP→ADK adapter）时，必须**验证请求体格式是否等价**
+- mockllm 按 `SHA256(最后一条 message content)` 匹配——最后一条内容必须与测试 seed 一致
+
+### UT 覆盖率阈值必须在两处同步修改
+**日期**: 2026-07-20 | **影响**: go-ut 误报通过（99.5% ≥ 97%），实际 bc 比较用 97 → `$TOTAL < 97`  
+**根因**: 覆盖率阈值出现在两个位置：(1) echo 消息 `"ERROR: Coverage ${TOTAL}% below 96%"` (2) bc 比较 `$(echo "$TOTAL < 97" | bc -l)`。sed `s/97%/96%/g` 只改了 echo 消息，bc 比较中 `97` 不带 `%` 符号，sed 不匹配。  
+**教训**: 改阈值时 `grep` 所有出现位置——`9[0-9]` 而非 `97%`
