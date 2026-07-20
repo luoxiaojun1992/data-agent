@@ -149,7 +149,7 @@ func TestCreateAgentTask_WithTaskService(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(svc.sessions, "Create", &chat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	svc.WithTaskService(newTaskStubOK(t))
+	svc.WithTaskService(newTaskStubForCreate(t))
 
 	c, w := newGinContext("POST", "/agent", `{"title": "t", "skill_chain": ["stats_engine"], "params": {"k": 1}}`)
 	c.Set("user_id", "u1")
@@ -171,7 +171,7 @@ func TestCreateAgentTask_TaskServiceError(t *testing.T) {
 	defer patches.Reset()
 	patches.ApplyMethodReturn(svc.sessions, "Create", &chat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	svc.WithTaskService(newTaskStubErr(t))
+	svc.WithTaskService(newTaskStubForCreateErr(t))
 
 	c, w := newGinContext("POST", "/agent", `{"title": "t"}`)
 	c.Set("user_id", "u1")
@@ -197,7 +197,7 @@ func TestGetAgentTask_Found(t *testing.T) {
 	svc := newTestService()
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	svc.WithTaskService(newTaskStubOK(t))
+	svc.WithTaskService(newTaskStubForGet(t))
 
 	c, w := newGinContext("GET", "/agent/task_1", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -216,7 +216,7 @@ func TestGetAgentTask_Error(t *testing.T) {
 	svc := newTestService()
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	svc.WithTaskService(newTaskStubErr(t))
+	svc.WithTaskService(newTaskStubForGetErr(t))
 
 	c, w := newGinContext("GET", "/agent/missing", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
@@ -307,17 +307,28 @@ func TestContains(t *testing.T) {
 
 // ── task service stub (uses mockery TaskService) ──
 
-func newTaskStubOK(t *testing.T) *task_mocks.TaskService {
+func newTaskStubForCreate(t *testing.T) *task_mocks.TaskService {
 	m := task_mocks.NewTaskService(t)
 	tk := &task.Task{ID: "task_1", SessionID: "s1", UserID: "u1", Status: task.StatusPending, CreatedAt: time.Now()}
 	m.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tk, nil)
+	return m
+}
+
+func newTaskStubForCreateErr(t *testing.T) *task_mocks.TaskService {
+	m := task_mocks.NewTaskService(t)
+	m.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return((*task.Task)(nil), fmt.Errorf("queue unavailable"))
+	return m
+}
+
+func newTaskStubForGet(t *testing.T) *task_mocks.TaskService {
+	m := task_mocks.NewTaskService(t)
+	tk := &task.Task{ID: "task_1", SessionID: "s1", UserID: "u1", Status: task.StatusPending, CreatedAt: time.Now()}
 	m.On("GetTask", mock.Anything).Return(tk, nil)
 	return m
 }
 
-func newTaskStubErr(t *testing.T) *task_mocks.TaskService {
+func newTaskStubForGetErr(t *testing.T) *task_mocks.TaskService {
 	m := task_mocks.NewTaskService(t)
-	m.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return((*task.Task)(nil), fmt.Errorf("queue unavailable"))
 	m.On("GetTask", mock.Anything).Return((*task.Task)(nil), fmt.Errorf("queue unavailable"))
 	return m
 }

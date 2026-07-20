@@ -92,32 +92,45 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 	return s.kb.UpdateDocStatus(context.Background(), docID, knowledge.StatusIndexing, len(chunks))
 }
 
-// Search searches the knowledge base (backward compat: returns []knowledge.SearchResult).
+// Search searches the knowledge base using vector + text fallback.
 func (s *Service) Search(userID, query string, topK int, role string) ([]knowledge.SearchResult, error) {
-	resp := &SearchResponse{Results: []SearchResult{}}
-	if s.embed != nil && s.vector != nil {
-		if vec, err := s.embed(context.Background(), query); err == nil {
-			if hits, err := s.vector.Search(context.Background(), s.vecCol, vec, topK, nil); err == nil {
-				for _, h := range hits {
-					resp.Results = append(resp.Results, SearchResult{ChunkID: h.ID, Score: float64(h.Score)})
-				}
-			}
-		}
+	results := s.vectorSearch(query, topK)
+	if len(results) == 0 {
+		results = s.textSearch(query, topK)
 	}
-	if len(resp.Results) == 0 {
-		if textResults, err := s.kb.SearchChunks(context.Background(), query, topK); err == nil {
-			for _, r := range textResults {
-				resp.Results = append(resp.Results, SearchResult{ChunkID: r.ChunkID, Text: r.Content, Score: r.Score})
-			}
-		}
-	}
-	sort.Slice(resp.Results, func(i, j int) bool { return resp.Results[i].Score > resp.Results[j].Score })
-
-	var results []knowledge.SearchResult
-	for _, r := range resp.Results {
-		results = append(results, knowledge.SearchResult{ChunkID: r.ChunkID, Content: r.Text, Score: r.Score})
-	}
+	sort.Slice(results, func(i, j int) bool { return results[i].Score > results[j].Score })
 	return results, nil
+}
+
+func (s *Service) vectorSearch(query string, topK int) []knowledge.SearchResult {
+	if s.embed == nil || s.vector == nil {
+		return nil
+	}
+	vec, err := s.embed(context.Background(), query)
+	if err != nil {
+		return nil
+	}
+	hits, err := s.vector.Search(context.Background(), s.vecCol, vec, topK, nil)
+	if err != nil {
+		return nil
+	}
+	var results []knowledge.SearchResult
+	for _, h := range hits {
+		results = append(results, knowledge.SearchResult{ChunkID: h.ID, Score: float64(h.Score)})
+	}
+	return results
+}
+
+func (s *Service) textSearch(query string, topK int) []knowledge.SearchResult {
+	textResults, err := s.kb.SearchChunks(context.Background(), query, topK)
+	if err != nil {
+		return nil
+	}
+	var results []knowledge.SearchResult
+	for _, r := range textResults {
+		results = append(results, knowledge.SearchResult{ChunkID: r.ChunkID, Content: r.Content, Score: r.Score})
+	}
+	return results
 }
 
 // UploadFile uploads a file (backward compat: returns gridFSFileID, error).

@@ -47,7 +47,9 @@ func (r *KBRepository) ListDocs(ctx context.Context, userID string, skip, limit 
 	}
 	defer cursor.Close(ctx)
 	var docs []*knowledge.KnowledgeDoc
-	cursor.All(ctx, &docs)
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, 0, err
+	}
 	return docs, total, nil
 }
 
@@ -58,7 +60,9 @@ func (r *KBRepository) ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeD
 	}
 	defer cursor.Close(ctx)
 	var docs []*knowledge.KnowledgeDoc
-	cursor.All(ctx, &docs)
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
 	return docs, nil
 }
 
@@ -95,7 +99,9 @@ func (r *KBRepository) SearchChunks(ctx context.Context, query string, topK int)
 	}
 	defer cursor.Close(ctx)
 	var results []*knowledge.SearchResult
-	cursor.All(ctx, &results)
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
 	return results, nil
 }
 

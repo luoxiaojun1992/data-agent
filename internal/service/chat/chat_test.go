@@ -320,12 +320,7 @@ func TestLastUserMessage(t *testing.T) {
 	}
 }
 
-// ── Session Manager (kept from legacy tests) ──
-
-func newManagerWithMockColl() (*Manager, *mockrepo.SessionRepository) {
-	repo := mockrepo.NewSessionRepository(nil) // nil T for non-test contexts
-	return &Manager{repo: repo, ttl: 24 * time.Hour}, repo
-}
+// ── Session Manager ──
 
 func newTestManager(t *testing.T) (*Manager, *mockrepo.SessionRepository) {
 	t.Helper()

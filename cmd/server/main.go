@@ -876,55 +876,6 @@ func setupTaskRoutes(router *gin.Engine, jwtManager *middleware.JWTManager, task
 	adminTasks.POST("/batch-cancel", taskHandler.BatchCancelTasks)
 }
 
-// ===================== Dashboard Routes =====================
-
-func dashboardHandler(taskService *task_svc.Service, taskHandler *handler.TaskHandler, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID, _ := c.Get("user_id")
-		var tasks []*task.Task
-		if taskService != nil {
-			tasks, _, _ = taskService.ListTasks(userID.(string), "", 0, 0)
-		}
-		sessions, _ := sessionManager.ListByUser(userID.(string))
-		var docs int
-		if kbService != nil {
-			d, err := kbService.ListDocs(userID.(string))
-			if err == nil {
-				docs = len(d)
-			}
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"tasks":    len(tasks),
-			"sessions": len(sessions),
-			"docs":     docs,
-		})
-	}
-}
-
-
-func dashboardTrendsHandler(taskService *task_svc.Service, sessionManager *chat.Manager, kbService *knowledge.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID, _ := c.Get("user_id")
-		var allTasks []*task.Task
-
-		if taskService != nil {
-			allTasks, _, _ = taskService.ListTasks(userID.(string), "", 0, 100)
-		}
-
-		var docs int
-		userSessions, _ := sessionManager.ListByUser(userID.(string))
-		if kbService != nil {
-			d, err := kbService.ListDocs(userID.(string))
-			if err == nil {
-				docs = len(d)
-			}
-		}
-
-		trends := monitor.ComputeTrends(convertPtrSlice(allTasks), make([]interface{}, len(userSessions)), docs)
-		c.JSON(http.StatusOK, trends)
-	}
-}
-
 // ===================== Helper Functions =====================
 
 func initLogger(cfg *config.Config) (*zap.Logger, error) {
@@ -998,23 +949,6 @@ func getEnvOrDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
-}
-
-func toFloat64(v interface{}) (float64, bool) {
-	switch val := v.(type) {
-	case float64:
-		return val, true
-	case float32:
-		return float64(val), true
-	case int:
-		return float64(val), true
-	case int64:
-		return float64(val), true
-	case json.Number:
-		f, err := val.Float64()
-		return f, err == nil
-	}
-	return 0, false
 }
 
 type simpleExecutor struct {
@@ -1099,14 +1033,6 @@ func setupChatEnhance(chatRoutes *gin.RouterGroup, deps *serverDependencies) {
 	chatRoutes.POST("/enhance", makeEnhanceHandler(deps))
 }
 
-
-func convertPtrSlice(ptrs []*task.Task) []task.Task {
-	out := make([]task.Task, len(ptrs))
-	for i, p := range ptrs {
-		out[i] = *p
-	}
-	return out
-}
 
 func hermesProxyHandler(hermesURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {

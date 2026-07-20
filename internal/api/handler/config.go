@@ -20,14 +20,11 @@ func NewConfigHandler(cfgSvc config.Service, roleSvc role.Service) *ConfigHandle
 }
 
 // RegisterSysConfigRoutes registers system configuration routes.
+// Role routes are registered separately via RegisterRoleRoutes.
 func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler) {
 	admin.GET("/sysconfig/:namespace", h.Get)
 	admin.PUT("/sysconfig/:namespace", h.Put)
 	admin.POST("/change-password", h.ChangePassword)
-	admin.GET("/roles", h.ListRoles)
-	admin.POST("/roles", h.CreateRole)
-	admin.PUT("/roles/:id", h.UpdateRole)
-	admin.DELETE("/roles/:id", h.DeleteRole)
 }
 
 func (h *ConfigHandler) Get(c *gin.Context) {

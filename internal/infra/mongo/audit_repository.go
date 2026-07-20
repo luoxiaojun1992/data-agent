@@ -2,7 +2,6 @@ package mongo
 
 import (
 	"context"
-	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"go.mongodb.org/mongo-driver/bson"
@@ -55,36 +54,3 @@ func toBson(m map[string]interface{}) bson.M {
 	return result
 }
 
-// normalizeLimit clamps limit to valid bounds.
-func normalizeLimit(limit int64) int64 {
-	if limit <= 0 {
-		return 20
-	}
-	if limit > 100 {
-		return 100
-	}
-	return limit
-}
-
-// parseDateRange parses start/end date strings.
-func parseDateRange(start, end string) (bson.M, error) {
-	if start == "" && end == "" {
-		return nil, nil
-	}
-	df := bson.M{}
-	if start != "" {
-		t, err := time.Parse("2006-01-02", start)
-		if err != nil {
-			return nil, err
-		}
-		df["$gte"] = t
-	}
-	if end != "" {
-		t, err := time.Parse("2006-01-02", end)
-		if err != nil {
-			return nil, err
-		}
-		df["$lt"] = t.Add(24 * time.Hour)
-	}
-	return df, nil
-}
