@@ -19,7 +19,7 @@ func TestProvider_EnvOnly(t *testing.T) {
 	t.Setenv("EMBEDDING_API_KEY", "ek")
 
 	p := NewProvider(nil)
-	llm, err := p.BuildLLM(context.Background())
+	llm, err := p.BuildLLM(context.Background(), "")
 	if err != nil || llm == nil {
 		t.Fatalf("BuildLLM: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestDB_BuildLLM_SingleBackend(t *testing.T) {
 		Value: `[{"name":"oned","base_url":"http://one/v1","fallback_order":0}]`,
 	}, nil)
 	p := NewProvider(mockRepo)
-	llm, err := p.BuildLLM(context.Background())
+	llm, err := p.BuildLLM(context.Background(), "")
 	if err != nil || llm == nil {
 		t.Fatalf("BuildLLM error: %v", err)
 	}

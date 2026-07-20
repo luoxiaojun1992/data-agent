@@ -275,15 +275,21 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	}
 
 	// Build LLM from model config (Provider reads system_config or env).
-	llm, llmErr := deps.modelCfg.BuildLLM(context.Background())
+	llm, llmErr := deps.modelCfg.BuildLLM(context.Background(), "")
 	if llmErr != nil {
 		logger.Fatal("Failed to build LLM from model config", zap.Error(llmErr))
+	}
+
+	// Compaction LLM — separate config for session summarization.
+	compactionLLM, cErr := deps.modelCfg.BuildLLM(context.Background(), modelcfg.UseCaseCompaction)
+	if cErr != nil {
+		compactionLLM = llm // fallback to chat LLM
 	}
 
 	// ADK session service (MongoDB) with LLM-summarization compaction.
 	deps.adkSessions = adksession.NewService(mongoClient.DB()).WithCompaction(
 		adksession.CompactionConfig{MaxEvents: 100, MaxTokens: 4000, KeepRecent: 20},
-		adksession.NewLLMSummarizer(llm),
+		adksession.NewLLMSummarizer(compactionLLM),
 	)
 
 	// Long-term memory (MongoDB + embedding).
