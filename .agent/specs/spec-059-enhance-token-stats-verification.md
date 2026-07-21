@@ -240,6 +240,39 @@ test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, reque
 
 > **E2E 全局约束**：dashboard 趋势依赖 task + llm_usage 真实数据。测试用 admin 账号创建 task（或预置），enhance 触发 token 写入。不 mock `/dashboard/trends` 端点（走真实后端链路）。
 
+### 5.8 dashboard stats 端点统一修复（路径 + 字段格式）
+
+调研发现 dashboard stats 三处不一致（SPEC-055 重构遗留）：
+- **路径**：前端 `page.tsx` L74 调 `/dashboard`；测试 `dashboard-integration.spec.ts` 调 `/dashboard/stats`；后端注册 `/admin/dashboard` —— 全不匹配，stats 一直 404
+- **字段**：前端 L88 期望 `stats.task_stats`（{total,pending,running,completed,failed}）、L81 `stats.kpis`；测试期望 `stats.kb_docs`+`stats.task_stats`；后端 `Get` 返回 `{tasks, sessions, docs}` —— 字段名全不对，即使路径对了 taskStats 仍默认 `{total:0,...}`（KPI 全 0）
+- 测试 UI-229/230/231 用 `if (statsRes.ok())` 容忍 404，API 验证一直被跳过
+
+**修复方案**：
+
+**(a) 后端路径 + 字段统一**（`internal/api/handler/dashboard.go`）：
+- `RegisterDashboardRoutes` 路由 `/api/v1/admin/dashboard` → `/api/v1/dashboard`（与前端 `page.tsx` 匹配；中间件已是 `AuthMiddleware` 登录即可，路径名含 "admin" 是误导）
+- `Get` 返回格式对齐前端/测试期望：
+```go
+func (h *DashboardHandler) Get(c *gin.Context) {
+    userID := c.GetString("user_id")
+    tasks, _ := h.taskService.ListAllTasks(userID)
+    docs, _ := h.kbService.ListAllDocs()
+    taskStats := aggregateTaskStats(tasks) // {total,pending,running,completed,failed}
+    c.JSON(http.StatusOK, gin.H{
+        "task_stats": taskStats,
+        "kb_docs":    len(docs),
+    })
+}
+```
+- 新增 `aggregateTaskStats(tasks []task.Task) map[string]int`：按 Status 聚合
+
+**(b) 测试路径对齐**（`tests/ui/dashboard-integration.spec.ts` + `tests/ui/utils/mongo-query.ts`）：
+- `/dashboard/stats` → `/dashboard`（4 处：L138/159/176/238 + mongo-query.ts L103）
+
+**(c) 不保留 `/admin/dashboard` 别名**：grep 确认无生产调用方（前端/测试都不调），直接改路径，避免遗留歧义
+
+> **sessions 字段**：后端原返回 `sessions`，但前端 page.tsx 不消费 `stats.sessions`（grep 无 `stats.sessions`），测试也不期望。移除 sessions 字段（`sessionManager` 依赖可保留在 handler 但 Get 不返回，或一并移除）。本 spec 移除 sessions 返回。
+
 ## 6. 可行性分析
 
 | 检查项 | 结论 |
@@ -258,14 +291,16 @@ test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, reque
 | `internal/infra/llmstats/llmstats_test.go` | 新增查询方法测试 | Modify |
 | `internal/api/handler/stats.go` | 新增 `LLMStatsHandler` + `GetLLMStats` | **New** |
 | `internal/api/handler/stats_test.go` | handler 测试 | **New** |
-| `internal/api/handler/dashboard.go` | 增加 `llmRecorder` 字段 + `GetTrends` + 路由 | Modify |
-| `internal/api/handler/dashboard_test.go` | GetTrends 测试 | Modify |
+| `internal/api/handler/dashboard.go` | 增加 `llmRecorder` 字段 + `GetTrends` + 路由；`Get` 改路径 `/admin/dashboard`→`/dashboard` + 返回 `{task_stats, kb_docs}` + `aggregateTaskStats` | Modify |
+| `internal/api/handler/dashboard_test.go` | GetTrends + Get（新返回格式）测试 | Modify |
 | `internal/service/monitor/trends.go` | `ComputeTrends` 加 tokenBuckets 参数 + 删 `computeTokenTrend` + `mapTokenBuckets` | Modify |
 | `internal/service/monitor/monitor_test.go` | 适配 ComputeTrends 新签名 + 删 TestComputeTrends_TokenTrend | Modify |
-| `cmd/server/main.go` | 注册 2 路由 + dashboard handler 注入 recorder | Modify |
+| `cmd/server/main.go` | 注册 2 路由（/dashboard + /dashboard/trends）+ dashboard handler 注入 recorder | Modify |
 | `frontend/app/page.tsx` | 删除 `emptyChart` 死代码（data-testid 已存在无需新增） | Modify |
 | `tests/ui/prompt.spec.ts` | UI-160 改名 + 改验证逻辑 + `getLLMStats` 辅助 | Modify |
-| `tests/ui/dashboard.spec.ts` | 新增 UI-2XX dashboard token 真数据验证 | Modify |
+| `tests/ui/dashboard-integration.spec.ts` | `/dashboard/stats`→`/dashboard`（4 处）+ UI-229/230/231 API 验证不再跳过 | Modify |
+| `tests/ui/utils/mongo-query.ts` | `/dashboard/stats`→`/dashboard`（1 处） | Modify |
+| `tests/ui/dashboard.spec.ts` | 新增 UI-2XX dashboard 全 trend 真数据验证 | Modify |
 | `.agent/memory/E2E_TESTING.md` | UI-160 + UI-2XX 描述更新 | Modify |
 
 ## 8. 测试策略
@@ -314,11 +349,14 @@ test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, reque
 11. `computeTokenTrend` ×500 假函数已删除，`grep -rn "computeTokenTrend" internal/` 为空
 12. `ComputeTrends` 签名清理死参数（移除未用的 sessions/docCount），新签名 `(tasks, tokenBuckets)`
 13. `page.tsx` `emptyChart` 死代码已删除
+14. `/api/v1/dashboard`（stats）不再 404，返回 `{task_stats, kb_docs}`（字段与前端/测试期望对齐）
+15. `/admin/dashboard` 路径已改为 `/dashboard`，`grep -rn "admin/dashboard" internal/ cmd/` 为空
+16. dashboard KPI 卡片（`dashboard-stat-0~3`）显示真实 task_stats（非全 0）
+17. 测试 `/dashboard/stats` 已改为 `/dashboard`（4 处）
 
 ## 11. 不在本 spec 范围
 
 - dashboard `timeFilter`（today/week/month）联动 trends 时间范围 → 后续优化（前端 L121-130 有 filter UI，但后端 ComputeTrends 硬编码 24h/7d）
 - `req_dist` 真实化（现状 = call_trend 重复数据，语义为"24h agent 调用分布"；真实 API 请求量统计超出范围）
 - `roi_trend` 语义优化（现状是 4 周 completed task 数，前端 L179 计算倍数，逻辑可改进但现有合理）
-- `/api/v1/admin/dashboard`（stats 端点）路径与前端 `/dashboard` 不匹配问题 → 附带发现，本 spec 不修（聚焦 token + trends）
 - enhance cache hit 时 token 统计补偿（cache hit 不计 token 是合理行为）
