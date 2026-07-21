@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
@@ -39,9 +40,9 @@ type ModelConfigRepository interface {
 
 // APIReviewRepository defines the data access contract for API review records.
 type APIReviewRepository interface {
-	Create(ctx context.Context, review map[string]interface{}) error
-	List(ctx context.Context, skip, limit int64) ([]map[string]interface{}, error)
-	FindByID(ctx context.Context, id string) (map[string]interface{}, error)
+	Create(ctx context.Context, review *apireview.APIReview) error
+	List(ctx context.Context, skip, limit int64) ([]apireview.APIReview, error)
+	FindByID(ctx context.Context, id string) (*apireview.APIReview, error)
 	UpdateStatus(ctx context.Context, id string, update map[string]interface{}) error
 }
 

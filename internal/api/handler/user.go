@@ -68,7 +68,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":       user.ID.Hex(),
+		"id":       user.ID,
 		"username": user.Username,
 		"role":     user.Role,
 		"status":   user.Status,
@@ -96,7 +96,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
-		"id":       user.ID.Hex(),
+		"id":       user.ID,
 		"username": user.Username,
 		"role":     user.Role,
 		"status":   user.Status,

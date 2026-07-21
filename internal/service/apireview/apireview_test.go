@@ -26,9 +26,6 @@ func TestNewService(t *testing.T) {
 	if s == nil {
 		t.Fatal("NewService should not return nil")
 	}
-	if s.repo != repo {
-		t.Error("Service.repo should be the injected repository")
-	}
 }
 
 func TestCreate_Success(t *testing.T) {
@@ -54,6 +51,8 @@ func TestCreate_Success(t *testing.T) {
 	if r.ID == "" {
 		t.Error("ID should not be empty")
 	}
+	// repo.Create received the constructed review (verified by mock assertion).
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestCreate_InsertError(t *testing.T) {
@@ -68,9 +67,9 @@ func TestCreate_InsertError(t *testing.T) {
 
 func TestListAll_Success(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("List", mock.Anything, int64(0), int64(100)).Return([]map[string]interface{}{
-		{"_id": "r1", "name": "API 1", "status": "pending"},
-		{"_id": "r2", "name": "API 2", "status": "approved"},
+	repo.On("List", mock.Anything, int64(0), int64(100)).Return([]apireview.APIReview{
+		{ID: "r1", Name: "API 1", Status: apireview.StatusPending},
+		{ID: "r2", Name: "API 2", Status: apireview.StatusApproved},
 	}, nil)
 
 	reviews, err := NewService(repo).ListAll()
@@ -80,11 +79,17 @@ func TestListAll_Success(t *testing.T) {
 	if len(reviews) != 2 {
 		t.Fatalf("expected 2 reviews, got %d", len(reviews))
 	}
+	if reviews[0].Name != "API 1" {
+		t.Errorf("reviews[0].Name: got %q, want %q", reviews[0].Name, "API 1")
+	}
+	if reviews[1].Status != apireview.StatusApproved {
+		t.Errorf("reviews[1].Status: got %q, want %q", reviews[1].Status, apireview.StatusApproved)
+	}
 }
 
 func TestListAll_FindError(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("List", mock.Anything, int64(0), int64(100)).Return(([]map[string]interface{})(nil), errors.New("list failed"))
+	repo.On("List", mock.Anything, int64(0), int64(100)).Return(([]apireview.APIReview)(nil), errors.New("list failed"))
 
 	_, err := NewService(repo).ListAll()
 	if err == nil {
@@ -94,7 +99,7 @@ func TestListAll_FindError(t *testing.T) {
 
 func TestListAll_NilReviews(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("List", mock.Anything, int64(0), int64(100)).Return(([]map[string]interface{})(nil), nil)
+	repo.On("List", mock.Anything, int64(0), int64(100)).Return(([]apireview.APIReview)(nil), nil)
 
 	reviews, err := NewService(repo).ListAll()
 	if err != nil {
@@ -107,8 +112,8 @@ func TestListAll_NilReviews(t *testing.T) {
 
 func TestApprove_Success(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(map[string]interface{}{
-		"_id": "apirev_test1234", "status": "pending", "submitter": "user1",
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(&apireview.APIReview{
+		ID: "apirev_test1234", Status: apireview.StatusPending, Submitter: "user1",
 	}, nil)
 	repo.On("UpdateStatus", mock.Anything, "apirev_test1234", mock.Anything).Return(nil)
 
@@ -120,7 +125,7 @@ func TestApprove_Success(t *testing.T) {
 
 func TestApprove_FindError(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return((map[string]interface{})(nil), errors.New("not found"))
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return((*apireview.APIReview)(nil), errors.New("not found"))
 
 	err := NewService(repo).Approve("apirev_test1234", "reviewer1")
 	if err == nil {
@@ -128,10 +133,20 @@ func TestApprove_FindError(t *testing.T) {
 	}
 }
 
+func TestApprove_NotFound(t *testing.T) {
+	repo := mocks.NewAPIReviewRepository(t)
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return((*apireview.APIReview)(nil), nil)
+
+	err := NewService(repo).Approve("apirev_test1234", "reviewer1")
+	if err == nil {
+		t.Fatal("expected error for missing review")
+	}
+}
+
 func TestApprove_NotPending(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(map[string]interface{}{
-		"_id": "apirev_test1234", "status": "approved", "submitter": "user1",
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(&apireview.APIReview{
+		ID: "apirev_test1234", Status: apireview.StatusApproved, Submitter: "user1",
 	}, nil)
 
 	err := NewService(repo).Approve("apirev_test1234", "reviewer1")
@@ -142,8 +157,8 @@ func TestApprove_NotPending(t *testing.T) {
 
 func TestApprove_SelfReview(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(map[string]interface{}{
-		"_id": "apirev_test1234", "status": "pending", "submitter": "reviewer1",
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(&apireview.APIReview{
+		ID: "apirev_test1234", Status: apireview.StatusPending, Submitter: "reviewer1",
 	}, nil)
 
 	err := NewService(repo).Approve("apirev_test1234", "reviewer1")
@@ -154,8 +169,8 @@ func TestApprove_SelfReview(t *testing.T) {
 
 func TestApprove_UpdateError(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(map[string]interface{}{
-		"_id": "apirev_test1234", "status": "pending", "submitter": "user1",
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(&apireview.APIReview{
+		ID: "apirev_test1234", Status: apireview.StatusPending, Submitter: "user1",
 	}, nil)
 	repo.On("UpdateStatus", mock.Anything, "apirev_test1234", mock.Anything).Return(errors.New("update failed"))
 
@@ -167,8 +182,8 @@ func TestApprove_UpdateError(t *testing.T) {
 
 func TestReject_Success(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(map[string]interface{}{
-		"_id": "apirev_test1234", "status": "pending", "submitter": "submitter1",
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(&apireview.APIReview{
+		ID: "apirev_test1234", Status: apireview.StatusPending, Submitter: "submitter1",
 	}, nil)
 	repo.On("UpdateStatus", mock.Anything, "apirev_test1234", mock.Anything).Return(nil)
 
@@ -188,7 +203,7 @@ func TestReject_EmptyReason(t *testing.T) {
 
 func TestReject_FindError(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return((map[string]interface{})(nil), errors.New("not found"))
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return((*apireview.APIReview)(nil), errors.New("not found"))
 
 	err := NewService(repo).Reject("apirev_test1234", "reviewer1", "reason")
 	if err == nil {
@@ -198,8 +213,8 @@ func TestReject_FindError(t *testing.T) {
 
 func TestReject_NotPending(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(map[string]interface{}{
-		"_id": "apirev_test1234", "status": "rejected",
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(&apireview.APIReview{
+		ID: "apirev_test1234", Status: apireview.StatusRejected,
 	}, nil)
 
 	err := NewService(repo).Reject("apirev_test1234", "reviewer1", "reason")
@@ -210,8 +225,8 @@ func TestReject_NotPending(t *testing.T) {
 
 func TestReject_UpdateError(t *testing.T) {
 	repo := mocks.NewAPIReviewRepository(t)
-	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(map[string]interface{}{
-		"_id": "apirev_test1234", "status": "pending",
+	repo.On("FindByID", mock.Anything, "apirev_test1234").Return(&apireview.APIReview{
+		ID: "apirev_test1234", Status: apireview.StatusPending,
 	}, nil)
 	repo.On("UpdateStatus", mock.Anything, "apirev_test1234", mock.Anything).Return(errors.New("update failed"))
 

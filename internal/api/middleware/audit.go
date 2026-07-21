@@ -2,40 +2,30 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
-// AuditLogger writes audit log entries to MongoDB.
+// AuditLogger writes audit log entries via repository.AuditRepository,
+// keeping the middleware layer free of any mongo-driver dependency.
 type AuditLogger struct {
-	coll *mongo.Collection
+	repo repository.AuditRepository
 }
 
-// NewAuditLogger creates a new AuditLogger with the given MongoDB collection.
-func NewAuditLogger(coll *mongo.Collection) *AuditLogger {
-	return &AuditLogger{coll: coll}
+// NewAuditLogger creates a new AuditLogger with the given audit repository.
+func NewAuditLogger(repo repository.AuditRepository) *AuditLogger {
+	return &AuditLogger{repo: repo}
 }
 
-// AuditLogEntry represents an audit log entry to be written.
-type AuditLogEntry struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"`
-	Action     string             `bson:"action"`
-	UserID     string             `bson:"user_id"`
-	Username   string             `bson:"username"`
-	Resource   string             `bson:"resource"`
-	Details    string             `bson:"details"`
-	IP         string             `bson:"ip"`
-	UserAgent  string             `bson:"user_agent"`
-	StatusCode int                `bson:"status_code"`
-	CreatedAt  time.Time          `bson:"created_at"`
-}
-
-// AuditMiddleware logs all CUD (Create/Update/Delete) operations to MongoDB.
+// AuditMiddleware logs all CUD (Create/Update/Delete) operations to the audit
+// repository. Logging is fire-and-forget: it uses context.Background() so the
+// audit write survives request cancellation after the response is sent.
 func (a *AuditLogger) AuditMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Skip GET/HEAD/OPTIONS — only log mutations
@@ -62,11 +52,9 @@ func (a *AuditLogger) AuditMiddleware() gin.HandlerFunc {
 			userID, _ := c.Get("user_id")
 			username, _ := c.Get("username")
 
-			entry := AuditLogEntry{
-				ID:         primitive.NewObjectID(),
+			log := &model.AuditLog{
 				Action:     method + " " + c.FullPath(),
 				UserID:     toString(userID),
-				Username:   toString(username),
 				Resource:   c.Request.URL.Path,
 				Details:    truncateString(body, 1000),
 				IP:         c.ClientIP(),
@@ -74,9 +62,12 @@ func (a *AuditLogger) AuditMiddleware() gin.HandlerFunc {
 				StatusCode: c.Writer.Status(),
 				CreatedAt:  time.Now(),
 			}
+			// username is captured for future enrichment but model.AuditLog
+			// does not persist it today; kept here to avoid losing context.
+			_ = username
 
 			// Best-effort insert — don't block the response
-			_, _ = a.coll.InsertOne(c.Request.Context(), entry)
+			_ = a.repo.Create(context.Background(), log)
 		}()
 	}
 }

@@ -60,7 +60,7 @@ func (h *RoleHandler) Create(c *gin.Context) {
 	// Restore main's HTTP contract: top-level fields so the frontend can read
 	// newRole.id directly (role.spec.ts UI-090/091 rely on this).
 	c.JSON(http.StatusCreated, gin.H{
-		"id":           role.ID.Hex(),
+		"id":           role.ID,
 		"name":         role.Name,
 		"display_name": role.DisplayName,
 		"permissions":  role.Permissions,

@@ -69,7 +69,9 @@
 | SPEC-053 | 会话存储、记忆压缩与 KB 索引逻辑对齐（Chat/Hermes 双轨） | **P13** | [spec-053-session-memory-kb-alignment.md](spec-053-session-memory-kb-alignment.md) | 📐 设计中 |
 | SPEC-054 | Sysconfig RBAC 权限不足修复（admin 访问也显示 insufficient permissions） | **P13** | [spec-054-sysconfig-rbac-fix.md](spec-054-sysconfig-rbac-fix.md) | 📐 设计中 |
 | SPEC-055 | 分层架构重构（Controller→Service→Repository→Infra） | **P14** | [spec-055-layer-refactoring.md](spec-055-layer-refactoring.md) | ✅ 已实现 |
-| SPEC-056 | 分层语义纠正：domain 为领域层 / logic 为编排层 / service 扁平化 | **P15** | [spec-056-layer-semantics-correction.md](spec-056-layer-semantics-correction.md) | 📐 设计中 |
+| SPEC-056 | 分层语义纠正（一）：domain ID 解耦 / service SDK 清理 / middleware 解耦 / IMBind 补全 | **P15** | [spec-056-layer-semantics-correction.md](spec-056-layer-semantics-correction.md) | 📐 设计中 |
+| SPEC-057 | domain model 全量去 bson tag + infra 转换层全量改造 | **P15** | _(待编写)_ | 📐 设计中 |
+| SPEC-058 | 分层语义纠正（二）：logic 编排层 / chat 解耦 gin / service 扁平化 / main.go 迁移 / 覆盖率 98% | **P15** | [spec-058-layer-orchestrator-main-migration.md](spec-058-layer-orchestrator-main-migration.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -186,8 +188,12 @@ SPEC-006│               │
 [P14] SPEC-055 ─── 分层架构重构（Controller→Service→Repository→Infra）
                    (main.go 减至 300 行、UT 无需 MongoDB 连接、接口化)
 
-[P15] SPEC-056 ─── 分层语义纠正（domain 领域层 / logic 编排层 / service 扁平化）
-                   (纠正 SPEC-055 遗留：domain≠repo、消除 service 同层依赖、
-                    SDK 泄漏清理、middleware 解耦、main.go 完成、覆盖率恢复 98%)
-                   后续 SPEC-057：domain model 全量去 bson tag
+[P15] SPEC-056 ─── 分层语义纠正（一）: domain ID 解耦 / service SDK 清理 /
+                   middleware 解耦 / IMBind 补全（低-中风险快赢）
+                   │
+                   ├──► [P15] SPEC-057 ─── domain model 全量去 bson tag + infra 转换全量改造
+                   │
+                   └──► [P15] SPEC-058 ─── 分层语义纠正（二）: logic 编排层 / chat 解耦 gin /
+                                        service 扁平化 / main.go 迁移 1053→300 / 覆盖率 98%
+                                        (依赖 SPEC-056 完成)
 ```

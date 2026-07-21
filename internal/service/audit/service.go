@@ -7,7 +7,6 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // Service handles audit log queries.
@@ -49,17 +48,9 @@ func (s *Service) List(p ListParams) (*ListResult, error) {
 		return nil, err
 	}
 
-	rawLogs, err := s.repo.List(context.Background(), filterMap, p.Skip, p.Limit)
+	logs, err := s.repo.List(context.Background(), filterMap, p.Skip, p.Limit)
 	if err != nil {
 		return nil, err
-	}
-
-	logs := make([]model.AuditLog, 0, len(rawLogs))
-	for _, raw := range rawLogs {
-		var l model.AuditLog
-		b, _ := bson.Marshal(raw)
-		_ = bson.Unmarshal(b, &l)
-		logs = append(logs, l)
 	}
 
 	return &ListResult{Logs: logs, Total: total}, nil

@@ -7,7 +7,6 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -23,7 +22,7 @@ func NewRoleRepository(db *mongo.Database) *RoleRepository {
 
 // Create inserts a new role.
 func (r *RoleRepository) Create(ctx context.Context, role *model.Role) error {
-	role.ID = primitive.NewObjectID()
+	role.ID = NewDomainID()
 	role.CreatedAt = time.Now()
 	role.UpdatedAt = time.Now()
 	_, err := r.coll.InsertOne(ctx, role)
@@ -55,13 +54,8 @@ func (r *RoleRepository) List(ctx context.Context) ([]model.Role, error) {
 
 // FindByID looks up a role by ID.
 func (r *RoleRepository) FindByID(ctx context.Context, id string) (*model.Role, error) {
-	oid, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid role id: %w", err)
-	}
-
 	var role model.Role
-	err = r.coll.FindOne(ctx, bson.M{"_id": oid}).Decode(&role)
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&role)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
@@ -73,13 +67,8 @@ func (r *RoleRepository) FindByID(ctx context.Context, id string) (*model.Role, 
 
 // Update updates a role's permissions.
 func (r *RoleRepository) Update(ctx context.Context, roleID string, permissions []string) error {
-	oid, err := primitive.ObjectIDFromHex(roleID)
-	if err != nil {
-		return fmt.Errorf("invalid role id: %w", err)
-	}
-
 	result, err := r.coll.UpdateOne(ctx,
-		bson.M{"_id": oid},
+		bson.M{"_id": roleID},
 		bson.M{"$set": bson.M{"permissions": permissions, "updated_at": time.Now()}},
 	)
 	if err != nil {
@@ -93,11 +82,7 @@ func (r *RoleRepository) Update(ctx context.Context, roleID string, permissions 
 
 // Delete removes a custom role. Fixed roles cannot be deleted via repository.
 func (r *RoleRepository) Delete(ctx context.Context, roleID string) error {
-	oid, err := primitive.ObjectIDFromHex(roleID)
-	if err != nil {
-		return fmt.Errorf("invalid role id: %w", err)
-	}
-	_, err = r.coll.DeleteOne(ctx, bson.M{"_id": oid, "type": "custom"})
+	_, err := r.coll.DeleteOne(ctx, bson.M{"_id": roleID, "type": "custom"})
 	if err != nil {
 		return fmt.Errorf("delete role: %w", err)
 	}

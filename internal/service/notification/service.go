@@ -6,7 +6,6 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Service struct {
@@ -19,7 +18,6 @@ func NewService(repo repository.NotificationRepository) *Service {
 
 func (s *Service) Send(title, content, nType string, targetIDs []string) (*model.Notification, error) {
 	n := &model.Notification{
-		ID:        primitive.NewObjectID(),
 		Title:     title,
 		Content:   content,
 		Type:      nType,
@@ -33,7 +31,6 @@ func (s *Service) Send(title, content, nType string, targetIDs []string) (*model
 
 func (s *Service) Broadcast(title, content, nType string) (*model.Notification, error) {
 	n := &model.Notification{
-		ID:        primitive.NewObjectID(),
 		Title:     title,
 		Content:   content,
 		Type:      nType,
