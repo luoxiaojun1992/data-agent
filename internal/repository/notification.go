@@ -22,8 +22,9 @@ type NotificationRepository interface {
 
 // AuditRepository defines the data access contract for audit logs.
 type AuditRepository interface {
+	Create(ctx context.Context, log *model.AuditLog) error
 	Count(ctx context.Context, filter map[string]interface{}) (int64, error)
-	List(ctx context.Context, filter map[string]interface{}, skip, limit int64) ([]map[string]interface{}, error)
+	List(ctx context.Context, filter map[string]interface{}, skip, limit int64) ([]model.AuditLog, error)
 }
 
 //go:generate mockery --name SessionRepository --output ./mocks --outpkg mocks

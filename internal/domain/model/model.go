@@ -2,8 +2,6 @@ package model
 
 import (
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // UserRole defines the three-tier role system.
@@ -25,7 +23,7 @@ const (
 
 // User represents a system user.
 type User struct {
-	ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ID              string             `bson:"_id,omitempty" json:"id"`
 	Username        string             `bson:"username" json:"username"`
 	PasswordHash    string             `bson:"password_hash" json:"-"`
 	Role            UserRole           `bson:"role" json:"role"`
@@ -52,7 +50,7 @@ const (
 
 // Invite represents an invitation to register in the system.
 type Invite struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"    json:"id"`
+	ID         string             `bson:"_id,omitempty"    json:"id"`
 	InviteID   string             `bson:"invite_id"        json:"invite_id"`
 	Email      string             `bson:"email,omitempty"  json:"email,omitempty"`
 	Role       string             `bson:"role"             json:"role"`
@@ -67,7 +65,7 @@ type Invite struct {
 
 // Role defines permissions for a role.
 type Role struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ID          string             `bson:"_id,omitempty" json:"id"`
 	Name        string             `bson:"name" json:"name"`
 	DisplayName string             `bson:"display_name" json:"display_name"`
 	Description string             `bson:"description" json:"description"`
@@ -124,7 +122,7 @@ func GetDefaultPermissions(role UserRole) []string {
 
 // AuditLog represents an audit log entry.
 type AuditLog struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ID         string             `bson:"_id,omitempty" json:"id"`
 	Action     string             `bson:"action" json:"action"`
 	UserID     string             `bson:"user_id" json:"user_id"`
 	Resource   string             `bson:"resource" json:"resource"`
@@ -137,7 +135,7 @@ type AuditLog struct {
 
 // Notification represents a system notification.
 type Notification struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ID        string             `bson:"_id,omitempty" json:"id"`
 	Title     string             `bson:"title" json:"title"`
 	Content   string             `bson:"content" json:"content"`
 	Type      string             `bson:"type" json:"type"` // "info", "warning", "error"
@@ -149,7 +147,7 @@ type Notification struct {
 
 // SystemConfig represents a system-wide configuration entry.
 type SystemConfig struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ID        string             `bson:"_id,omitempty" json:"id"`
 	Namespace string             `bson:"namespace" json:"namespace"`
 	Key       string             `bson:"key" json:"key"`
 	Value     string             `bson:"value" json:"value"`
@@ -185,11 +183,13 @@ func GetAllPermissions() []PermissionInfo {
 }
 
 // FixedRoles returns the predefined fixed role definitions.
+// IDs are deterministic strings so repeated upserts are idempotent
+// (no duplicate fixed roles on every restart).
 func FixedRoles() []Role {
 	now := time.Now()
 	return []Role{
 		{
-			ID:          primitive.NewObjectID(),
+			ID:          "role_system_admin",
 			Name:        "system_admin",
 			DisplayName: "系统管理员",
 			Description: "全部系统权限",
@@ -199,7 +199,7 @@ func FixedRoles() []Role {
 			UpdatedAt:   now,
 		},
 		{
-			ID:          primitive.NewObjectID(),
+			ID:          "role_data_analyst",
 			Name:        "data_analyst",
 			DisplayName: "数据分析师",
 			Description: "发起批量分析、创建定时任务、使用全部 MCP 工具",
@@ -209,7 +209,7 @@ func FixedRoles() []Role {
 			UpdatedAt:   now,
 		},
 		{
-			ID:          primitive.NewObjectID(),
+			ID:          "role_kb_admin",
 			Name:        "kb_admin",
 			DisplayName: "知识管理员",
 			Description: "管理知识库文档、审核 API→MCP 转换",
@@ -219,7 +219,7 @@ func FixedRoles() []Role {
 			UpdatedAt:   now,
 		},
 		{
-			ID:          primitive.NewObjectID(),
+			ID:          "role_auditor",
 			Name:        "auditor",
 			DisplayName: "审计员",
 			Description: "只读查看所有审计日志",

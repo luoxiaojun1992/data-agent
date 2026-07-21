@@ -103,14 +103,14 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 		return nil, fmt.Errorf("invalid username or password")
 	}
 
-	token, err := s.jwtManager.GenerateToken(user.ID.Hex(), user.Username, string(user.Role))
+	token, err := s.jwtManager.GenerateToken(user.ID, user.Username, string(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
 	}
 
 	expiresIn := int64(s.jwtManager.GetExpiration().Seconds())
 	return &LoginResponse{
-		UserID:       user.ID.Hex(),
+		UserID:       user.ID,
 		Username:     user.Username,
 		Role:         string(user.Role),
 		AccessToken:  token,
@@ -152,7 +152,7 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*Register
 	}
 
 	return &RegisterResponse{
-		UserID:   user.ID.Hex(),
+		UserID:   user.ID,
 		Username: user.Username,
 		Role:     string(user.Role),
 		Message:  "Registration successful. You can now log in.",

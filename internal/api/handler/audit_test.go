@@ -12,7 +12,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	mockaudit "github.com/luoxiaojun1992/data-agent/internal/service/audit/mocks"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -40,7 +39,7 @@ func TestListAuditLogs_Success(t *testing.T) {
 	result := &auditsvc.ListResult{
 		Logs: []model.AuditLog{
 			{
-				ID:         primitive.NewObjectID(),
+				ID:         "audit-id-001",
 				Action:     "user.login",
 				UserID:     "user-1",
 				Resource:   "auth",
@@ -129,7 +128,7 @@ func TestExportAuditLogs_Success(t *testing.T) {
 	result := &auditsvc.ListResult{
 		Logs: []model.AuditLog{
 			{
-				ID:         primitive.NewObjectID(),
+				ID:         "audit-id-002",
 				Action:     "user.login",
 				UserID:     "user-1",
 				Details:    "Login OK",
@@ -255,9 +254,9 @@ func TestExportAuditLogs_MultipleLogs(t *testing.T) {
 	now := time.Now()
 	result := &auditsvc.ListResult{
 		Logs: []model.AuditLog{
-			{ID: primitive.NewObjectID(), Action: "a", UserID: "u1", Details: "d1", IP: "1.1.1.1", StatusCode: 200, CreatedAt: now},
-			{ID: primitive.NewObjectID(), Action: "b", UserID: "u2", Details: "d2", IP: "2.2.2.2", StatusCode: 404, CreatedAt: now},
-			{ID: primitive.NewObjectID(), Action: "c", UserID: "u3", Details: "d3", IP: "3.3.3.3", StatusCode: 500, CreatedAt: now},
+			{ID: "audit-id-003", Action: "a", UserID: "u1", Details: "d1", IP: "1.1.1.1", StatusCode: 200, CreatedAt: now},
+			{ID: "audit-id-004", Action: "b", UserID: "u2", Details: "d2", IP: "2.2.2.2", StatusCode: 404, CreatedAt: now},
+			{ID: "audit-id-005", Action: "c", UserID: "u3", Details: "d3", IP: "3.3.3.3", StatusCode: 500, CreatedAt: now},
 		},
 		Total: 3,
 	}

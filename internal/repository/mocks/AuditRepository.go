@@ -5,6 +5,7 @@ package mocks
 import (
 	context "context"
 
+	model "github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -41,24 +42,42 @@ func (_m *AuditRepository) Count(ctx context.Context, filter map[string]interfac
 	return r0, r1
 }
 
+// Create provides a mock function with given fields: ctx, log
+func (_m *AuditRepository) Create(ctx context.Context, log *model.AuditLog) error {
+	ret := _m.Called(ctx, log)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Create")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *model.AuditLog) error); ok {
+		r0 = rf(ctx, log)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // List provides a mock function with given fields: ctx, filter, skip, limit
-func (_m *AuditRepository) List(ctx context.Context, filter map[string]interface{}, skip int64, limit int64) ([]map[string]interface{}, error) {
+func (_m *AuditRepository) List(ctx context.Context, filter map[string]interface{}, skip int64, limit int64) ([]model.AuditLog, error) {
 	ret := _m.Called(ctx, filter, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for List")
 	}
 
-	var r0 []map[string]interface{}
+	var r0 []model.AuditLog
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, map[string]interface{}, int64, int64) ([]map[string]interface{}, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, map[string]interface{}, int64, int64) ([]model.AuditLog, error)); ok {
 		return rf(ctx, filter, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, map[string]interface{}, int64, int64) []map[string]interface{}); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, map[string]interface{}, int64, int64) []model.AuditLog); ok {
 		r0 = rf(ctx, filter, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]map[string]interface{})
+			r0 = ret.Get(0).([]model.AuditLog)
 		}
 	}
 

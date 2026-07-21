@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
@@ -135,7 +134,7 @@ func TestIsInviteEnabled(t *testing.T) {
 func TestLogin_Success(t *testing.T) {
 	repo := mockrepo.NewUserRepository(t)
 	user := &model.User{
-		ID:           primitive.NewObjectID(),
+		ID:           "507f1f77bcf86cd799439011",
 		Username:     "testuser",
 		PasswordHash: "$2a$10$dummy",
 		Role:         model.RoleUser,
@@ -187,7 +186,7 @@ func TestLogin_FindUserError(t *testing.T) {
 func TestLogin_GenerateTokenError(t *testing.T) {
 	repo := mockrepo.NewUserRepository(t)
 	user := &model.User{
-		ID: primitive.NewObjectID(), Username: "testuser",
+		ID: "507f1f77bcf86cd799439012", Username: "testuser",
 		PasswordHash: "$2a$10$dummy", Role: model.RoleUser, Status: model.StatusEnabled,
 	}
 	repo.On("FindByUsername", mock.Anything, "testuser").Return(user, nil)

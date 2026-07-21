@@ -7,7 +7,6 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -24,7 +23,7 @@ func NewUserRepository(db *mongo.Database) *UserRepository {
 
 // Create inserts a new user.
 func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
-	user.ID = primitive.NewObjectID()
+	user.ID = NewDomainID()
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
 	_, err := r.coll.InsertOne(ctx, user)
@@ -49,13 +48,8 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 
 // FindByID looks up a user by ID.
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*model.User, error) {
-	oid, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid user id: %w", err)
-	}
-
 	var user model.User
-	err = r.coll.FindOne(ctx, bson.M{"_id": oid}).Decode(&user)
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
@@ -76,13 +70,8 @@ func (r *UserRepository) HasSystemAdmin(ctx context.Context) (bool, error) {
 
 // UpdatePassword updates a user's password hash and marks password as changed.
 func (r *UserRepository) UpdatePassword(ctx context.Context, userID string, passwordHash string) error {
-	oid, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return fmt.Errorf("invalid user id: %w", err)
-	}
-
-	_, err = r.coll.UpdateOne(ctx,
-		bson.M{"_id": oid},
+	_, err := r.coll.UpdateOne(ctx,
+		bson.M{"_id": userID},
 		bson.M{
 			"$set": bson.M{
 				"password_hash":    passwordHash,
@@ -99,12 +88,8 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID string, pass
 
 // UpdateRole updates a user's role.
 func (r *UserRepository) UpdateRole(ctx context.Context, userID string, newRole model.UserRole) error {
-	oid, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return fmt.Errorf("invalid user id: %w", err)
-	}
 	result, err := r.coll.UpdateOne(ctx,
-		bson.M{"_id": oid},
+		bson.M{"_id": userID},
 		bson.M{"$set": bson.M{"role": newRole, "updated_at": time.Now()}},
 	)
 	if err != nil {
@@ -118,12 +103,8 @@ func (r *UserRepository) UpdateRole(ctx context.Context, userID string, newRole 
 
 // UpdateStatus enables or disables a user.
 func (r *UserRepository) UpdateStatus(ctx context.Context, userID string, status model.UserStatus) error {
-	oid, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return fmt.Errorf("invalid user id: %w", err)
-	}
 	result, err := r.coll.UpdateOne(ctx,
-		bson.M{"_id": oid},
+		bson.M{"_id": userID},
 		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}},
 	)
 	if err != nil {
@@ -137,11 +118,7 @@ func (r *UserRepository) UpdateStatus(ctx context.Context, userID string, status
 
 // Delete removes a user by ID.
 func (r *UserRepository) Delete(ctx context.Context, userID string) error {
-	oid, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return fmt.Errorf("invalid user id: %w", err)
-	}
-	_, err = r.coll.DeleteOne(ctx, bson.M{"_id": oid})
+	_, err := r.coll.DeleteOne(ctx, bson.M{"_id": userID})
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}

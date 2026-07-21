@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	mocknotif "github.com/luoxiaojun1992/data-agent/internal/service/notification/mocks"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -36,7 +35,7 @@ func TestListNotifications_Success(t *testing.T) {
 	h := NewNotificationHandler(svc)
 
 	notifs := []model.Notification{
-		{ID: primitive.NewObjectID(), Title: "Test", Content: "Hello", Type: "info", CreatedAt: time.Now()},
+		{ID: "notif-id-001", Title: "Test", Content: "Hello", Type: "info", CreatedAt: time.Now()},
 	}
 
 	svc.On("ListForUser", mock.Anything, mock.Anything).Return( notifs, nil)
@@ -227,7 +226,7 @@ func TestSendNotification_Success(t *testing.T) {
 	h := NewNotificationHandler(svc)
 
 	n := &model.Notification{
-		ID:        primitive.NewObjectID(),
+		ID:        "notif-id-002",
 		Title:     "System Update",
 		Content:   "Maintenance tonight",
 		Type:      "warning",
@@ -250,7 +249,7 @@ func TestSendNotification_DefaultType(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	n := &model.Notification{ID: primitive.NewObjectID(), Type: "info"}
+	n := &model.Notification{ID: "notif-id-003", Type: "info"}
 
 	svc.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( n, nil)
 
@@ -323,7 +322,7 @@ func TestBroadcastNotification_Success(t *testing.T) {
 	h := NewNotificationHandler(svc)
 
 	n := &model.Notification{
-		ID:        primitive.NewObjectID(),
+		ID:        "notif-id-004",
 		Title:     "Broadcast",
 		Content:   "All hands meeting",
 		Type:      "info",
@@ -346,7 +345,7 @@ func TestBroadcastNotification_DefaultType(t *testing.T) {
 	svc := mocknotif.NewNotificationService(t)
 	h := NewNotificationHandler(svc)
 
-	n := &model.Notification{ID: primitive.NewObjectID(), Type: "info"}
+	n := &model.Notification{ID: "notif-id-005", Type: "info"}
 
 	svc.On("Broadcast", mock.Anything, mock.Anything, mock.Anything).Return( n, nil)
 

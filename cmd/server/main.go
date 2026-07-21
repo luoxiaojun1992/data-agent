@@ -159,7 +159,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	}
 
 	deps.jwtManager = middleware.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
-	deps.auditLogger = middleware.NewAuditLogger(mongoClient.Collection(model.CollAuditLogs))
+	deps.auditLogger = middleware.NewAuditLogger(mongoinfra.NewAuditRepository(mongoClient.DB()))
 
 	// SeaweedFS must be initialized before initArtifacts
 	deps.swClient = seaweedfs.NewClient(cfg.SeaweedFS.Master, cfg.SeaweedFS.Filer)
@@ -964,10 +964,14 @@ func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
 // doEnhanceCall calls the LLM to enhance a prompt and returns the result with token usage.
 
 func setupIMBind(router *gin.Engine, jwtManager *middleware.JWTManager, mongoClient *mongoinfra.Client) {
+	var bindSvc *im.BindService
+	if mongoClient != nil {
+		bindSvc = im.NewBindService(mongoinfra.NewIMBindRepository(mongoClient.DB()))
+	}
 	imBindGroup := router.Group("/api/v1/im/bind")
 	imBindGroup.Use(jwtManager.AuthMiddleware())
-	imBindGroup.GET("", getImBindHandler(mongoClient))
-	imBindGroup.PUT("", updateImBindHandler(mongoClient))
+	imBindGroup.GET("", getImBindHandler(bindSvc))
+	imBindGroup.PUT("", updateImBindHandler(bindSvc))
 }
 
 func setupHermesProxy(router *gin.Engine, logger *zap.Logger) {
@@ -1041,13 +1045,45 @@ func hermesProxyHandler(hermesURL string) gin.HandlerFunc {
 	}
 }
 
-func getImBindHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
+func getImBindHandler(svc *im.BindService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(200, gin.H{"binds": []interface{}{}})
+		if svc == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "数据库不可用"})
+			return
+		}
+		uid, _ := c.Get("user_id")
+		userID, _ := uid.(string)
+		bind, err := svc.Get(c.Request.Context(), userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		// Preserve the existing contract: "binds" is always an array.
+		binds := []interface{}{}
+		if bind != nil {
+			binds = append(binds, bind)
+		}
+		c.JSON(http.StatusOK, gin.H{"binds": binds})
 	}
 }
-func updateImBindHandler(mongoClient *mongoinfra.Client) gin.HandlerFunc {
+
+func updateImBindHandler(svc *im.BindService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		if svc == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "数据库不可用"})
+			return
+		}
+		uid, _ := c.Get("user_id")
+		userID, _ := uid.(string)
+		var body map[string]interface{}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数解析失败"})
+			return
+		}
+		if err := svc.Upsert(c.Request.Context(), userID, body); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
 }

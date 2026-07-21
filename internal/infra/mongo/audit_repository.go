@@ -19,13 +19,21 @@ func NewAuditRepository(db *mongo.Database) *AuditRepository {
 	return &AuditRepository{coll: db.Collection(model.CollAuditLogs)}
 }
 
+// Create inserts a new audit log entry. The ID is generated here so callers
+// (middleware/service) never touch mongo-driver.
+func (r *AuditRepository) Create(ctx context.Context, log *model.AuditLog) error {
+	log.ID = NewDomainID()
+	_, err := r.coll.InsertOne(ctx, log)
+	return err
+}
+
 // Count returns the count of matching audit logs.
 func (r *AuditRepository) Count(ctx context.Context, filter map[string]interface{}) (int64, error) {
 	return r.coll.CountDocuments(ctx, toBson(filter))
 }
 
 // List returns audit logs matching the filter.
-func (r *AuditRepository) List(ctx context.Context, filter map[string]interface{}, skip, limit int64) ([]map[string]interface{}, error) {
+func (r *AuditRepository) List(ctx context.Context, filter map[string]interface{}, skip, limit int64) ([]model.AuditLog, error) {
 	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetSkip(skip).SetLimit(limit)
 	cursor, err := r.coll.Find(ctx, toBson(filter), opts)
 	if err != nil {
@@ -33,12 +41,12 @@ func (r *AuditRepository) List(ctx context.Context, filter map[string]interface{
 	}
 	defer cursor.Close(ctx)
 
-	var results []map[string]interface{}
+	var results []model.AuditLog
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err
 	}
 	if results == nil {
-		results = []map[string]interface{}{}
+		results = []model.AuditLog{}
 	}
 	return results, nil
 }

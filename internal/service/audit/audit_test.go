@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 )
 
@@ -23,7 +24,7 @@ func TestNewService(t *testing.T) {
 func TestList_Success_NoFilters(t *testing.T) {
 	repo := mocks.NewAuditRepository(t)
 	repo.On("Count", mock.Anything, mock.Anything).Return(int64(0), nil)
-	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(20)).Return([]map[string]interface{}{}, nil)
+	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(20)).Return([]model.AuditLog{}, nil)
 
 	result, err := NewService(repo).List(ListParams{})
 	if err != nil {
@@ -43,7 +44,7 @@ func TestList_Success_NoFilters(t *testing.T) {
 func TestList_Success_WithFilters(t *testing.T) {
 	repo := mocks.NewAuditRepository(t)
 	repo.On("Count", mock.Anything, mock.Anything).Return(int64(5), nil)
-	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(50)).Return([]map[string]interface{}{}, nil)
+	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(50)).Return([]model.AuditLog{}, nil)
 
 	result, err := NewService(repo).List(ListParams{
 		Action: "login",
@@ -77,7 +78,7 @@ func TestList_CountError(t *testing.T) {
 func TestList_FindError(t *testing.T) {
 	repo := mocks.NewAuditRepository(t)
 	repo.On("Count", mock.Anything, mock.Anything).Return(int64(0), nil)
-	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(20)).Return(([]map[string]interface{})(nil), errors.New("list failed"))
+	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(20)).Return(([]model.AuditLog)(nil), errors.New("list failed"))
 
 	_, err := NewService(repo).List(ListParams{})
 	if err == nil {
@@ -88,7 +89,7 @@ func TestList_FindError(t *testing.T) {
 func TestList_DefaultLimit(t *testing.T) {
 	repo := mocks.NewAuditRepository(t)
 	repo.On("Count", mock.Anything, mock.Anything).Return(int64(0), nil)
-	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(20)).Return([]map[string]interface{}{}, nil)
+	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(20)).Return([]model.AuditLog{}, nil)
 
 	result, err := NewService(repo).List(ListParams{Limit: 0})
 	if err != nil {
@@ -102,7 +103,7 @@ func TestList_DefaultLimit(t *testing.T) {
 func TestList_LimitCapped(t *testing.T) {
 	repo := mocks.NewAuditRepository(t)
 	repo.On("Count", mock.Anything, mock.Anything).Return(int64(0), nil)
-	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(100)).Return([]map[string]interface{}{}, nil)
+	repo.On("List", mock.Anything, mock.Anything, int64(0), int64(100)).Return([]model.AuditLog{}, nil)
 
 	result, err := NewService(repo).List(ListParams{Limit: 500})
 	if err != nil {

@@ -315,16 +315,16 @@ func (s *Service) createUserFromCompleteRegistration(ctx context.Context, req *C
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
-	_ = s.inviteRepo.MarkAccepted(ctx, result.payload.InviteID, user.ID.Hex())
+	_ = s.inviteRepo.MarkAccepted(ctx, result.payload.InviteID, user.ID)
 
-	token, err := s.jwtManager.GenerateToken(user.ID.Hex(), user.Username, string(user.Role))
+	token, err := s.jwtManager.GenerateToken(user.ID, user.Username, string(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
 	}
 
 	expiresIn := int64(s.jwtManager.GetExpiration().Seconds())
 	return &CompleteRegistrationResponse{
-		UserID:      user.ID.Hex(),
+		UserID:      user.ID,
 		Username:    user.Username,
 		Role:        string(user.Role),
 		AccessToken: token,

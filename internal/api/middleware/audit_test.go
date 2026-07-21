@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/stretchr/testify/mock"
+
+	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 )
 
 // ── toString Tests ──
@@ -64,20 +65,27 @@ func TestTruncateString(t *testing.T) {
 // ── AuditLogger Tests ──
 
 func TestNewAuditLogger(t *testing.T) {
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
 	if logger == nil {
 		t.Fatal("NewAuditLogger returned nil")
 	}
 }
 
+// expectCreate sets up the audit repo mock to expect a Create call and return nil.
+func expectCreate(repo *mockrepo.AuditRepository) {
+	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
+}
+
+// expectCreateError sets up the audit repo mock to return an error on Create.
+func expectCreateError(repo *mockrepo.AuditRepository, err error) {
+	repo.On("Create", mock.Anything, mock.Anything).Return(err)
+}
+
 func TestAuditMiddleware_GetSkipsLogging(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
-	defer patches.Reset()
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -92,15 +100,15 @@ func TestAuditMiddleware_GetSkipsLogging(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("GET should return 200, got %d", w.Code)
 	}
+	// GET must not trigger an audit write.
+	time.Sleep(50 * time.Millisecond)
+	repo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_HeadSkipsLogging(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
-	defer patches.Reset()
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -115,15 +123,14 @@ func TestAuditMiddleware_HeadSkipsLogging(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("HEAD should return 200, got %d", w.Code)
 	}
+	time.Sleep(50 * time.Millisecond)
+	repo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_OptionsSkipsLogging(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
-	defer patches.Reset()
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -138,14 +145,15 @@ func TestAuditMiddleware_OptionsSkipsLogging(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Errorf("OPTIONS should return 204, got %d", w.Code)
 	}
+	time.Sleep(50 * time.Millisecond)
+	repo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_PostLogsAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
+	expectCreate(repo)
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -161,22 +169,19 @@ func TestAuditMiddleware_PostLogsAudit(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
-		// Don't forget to reset
-		patches.Reset()
 		t.Fatalf("POST should return 201, got %d", w.Code)
 	}
 
-	// Wait for async goroutine to complete before resetting patches
+	// Wait for the async audit goroutine to call repo.Create.
 	time.Sleep(200 * time.Millisecond)
-	patches.Reset()
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_PutLogsAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
+	expectCreate(repo)
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -191,20 +196,18 @@ func TestAuditMiddleware_PutLogsAudit(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		patches.Reset()
 		t.Fatalf("PUT should return 200, got %d", w.Code)
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	patches.Reset()
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_DeleteLogsAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
+	expectCreate(repo)
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -218,20 +221,18 @@ func TestAuditMiddleware_DeleteLogsAudit(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		patches.Reset()
 		t.Fatalf("DELETE should return 200, got %d", w.Code)
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	patches.Reset()
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_WithUserContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
+	expectCreate(repo)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -251,20 +252,18 @@ func TestAuditMiddleware_WithUserContext(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
-		patches.Reset()
 		t.Fatalf("POST with user context should return 201, got %d", w.Code)
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	patches.Reset()
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_InsertOneError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", (*mongo.InsertOneResult)(nil), errAudit())
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
+	expectCreateError(repo, errAudit())
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -279,20 +278,20 @@ func TestAuditMiddleware_InsertOneError(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
-		patches.Reset()
 		t.Fatalf("POST should return 201 even with audit error, got %d", w.Code)
 	}
 
+	// Audit error must not propagate to the response. The Create call still
+	// happens (best-effort), so assert it was invoked.
 	time.Sleep(200 * time.Millisecond)
-	patches.Reset()
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_NilBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
-
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
+	expectCreate(repo)
 
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
@@ -306,24 +305,27 @@ func TestAuditMiddleware_NilBody(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
-		patches.Reset()
 		t.Fatalf("POST with nil body should return 201, got %d", w.Code)
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	patches.Reset()
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestAuditMiddleware_BodyIsRestored(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	coll := &mongo.Collection{}
-	logger := NewAuditLogger(coll)
+	repo := mockrepo.NewAuditRepository(t)
+	logger := NewAuditLogger(repo)
+	expectCreate(repo)
 
-	patches := gomonkey.ApplyMethodReturn(coll, "InsertOne", &mongo.InsertOneResult{}, nil)
-
+	var receivedBody string
 	router := gin.New()
 	router.Use(logger.AuditMiddleware())
 	router.POST("/api/data", func(c *gin.Context) {
+		// Read body inside the handler to prove the middleware restored it.
+		buf := make([]byte, 1024)
+		n, _ := c.Request.Body.Read(buf)
+		receivedBody = string(buf[:n])
 		c.JSON(201, gin.H{"created": true})
 	})
 
@@ -334,12 +336,14 @@ func TestAuditMiddleware_BodyIsRestored(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
-		patches.Reset()
 		t.Fatalf("POST should return 201, got %d", w.Code)
+	}
+	if receivedBody != `{"test":"body-restored"}` {
+		t.Errorf("body not restored for downstream handler: got %q", receivedBody)
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	patches.Reset()
+	repo.AssertCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func errAudit() error {

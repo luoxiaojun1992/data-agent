@@ -6,7 +6,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -23,6 +22,7 @@ func NewNotificationRepository(db *mongo.Database) *NotificationRepository {
 
 // Create creates a new notification.
 func (r *NotificationRepository) Create(ctx context.Context, n *model.Notification) error {
+	n.ID = NewDomainID()
 	_, err := r.coll.InsertOne(ctx, n)
 	return err
 }
@@ -54,11 +54,7 @@ func (r *NotificationRepository) CountUnread(ctx context.Context, userID string)
 
 // MarkRead marks a notification as read.
 func (r *NotificationRepository) MarkRead(ctx context.Context, id string, userID string) error {
-	objID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-	_, err = r.coll.UpdateOne(ctx, bson.M{"_id": objID, "user_id": userID}, bson.M{"$set": bson.M{"read": true}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id, "user_id": userID}, bson.M{"$set": bson.M{"read": true}})
 	return err
 }
 

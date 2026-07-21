@@ -5,6 +5,8 @@ package mocks
 import (
 	context "context"
 
+	apireview "github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -14,7 +16,7 @@ type APIReviewRepository struct {
 }
 
 // Create provides a mock function with given fields: ctx, review
-func (_m *APIReviewRepository) Create(ctx context.Context, review map[string]interface{}) error {
+func (_m *APIReviewRepository) Create(ctx context.Context, review *apireview.APIReview) error {
 	ret := _m.Called(ctx, review)
 
 	if len(ret) == 0 {
@@ -22,7 +24,7 @@ func (_m *APIReviewRepository) Create(ctx context.Context, review map[string]int
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, map[string]interface{}) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *apireview.APIReview) error); ok {
 		r0 = rf(ctx, review)
 	} else {
 		r0 = ret.Error(0)
@@ -32,23 +34,23 @@ func (_m *APIReviewRepository) Create(ctx context.Context, review map[string]int
 }
 
 // FindByID provides a mock function with given fields: ctx, id
-func (_m *APIReviewRepository) FindByID(ctx context.Context, id string) (map[string]interface{}, error) {
+func (_m *APIReviewRepository) FindByID(ctx context.Context, id string) (*apireview.APIReview, error) {
 	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindByID")
 	}
 
-	var r0 map[string]interface{}
+	var r0 *apireview.APIReview
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (map[string]interface{}, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*apireview.APIReview, error)); ok {
 		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) map[string]interface{}); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *apireview.APIReview); ok {
 		r0 = rf(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(map[string]interface{})
+			r0 = ret.Get(0).(*apireview.APIReview)
 		}
 	}
 
@@ -62,23 +64,23 @@ func (_m *APIReviewRepository) FindByID(ctx context.Context, id string) (map[str
 }
 
 // List provides a mock function with given fields: ctx, skip, limit
-func (_m *APIReviewRepository) List(ctx context.Context, skip int64, limit int64) ([]map[string]interface{}, error) {
+func (_m *APIReviewRepository) List(ctx context.Context, skip int64, limit int64) ([]apireview.APIReview, error) {
 	ret := _m.Called(ctx, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for List")
 	}
 
-	var r0 []map[string]interface{}
+	var r0 []apireview.APIReview
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) ([]map[string]interface{}, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) ([]apireview.APIReview, error)); ok {
 		return rf(ctx, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) []map[string]interface{}); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) []apireview.APIReview); ok {
 		r0 = rf(ctx, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]map[string]interface{})
+			r0 = ret.Get(0).([]apireview.APIReview)
 		}
 	}
 

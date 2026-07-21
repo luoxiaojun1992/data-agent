@@ -7,7 +7,6 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -24,7 +23,7 @@ func NewInviteRepository(db *mongo.Database) *InviteRepository {
 
 // Create inserts a new invite.
 func (r *InviteRepository) Create(ctx context.Context, invite *model.Invite) error {
-	invite.ID = primitive.NewObjectID()
+	invite.ID = NewDomainID()
 	invite.CreatedAt = time.Now()
 
 	_, err := r.coll.InsertOne(ctx, invite)
