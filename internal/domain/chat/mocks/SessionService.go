@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	chat "github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	chat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	mock "github.com/stretchr/testify/mock"
 
 	time "time"

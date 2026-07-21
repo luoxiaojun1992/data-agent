@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -15,12 +14,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
-	"github.com/gin-gonic/gin"
 	"google.golang.org/adk/model"
 	adksession "google.golang.org/adk/session"
 	"google.golang.org/genai"
 
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 )
 
@@ -61,171 +60,163 @@ func newTestService(t *testing.T, llm model.LLM) *Service {
 	return NewService(rt, adkSessions, mgr, cbReg)
 }
 
-func newGinContext(method, path, body string) (*gin.Context, *httptest.ResponseRecorder) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(method, path, strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-	return c, w
-}
-
-func patchSessionCreate(patches *gomonkey.Patches, svc *Service, sess *Session, err error) {
+func patchSessionCreate(patches *gomonkey.Patches, svc *Service, sess *domainchat.Session, err error) {
 	patches.ApplyMethodReturn(svc.sessions, "Create", sess, err)
 }
 
-func patchSessionGet(patches *gomonkey.Patches, svc *Service, sess *Session, err error) {
+func patchSessionGet(patches *gomonkey.Patches, svc *Service, sess *domainchat.Session, err error) {
 	patches.ApplyMethodReturn(svc.sessions, "Get", sess, err)
 	patches.ApplyMethodReturn(svc.sessions, "Renew", nil)
 }
 
-// ── HandleChat validation ──
+// ── Process validation ──
 
-func TestHandleChat_InvalidJSON(t *testing.T) {
+func TestProcess_MessagesRequired(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
-	c, w := newGinContext("POST", "/chat", "not-json")
-	svc.HandleChat(c)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+	_, err := svc.Process(context.Background(), domainchat.ChatRequest{}, "u1", "admin")
+	if err != domainchat.ErrMessagesRequired {
+		t.Errorf("expected ErrMessagesRequired, got %v", err)
 	}
 }
 
-func TestHandleChat_EmptyMessages(t *testing.T) {
-	svc := newTestService(t, &fakeLLM{text: "ok"})
-	c, w := newGinContext("POST", "/chat", `{"messages": []}`)
-	svc.HandleChat(c)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestHandleChat_NoUserMessage(t *testing.T) {
+func TestProcess_LegacySingleMessage(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"messages": [{"role":"assistant","content":"hi"}]}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for missing user message, got %d", w.Code)
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hello"}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("content = %v", resp.Content)
 	}
 }
 
-func TestHandleChat_SessionCreateError(t *testing.T) {
+func TestProcess_NoUserMessage(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "ok"})
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+
+	_, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		Messages: []domainchat.Message{{Role: "assistant", Content: "hi"}},
+	}, "u1", "admin")
+	if err != domainchat.ErrUserMessageRequired {
+		t.Errorf("expected ErrUserMessageRequired, got %v", err)
+	}
+}
+
+func TestProcess_SessionCreateError(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 	patchSessionCreate(patches, svc, nil, fmt.Errorf("db error"))
 
-	c, w := newGinContext("POST", "/chat", `{"message": "hello"}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
+	_, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hello"}, "u1", "admin")
+	if err != domainchat.ErrSessionCreateFailed {
+		t.Errorf("expected ErrSessionCreateFailed, got %v", err)
 	}
 }
 
-func TestHandleChat_UnauthorizedSession(t *testing.T) {
+func TestProcess_UnauthorizedSession(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionGet(patches, svc, &Session{ID: "s1", UserID: "other-user"}, nil)
+	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "other-user"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"session_id": "s1", "message": "hello"}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+	_, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		SessionID: "s1", Message: "hello",
+	}, "u1", "admin")
+	if err != domainchat.ErrUnauthorizedSession {
+		t.Errorf("expected ErrUnauthorizedSession, got %v", err)
 	}
 }
 
-func TestHandleChat_InvalidSession(t *testing.T) {
+func TestProcess_InvalidSession(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 	patchSessionGet(patches, svc, nil, fmt.Errorf("not found"))
 
-	c, w := newGinContext("POST", "/chat", `{"session_id": "missing", "message": "hello"}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+	_, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		SessionID: "missing", Message: "hello",
+	}, "u1", "admin")
+	if err != domainchat.ErrUnauthorizedSession {
+		t.Errorf("expected ErrUnauthorizedSession, got %v", err)
 	}
 }
 
-// ── Non-stream chat ──
+// ── Process success / model error ──
 
-func TestHandleChat_NonStream_Success(t *testing.T) {
+func TestProcess_Success(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "这是回答"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"message": "分析一下营收", "stream": false}`)
-	c.Set("user_id", "u1")
-	c.Set("role", "admin")
-	svc.HandleChat(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		Message: "分析一下营收", Stream: false,
+	}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
 	}
-	var resp map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("parse response: %v", err)
+	if resp.SessionID != "s1" {
+		t.Errorf("session_id = %v", resp.SessionID)
 	}
-	if resp["session_id"] != "s1" {
-		t.Errorf("session_id = %v", resp["session_id"])
+	if resp.Content != "这是回答" {
+		t.Errorf("content = %v", resp.Content)
 	}
-	if resp["content"] != "这是回答" {
-		t.Errorf("content = %v", resp["content"])
-	}
-	if _, ok := resp["usage"]; !ok {
+	if resp.Usage == nil {
 		t.Errorf("usage field missing")
 	}
 }
 
-func TestHandleChat_NonStream_ModelError(t *testing.T) {
+func TestProcess_ModelError(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{err: fmt.Errorf("model down")})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"message": "hello", "stream": false}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 503, got %d", w.Code)
+	_, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hello"}, "u1", "admin")
+	if err == nil {
+		t.Error("expected model error")
 	}
 }
 
-func TestHandleChat_ExistingSession(t *testing.T) {
+func TestProcess_ExistingSession(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "answer"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionGet(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"session_id": "s1", "message": "hi"}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		SessionID: "s1", Message: "hi",
+	}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if resp.Content != "answer" {
+		t.Errorf("content = %v", resp.Content)
 	}
 }
 
-// ── Streaming chat ──
+// ── Streaming ──
 
-func TestHandleChat_Stream_Success(t *testing.T) {
+func TestStream_Success(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "流式回答"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"message": "hello", "stream": true}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
+	w := httptest.NewRecorder()
+	err := svc.Stream(context.Background(), domainchat.ChatRequest{
+		Message: "hello", Stream: true,
+	}, "u1", "admin", w)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
 
 	body := w.Body.String()
 	if w.Header().Get("Content-Type") != "text/event-stream" {
@@ -242,16 +233,17 @@ func TestHandleChat_Stream_Success(t *testing.T) {
 	}
 }
 
-func TestHandleChat_Stream_ModelError(t *testing.T) {
+func TestStream_ModelError(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{err: fmt.Errorf("model exploded")})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"message": "hello", "stream": true}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-
+	w := httptest.NewRecorder()
+	err := svc.Stream(context.Background(), domainchat.ChatRequest{Message: "hello"}, "u1", "admin", w)
+	if err != nil {
+		t.Fatalf("Stream returned error for in-stream failure: %v", err)
+	}
 	body := w.Body.String()
 	if !strings.Contains(body, `"error"`) {
 		t.Errorf("expected error event: %s", body)
@@ -261,26 +253,31 @@ func TestHandleChat_Stream_ModelError(t *testing.T) {
 	}
 }
 
+func TestStream_ValidationError(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "ok"})
+	w := httptest.NewRecorder()
+	err := svc.Stream(context.Background(), domainchat.ChatRequest{}, "u1", "admin", w)
+	if err != domainchat.ErrMessagesRequired {
+		t.Errorf("expected ErrMessagesRequired, got %v", err)
+	}
+}
+
 // ── Memory hook ──
 
 func TestMemoryWriteHook_Invoked(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
 	called := make(chan struct{}, 1)
 	svc.WithMemoryWrite(func(ctx context.Context, sess adksession.Session) {
 		called <- struct{}{}
 	})
 
-	c, w := newGinContext("POST", "/chat", `{"message": "hello"}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-	if w.Code != http.StatusOK {
-		t.Fatalf("chat failed: %d", w.Code)
+	if _, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hello"}, "u1", "admin"); err != nil {
+		t.Fatalf("Process failed: %v", err)
 	}
-
 	select {
 	case <-called:
 	case <-time.After(2 * time.Second):
@@ -292,7 +289,7 @@ func TestMemoryWriteHook_NotConfigured(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
 	// No hook — must not panic.
 	svc.scheduleMemoryWrite("u1", "s1")
@@ -301,7 +298,7 @@ func TestMemoryWriteHook_NotConfigured(t *testing.T) {
 // ── lastUserMessage ──
 
 func TestLastUserMessage(t *testing.T) {
-	msgs := []Message{
+	msgs := []domainchat.Message{
 		{Role: "user", Content: "first"},
 		{Role: "assistant", Content: "reply"},
 		{Role: "user", Content: "second"},
@@ -309,10 +306,10 @@ func TestLastUserMessage(t *testing.T) {
 	if got := lastUserMessage(msgs); got != "second" {
 		t.Errorf("lastUserMessage = %q", got)
 	}
-	if got := lastUserMessage([]Message{{Role: "assistant", Content: "x"}}); got != "" {
+	if got := lastUserMessage([]domainchat.Message{{Role: "assistant", Content: "x"}}); got != "" {
 		t.Errorf("no user message = %q", got)
 	}
-	if got := lastUserMessage([]Message{{Role: "user", Content: "  "}}); got != "" {
+	if got := lastUserMessage([]domainchat.Message{{Role: "user", Content: "  "}}); got != "" {
 		t.Errorf("blank user message = %q", got)
 	}
 	if got := lastUserMessage(nil); got != "" {
@@ -358,7 +355,6 @@ func TestManager_Get(t *testing.T) {
 		t.Errorf("Get failed: %v", err)
 	}
 
-	// Not found.
 	repo.On("Get", mock.Anything, "missing").Return((*repository.SessionRecord)(nil), fmt.Errorf("not found"))
 	if _, err := m.Get("missing"); err == nil {
 		t.Error("missing session should error")
@@ -492,25 +488,20 @@ func (q *queueLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, s
 	}
 }
 
-func TestHandleChat_ADKSessionCreateError(t *testing.T) {
+func TestProcess_ADKSessionCreateError(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "ok"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	patches.ApplyMethodReturn(svc.adkSessions, "Create", (*adksession.CreateResponse)(nil), fmt.Errorf("mongo down"))
 
-	c, w := newGinContext("POST", "/chat", `{"message": "hello"}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
+	_, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hello"}, "u1", "admin")
+	if err != domainchat.ErrADKSessionInitFailed {
+		t.Errorf("expected ErrADKSessionInitFailed, got %v", err)
 	}
 }
 
 func TestRunAndCollect_SkipsNonFinalEvents(t *testing.T) {
-	// LLM first returns a function call (non-final event), then final text.
-	// Without the tool registered, ADK surfaces an error function response,
-	// but the loop still completes with the final answer.
 	llm := &queueLLM{queue: []*model.LLMResponse{
 		{Content: &genai.Content{Role: "model", Parts: []*genai.Part{
 			{FunctionCall: &genai.FunctionCall{Name: "unknown_tool", Args: map[string]any{}}},
@@ -520,19 +511,14 @@ func TestRunAndCollect_SkipsNonFinalEvents(t *testing.T) {
 	svc := newTestService(t, llm)
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionCreate(patches, svc, &Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
-	c, w := newGinContext("POST", "/chat", `{"message": "hi"}`)
-	c.Set("user_id", "u1")
-	svc.HandleChat(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hi"}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
 	}
-	var resp map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["content"] != "最终答案" {
-		t.Errorf("content = %v", resp["content"])
+	if resp.Content != "最终答案" {
+		t.Errorf("content = %v", resp.Content)
 	}
 }
 
@@ -548,10 +534,12 @@ func TestScheduleMemoryWrite_GetError(t *testing.T) {
 	})
 	svc.scheduleMemoryWrite("u1", "s1")
 
-	// Get fails → hook must NOT fire; just verify no panic and goroutine exits.
 	select {
 	case <-done:
 		t.Error("hook should not fire when session load fails")
 	case <-time.After(500 * time.Millisecond):
 	}
 }
+
+// ensure json import is used (Stream SSE marshalling tested implicitly).
+var _ = json.Marshal

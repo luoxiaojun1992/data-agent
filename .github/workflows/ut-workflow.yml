@@ -37,16 +37,15 @@ jobs:
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: ${TOTAL}%"
-          # Threshold lowered from 98% to 80%: main itself only reaches 96.2%
-          # (the 98% gate has been failing on main since it was added).
-          # SPEC-055 introduced new handlers/services + auto-generated mocks
-          # (mocks now excluded from coverage). feat reaches 84.5% after
-          # exclusion; 80% is a realistic transitional bar.
-          if (( $(echo "$TOTAL < 80" | bc -l) )); then
-            echo "ERROR: Coverage ${TOTAL}% below 80% threshold"
+          # SPEC-058: coverage gate restored to 98%. The logic/agent orchestrator
+          # layer, gin-decoupled chat service, extracted handlers, and enhance
+          # service now all have dedicated unit tests. gomonkey is retained
+          # (ADK/stdlib) and -race is not restored (gomonkey+race panics).
+          if (( $(echo "$TOTAL < 98" | bc -l) )); then
+            echo "ERROR: Coverage ${TOTAL}% below 98% threshold"
             exit 1
           fi
-          echo "PASS: Coverage ${TOTAL}% >= 80%"
+          echo "PASS: Coverage ${TOTAL}% >= 98%"
 
       - name: Upload Coverage Report
         if: always()
