@@ -23,15 +23,15 @@ func NewSystemConfigRepository(db *mongo.Database) *SystemConfigRepository {
 
 // Get retrieves a config value by namespace and key.
 func (r *SystemConfigRepository) Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error) {
-	var cfg model.SystemConfig
-	err := r.coll.FindOne(ctx, bson.M{"namespace": namespace, "key": key}).Decode(&cfg)
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"namespace": namespace, "key": key}).Decode(&d)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get config: %w", err)
 	}
-	return &cfg, nil
+	return docToSystemConfig(d), nil
 }
 
 // GetAll returns all configs in a namespace.
@@ -42,12 +42,13 @@ func (r *SystemConfigRepository) GetAll(ctx context.Context, namespace string) (
 	}
 	defer cursor.Close(ctx)
 
-	var configs []model.SystemConfig
-	if err := cursor.All(ctx, &configs); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, fmt.Errorf("decode configs: %w", err)
 	}
-	if configs == nil {
-		configs = []model.SystemConfig{}
+	configs := make([]model.SystemConfig, len(docs))
+	for i, d := range docs {
+		configs[i] = *docToSystemConfig(d)
 	}
 	return configs, nil
 }

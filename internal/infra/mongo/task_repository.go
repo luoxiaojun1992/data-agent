@@ -19,14 +19,17 @@ func NewTaskRepository(db *mongo.Database) *TaskRepository {
 }
 
 func (r *TaskRepository) Create(ctx context.Context, t *task.Task) error {
-	_, err := r.coll.InsertOne(ctx, t)
+	_, err := r.coll.InsertOne(ctx, taskToDoc(t))
 	return err
 }
 
 func (r *TaskRepository) Get(ctx context.Context, id string) (*task.Task, error) {
-	var t task.Task
-	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&t)
-	return &t, err
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&d)
+	if err != nil {
+		return nil, err
+	}
+	return docToTask(d), nil
 }
 
 func (r *TaskRepository) Cancel(ctx context.Context, id string) error {
@@ -49,9 +52,13 @@ func (r *TaskRepository) List(ctx context.Context, userID string, status string,
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
-	var tasks []*task.Task
-	if err := cursor.All(ctx, &tasks); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, 0, err
+	}
+	tasks := make([]*task.Task, len(docs))
+	for i, d := range docs {
+		tasks[i] = docToTask(d)
 	}
 	return tasks, total, nil
 }
@@ -62,15 +69,19 @@ func (r *TaskRepository) ListAll(ctx context.Context, userID string) ([]*task.Ta
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-	var tasks []*task.Task
-	if err := cursor.All(ctx, &tasks); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, err
+	}
+	tasks := make([]*task.Task, len(docs))
+	for i, d := range docs {
+		tasks[i] = docToTask(d)
 	}
 	return tasks, nil
 }
 
 func (r *TaskRepository) UpdateProgress(ctx context.Context, id string, p *task.TaskProgress) error {
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"progress": p}})
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"progress": taskProgressToDoc(*p)}})
 	return err
 }
 
@@ -80,7 +91,7 @@ func (r *TaskRepository) UpdateResult(ctx context.Context, id string, result map
 }
 
 func (r *TaskRepository) Retry(ctx context.Context, id string, t *task.Task) error {
-	_, err := r.coll.ReplaceOne(ctx, bson.M{"_id": id}, t)
+	_, err := r.coll.ReplaceOne(ctx, bson.M{"_id": id}, taskToDoc(t))
 	return err
 }
 

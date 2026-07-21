@@ -21,30 +21,30 @@ const (
 
 // Task represents an async agent task (MongoDB).
 type Task struct {
-	ID          string                 `bson:"_id" json:"task_id"`
-	SessionID   string                 `bson:"session_id" json:"session_id"`
-	UserID      string                 `bson:"user_id" json:"user_id"`
-	Type        string                 `bson:"type" json:"type"` // "agent_exec", "scheduled_exec"
-	Status      Status                 `bson:"status" json:"status"`
-	SkillChain  []string               `bson:"skill_chain" json:"skill_chain"`
-	Params      map[string]interface{} `bson:"params" json:"params"`
-	Result      map[string]interface{} `bson:"result,omitempty" json:"result,omitempty"`
-	Error       string                 `bson:"error,omitempty" json:"error,omitempty"`
-	Progress    TaskProgress           `bson:"progress" json:"progress"`
-	RetryCount  int                    `bson:"retry_count" json:"retry_count"`
-	MaxRetries  int                    `bson:"max_retries" json:"max_retries"`
-	CreatedAt   time.Time              `bson:"created_at" json:"created_at"`
-	UpdatedAt   time.Time              `bson:"updated_at" json:"updated_at"`
-	CompletedAt *time.Time             `bson:"completed_at,omitempty" json:"completed_at,omitempty"`
-	DurationMs  int64                  `bson:"duration_ms" json:"duration_ms"`
+	ID          string                 `json:"task_id"`
+	SessionID   string                 `json:"session_id"`
+	UserID      string                 `json:"user_id"`
+	Type        string                 `json:"type"` // "agent_exec", "scheduled_exec"
+	Status      Status                 `json:"status"`
+	SkillChain  []string               `json:"skill_chain"`
+	Params      map[string]interface{} `json:"params"`
+	Result      map[string]interface{} `json:"result,omitempty"`
+	Error       string                 `json:"error,omitempty"`
+	Progress    TaskProgress           `json:"progress"`
+	RetryCount  int                    `json:"retry_count"`
+	MaxRetries  int                    `json:"max_retries"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	DurationMs  int64                  `json:"duration_ms"`
 }
 
 // TaskProgress tracks execution progress.
 type TaskProgress struct {
-	CurrentStep int    `bson:"current_step" json:"current_step"`
-	TotalSteps  int    `bson:"total_steps" json:"total_steps"`
-	Message     string `bson:"message" json:"message"`
-	Percent     int    `bson:"percent" json:"percent"`
+	CurrentStep int    `json:"current_step"`
+	TotalSteps  int    `json:"total_steps"`
+	Message     string `json:"message"`
+	Percent     int    `json:"percent"`
 }
 
 // NewTask creates a new task with a generated ID.
@@ -76,17 +76,17 @@ func NewTask(sessionID, userID, taskType string, skillChain []string, params map
 
 // ScheduledTask represents a cron-scheduled task (MongoDB).
 type ScheduledTask struct {
-	ID         string                 `bson:"_id" json:"scheduled_task_id"`
-	UserID     string                 `bson:"user_id" json:"user_id"`
-	Name       string                 `bson:"name" json:"name"`
-	CronExpr   string                 `bson:"cron_expr" json:"cron_expr"`
-	SkillChain []string               `bson:"skill_chain" json:"skill_chain"`
-	Params     map[string]interface{} `bson:"params" json:"params"`
-	Status     string                 `bson:"status" json:"status"` // active, paused, deleted
-	LastRunAt  *time.Time             `bson:"last_run_at,omitempty" json:"last_run_at,omitempty"`
-	NextRunAt  *time.Time             `bson:"next_run_at,omitempty" json:"next_run_at,omitempty"`
-	FailCount  int                    `bson:"fail_count" json:"fail_count"`
-	CreatedAt  time.Time              `bson:"created_at" json:"created_at"`
+	ID         string                 `json:"scheduled_task_id"`
+	UserID     string                 `json:"user_id"`
+	Name       string                 `json:"name"`
+	CronExpr   string                 `json:"cron_expr"`
+	SkillChain []string               `json:"skill_chain"`
+	Params     map[string]interface{} `json:"params"`
+	Status     string                 `json:"status"` // active, paused, deleted
+	LastRunAt  *time.Time             `json:"last_run_at,omitempty"`
+	NextRunAt  *time.Time             `json:"next_run_at,omitempty"`
+	FailCount  int                    `json:"fail_count"`
+	CreatedAt  time.Time              `json:"created_at"`
 }
 
 // QueueMessage is the JSON message format for Redis Stream.

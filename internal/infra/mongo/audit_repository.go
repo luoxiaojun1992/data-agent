@@ -23,7 +23,7 @@ func NewAuditRepository(db *mongo.Database) *AuditRepository {
 // (middleware/service) never touch mongo-driver.
 func (r *AuditRepository) Create(ctx context.Context, log *model.AuditLog) error {
 	log.ID = NewDomainID()
-	_, err := r.coll.InsertOne(ctx, log)
+	_, err := r.coll.InsertOne(ctx, auditLogToDoc(log))
 	return err
 }
 
@@ -41,12 +41,13 @@ func (r *AuditRepository) List(ctx context.Context, filter map[string]interface{
 	}
 	defer cursor.Close(ctx)
 
-	var results []model.AuditLog
-	if err := cursor.All(ctx, &results); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, err
 	}
-	if results == nil {
-		results = []model.AuditLog{}
+	results := make([]model.AuditLog, len(docs))
+	for i, d := range docs {
+		results[i] = *docToAuditLog(d)
 	}
 	return results, nil
 }
@@ -61,4 +62,3 @@ func toBson(m map[string]interface{}) bson.M {
 	}
 	return result
 }
-

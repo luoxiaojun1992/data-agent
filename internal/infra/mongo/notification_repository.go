@@ -23,7 +23,7 @@ func NewNotificationRepository(db *mongo.Database) *NotificationRepository {
 // Create creates a new notification.
 func (r *NotificationRepository) Create(ctx context.Context, n *model.Notification) error {
 	n.ID = NewDomainID()
-	_, err := r.coll.InsertOne(ctx, n)
+	_, err := r.coll.InsertOne(ctx, notificationToDoc(n))
 	return err
 }
 
@@ -40,9 +40,13 @@ func (r *NotificationRepository) ListForUser(ctx context.Context, userID string,
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
-	var ns []*model.Notification
-	if err := cursor.All(ctx, &ns); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, 0, err
+	}
+	ns := make([]*model.Notification, len(docs))
+	for i, d := range docs {
+		ns[i] = docToNotification(d)
 	}
 	return ns, total, nil
 }
