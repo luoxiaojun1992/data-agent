@@ -12,7 +12,7 @@ import (
 type Service interface {
 	List(ctx context.Context) ([]model.Role, error)
 	ListPermissions() []model.PermissionInfo
-	Create(ctx context.Context, name string, permissions []string) (*model.Role, error)
+	Create(ctx context.Context, name, displayName string, permissions []string) (*model.Role, error)
 	Update(ctx context.Context, id string, permissions []string) error
 	Delete(ctx context.Context, id string) error
 }

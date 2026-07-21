@@ -126,13 +126,14 @@ func (h *ConfigHandler) ListRoles(c *gin.Context) {
 func (h *ConfigHandler) CreateRole(c *gin.Context) {
 	var req struct {
 		Name        string   `json:"name"`
+		DisplayName string   `json:"display_name"`
 		Permissions []string `json:"permissions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	r, err := h.roleSvc.Create(c.Request.Context(), req.Name, req.Permissions)
+	r, err := h.roleSvc.Create(c.Request.Context(), req.Name, req.DisplayName, req.Permissions)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

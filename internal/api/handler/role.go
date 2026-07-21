@@ -42,13 +42,14 @@ func (h *RoleHandler) ListPermissions(c *gin.Context) {
 func (h *RoleHandler) Create(c *gin.Context) {
 	var req struct {
 		Name        string   `json:"name"`
+		DisplayName string   `json:"display_name"`
 		Permissions []string `json:"permissions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数解析失败"})
 		return
 	}
-	role, err := h.svc.Create(c.Request.Context(), req.Name, req.Permissions)
+	role, err := h.svc.Create(c.Request.Context(), req.Name, req.DisplayName, req.Permissions)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -25,6 +25,9 @@ func RegisterUserRoutes(api *gin.RouterGroup, h *UserHandler) {
 	api.GET("/users", h.List)
 	api.GET("/users/:id", h.Get)
 	api.POST("/users", h.Create)
+	// PUT /users/:id is the role-update endpoint used by the frontend (handleEdit).
+	// /users/:id/role is kept as an alias for API clients.
+	api.PUT("/users/:id", h.UpdateRole)
 	api.PUT("/users/:id/role", h.UpdateRole)
 	api.PUT("/users/:id/status", h.ToggleStatus)
 	api.DELETE("/users/:id", h.Delete)
@@ -52,10 +55,19 @@ func (h *UserHandler) List(c *gin.Context) {
 func (h *UserHandler) Get(c *gin.Context) {
 	user, err := h.svc.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if user == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"user": user})
+	c.JSON(http.StatusOK, gin.H{
+		"id":       user.ID.Hex(),
+		"username": user.Username,
+		"role":     user.Role,
+		"status":   user.Status,
+	})
 }
 
 // Create creates a new user.
@@ -89,13 +101,31 @@ func (h *UserHandler) Create(c *gin.Context) {
 // UpdateRole updates a user's role.
 func (h *UserHandler) UpdateRole(c *gin.Context) {
 	var req struct {
-		Role string `json:"role"`
+		Role model.UserRole `json:"role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数解析失败"})
 		return
 	}
-	if err := h.svc.UpdateRole(c.Request.Context(), c.Param("id"), model.UserRole(req.Role)); err != nil {
+	id := c.Param("id")
+	user, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+	if user.Role == model.RoleSystemAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "不能修改系统管理员的角色"})
+		return
+	}
+	if req.Role != model.RoleSystemAdmin && req.Role != model.RoleAdmin && req.Role != model.RoleUser {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
+		return
+	}
+	if err := h.svc.UpdateRole(c.Request.Context(), id, req.Role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新角色失败"})
 		return
 	}
@@ -104,7 +134,21 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 
 // ToggleStatus toggles a user between active and disabled.
 func (h *UserHandler) ToggleStatus(c *gin.Context) {
-	if err := h.svc.ToggleStatus(c.Request.Context(), c.Param("id")); err != nil {
+	id := c.Param("id")
+	user, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+	if user.Role == model.RoleSystemAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "不能停用系统管理员"})
+		return
+	}
+	if err := h.svc.ToggleStatus(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
@@ -113,7 +157,21 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 
 // Delete deletes a user.
 func (h *UserHandler) Delete(c *gin.Context) {
-	if err := h.svc.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	id := c.Param("id")
+	user, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+	if user.Role == model.RoleSystemAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "不可删除系统管理员"})
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除用户失败"})
 		return
 	}
