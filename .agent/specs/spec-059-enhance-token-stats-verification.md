@@ -159,9 +159,31 @@ test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, reque
 
 > **注意 cache miss**：`makeEnhanceHandler` L742-747 cache hit 时不调 `recordEnhanceTokens`。UI-160 用唯一 prompt（`'test token-' + uid`）保证 cache miss。
 
-### 5.4 monitor TokenTrend 落地（可选，范围外）
+### 5.4 monitor TokenTrend 死代码清理（纳入范围）
 
-SPEC-051 §4.3 的"monitor TokenTrend 从 llm_usage 聚合"是更大范围改造（影响 dashboard 趋势），本 spec 不包含，建议另开 spec。本 spec 仅新增独立 `/api/v1/stats/llm` 端点用于验证。
+调研发现 `internal/service/monitor/trends.go` 的 `computeTokenTrend` 是 **×500 硬编码假数据**：
+
+```go
+// L127 — 把 CallTrend（task 调用次数）×500 当 token 趋势，毫无逻辑
+func computeTokenTrend(callTrend []TrendPoint) []TrendPoint {
+    for _, p := range callTrend {
+        trend = append(trend, TrendPoint{Label: p.Label, Value: p.Value * 500})
+    }
+}
+```
+
+更严重：`ComputeTrends` 整个函数生产代码**没人调用**（只 `monitor_test.go` 测试用），`/api/v1/system/stats`（`monitor.Handler`）只返回 `SystemStats`（runtime 内存/CPU/goroutines），**不返回任何 trend**；前端 `frontend/src` 也不消费 `call_trend`/`token_trend` 等字段。所以整个 `DashboardTrends`（含 TokenTrend/CallTrend/DurationDist/SuccessTrend/OutputStats/ROITrend）是**死代码**。
+
+SPEC-051 §4.3 写的"monitor token trend 改为从 llm_usage 聚合"无从落地——monitor 根本没暴露 trends。
+
+**本 spec 处理**（聚焦 token，不清理整个 trends.go）：
+- 删除 `computeTokenTrend` 函数（×500 假数据）
+- `DashboardTrends.TokenTrend` 字段移除（死代码 + 假数据，无消费方）
+- `ComputeTrends` L35 删除 `t.TokenTrend = computeTokenTrend(t.CallTrend)`
+- `monitor_test.go` 删除 `TestComputeTrends_TokenTrend`（L385）及相关断言
+- **不删**其他 trend 函数（CallTrend/DurationDist 等逻辑合理，虽未接入但可能未来 dashboard 用，超出本 spec 范围）
+
+> token 统计的真实查询入口统一走本 spec 新增的 `/api/v1/stats/llm`（从 llm_usage 聚合），不再走 monitor 的假 TokenTrend。
 
 ## 6. 可行性分析
 
@@ -183,6 +205,8 @@ SPEC-051 §4.3 的"monitor TokenTrend 从 llm_usage 聚合"是更大范围改造
 | `internal/api/handler/stats.go` | 新增 `LLMStatsHandler` + `GetLLMStats` | **New** |
 | `internal/api/handler/stats_test.go` | handler 测试 | **New** |
 | `cmd/server/main.go` | 注册 `/api/v1/stats/llm` 路由 + 注入 recorder | Modify |
+| `internal/service/monitor/trends.go` | 删除 `computeTokenTrend` ×500 假函数 + `DashboardTrends.TokenTrend` 字段 | Modify |
+| `internal/service/monitor/monitor_test.go` | 删除 `TestComputeTrends_TokenTrend` + TokenTrend 断言 | Modify |
 | `tests/ui/prompt.spec.ts` | UI-160 改名 + 改验证逻辑 + `getLLMStats` 辅助函数 | Modify |
 | `.agent/memory/E2E_TESTING.md` | UI-160 描述更新 | Modify |
 
@@ -224,9 +248,11 @@ SPEC-051 §4.3 的"monitor TokenTrend 从 llm_usage 聚合"是更大范围改造
 5. `go test ./internal/...` 全通过，覆盖率 ≥98%
 6. CI sonar-check + ui-tests 通过
 7. `/api/v1/stats/llm` 端点需 admin 权限（非 admin 返回 403）
+8. `computeTokenTrend` ×500 假函数已删除，`DashboardTrends.TokenTrend` 字段已移除
+9. `grep -rn "computeTokenTrend\|TokenTrend" internal/` 为空
 
 ## 11. 不在本 spec 范围
 
-- monitor `/api/v1/system/stats` 的 TokenTrend 改为从 llm_usage 聚合（SPEC-051 §4.3 遗留）→ 另开 spec
+- monitor 其他 trend 函数（CallTrend/DurationDist/SuccessTrend/OutputStats/ROITrend）的激活或清理 —— 它们逻辑合理但生产未接入，超出本 spec 范围
 - 前端 dashboard 显示 LLM token 统计组件 → 另开 spec
 - enhance cache hit 时 token 统计补偿（cache hit 不计 token 是合理行为，本 spec 不改）
