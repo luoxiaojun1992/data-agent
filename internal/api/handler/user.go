@@ -34,7 +34,7 @@ func RegisterUserRoutes(api *gin.RouterGroup, h *UserHandler) {
 	// /:id/role is kept as an alias for API clients.
 	ug.PUT(userIDParam, h.UpdateRole)
 	ug.PUT(userIDParam+"/role", h.UpdateRole)
-	ug.PUT(userIDParam+"/status", h.ToggleStatus)
+	ug.PATCH(userIDParam+"/status", h.ToggleStatus)
 	ug.DELETE(userIDParam, h.Delete)
 }
 

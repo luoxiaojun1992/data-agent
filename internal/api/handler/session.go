@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
@@ -18,6 +19,8 @@ func NewSessionHandler(mgr chat.SessionService) *SessionHandler {
 func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
 	rg.GET("", h.List)
 	rg.POST("", h.Create)
+	// /deleted must be registered before /:id so the static path wins (UI-181).
+	rg.GET("/deleted", h.ListDeleted)
 	rg.GET("/:id", h.Get)
 	rg.PUT("/:id", h.Renew)
 	rg.DELETE("/:id", h.Delete)
@@ -77,4 +80,23 @@ func (h *SessionHandler) Restore(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "restored"})
+}
+
+// ListDeleted returns soft-deleted sessions for the current user (recovery
+// window). The frontend chat page calls GET /sessions/deleted to render the
+// session-recovery-banner (UI-181).
+func (h *SessionHandler) ListDeleted(c *gin.Context) {
+	userID := c.GetString("user_id")
+	sessions, err := h.mgr.ListDeleted(time.Now(), 100)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var userSessions []*chat.Session
+	for _, s := range sessions {
+		if s.UserID == userID {
+			userSessions = append(userSessions, s)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"sessions": userSessions})
 }
