@@ -68,6 +68,8 @@
 | SPEC-052 | 多模型路由与用途关联（Chat/Task/Embedding/压缩摘要） | **P13** | [spec-052-model-routing.md](spec-052-model-routing.md) | 📐 设计中 |
 | SPEC-053 | 会话存储、记忆压缩与 KB 索引逻辑对齐（Chat/Hermes 双轨） | **P13** | [spec-053-session-memory-kb-alignment.md](spec-053-session-memory-kb-alignment.md) | 📐 设计中 |
 | SPEC-054 | Sysconfig RBAC 权限不足修复（admin 访问也显示 insufficient permissions） | **P13** | [spec-054-sysconfig-rbac-fix.md](spec-054-sysconfig-rbac-fix.md) | 📐 设计中 |
+| SPEC-055 | 分层架构重构（Controller→Service→Repository→Infra） | **P14** | [spec-055-layer-refactoring.md](spec-055-layer-refactoring.md) | ✅ 已实现 |
+| SPEC-056 | 分层语义纠正：domain 为领域层 / logic 为编排层 / service 扁平化 | **P15** | [spec-056-layer-semantics-correction.md](spec-056-layer-semantics-correction.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -183,4 +185,9 @@ SPEC-006│               │
 
 [P14] SPEC-055 ─── 分层架构重构（Controller→Service→Repository→Infra）
                    (main.go 减至 300 行、UT 无需 MongoDB 连接、接口化)
+
+[P15] SPEC-056 ─── 分层语义纠正（domain 领域层 / logic 编排层 / service 扁平化）
+                   (纠正 SPEC-055 遗留：domain≠repo、消除 service 同层依赖、
+                    SDK 泄漏清理、middleware 解耦、main.go 完成、覆盖率恢复 98%)
+                   后续 SPEC-057：domain model 全量去 bson tag
 ```
