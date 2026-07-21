@@ -1,6 +1,6 @@
 # 分层语义纠正（一）：domain ID 解耦 / service SDK 清理 / middleware 解耦 / IMBind 补全
 
-> **SPEC-056** | Status: 设计中
+> **SPEC-056** | Status: 已实现 (PR #71, 2026-07-21)
 >
 > **范围说明**: 本 spec 原 5 块工作（domain 解耦 / logic 编排层 / service 扁平化 / main.go 迁移 / 覆盖率 98%）经评估风险等级为中-高，spec §5 自身建议分阶段。经 2026-07-21 晓军确认拆分：
 > - **SPEC-056（本 spec）**: domain ID 解耦 + service SDK 清理 + middleware 解耦 + IMBind 补全 + infra converter 骨架（低-中风险快赢）
