@@ -454,7 +454,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	handler.RegisterModelConfigRoutes(api, handler.NewModelConfigHandler(cfgSvc))
 	setupMemorySearch(api, deps.memoryService)
 	roleSvc := role.NewService(deps.roleRepo)
-	sysCfgHandler := handler.NewConfigHandler(cfgSvc, roleSvc)
+	sysCfgHandler := handler.NewConfigHandler(cfgSvc, roleSvc, deps.userRepo)
 	handler.RegisterSysConfigRoutes(api, sysCfgHandler)
 
 	// Admin routes
