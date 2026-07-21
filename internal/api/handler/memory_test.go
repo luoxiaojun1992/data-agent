@@ -28,7 +28,7 @@ func TestMemoryHandler_Search_MissingQuery(t *testing.T) {
 func TestNewMemoryHandler(t *testing.T) {
 	h := NewMemoryHandler(nil, "app")
 	if h == nil {
-		t.Error("handler should not be nil")
+		t.Fatal("handler should not be nil")
 	}
 	if h.appName != "app" {
 		t.Errorf("appName = %q", h.appName)
