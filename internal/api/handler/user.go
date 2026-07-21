@@ -20,17 +20,22 @@ func NewUserHandler(svc usersvc.Service) *UserHandler {
 	return &UserHandler{svc: svc}
 }
 
+// userIDParam is the per-user route segment. Using a named constant avoids
+// duplicating the raw string literal (SonarQube "define a constant" gate).
+const userIDParam = "/:id"
+
 // RegisterUserRoutes registers user management routes.
 func RegisterUserRoutes(api *gin.RouterGroup, h *UserHandler) {
-	api.GET("/users", h.List)
-	api.GET("/users/:id", h.Get)
-	api.POST("/users", h.Create)
-	// PUT /users/:id is the role-update endpoint used by the frontend (handleEdit).
-	// /users/:id/role is kept as an alias for API clients.
-	api.PUT("/users/:id", h.UpdateRole)
-	api.PUT("/users/:id/role", h.UpdateRole)
-	api.PUT("/users/:id/status", h.ToggleStatus)
-	api.DELETE("/users/:id", h.Delete)
+	ug := api.Group("/users")
+	ug.GET("", h.List)
+	ug.GET(userIDParam, h.Get)
+	ug.POST("", h.Create)
+	// PUT /:id is the role-update endpoint used by the frontend (handleEdit).
+	// /:id/role is kept as an alias for API clients.
+	ug.PUT(userIDParam, h.UpdateRole)
+	ug.PUT(userIDParam+"/role", h.UpdateRole)
+	ug.PUT(userIDParam+"/status", h.ToggleStatus)
+	ug.DELETE(userIDParam, h.Delete)
 }
 
 // List returns all users.

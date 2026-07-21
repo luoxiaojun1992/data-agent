@@ -38,7 +38,12 @@ func (h *SessionHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"session": s})
+	// Restore main's HTTP contract: top-level session_id + expires_at.
+	// The frontend (chat/page.tsx createSession) reads data.session_id directly.
+	c.JSON(http.StatusCreated, gin.H{
+		"session_id": s.ID,
+		"expires_at": s.ExpiresAt,
+	})
 }
 
 func (h *SessionHandler) Get(c *gin.Context) {

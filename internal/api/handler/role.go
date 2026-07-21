@@ -20,7 +20,9 @@ func NewRoleHandler(svc role.Service) *RoleHandler {
 // RegisterRoleRoutes registers role management routes.
 func RegisterRoleRoutes(api *gin.RouterGroup, h *RoleHandler) {
 	api.GET("/roles", h.List)
-	api.GET("/roles/permissions", h.ListPermissions)
+	// main registers permissions at /api/v1/permissions (not /roles/permissions).
+	// The frontend permissions tab (UI-089) calls this exact path.
+	api.GET("/permissions", h.ListPermissions)
 	api.POST("/roles", h.Create)
 	api.PUT("/roles/:id", h.Update)
 	api.DELETE("/roles/:id", h.Delete)
@@ -32,7 +34,8 @@ func (h *RoleHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"roles": roles})
+	// Restore main's contract: include total count.
+	c.JSON(http.StatusOK, gin.H{"roles": roles, "total": len(roles)})
 }
 
 func (h *RoleHandler) ListPermissions(c *gin.Context) {
@@ -54,7 +57,15 @@ func (h *RoleHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"role": role})
+	// Restore main's HTTP contract: top-level fields so the frontend can read
+	// newRole.id directly (role.spec.ts UI-090/091 rely on this).
+	c.JSON(http.StatusCreated, gin.H{
+		"id":           role.ID.Hex(),
+		"name":         role.Name,
+		"display_name": role.DisplayName,
+		"permissions":  role.Permissions,
+		"type":         role.Type,
+	})
 }
 
 func (h *RoleHandler) Update(c *gin.Context) {
