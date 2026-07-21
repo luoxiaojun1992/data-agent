@@ -1,112 +1,108 @@
-# 增强调用 Token 统计验证（UI-160 案例名纠正 + LLM Token 查询 API）
+# 增强调用 Token 统计验证 + Dashboard Token 真数据展示
 
 > **SPEC-059** | Status: 设计中
 
 ## 1. 目标
 
-纠正 UI-160 案例名与验证逻辑错误：增强调用**已经计入** Token 统计（SPEC-051 `recordEnhanceTokens` 写 `llm_usage`，CallPoint=`enhance`），但 UI-160 案例名为"增强调用不计入 Token 统计"，名实不符，且测试逻辑只验证 UI 流程（输入框替换），未真正验证 token 统计。
-
-为让 UI-160 能真正验证"增强调用计入 Token 统计"，新增 LLM Token 查询 API（从 `llm_usage` 聚合），UI-160 改为：enhance 前查 enhance token → enhance → 查 → 验证增加。
+1. **纠正 UI-160**：案例名"增强调用不计入 Token 统计"错误（后端已计入），改为"计入"并真正验证 token 统计增加。
+2. **Dashboard 显示 Token 真数据**：前端 dashboard 首页的"Token 消耗"KPI + 趋势图当前显示 "—"（前端调 `/dashboard/trends` 但后端无此端点；monitor 的 `computeTokenTrend` 是 ×500 假数据死代码）。新增 `/api/v1/dashboard/trends` 端点，`token_trend` 从 `llm_usage` 真实聚合。
+3. **清理 monitor 死代码**：删除 `computeTokenTrend` ×500 假函数。
 
 ## 1.5. 前置依赖检查
 
 | 前置 Spec | 状态 | 备注 |
 |-----------|:---:|------|
-| SPEC-051 | ✅ | LLM 全链路 Token 统计（`llm_usage` 集合 + `recordEnhanceTokens` 已实现） |
-| SPEC-043 | ✅ | Mock Model Service（UI 测试用 mockllm，enhance handler 真实执行） |
-| SPEC-033 | ✅ | UI E2E — 增强提示词（UI-156~160 所在 spec） |
+| SPEC-051 | ✅ | LLM Token 统计（`llm_usage` + `recordEnhanceTokens` 已实现） |
+| SPEC-043 | ✅ | Mock Model Service（UI 测试用 mockllm） |
+| SPEC-033 | ✅ | UI E2E — 增强提示词（UI-156~160） |
 | — | — | 无阻塞前置依赖 |
 
 ## 2. 背景
 
 ### 2.1 现状调研（2026-07-21）
 
-**(A) 后端：enhance 已计入 token 统计** ✅
+**(A) 后端 enhance 已计入 token** ✅
+`main.go` `recordEnhanceTokens` (L713) 写 `llm_usage`（CallPoint=`enhance`），`makeEnhanceHandler` L753 调用（cache miss 路径）。历史：SPEC-051 PR#63 曾错误回退，晓军 2026-07-18 纠正后恢复。
 
-`cmd/server/main.go`：
-- `recordEnhanceTokens` (L713) 调用 `deps.llmRecorder.Record(ctx, llmstats.Record{CallPoint: "enhance", ...})`
-- `makeEnhanceHandler` (L727) 在 L753 调用 `recordEnhanceTokens`（cache miss 路径）
-- `llmstats.Recorder.Record` 写 MongoDB `llm_usage` 集合
+**(B) token 查询能力缺失** ❌
+- 无 LLM token 查询端点
+- SPEC-051 §4.3 "monitor token trend 从 llm_usage 聚合" **未落地**
 
-> 历史背景：SPEC-051 (PR #63) 曾因 UI-158 失败错误回退 enhance token recording，晓军 2026-07-18 纠正后已恢复（红线：禁止降级功能）。当前 main 上 `recordEnhanceTokens` 已恢复执行。
+**(C) monitor `computeTokenTrend` 是 ×500 假数据 + 死代码** ❌
+`trends.go` L127：`Value: p.Value * 500`（CallTrend ×500 当 token）。`ComputeTrends` 生产代码**无人调用**（只测试用），`/api/v1/system/stats`（monitor.Handler）只返回 SystemStats（runtime 内存/CPU），不返回 trends。
 
-**(B) token 查询 API 缺失** ❌
+**(D) 前端 dashboard token 显示 "—"** ❌
+`frontend/app/page.tsx`：
+- L74: `apiFetch('/dashboard/trends')` → `/api/v1/dashboard/trends`（后端**无此端点**，404）
+- L77: `catch { /* ignore */ }` 静默吞 404 → `trends` 为 null
+- L177: "Token 消耗" KPI = `trends?.token_trend ? ... : '—'` → 显示 "—"
+- L191: token 趋势图 = `(trends?.token_trend || [])` → 空
+- L98 注释: "Time-series charts placeholder — needs /api/v1/dashboard/trends endpoint"
 
-SPEC-051 §4.3 设计了"monitor token trend 改为从 `llm_usage` 聚合（替换现有基于 CallTrend 的估算）"，但**未落地**：
-- `internal/service/monitor/trends.go` L35: `TokenTrend = computeTokenTrend(t.CallTrend)` —— 仍从 task 调用趋势派生，**不含 enhance**（enhance 不创建 task）
-- 无独立的 LLM token 查询端点（`grep` handler/ 无 `llm_usage` 查询）
-- 前端 `frontend/src/app/dashboard` 无 token 统计组件
+**(E) UI-160 错误** ❌
+`tests/ui/prompt.spec.ts` L104 名"增强调用不计入 Token 统计"（实际计入），测试逻辑只验证 UI 流程（L121 注释"Token stats tracked server-side"），未验证 token。
 
-**(C) UI-160 案例名与逻辑错误** ❌
+### 2.2 问题根因
 
-`tests/ui/prompt.spec.ts` L104:
-```ts
-test('[UI-160] Prompt — 增强调用不计入 Token 统计', async ({ page, request }) => {
-  // ... mock enhance，点击增强按钮，验证输入框内容替换
-  // (Token stats are tracked server-side; we verify enhance UI flow works)  ← L121 注释
-});
-```
-- 案例名"不计入"与后端实际行为相反
-- 测试逻辑只验证 UI 流程（输入框替换 + dashboard 加载），**未验证 token 统计**
-
-### 2.2 问题影响
-
-- UI-160 名实不符，误导后续维护者认为 enhance 不计 token
-- enhance token 统计"写入但读不出"，无法在前端/API 验证
-- SPEC-051 §4.3 的 monitor 聚合设计悬空
+token 统计"写入但读不出"——`llm_usage` 有真实数据，但：
+1. 无查询 API（UI-160 无法验证 enhance 计入）
+2. `/dashboard/trends` 端点不存在（dashboard 显示空）
+3. monitor `computeTokenTrend` 是死代码假数据（即使接入也是假的）
 
 ## 3. 架构概述
 
 ```
-enhance 请求 → makeEnhanceHandler → recordEnhanceTokens → llm_usage (CallPoint=enhance)
-                                        (已实现 ✅)
+写入 (已实现 ✅):
+  enhance/chat/embedding/compaction → llmstats.Recorder.Record → llm_usage
 
-查询 API (新增):
-GET /api/v1/stats/llm?call_point=enhance
-  → handler/stats.go LLMStatsHandler
-  → service/llmstats 查询方法 (新增 Aggregate)
-  → llm_usage 聚合 → {call_point, prompt_tokens, completion_tokens, count}
+读取 (本 spec 新增):
+  ┌─────────────────────────────────────────────────────┐
+  │ GET /api/v1/stats/llm?call_point=enhance            │ ← UI-160 验证用
+  │   → handler/stats.go → llmstats.Aggregate           │   (by call_point)
+  │   → {call_point, count, prompt_tokens, ...}         │
+  └─────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────┐
+  │ GET /api/v1/dashboard/trends                        │ ← dashboard 首页用
+  │   → handler/dashboard.go GetTrends                  │
+  │   → monitor.ComputeTrends (改造)                    │
+  │     · call_trend/duration_dist/... 从 task (现有)   │
+  │     · token_trend 从 llm_usage 聚合 (新增, 真实)    │
+  │   → {call_trend, token_trend, ...}                  │
+  └─────────────────────────────────────────────────────┘
 
-UI-160 (改造):
-enhance 前查 /api/v1/stats/llm?call_point=enhance → 记录 count
-→ 点击增强按钮 (mockllm mock, 后端真实 recordEnhanceTokens)
-→ enhance 后查 /api/v1/stats/llm?call_point=enhance → 验证 count 增加
+前端:
+  page.tsx /dashboard/trends → 真实 token_trend → KPI + 趋势图显示真数据
+  UI-160 → /stats/llm 验证 enhance count+1
 ```
 
 ## 4. API 设计
 
 | Method | Path | Description | 权限 |
 |--------|------|-------------|------|
-| GET | `/api/v1/stats/llm` | LLM token 统计聚合查询 | admin |
+| GET | `/api/v1/stats/llm` | LLM token 按 call_point 聚合（UI-160 验证用） | admin |
+| GET | `/api/v1/dashboard/trends` | Dashboard 趋势数据（token_trend 真实） | 登录用户 |
 
-**Query 参数**：
-- `call_point` (可选): 过滤 call_point（`enhance`/`chat`/`embedding`/`compaction`），不传则返回全部
-- `since` (可选): ISO 8601 时间，只统计该时间之后的记录
+**`/api/v1/stats/llm` query**：`call_point`(可选)、`since`(可选, ISO8601)
+**响应**：`{stats: [{call_point, count, prompt_tokens, completion_tokens, total_tokens}]}`
 
-**响应**：
+**`/api/v1/dashboard/trends` 响应**：
 ```json
 {
-  "stats": [
-    {
-      "call_point": "enhance",
-      "count": 5,
-      "prompt_tokens": 120,
-      "completion_tokens": 340,
-      "total_tokens": 460
-    }
-  ]
+  "call_trend": [...], "duration_dist": [...], "req_dist": [...],
+  "success_trend": [...], "token_trend": [{"label":"0时","value":1234}, ...],
+  "output_stats": [...], "roi_trend": [...]
 }
 ```
+`token_trend` 按时间桶（4小时桶，24h，与 call_trend 对齐）聚合 `llm_usage` 的 `prompt_tokens + completion_tokens`。
 
 ## 5. 详细设计
 
 ### 5.1 llmstats 查询方法（新增）
 
-`internal/infra/llmstats/llmstats.go` 现有 `Recorder.Record`（写）。新增查询方法：
+`internal/infra/llmstats/llmstats.go` 现有 `Recorder.Record`（写）。新增：
 
 ```go
-// Aggregate returns token usage aggregated by call_point.
-// If callPoint is empty, all call points are included. If since is zero, no time filter.
+// Aggregate 按 call_point 聚合 token 用量。callPoint 空则全部，since 零值则不过滤时间。
 func (r *Recorder) Aggregate(ctx context.Context, callPoint string, since time.Time) ([]AggregateResult, error)
 
 type AggregateResult struct {
@@ -115,18 +111,80 @@ type AggregateResult struct {
     PromptTokens     int64  `bson:"prompt_tokens" json:"prompt_tokens"`
     CompletionTokens int64  `bson:"completion_tokens" json:"completion_tokens"`
 }
+
+// AggregateByTime 按时间桶聚合 token 用量（用于趋势图）。
+// buckets 为桶起始时间列表（如 24h 内每 4h 一桶），返回每桶的 token 总量。
+func (r *Recorder) AggregateByTime(ctx context.Context, since time.Time, bucketMs int64) ([]TimeBucketResult, error)
+
+type TimeBucketResult struct {
+    BucketStart time.Time `bson:"_id" json:"bucket_start"`
+    TotalTokens int64     `bson:"total_tokens" json:"total_tokens"`
+}
 ```
 
-MongoDB aggregation pipeline：`$match` (call_point + since) → `$group` by call_point。
+MongoDB aggregation pipeline：
+- `Aggregate`: `$match`(call_point+since) → `$group` by call_point
+- `AggregateByTime`: `$match`(since) → `$group` by `$bucket` of `created_at` → sum(prompt+completion)
 
-### 5.2 LLMStatsHandler（新增）
+### 5.2 `/api/v1/stats/llm` 端点（UI-160 验证用）
 
 `internal/api/handler/stats.go`（新文件）：
 - `LLMStatsHandler` 持 `*llmstats.Recorder`
-- `GetLLMStats(c *gin.Context)`：解析 query → 调 `Recorder.Aggregate` → 返回 JSON
-- 路由注册：`router.GET("/api/v1/stats/llm", jwtManager.AuthMiddleware(), adminGuard, statsHandler.GetLLMStats)`
+- `GetLLMStats(c *gin.Context)`：解析 query → `Recorder.Aggregate` → JSON
+- 路由：`router.GET("/api/v1/stats/llm", jwtManager.AuthMiddleware(), adminGuard, statsHandler.GetLLMStats)`
+- main.go 注入 `deps.llmRecorder`
 
-### 5.3 UI-160 改造
+### 5.3 `/api/v1/dashboard/trends` 端点（dashboard 真数据）
+
+`internal/api/handler/dashboard.go` 扩展：
+- `DashboardHandler` 增加 `llmRecorder *llmstats.Recorder` 字段
+- `GetTrends(c *gin.Context)`：调 `monitor.ComputeTrends`（改造后）→ JSON
+- 路由：`router.GET("/api/v1/dashboard/trends", midd, h.GetTrends)`
+
+### 5.4 `ComputeTrends` 改造（token_trend 真实）
+
+`internal/service/monitor/trends.go`：
+- `ComputeTrends` 签名增加 `tokenBuckets []llmstats.TimeBucketResult` 参数
+- 删除 `computeTokenTrend`（×500 假函数）
+- `t.TokenTrend` 改为从 `tokenBuckets` 映射（按桶 label 对齐）
+
+```go
+func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int, tokenBuckets []llmstats.TimeBucketResult) *DashboardTrends {
+    // ... 现有 call_trend/duration_dist/... 不变
+    t.TokenTrend = mapTokenBuckets(tokenBuckets, now) // 真实数据
+}
+
+func mapTokenBuckets(buckets []llmstats.TimeBucketResult, now time.Time) []TrendPoint {
+    // 24h 内每 4h 一桶，与 call_trend label 对齐（0时/4时/.../20时）
+    // 每桶 sum(total_tokens)
+}
+```
+
+`handler/dashboard.go GetTrends`：
+```go
+func (h *DashboardHandler) GetTrends(c *gin.Context) {
+    userID := c.GetString("user_id")
+    tasks, _ := h.taskService.ListAllTasks(userID)
+    sessions, _ := h.sessionManager.ListByUser(userID)
+    docs, _ := h.kbService.ListAllDocs()
+    since := time.Now().Add(-24 * time.Hour)
+    tokenBuckets, _ := h.llmRecorder.AggregateByTime(c.Request.Context(), since, int64((4*time.Hour).Milliseconds()))
+    trends := monitor.ComputeTrends(tasks, sessions, len(docs), tokenBuckets)
+    c.JSON(http.StatusOK, trends)
+}
+```
+
+### 5.5 前端 dashboard token 显示真数据
+
+`frontend/app/page.tsx`：
+- 路径已匹配（`/dashboard/trends` → `/api/v1/dashboard/trends`），后端补端点后自动获取真数据
+- L177 "Token 消耗" KPI：`trends.token_trend.reduce(...)` 显示真实总量
+- L191 token 趋势图：显示真实按桶数据
+- 新增 `data-testid`：
+  - `data-testid="dashboard-token-kpi"` — Token 消耗 KPI 值
+  - `data-testid="dashboard-token-trend-chart"` — token 趋势图容器
+
+### 5.6 UI-160 改造
 
 `tests/ui/prompt.spec.ts` L104：
 
@@ -134,125 +192,109 @@ MongoDB aggregation pipeline：`$match` (call_point + since) → `$group` by cal
 // ═══ UI-160: 增强调用计入 Token 统计 ═══
 test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, request }) => {
   await clearMocks(request);
-  await seedMock(request, 'test token', '增强后的测试内容');
+  await seedMock(request, 'test token ' + uid, '增强后的测试内容'); // 唯一 prompt 保证 cache miss
 
-  // 1. enhance 前查 enhance token count
-  const before = await getLLMStats(request, token, 'enhance');
+  const before = await getLLMStats(request, adminToken, 'enhance');
   const beforeCount = before.stats[0]?.count ?? 0;
 
-  // 2. 触发 enhance (mockllm mock, 后端真实 recordEnhanceTokens)
   const input = page.locator('[data-testid="chat-input"]');
-  await input.fill('test token');
+  await input.fill('test token ' + uid);
   await page.locator('[data-testid="chat-enhance-btn"]').click();
   await expect(input).toHaveValue('增强后的测试内容', { timeout: 5000 });
 
-  // 3. enhance 后查 enhance token count，验证增加
-  //    (轮询：recordEnhanceTokens 异步写 llm_usage)
+  // recordEnhanceTokens 异步写 llm_usage，轮询验证 count+1
   await expect.poll(async () => {
-    const after = await getLLMStats(request, token, 'enhance');
+    const after = await getLLMStats(request, adminToken, 'enhance');
     return after.stats[0]?.count ?? 0;
   }, { timeout: 5000 }).toBe(beforeCount + 1);
 });
 ```
 
-辅助函数 `getLLMStats(request, token, callPoint)` 调 `GET /api/v1/stats/llm?call_point=enhance`。
+### 5.7 新增 E2E：Dashboard Token 真数据
 
-> **注意 cache miss**：`makeEnhanceHandler` L742-747 cache hit 时不调 `recordEnhanceTokens`。UI-160 用唯一 prompt（`'test token-' + uid`）保证 cache miss。
+`tests/ui/dashboard.spec.ts` 新增（或扩展现有 dashboard 测试）：
+- `UI-2XX: Dashboard — Token 消耗显示真数据`
+- 触发一次 enhance（或 chat）→ 导航 dashboard → 验证 `dashboard-token-kpi` 非 "—" 且 > 0
+- 验证 `dashboard-token-trend-chart` 有数据点
 
-### 5.4 monitor TokenTrend 死代码清理（纳入范围）
-
-调研发现 `internal/service/monitor/trends.go` 的 `computeTokenTrend` 是 **×500 硬编码假数据**：
-
-```go
-// L127 — 把 CallTrend（task 调用次数）×500 当 token 趋势，毫无逻辑
-func computeTokenTrend(callTrend []TrendPoint) []TrendPoint {
-    for _, p := range callTrend {
-        trend = append(trend, TrendPoint{Label: p.Label, Value: p.Value * 500})
-    }
-}
-```
-
-更严重：`ComputeTrends` 整个函数生产代码**没人调用**（只 `monitor_test.go` 测试用），`/api/v1/system/stats`（`monitor.Handler`）只返回 `SystemStats`（runtime 内存/CPU/goroutines），**不返回任何 trend**；前端 `frontend/src` 也不消费 `call_trend`/`token_trend` 等字段。所以整个 `DashboardTrends`（含 TokenTrend/CallTrend/DurationDist/SuccessTrend/OutputStats/ROITrend）是**死代码**。
-
-SPEC-051 §4.3 写的"monitor token trend 改为从 llm_usage 聚合"无从落地——monitor 根本没暴露 trends。
-
-**本 spec 处理**（聚焦 token，不清理整个 trends.go）：
-- 删除 `computeTokenTrend` 函数（×500 假数据）
-- `DashboardTrends.TokenTrend` 字段移除（死代码 + 假数据，无消费方）
-- `ComputeTrends` L35 删除 `t.TokenTrend = computeTokenTrend(t.CallTrend)`
-- `monitor_test.go` 删除 `TestComputeTrends_TokenTrend`（L385）及相关断言
-- **不删**其他 trend 函数（CallTrend/DurationDist 等逻辑合理，虽未接入但可能未来 dashboard 用，超出本 spec 范围）
-
-> token 统计的真实查询入口统一走本 spec 新增的 `/api/v1/stats/llm`（从 llm_usage 聚合），不再走 monitor 的假 TokenTrend。
+> 注：需用 admin 账号（dashboard 首页 + /stats/llm 需 admin）。mockllm mock LLM，后端 recordEnhanceTokens 真实写 llm_usage。
 
 ## 6. 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
 | 是否需要新 DB 集合 | No（复用 `llm_usage`） |
-| 是否影响现有 API | No（新增端点，向后兼容） |
-| 是否影响现有 UI | No（UI-160 改造，无新 UI 组件） |
-| 性能影响 | 低（aggregation 查询，可加索引） |
-| 是否需要新增 Skill | No |
-| 风险等级 | 低 — 新增查询端点 + 改一个 E2E case |
+| 是否影响现有 API | No（新增 2 端点，向后兼容） |
+| 是否影响现有 UI | Yes（dashboard token 从 "—" 变真数据，是修复） |
+| 性能影响 | 低（aggregation 查询，`llm_usage` 已有 created_at/call_point 索引） |
+| 风险等级 | 低-中 — 新增端点 + 改 ComputeTrends 签名（影响 monitor_test） |
 
 ## 7. 相关文件
 
 | File | Role | Change Magnitude |
 |------|------|:---:|
-| `internal/infra/llmstats/llmstats.go` | 新增 `Aggregate` 查询方法 + `AggregateResult` struct | Modify |
-| `internal/infra/llmstats/llmstats_test.go` | 新增 Aggregate 测试 | Modify |
+| `internal/infra/llmstats/llmstats.go` | 新增 `Aggregate` + `AggregateByTime` + 结果 struct | Modify |
+| `internal/infra/llmstats/llmstats_test.go` | 新增查询方法测试 | Modify |
 | `internal/api/handler/stats.go` | 新增 `LLMStatsHandler` + `GetLLMStats` | **New** |
 | `internal/api/handler/stats_test.go` | handler 测试 | **New** |
-| `cmd/server/main.go` | 注册 `/api/v1/stats/llm` 路由 + 注入 recorder | Modify |
-| `internal/service/monitor/trends.go` | 删除 `computeTokenTrend` ×500 假函数 + `DashboardTrends.TokenTrend` 字段 | Modify |
-| `internal/service/monitor/monitor_test.go` | 删除 `TestComputeTrends_TokenTrend` + TokenTrend 断言 | Modify |
-| `tests/ui/prompt.spec.ts` | UI-160 改名 + 改验证逻辑 + `getLLMStats` 辅助函数 | Modify |
-| `.agent/memory/E2E_TESTING.md` | UI-160 描述更新 | Modify |
+| `internal/api/handler/dashboard.go` | 增加 `llmRecorder` 字段 + `GetTrends` + 路由 | Modify |
+| `internal/api/handler/dashboard_test.go` | GetTrends 测试 | Modify |
+| `internal/service/monitor/trends.go` | `ComputeTrends` 加 tokenBuckets 参数 + 删 `computeTokenTrend` + `mapTokenBuckets` | Modify |
+| `internal/service/monitor/monitor_test.go` | 适配 ComputeTrends 新签名 + 删 TestComputeTrends_TokenTrend | Modify |
+| `cmd/server/main.go` | 注册 2 路由 + dashboard handler 注入 recorder | Modify |
+| `frontend/app/page.tsx` | 加 `data-testid` (token-kpi/token-trend-chart) | Modify |
+| `tests/ui/prompt.spec.ts` | UI-160 改名 + 改验证逻辑 + `getLLMStats` 辅助 | Modify |
+| `tests/ui/dashboard.spec.ts` | 新增 UI-2XX dashboard token 真数据验证 | Modify |
+| `.agent/memory/E2E_TESTING.md` | UI-160 + UI-2XX 描述更新 | Modify |
 
 ## 8. 测试策略
 
 1. **Unit tests**（Go）:
-   - `llmstats.Aggregate`：mock mongo collection，验证 aggregation pipeline（call_point 过滤、since 过滤、group 聚合）
-   - `LLMStatsHandler.GetLLMStats`：mock Recorder，验证 query 解析 + 响应格式 + 权限
-   - 覆盖率 ≥98%（CI `ut-workflow.yml`）
+   - `llmstats.Aggregate` / `AggregateByTime`：mock mongo collection，验证 pipeline（过滤/分组/桶聚合）
+   - `LLMStatsHandler.GetLLMStats`：query 解析 + 响应 + 权限
+   - `DashboardHandler.GetTrends`：mock taskSvc/sessionMgr/kbSvc/llmRecorder，验证 trends 结构 + token_trend 真实
+   - `monitor.ComputeTrends`：适配新签名，token_trend 从 tokenBuckets 映射
+   - 覆盖率 ≥98%
 2. **E2E tests**（UI）:
-   - UI-160 改造：enhance 前后 token count 验证
-   - CI: `ui-tests.yml` + mockllm（enhance handler 真实执行 recordEnhanceTokens）
-3. **审计**: `.agent/skills/go-ut-audit`
+   - UI-160：enhance 前后 `/stats/llm` count+1
+   - UI-2XX：dashboard token KPI + 趋势图显示真数据（非 "—"）
+   - CI: `ui-tests.yml` + mockllm
 
 ## 9. UI Test / E2E 验收规则
 
-- [ ] **必须** UI-160 改名为"增强调用计入 Token 统计"
-- [ ] **必须** UI-160 验证 enhance 后 `/api/v1/stats/llm?call_point=enhance` 的 count 增加
+- [ ] **必须** UI-160 改名"增强调用计入 Token 统计" + 验证 count+1
+- [ ] **必须** 新增 UI-2XX dashboard token 真数据验证（KPI 非 "—" 且 > 0）
 - [ ] **必须** CI sonar-check + ui-tests 通过
-- [ ] **严禁** 降级 UI-160 断言（如只验证 UI 流程不验证 token）
+- [ ] **严禁** 降级断言（如只验证 UI 流程不验证 token）
 
 ## 9.5. Go Unit Test 验收规则
 
 | Tier | 特征 | 目标 |
 |:---:|------|:---:|
-| L1 | llmstats.Aggregate 纯聚合逻辑 | **100%** |
-| L3 | handler/stats GetLLMStats | **98%** |
+| L1 | llmstats 聚合逻辑 + monitor mapTokenBuckets | **100%** |
+| L3 | handler/stats + handler/dashboard GetTrends | **98%** |
 
-- [ ] `Aggregate` 测试覆盖：call_point 过滤、since 过滤、空结果、多 call_point 聚合
-- [ ] `GetLLMStats` 测试覆盖：正常查询、无 call_point 参数、权限拒绝、Recorder 错误
+- [ ] `Aggregate`/`AggregateByTime` 覆盖：过滤、空结果、多 call_point、桶对齐
+- [ ] `GetLLMStats`/`GetTrends` 覆盖：正常、权限拒绝、Recorder 错误
 - [ ] Success 测试 ≥2 个行为验证断言
 
 ## 10. 验证标准
 
-1. `GET /api/v1/stats/llm?call_point=enhance` 返回 enhance token 聚合（count/prompt_tokens/completion_tokens）
-2. enhance 调用后（cache miss），该端点返回的 count 增加
-3. UI-160 案例名为"增强调用计入 Token 统计"
-4. UI-160 测试逻辑验证 enhance 前后 token count 增加（非仅 UI 流程）
-5. `go test ./internal/...` 全通过，覆盖率 ≥98%
-6. CI sonar-check + ui-tests 通过
-7. `/api/v1/stats/llm` 端点需 admin 权限（非 admin 返回 403）
-8. `computeTokenTrend` ×500 假函数已删除，`DashboardTrends.TokenTrend` 字段已移除
-9. `grep -rn "computeTokenTrend\|TokenTrend" internal/` 为空
+1. `GET /api/v1/stats/llm?call_point=enhance` 返回 enhance token 聚合
+2. enhance 调用后（cache miss），该端点 count 增加
+3. `GET /api/v1/dashboard/trends` 返回含真实 `token_trend`（从 `llm_usage` 聚合，非 ×500 假数据）
+4. UI-160 案例名"增强调用计入 Token 统计" + 验证 count+1
+5. dashboard "Token 消耗" KPI 显示真实数字（非 "—"）
+6. dashboard token 趋势图显示真实数据点
+7. `go test ./internal/...` 全通过，覆盖率 ≥98%
+8. CI sonar-check + ui-tests 通过
+9. `/api/v1/stats/llm` 需 admin 权限；`/api/v1/dashboard/trends` 需登录
+10. `computeTokenTrend` ×500 假函数已删除，`grep -rn "computeTokenTrend" internal/` 为空
+11. `ComputeTrends` 签名含 `tokenBuckets`，token_trend 来自真实聚合
 
 ## 11. 不在本 spec 范围
 
-- monitor 其他 trend 函数（CallTrend/DurationDist/SuccessTrend/OutputStats/ROITrend）的激活或清理 —— 它们逻辑合理但生产未接入，超出本 spec 范围
-- 前端 dashboard 显示 LLM token 统计组件 → 另开 spec
-- enhance cache hit 时 token 统计补偿（cache hit 不计 token 是合理行为，本 spec 不改）
+- dashboard `timeFilter`（today/7d/30d）联动 trends 时间范围 → 后续优化
+- monitor 其他 trend（CallTrend/DurationDist 等）的数据源优化（它们从 task 派生逻辑合理，只是未通过端点暴露，本 spec 顺便激活）
+- enhance cache hit 时 token 统计补偿（cache hit 不计 token 是合理行为）
+- `/api/v1/admin/dashboard`（stats 端点）路径与前端 `/dashboard` 不匹配问题 → 附带发现，本 spec 不修（聚焦 token）

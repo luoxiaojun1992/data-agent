@@ -72,7 +72,7 @@
 | SPEC-056 | 分层语义纠正（一）：domain ID 解耦 / service SDK 清理 / middleware 解耦 / IMBind 补全 | **P15** | [spec-056-layer-semantics-correction.md](spec-056-layer-semantics-correction.md) | ✅ 已实现 |
 | SPEC-057 | domain model 全量去 bson tag + infra 转换层全量改造 | **P15** | _(待编写)_ | 📐 设计中 |
 | SPEC-058 | 分层语义纠正（二）：logic 编排层 / chat 解耦 gin / service 扁平化 / main.go 迁移 / 覆盖率 98% | **P15** | [spec-058-layer-orchestrator-main-migration.md](spec-058-layer-orchestrator-main-migration.md) | 📐 设计中 |
-| SPEC-059 | 增强调用 Token 统计验证（UI-160 案例名纠正 + LLM Token 查询 API） | **P15** | [spec-059-enhance-token-stats-verification.md](spec-059-enhance-token-stats-verification.md) | 📐 设计中 |
+| SPEC-059 | 增强调用 Token 统计验证 + Dashboard Token 真数据展示 | **P15** | [spec-059-enhance-token-stats-verification.md](spec-059-enhance-token-stats-verification.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
