@@ -78,7 +78,12 @@ func (h *UserHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"user": user})
+	c.JSON(http.StatusCreated, gin.H{
+		"id":       user.ID.Hex(),
+		"username": user.Username,
+		"role":     user.Role,
+		"status":   user.Status,
+	})
 }
 
 // UpdateRole updates a user's role.

@@ -7,19 +7,42 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ErrDuplicate indicates a username already exists.
 var ErrDuplicate = errors.New("用户名已存在")
 
+// PasswordHasher abstracts password hashing.
+type PasswordHasher interface {
+	Hash(password string) (string, error)
+}
+
+// bcryptHasher implements PasswordHasher using bcrypt.
+type bcryptHasher struct{}
+
+func (bcryptHasher) Hash(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("hash password: %w", err)
+	}
+	return string(bytes), nil
+}
+
+// NewBcryptHasher returns a PasswordHasher backed by bcrypt.
+func NewBcryptHasher() PasswordHasher {
+	return bcryptHasher{}
+}
+
 // service implements Service.
 type service struct {
-	repo repository.UserRepository
+	repo   repository.UserRepository
+	hasher PasswordHasher
 }
 
 // NewService creates a user management service.
-func NewService(repo repository.UserRepository) Service {
-	return &service{repo: repo}
+func NewService(repo repository.UserRepository, hasher PasswordHasher) Service {
+	return &service{repo: repo, hasher: hasher}
 }
 
 var _ Service = (*service)(nil)
@@ -37,10 +60,15 @@ func (s *service) Create(ctx context.Context, username, password, role string) (
 	if existing != nil {
 		return nil, ErrDuplicate
 	}
+	hash, err := s.hasher.Hash(password)
+	if err != nil {
+		return nil, fmt.Errorf("创建用户失败: %w", err)
+	}
 	user := &model.User{
-		Username: username,
-		Role:     model.UserRole(role),
-		Status:   model.StatusEnabled,
+		Username:     username,
+		PasswordHash: hash,
+		Role:         model.UserRole(role),
+		Status:       model.StatusEnabled,
 	}
 	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, fmt.Errorf("创建用户失败: %w", err)

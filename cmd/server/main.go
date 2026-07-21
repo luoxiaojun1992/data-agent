@@ -448,7 +448,7 @@ func registerAllRoutes(router *gin.Engine, deps *serverDependencies, logger *zap
 	api.Use(deps.jwtManager.AuthMiddleware())
 
 	setupAuthProtected(api, deps.authHandler)
-	handler.RegisterUserRoutes(api, handler.NewUserHandler(user.NewService(deps.userRepo)))
+	handler.RegisterUserRoutes(api, handler.NewUserHandler(user.NewService(deps.userRepo, user.NewBcryptHasher())))
 	handler.RegisterRoleRoutes(api, handler.NewRoleHandler(role.NewService(deps.roleRepo)))
 	cfgSvc := configsvc.NewService(deps.systemConfigRepo)
 	handler.RegisterModelConfigRoutes(api, handler.NewModelConfigHandler(cfgSvc))
