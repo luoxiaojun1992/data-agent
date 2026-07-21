@@ -23,19 +23,19 @@ const (
 
 // User represents a system user.
 type User struct {
-	ID              string             `bson:"_id,omitempty" json:"id"`
-	Username        string             `bson:"username" json:"username"`
-	PasswordHash    string             `bson:"password_hash" json:"-"`
-	Role            UserRole           `bson:"role" json:"role"`
-	Status          UserStatus         `bson:"status" json:"status"`
-	PasswordChanged bool               `bson:"password_changed" json:"password_changed"`
-	DisplayName     string             `bson:"display_name,omitempty" json:"display_name,omitempty"`
-	InvitedBy       string             `bson:"invited_by,omitempty"   json:"invited_by,omitempty"`
-	InviteID        string             `bson:"invite_id,omitempty"    json:"-"`
-	FeishuAppID     string             `bson:"feishu_app_id,omitempty" json:"feishu_app_id,omitempty"`
-	FeishuAppSecret string             `bson:"feishu_app_secret,omitempty" json:"-"`
-	CreatedAt       time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`
+	ID              string     `json:"id"`
+	Username        string     `json:"username"`
+	PasswordHash    string     `json:"-"`
+	Role            UserRole   `json:"role"`
+	Status          UserStatus `json:"status"`
+	PasswordChanged bool       `json:"password_changed"`
+	DisplayName     string     `json:"display_name,omitempty"`
+	InvitedBy       string     `json:"invited_by,omitempty"`
+	InviteID        string     `json:"-"`
+	FeishuAppID     string     `json:"feishu_app_id,omitempty"`
+	FeishuAppSecret string     `json:"-"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // InviteStatus defines the lifecycle of an invite token.
@@ -50,29 +50,29 @@ const (
 
 // Invite represents an invitation to register in the system.
 type Invite struct {
-	ID         string             `bson:"_id,omitempty"    json:"id"`
-	InviteID   string             `bson:"invite_id"        json:"invite_id"`
-	Email      string             `bson:"email,omitempty"  json:"email,omitempty"`
-	Role       string             `bson:"role"             json:"role"`
-	Status     InviteStatus       `bson:"status"           json:"status"`
-	TokenHash  string             `bson:"token_hash"       json:"-"`
-	CreatedBy  string             `bson:"created_by"       json:"created_by"`
-	CreatedAt  time.Time          `bson:"created_at"       json:"created_at"`
-	ExpiresAt  time.Time          `bson:"expires_at"       json:"expires_at"`
-	AcceptedAt *time.Time         `bson:"accepted_at,omitempty" json:"accepted_at,omitempty"`
-	AcceptedBy string             `bson:"accepted_by,omitempty" json:"accepted_by,omitempty"`
+	ID         string       `json:"id"`
+	InviteID   string       `json:"invite_id"`
+	Email      string       `json:"email,omitempty"`
+	Role       string       `json:"role"`
+	Status     InviteStatus `json:"status"`
+	TokenHash  string       `json:"-"`
+	CreatedBy  string       `json:"created_by"`
+	CreatedAt  time.Time    `json:"created_at"`
+	ExpiresAt  time.Time    `json:"expires_at"`
+	AcceptedAt *time.Time   `json:"accepted_at,omitempty"`
+	AcceptedBy string       `json:"accepted_by,omitempty"`
 }
 
 // Role defines permissions for a role.
 type Role struct {
-	ID          string             `bson:"_id,omitempty" json:"id"`
-	Name        string             `bson:"name" json:"name"`
-	DisplayName string             `bson:"display_name" json:"display_name"`
-	Description string             `bson:"description" json:"description"`
-	Permissions []string           `bson:"permissions" json:"permissions"`
-	Type        string             `bson:"type" json:"type"` // "fixed" or "custom"
-	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name"`
+	Description string    `json:"description"`
+	Permissions []string  `json:"permissions"`
+	Type        string    `json:"type"` // "fixed" or "custom"
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // PermissionInfo defines display metadata for a permission.
@@ -122,36 +122,36 @@ func GetDefaultPermissions(role UserRole) []string {
 
 // AuditLog represents an audit log entry.
 type AuditLog struct {
-	ID         string             `bson:"_id,omitempty" json:"id"`
-	Action     string             `bson:"action" json:"action"`
-	UserID     string             `bson:"user_id" json:"user_id"`
-	Resource   string             `bson:"resource" json:"resource"`
-	Details    string             `bson:"details" json:"details"`
-	IP         string             `bson:"ip" json:"ip"`
-	UserAgent  string             `bson:"user_agent" json:"user_agent"`
-	StatusCode int                `bson:"status_code" json:"status_code"`
-	CreatedAt  time.Time          `bson:"created_at" json:"created_at"`
+	ID         string    `json:"id"`
+	Action     string    `json:"action"`
+	UserID     string    `json:"user_id"`
+	Resource   string    `json:"resource"`
+	Details    string    `json:"details"`
+	IP         string    `json:"ip"`
+	UserAgent  string    `json:"user_agent"`
+	StatusCode int       `json:"status_code"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Notification represents a system notification.
 type Notification struct {
-	ID        string             `bson:"_id,omitempty" json:"id"`
-	Title     string             `bson:"title" json:"title"`
-	Content   string             `bson:"content" json:"content"`
-	Type      string             `bson:"type" json:"type"` // "info", "warning", "error"
-	TargetAll bool               `bson:"target_all" json:"target_all"`
-	TargetIDs []string           `bson:"target_ids" json:"target_ids,omitempty"`
-	ReadBy    []string           `bson:"read_by" json:"read_by,omitempty"`
-	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	Type      string    `json:"type"` // "info", "warning", "error"
+	TargetAll bool      `json:"target_all"`
+	TargetIDs []string  `json:"target_ids,omitempty"`
+	ReadBy    []string  `json:"read_by,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // SystemConfig represents a system-wide configuration entry.
 type SystemConfig struct {
-	ID        string             `bson:"_id,omitempty" json:"id"`
-	Namespace string             `bson:"namespace" json:"namespace"`
-	Key       string             `bson:"key" json:"key"`
-	Value     string             `bson:"value" json:"value"`
-	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
+	ID        string    `json:"id"`
+	Namespace string    `json:"namespace"`
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 const (

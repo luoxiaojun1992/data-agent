@@ -20,7 +20,7 @@ func NewAPIReviewRepository(db *mongo.Database) *APIReviewRepository {
 }
 
 func (r *APIReviewRepository) Create(ctx context.Context, review *apireview.APIReview) error {
-	_, err := r.coll.InsertOne(ctx, review)
+	_, err := r.coll.InsertOne(ctx, apiReviewToDoc(review))
 	return err
 }
 
@@ -31,26 +31,27 @@ func (r *APIReviewRepository) List(ctx context.Context, skip, limit int64) ([]ap
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-	var results []apireview.APIReview
-	if err := cursor.All(ctx, &results); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, err
 	}
-	if results == nil {
-		results = []apireview.APIReview{}
+	results := make([]apireview.APIReview, len(docs))
+	for i, d := range docs {
+		results[i] = *docToAPIReview(d)
 	}
 	return results, nil
 }
 
 func (r *APIReviewRepository) FindByID(ctx context.Context, id string) (*apireview.APIReview, error) {
-	var result apireview.APIReview
-	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&result)
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&d)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &result, nil
+	return docToAPIReview(d), nil
 }
 
 func (r *APIReviewRepository) UpdateStatus(ctx context.Context, id string, update map[string]interface{}) error {

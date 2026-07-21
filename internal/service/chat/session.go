@@ -11,15 +11,15 @@ import (
 
 // Session represents a user session for Chat or Agent operations.
 type Session struct {
-	ID            string     `json:"id" bson:"_id"`
-	UserID        string     `json:"user_id" bson:"user_id"`
-	Type          string     `json:"type" bson:"type"`
-	Status        string     `json:"status" bson:"status"`
-	CreatedAt     time.Time  `json:"created_at" bson:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at" bson:"updated_at"`
-	ExpiresAt     time.Time  `json:"expires_at" bson:"expires_at"`
-	DeletedAt     *time.Time `json:"deleted_at,omitempty" bson:"deleted_at,omitempty"`
-	RecoveryUntil *time.Time `json:"recovery_until,omitempty" bson:"recovery_until,omitempty"`
+	ID            string     `json:"id"`
+	UserID        string     `json:"user_id"`
+	Type          string     `json:"type"`
+	Status        string     `json:"status"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	ExpiresAt     time.Time  `json:"expires_at"`
+	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
+	RecoveryUntil *time.Time `json:"recovery_until,omitempty"`
 }
 
 // Manager handles session lifecycle.

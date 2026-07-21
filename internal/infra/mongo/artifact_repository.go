@@ -18,14 +18,17 @@ func NewArtifactRepository(db *mongo.Database) *ArtifactRepository {
 }
 
 func (r *ArtifactRepository) Create(ctx context.Context, a *artifact.Artifact) error {
-	_, err := r.coll.InsertOne(ctx, a)
+	_, err := r.coll.InsertOne(ctx, artifactToDoc(a))
 	return err
 }
 
 func (r *ArtifactRepository) FindByID(ctx context.Context, id string) (*artifact.Artifact, error) {
-	var a artifact.Artifact
-	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&a)
-	return &a, err
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&d)
+	if err != nil {
+		return nil, err
+	}
+	return docToArtifact(d), nil
 }
 
 func (r *ArtifactRepository) Delete(ctx context.Context, id string) error {
@@ -39,9 +42,13 @@ func (r *ArtifactRepository) ListBySession(ctx context.Context, sessionID string
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-	var list []*artifact.Artifact
-	if err := cursor.All(ctx, &list); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, err
+	}
+	list := make([]*artifact.Artifact, len(docs))
+	for i, d := range docs {
+		list[i] = docToArtifact(d)
 	}
 	return list, nil
 }
@@ -52,9 +59,13 @@ func (r *ArtifactRepository) ListByTask(ctx context.Context, taskID string) ([]*
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-	var list []*artifact.Artifact
-	if err := cursor.All(ctx, &list); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, err
+	}
+	list := make([]*artifact.Artifact, len(docs))
+	for i, d := range docs {
+		list[i] = docToArtifact(d)
 	}
 	return list, nil
 }

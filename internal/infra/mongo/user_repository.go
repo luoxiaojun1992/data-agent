@@ -26,7 +26,7 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 	user.ID = NewDomainID()
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
-	_, err := r.coll.InsertOne(ctx, user)
+	_, err := r.coll.InsertOne(ctx, userToDoc(user))
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
 	}
@@ -35,28 +35,28 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 
 // FindByUsername looks up a user by username.
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
-	var user model.User
-	err := r.coll.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"username": username}).Decode(&d)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("find user by username: %w", err)
 	}
-	return &user, nil
+	return docToUser(d), nil
 }
 
 // FindByID looks up a user by ID.
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*model.User, error) {
-	var user model.User
-	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&user)
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&d)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("find user by id: %w", err)
 	}
-	return &user, nil
+	return docToUser(d), nil
 }
 
 // HasSystemAdmin checks if a system_admin user exists.
@@ -163,9 +163,14 @@ func (r *UserRepository) ListSorted(ctx context.Context, role string, skip, limi
 	}
 	defer cursor.Close(ctx)
 
-	var users []model.User
-	if err := cursor.All(ctx, &users); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, 0, fmt.Errorf("decode users: %w", err)
+	}
+
+	users := make([]model.User, len(docs))
+	for i, d := range docs {
+		users[i] = *docToUser(d)
 	}
 
 	return users, total, nil

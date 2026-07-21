@@ -26,7 +26,7 @@ func (r *InviteRepository) Create(ctx context.Context, invite *model.Invite) err
 	invite.ID = NewDomainID()
 	invite.CreatedAt = time.Now()
 
-	_, err := r.coll.InsertOne(ctx, invite)
+	_, err := r.coll.InsertOne(ctx, inviteToDoc(invite))
 	if err != nil {
 		return fmt.Errorf("create invite: %w", err)
 	}
@@ -35,28 +35,28 @@ func (r *InviteRepository) Create(ctx context.Context, invite *model.Invite) err
 
 // FindByInviteID looks up an invite by its public invite_id.
 func (r *InviteRepository) FindByInviteID(ctx context.Context, inviteID string) (*model.Invite, error) {
-	var invite model.Invite
-	err := r.coll.FindOne(ctx, bson.M{"invite_id": inviteID}).Decode(&invite)
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"invite_id": inviteID}).Decode(&d)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("find invite by invite_id: %w", err)
 	}
-	return &invite, nil
+	return docToInvite(d), nil
 }
 
 // FindByTokenHash looks up an invite by its token hash for fast verification.
 func (r *InviteRepository) FindByTokenHash(ctx context.Context, hash string) (*model.Invite, error) {
-	var invite model.Invite
-	err := r.coll.FindOne(ctx, bson.M{"token_hash": hash}).Decode(&invite)
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"token_hash": hash}).Decode(&d)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("find invite by token_hash: %w", err)
 	}
-	return &invite, nil
+	return docToInvite(d), nil
 }
 
 // MarkAccepted updates an invite to accepted status and records who accepted it.
@@ -117,13 +117,14 @@ func (r *InviteRepository) List(ctx context.Context, createdBy string, skip, lim
 	}
 	defer cursor.Close(ctx)
 
-	var invites []model.Invite
-	if err := cursor.All(ctx, &invites); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, 0, fmt.Errorf("decode invites: %w", err)
 	}
 
-	if invites == nil {
-		invites = []model.Invite{}
+	invites := make([]model.Invite, len(docs))
+	for i, d := range docs {
+		invites[i] = *docToInvite(d)
 	}
 
 	return invites, total, nil

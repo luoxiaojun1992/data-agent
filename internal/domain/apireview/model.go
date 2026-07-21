@@ -13,18 +13,18 @@ const (
 
 // APIReview represents an API-to-MCP conversion review entry.
 type APIReview struct {
-	ID           string     `bson:"_id" json:"id"`
-	Name         string     `bson:"name" json:"name"`
-	FileName     string     `bson:"file_name" json:"file_name"`
-	Version      string     `bson:"version" json:"version"` // "3.0"
-	Endpoints    int        `bson:"endpoints" json:"endpoints"`
-	Domain       string     `bson:"domain" json:"domain"`
-	RateLimit    int        `bson:"rate_limit" json:"rate_limit"` // requests/min
-	Submitter    string     `bson:"submitter" json:"submitter"`
-	Reviewer     string     `bson:"reviewer,omitempty" json:"reviewer,omitempty"`
-	RejectReason string     `bson:"reject_reason,omitempty" json:"reject_reason,omitempty"`
-	Status       Status     `bson:"status" json:"status"`
-	ReviewedAt   *time.Time `bson:"reviewed_at,omitempty" json:"reviewed_at,omitempty"`
-	CreatedAt    time.Time  `bson:"created_at" json:"created_at"`
-	UpdatedAt    time.Time  `bson:"updated_at" json:"updated_at"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	FileName     string     `json:"file_name"`
+	Version      string     `json:"version"` // "3.0"
+	Endpoints    int        `json:"endpoints"`
+	Domain       string     `json:"domain"`
+	RateLimit    int        `json:"rate_limit"` // requests/min
+	Submitter    string     `json:"submitter"`
+	Reviewer     string     `json:"reviewer,omitempty"`
+	RejectReason string     `json:"reject_reason,omitempty"`
+	Status       Status     `json:"status"`
+	ReviewedAt   *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }

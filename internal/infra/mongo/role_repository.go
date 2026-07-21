@@ -25,7 +25,7 @@ func (r *RoleRepository) Create(ctx context.Context, role *model.Role) error {
 	role.ID = NewDomainID()
 	role.CreatedAt = time.Now()
 	role.UpdatedAt = time.Now()
-	_, err := r.coll.InsertOne(ctx, role)
+	_, err := r.coll.InsertOne(ctx, roleToDoc(role))
 	if err != nil {
 		return fmt.Errorf("create role: %w", err)
 	}
@@ -34,19 +34,20 @@ func (r *RoleRepository) Create(ctx context.Context, role *model.Role) error {
 
 // List returns all roles. Fixed roles are auto-generated, custom roles from DB.
 func (r *RoleRepository) List(ctx context.Context) ([]model.Role, error) {
-	var roles []model.Role
 	cursor, err := r.coll.Find(ctx, bson.M{})
 	if err != nil {
 		return nil, fmt.Errorf("list roles: %w", err)
 	}
 	defer cursor.Close(ctx)
 
-	if err := cursor.All(ctx, &roles); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, fmt.Errorf("decode roles: %w", err)
 	}
 
-	if roles == nil {
-		roles = []model.Role{}
+	roles := make([]model.Role, len(docs))
+	for i, d := range docs {
+		roles[i] = *docToRole(d)
 	}
 
 	return roles, nil
@@ -54,15 +55,15 @@ func (r *RoleRepository) List(ctx context.Context) ([]model.Role, error) {
 
 // FindByID looks up a role by ID.
 func (r *RoleRepository) FindByID(ctx context.Context, id string) (*model.Role, error) {
-	var role model.Role
-	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&role)
+	var d bson.M
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&d)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("find role by id: %w", err)
 	}
-	return &role, nil
+	return docToRole(d), nil
 }
 
 // Update updates a role's permissions.

@@ -19,14 +19,17 @@ func NewKBRepository(db *mongo.Database) *KBRepository {
 }
 
 func (r *KBRepository) CreateDoc(ctx context.Context, doc *knowledge.KnowledgeDoc) error {
-	_, err := r.db.Collection("knowledge_docs").InsertOne(ctx, doc)
+	_, err := r.db.Collection("knowledge_docs").InsertOne(ctx, knowledgeDocToDoc(doc))
 	return err
 }
 
 func (r *KBRepository) GetDoc(ctx context.Context, id string) (*knowledge.KnowledgeDoc, error) {
-	var doc knowledge.KnowledgeDoc
-	err := r.db.Collection("knowledge_docs").FindOne(ctx, bson.M{"_id": id}).Decode(&doc)
-	return &doc, err
+	var d bson.M
+	err := r.db.Collection("knowledge_docs").FindOne(ctx, bson.M{"_id": id}).Decode(&d)
+	if err != nil {
+		return nil, err
+	}
+	return docToKnowledgeDoc(d), nil
 }
 
 func (r *KBRepository) DeleteDoc(ctx context.Context, id string) error {
@@ -43,11 +46,15 @@ func (r *KBRepository) ListDocs(ctx context.Context, userID string, skip, limit 
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
-	var docs []*knowledge.KnowledgeDoc
+	var docs []bson.M
 	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, 0, err
 	}
-	return docs, total, nil
+	out := make([]*knowledge.KnowledgeDoc, len(docs))
+	for i, d := range docs {
+		out[i] = docToKnowledgeDoc(d)
+	}
+	return out, total, nil
 }
 
 func (r *KBRepository) ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeDoc, error) {
@@ -56,11 +63,15 @@ func (r *KBRepository) ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeD
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-	var docs []*knowledge.KnowledgeDoc
+	var docs []bson.M
 	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, err
 	}
-	return docs, nil
+	out := make([]*knowledge.KnowledgeDoc, len(docs))
+	for i, d := range docs {
+		out[i] = docToKnowledgeDoc(d)
+	}
+	return out, nil
 }
 
 func (r *KBRepository) UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount int) error {
@@ -74,7 +85,7 @@ func (r *KBRepository) UpdateDocStatus(ctx context.Context, id string, status kn
 func (r *KBRepository) AddChunks(ctx context.Context, chunks []*knowledge.Chunk) error {
 	docs := make([]interface{}, len(chunks))
 	for i, c := range chunks {
-		docs[i] = c
+		docs[i] = chunkToDoc(c)
 	}
 	_, err := r.db.Collection("kb_chunks").InsertMany(ctx, docs)
 	return err
