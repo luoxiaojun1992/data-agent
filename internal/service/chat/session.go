@@ -105,21 +105,23 @@ func (m *Manager) SetRecoveryHours(hours int) error {
 
 func sessionToRecord(s *Session) repository.SessionRecord {
 	r := repository.SessionRecord{
-		ID:          s.ID,
-		UserID:      s.UserID,
-		Title:       s.Type,
-		CreatedAt:   s.CreatedAt,
-		UpdatedAt:   s.UpdatedAt,
+		ID:        s.ID,
+		UserID:    s.UserID,
+		Title:     s.Type,
+		CreatedAt: s.CreatedAt,
+		UpdatedAt: s.UpdatedAt,
+		ExpiresAt: s.ExpiresAt,
 	}
 	return r
 }
 
 func recordToSession(r *repository.SessionRecord) *Session {
 	return &Session{
-		ID:      r.ID,
-		UserID:  r.UserID,
-		Type:    r.Title,
+		ID:        r.ID,
+		UserID:    r.UserID,
+		Type:      r.Title,
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
+		ExpiresAt: r.ExpiresAt,
 	}
 }

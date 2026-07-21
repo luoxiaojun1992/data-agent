@@ -43,12 +43,13 @@ type SessionRepository interface {
 
 // SessionRecord is the session data record used by the repository.
 type SessionRecord struct {
-	ID          string
-	UserID      string
-	Title       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedAt   *time.Time
-	Recoverable bool
-	RecoveryHrs int
+	ID          string     `bson:"_id"`
+	UserID      string     `bson:"user_id"`
+	Title       string     `bson:"title"`
+	CreatedAt   time.Time  `bson:"created_at"`
+	UpdatedAt   time.Time  `bson:"updated_at"`
+	ExpiresAt   time.Time  `bson:"expires_at"`
+	DeletedAt   *time.Time `bson:"deleted_at,omitempty"`
+	Recoverable bool       `bson:"recoverable"`
+	RecoveryHrs int        `bson:"recovery_hours"`
 }
