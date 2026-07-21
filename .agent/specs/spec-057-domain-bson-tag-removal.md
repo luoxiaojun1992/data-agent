@@ -1,6 +1,6 @@
 # domain model 全量去 bson tag + infra 转换层全量改造
 
-> **SPEC-057** | Status: 设计中
+> **SPEC-057** | Status: 已实现
 >
 > **来源**: 从原 SPEC-056 拆分（2026-07-21）。SPEC-056 完成 ID 类型解耦 + converter 骨架，本 spec 完成全量 bson tag 移除 + infra 转换层。
 
