@@ -9,11 +9,11 @@ import (
 
 // APIReviewHandler provides HTTP handlers for API review.
 type APIReviewHandler struct {
-	svc *apireview.Service
+	svc apireview.APIReviewService
 }
 
 // NewAPIReviewHandler creates an API review handler.
-func NewAPIReviewHandler(svc *apireview.Service) *APIReviewHandler {
+func NewAPIReviewHandler(svc apireview.APIReviewService) *APIReviewHandler {
 	return &APIReviewHandler{svc: svc}
 }
 
@@ -29,7 +29,6 @@ func (h *APIReviewHandler) ListAPIReviews(c *gin.Context) {
 
 // CreateAPIReview submits a new API for review.
 func (h *APIReviewHandler) CreateAPIReview(c *gin.Context) {
-	userID, _ := c.Get("user_id")
 	var req struct {
 		Name      string `json:"name" binding:"required"`
 		FileName  string `json:"file_name" binding:"required"`
@@ -46,6 +45,7 @@ func (h *APIReviewHandler) CreateAPIReview(c *gin.Context) {
 		req.Version = "3.0"
 	}
 
+	userID, _ := c.Get("user_id")
 	r, err := h.svc.Create(req.Name, req.FileName, req.Domain, req.Version, req.Endpoints, req.RateLimit, userID.(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -56,8 +56,8 @@ func (h *APIReviewHandler) CreateAPIReview(c *gin.Context) {
 
 // ApproveAPIReview approves an API review.
 func (h *APIReviewHandler) ApproveAPIReview(c *gin.Context) {
-	userID, _ := c.Get("user_id")
 	reviewID := c.Param("id")
+	userID, _ := c.Get("user_id")
 	if err := h.svc.Approve(reviewID, userID.(string)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -67,7 +67,6 @@ func (h *APIReviewHandler) ApproveAPIReview(c *gin.Context) {
 
 // RejectAPIReview rejects an API review.
 func (h *APIReviewHandler) RejectAPIReview(c *gin.Context) {
-	userID, _ := c.Get("user_id")
 	reviewID := c.Param("id")
 	var req struct {
 		Reason string `json:"reason" binding:"required"`
@@ -76,6 +75,7 @@ func (h *APIReviewHandler) RejectAPIReview(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "驳回原因不能为空"})
 		return
 	}
+	userID, _ := c.Get("user_id")
 	if err := h.svc.Reject(reviewID, userID.(string), req.Reason); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

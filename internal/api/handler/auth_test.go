@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/mock"
 	"github.com/gin-gonic/gin"
 	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
+	mockauth "github.com/luoxiaojun1992/data-agent/internal/service/auth/mocks"
 )
 
 // ── Helpers ──
@@ -27,27 +28,13 @@ func newGinContext(method, path, body string) (*gin.Context, *httptest.ResponseR
 // ── Login Tests ──
 
 func TestLogin_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodFunc(svc, "Login", func(_ interface{}, req *authsvc.LoginRequest) (*authsvc.LoginResponse, error) {
-		// Verify handler correctly passes request fields from JSON body
-		if req.Username != "testuser" {
-			t.Errorf("Login service received username=%q, want testuser", req.Username)
-		}
-		if req.Password != "password123" {
-			t.Error("Login service received wrong password")
-		}
-		return &authsvc.LoginResponse{
-			UserID:      "user123",
-			Username:    "testuser",
-			Role:        "user",
-			AccessToken: "token-abc",
-			TokenType:   "Bearer",
-			ExpiresIn:   3600,
-		}, nil
-	})
-	defer patches.Reset()
+	svc.On("Login", mock.Anything, mock.Anything).Return(&authsvc.LoginResponse{
+		UserID: "user123", Username: "testuser", Role: "user",
+		AccessToken: "token-abc", TokenType: "Bearer", ExpiresIn: 3600,
+	}, nil)
 
 	body := `{"username": "testuser", "password": "password123"}`
 	c, w := newGinContext("POST", "/auth/login", body)
@@ -70,13 +57,10 @@ func TestLogin_Success(t *testing.T) {
 }
 
 func TestLogin_ServiceError(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodFunc(svc, "Login", func(_ interface{}, req *authsvc.LoginRequest) (*authsvc.LoginResponse, error) {
-		return nil, fmt.Errorf("invalid credentials")
-	})
-	defer patches.Reset()
+	svc.On("Login", mock.Anything, mock.Anything).Return((*authsvc.LoginResponse)(nil), fmt.Errorf("invalid credentials"))
 
 	body := `{"username": "testuser", "password": "wrongpass"}`
 	c, w := newGinContext("POST", "/auth/login", body)
@@ -88,7 +72,7 @@ func TestLogin_ServiceError(t *testing.T) {
 }
 
 func TestLogin_InvalidJSON(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("POST", "/auth/login", "not-json")
@@ -100,7 +84,7 @@ func TestLogin_InvalidJSON(t *testing.T) {
 }
 
 func TestLogin_InvalidRequest(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	// Missing required fields
@@ -114,7 +98,7 @@ func TestLogin_InvalidRequest(t *testing.T) {
 }
 
 func TestLogin_EmptyBody(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("POST", "/auth/login", "")
@@ -126,7 +110,7 @@ func TestLogin_EmptyBody(t *testing.T) {
 }
 
 func TestLogin_MissingPassword(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	body := `{"username": "testuser"}`
@@ -139,7 +123,7 @@ func TestLogin_MissingPassword(t *testing.T) {
 }
 
 func TestLogin_MissingUsername(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	body := `{"password": "test123456"}`
@@ -152,11 +136,10 @@ func TestLogin_MissingUsername(t *testing.T) {
 }
 
 func TestLogin_AuthFailure(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Login", (*authsvc.LoginResponse)(nil), fmt.Errorf("invalid credentials"))
-	defer patches.Reset()
+	svc.On("Login", mock.Anything, mock.Anything).Return((*authsvc.LoginResponse)(nil), fmt.Errorf("invalid credentials"))
 
 	body := `{"username": "testuser", "password": "wrongpassword"}`
 	c, w := newGinContext("POST", "/auth/login", body)
@@ -170,11 +153,10 @@ func TestLogin_AuthFailure(t *testing.T) {
 // ── Register Tests ──
 
 func TestRegister_InviteEnabled(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", true)
-	defer patches.Reset()
+	svc.On("IsInviteEnabled").Return(true)
 
 	body := `{"username": "newuser", "password": "Pass123!"}`
 	c, w := newGinContext("POST", "/auth/register", body)
@@ -186,11 +168,10 @@ func TestRegister_InviteEnabled(t *testing.T) {
 }
 
 func TestRegister_InviteEnabledWithInvalidJSON(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", true)
-	defer patches.Reset()
+	svc.On("IsInviteEnabled").Return(true)
 
 	c, w := newGinContext("POST", "/auth/register", "not-valid-json")
 	h.Register(c)
@@ -201,12 +182,11 @@ func TestRegister_InviteEnabledWithInvalidJSON(t *testing.T) {
 }
 
 func TestRegister_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", false)
-	defer patches.Reset()
-	patches.ApplyMethodReturn(svc, "Register", &authsvc.RegisterResponse{
+	svc.On("IsInviteEnabled").Return(false)
+	svc.On("Register", mock.Anything, mock.Anything).Return(&authsvc.RegisterResponse{
 		UserID:   "user456",
 		Username: "newuser",
 		Role:     "user",
@@ -231,11 +211,10 @@ func TestRegister_Success(t *testing.T) {
 }
 
 func TestRegister_InvalidJSON(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", false)
-	defer patches.Reset()
+	svc.On("IsInviteEnabled").Return(false)
 
 	c, w := newGinContext("POST", "/auth/register", "not-json")
 	h.Register(c)
@@ -246,12 +225,11 @@ func TestRegister_InvalidJSON(t *testing.T) {
 }
 
 func TestRegister_Conflict(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", false)
-	defer patches.Reset()
-	patches.ApplyMethodReturn(svc, "Register", (*authsvc.RegisterResponse)(nil), fmt.Errorf("username already exists"))
+	svc.On("IsInviteEnabled").Return(false)
+	svc.On("Register", mock.Anything, mock.Anything).Return((*authsvc.RegisterResponse)(nil), fmt.Errorf("username already exists"))
 
 	body := `{"username": "existing", "password": "Pass123!"}`
 	c, w := newGinContext("POST", "/auth/register", body)
@@ -263,12 +241,11 @@ func TestRegister_Conflict(t *testing.T) {
 }
 
 func TestRegister_WithAdminRole(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", false)
-	defer patches.Reset()
-	patches.ApplyMethodReturn(svc, "Register", &authsvc.RegisterResponse{
+	svc.On("IsInviteEnabled").Return(false)
+	svc.On("Register", mock.Anything, mock.Anything).Return(&authsvc.RegisterResponse{
 		UserID:   "user789",
 		Username: "adminuser",
 		Role:     "admin",
@@ -293,12 +270,11 @@ func TestRegister_WithAdminRole(t *testing.T) {
 }
 
 func TestRegister_ServiceError(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "IsInviteEnabled", false)
-	defer patches.Reset()
-	patches.ApplyMethodReturn(svc, "Register", (*authsvc.RegisterResponse)(nil), fmt.Errorf("internal error"))
+	svc.On("IsInviteEnabled").Return(false)
+	svc.On("Register", mock.Anything, mock.Anything).Return((*authsvc.RegisterResponse)(nil), fmt.Errorf("internal error"))
 
 	body := `{"username": "newuser", "password": "Pass123!"}`
 	c, w := newGinContext("POST", "/auth/register", body)
@@ -312,10 +288,10 @@ func TestRegister_ServiceError(t *testing.T) {
 // ── RefreshToken Tests ──
 
 func TestRefreshToken_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "RefreshToken", &authsvc.LoginResponse{
+	svc.On("RefreshToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.LoginResponse{
 		UserID:      "user123",
 		Username:    "testuser",
 		Role:        "user",
@@ -323,7 +299,6 @@ func TestRefreshToken_Success(t *testing.T) {
 		TokenType:   "Bearer",
 		ExpiresIn:   3600,
 	}, nil)
-	defer patches.Reset()
 
 	body := `{}`
 	c, w := newGinContext("POST", "/auth/refresh", body)
@@ -346,11 +321,10 @@ func TestRefreshToken_Success(t *testing.T) {
 }
 
 func TestRefreshToken_Error(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "RefreshToken", (*authsvc.LoginResponse)(nil), fmt.Errorf("token generation failed"))
-	defer patches.Reset()
+	svc.On("RefreshToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return((*authsvc.LoginResponse)(nil), fmt.Errorf("token generation failed"))
 
 	body := `{}`
 	c, w := newGinContext("POST", "/auth/refresh", body)
@@ -367,7 +341,7 @@ func TestRefreshToken_Error(t *testing.T) {
 // ── GetProfile Tests ──
 
 func TestGetProfile_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("GET", "/auth/profile", "")
@@ -396,7 +370,7 @@ func TestGetProfile_Success(t *testing.T) {
 }
 
 func TestGetProfile_NoValues(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("GET", "/auth/profile", "")
@@ -410,10 +384,10 @@ func TestGetProfile_NoValues(t *testing.T) {
 // ── CompleteRegistration Tests ──
 
 func TestCompleteRegistration_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CompleteRegistration", &authsvc.CompleteRegistrationResponse{
+	svc.On("CompleteRegistration", mock.Anything, mock.Anything).Return(&authsvc.CompleteRegistrationResponse{
 		UserID:      "user789",
 		Username:    "inviteduser",
 		Role:        "user",
@@ -421,7 +395,6 @@ func TestCompleteRegistration_Success(t *testing.T) {
 		TokenType:   "Bearer",
 		ExpiresIn:   3600,
 	}, nil)
-	defer patches.Reset()
 
 	body := `{"token": "invite-token-abc", "username": "inviteduser", "password": "Pass123!", "display_name": "Invited User"}`
 	c, w := newGinContext("POST", "/auth/complete-registration", body)
@@ -441,7 +414,7 @@ func TestCompleteRegistration_Success(t *testing.T) {
 }
 
 func TestCompleteRegistration_InvalidJSON(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("POST", "/auth/complete-registration", "bad")
@@ -453,11 +426,10 @@ func TestCompleteRegistration_InvalidJSON(t *testing.T) {
 }
 
 func TestCompleteRegistration_Conflict(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CompleteRegistration", (*authsvc.CompleteRegistrationResponse)(nil), fmt.Errorf("username already exists"))
-	defer patches.Reset()
+	svc.On("CompleteRegistration", mock.Anything, mock.Anything).Return((*authsvc.CompleteRegistrationResponse)(nil), fmt.Errorf("username already exists"))
 
 	body := `{"token": "invite-token", "username": "existing", "password": "Pass123!", "display_name": "Existing"}`
 	c, w := newGinContext("POST", "/auth/complete-registration", body)
@@ -471,14 +443,13 @@ func TestCompleteRegistration_Conflict(t *testing.T) {
 // ── CreateInvite Tests ──
 
 func TestCreateInvite_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", &authsvc.CreateInviteResponse{
+	svc.On("CreateInvite", mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.CreateInviteResponse{
 		InviteID:  "inv_abc123",
 		InviteURL: "https://example.com/register?token=xyz",
 	}, nil)
-	defer patches.Reset()
 
 	body := `{"email": "test@example.com", "role": "user", "expire_hours": 24}`
 	c, w := newGinContext("POST", "/admin/invites", body)
@@ -500,7 +471,7 @@ func TestCreateInvite_Success(t *testing.T) {
 }
 
 func TestCreateInvite_InvalidJSON(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("POST", "/admin/invites", "bad")
@@ -514,14 +485,13 @@ func TestCreateInvite_InvalidJSON(t *testing.T) {
 }
 
 func TestCreateInvite_SystemAdminCreatesAdminInvite(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", &authsvc.CreateInviteResponse{
+	svc.On("CreateInvite", mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.CreateInviteResponse{
 		InviteID:  "inv_admin001",
 		InviteURL: "https://example.com/register?token=admin-token",
 	}, nil)
-	defer patches.Reset()
 
 	body := `{"email": "newadmin@example.com", "role": "admin", "expire_hours": 48}`
 	c, w := newGinContext("POST", "/admin/invites", body)
@@ -543,7 +513,7 @@ func TestCreateInvite_SystemAdminCreatesAdminInvite(t *testing.T) {
 }
 
 func TestCreateInvite_AdminCantInviteAdmin(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	body := `{"email": "admin@example.com", "role": "admin"}`
@@ -558,11 +528,10 @@ func TestCreateInvite_AdminCantInviteAdmin(t *testing.T) {
 }
 
 func TestCreateInvite_ServiceError(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", (*authsvc.CreateInviteResponse)(nil), fmt.Errorf("invite disabled"))
-	defer patches.Reset()
+	svc.On("CreateInvite", mock.Anything, mock.Anything, mock.Anything).Return((*authsvc.CreateInviteResponse)(nil), fmt.Errorf("invite disabled"))
 
 	body := `{"email": "test@example.com", "role": "user"}`
 	c, w := newGinContext("POST", "/admin/invites", body)
@@ -578,16 +547,15 @@ func TestCreateInvite_ServiceError(t *testing.T) {
 // ── ListInvites Tests ──
 
 func TestListInvites_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.ListInvitesResponse{
 		Invites: []authsvc.ListInviteResponse{},
 		Total:   0,
 		Page:    1,
 		Size:    20,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/admin/invites", "")
 	c.Set("user_id", "admin-1")
@@ -608,16 +576,15 @@ func TestListInvites_Success(t *testing.T) {
 }
 
 func TestListInvites_WithPagination(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.ListInvitesResponse{
 		Invites: []authsvc.ListInviteResponse{},
 		Total:   5,
 		Page:    2,
 		Size:    5,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/admin/invites?page=2&size=5", "")
 	c.Set("user_id", "admin-1")
@@ -636,16 +603,15 @@ func TestListInvites_WithPagination(t *testing.T) {
 }
 
 func TestListInvites_AdminRole(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.ListInvitesResponse{
 		Invites: []authsvc.ListInviteResponse{},
 		Total:   0,
 		Page:    1,
 		Size:    20,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/admin/invites", "")
 	c.Set("user_id", "admin-2")
@@ -658,11 +624,10 @@ func TestListInvites_AdminRole(t *testing.T) {
 }
 
 func TestListInvites_ServiceError(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", (*authsvc.ListInvitesResponse)(nil), fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return((*authsvc.ListInvitesResponse)(nil), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/admin/invites", "")
 	c.Set("user_id", "admin-1")
@@ -675,17 +640,16 @@ func TestListInvites_ServiceError(t *testing.T) {
 }
 
 func TestListInvites_InvalidPageParam(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	// Default page=1 size=20 should be used when page param is invalid
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.ListInvitesResponse{
 		Invites: []authsvc.ListInviteResponse{},
 		Total:   0,
 		Page:    1,
 		Size:    20,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/admin/invites?page=abc&size=-1", "")
 	c.Set("user_id", "admin-1")
@@ -700,11 +664,10 @@ func TestListInvites_InvalidPageParam(t *testing.T) {
 // ── RevokeInvite Tests ──
 
 func TestRevokeInvite_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "RevokeInvite", nil)
-	defer patches.Reset()
+	svc.On("RevokeInvite", mock.Anything, mock.Anything).Return(nil)
 
 	c, w := newGinContext("DELETE", "/admin/invites/inv-1", "")
 	c.Params = gin.Params{{Key: "id", Value: "inv-1"}}
@@ -716,11 +679,10 @@ func TestRevokeInvite_Success(t *testing.T) {
 }
 
 func TestRevokeInvite_Error(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "RevokeInvite", fmt.Errorf("not found"))
-	defer patches.Reset()
+	svc.On("RevokeInvite", mock.Anything, mock.Anything).Return(fmt.Errorf("not found"))
 
 	c, w := newGinContext("DELETE", "/admin/invites/inv-999", "")
 	c.Params = gin.Params{{Key: "id", Value: "inv-999"}}
@@ -734,7 +696,7 @@ func TestRevokeInvite_Error(t *testing.T) {
 // ── VerifyInvite Tests ──
 
 func TestVerifyInvite_MissingToken(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("GET", "/auth/register", "")
@@ -746,15 +708,14 @@ func TestVerifyInvite_MissingToken(t *testing.T) {
 }
 
 func TestVerifyInvite_Valid(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "VerifyInviteToken", &authsvc.VerifyInviteResponse{
+	svc.On("VerifyInviteToken", mock.Anything, mock.Anything).Return(&authsvc.VerifyInviteResponse{
 		Email: "test@example.com",
 		Role:  "user",
 		Valid: true,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/auth/register?token=valid-token", "")
 	h.VerifyInvite(c)
@@ -773,13 +734,12 @@ func TestVerifyInvite_Valid(t *testing.T) {
 }
 
 func TestVerifyInvite_Invalid(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "VerifyInviteToken", &authsvc.VerifyInviteResponse{
+	svc.On("VerifyInviteToken", mock.Anything, mock.Anything).Return(&authsvc.VerifyInviteResponse{
 		Valid: false,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/auth/register?token=bad-token", "")
 	h.VerifyInvite(c)
@@ -790,11 +750,10 @@ func TestVerifyInvite_Invalid(t *testing.T) {
 }
 
 func TestVerifyInvite_ServiceError(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "VerifyInviteToken", (*authsvc.VerifyInviteResponse)(nil), fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("VerifyInviteToken", mock.Anything, mock.Anything).Return((*authsvc.VerifyInviteResponse)(nil), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/auth/register?token=any", "")
 	h.VerifyInvite(c)
@@ -807,11 +766,10 @@ func TestVerifyInvite_ServiceError(t *testing.T) {
 // ── UpdateHMACSecret Tests ──
 
 func TestUpdateHMACSecret_Success(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "UpdateHMACSecret", nil)
-	defer patches.Reset()
+	svc.On("UpdateHMACSecret", mock.Anything, mock.Anything).Return(nil)
 
 	body := `{"new_secret": "new-secret-with-16-chars"}`
 	c, w := newGinContext("PUT", "/admin/invites/hmac-secret", body)
@@ -823,7 +781,7 @@ func TestUpdateHMACSecret_Success(t *testing.T) {
 }
 
 func TestUpdateHMACSecret_InvalidJSON(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("PUT", "/admin/invites/hmac-secret", "bad")
@@ -835,11 +793,10 @@ func TestUpdateHMACSecret_InvalidJSON(t *testing.T) {
 }
 
 func TestUpdateHMACSecret_ServiceError(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "UpdateHMACSecret", fmt.Errorf("secret too short"))
-	defer patches.Reset()
+	svc.On("UpdateHMACSecret", mock.Anything, mock.Anything).Return(fmt.Errorf("secret too short"))
 
 	body := `{"new_secret": "too-short-secret-that-fails"}`
 	c, w := newGinContext("PUT", "/admin/invites/hmac-secret", body)
@@ -853,7 +810,7 @@ func TestUpdateHMACSecret_ServiceError(t *testing.T) {
 // ── NewAuthHandler Tests ──
 
 func TestNewAuthHandler(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 	if h == nil {
 		t.Fatal("NewAuthHandler returned nil")
@@ -922,7 +879,7 @@ func TestParseInt64_Overflow(t *testing.T) {
 // ── GetProfile Edge Cases ──
 
 func TestGetProfile_PartialValues(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("GET", "/auth/profile", "")
@@ -946,14 +903,13 @@ func TestGetProfile_PartialValues(t *testing.T) {
 // ── CreateInvite Edge Cases ──
 
 func TestCreateInvite_DefaultRole(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", &authsvc.CreateInviteResponse{
+	svc.On("CreateInvite", mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.CreateInviteResponse{
 		InviteID:  "inv_user001",
 		InviteURL: "https://example.com/register?token=user-token",
 	}, nil)
-	defer patches.Reset()
 
 	// No role specified in request - service defaults to "user"
 	body := `{"email": "newuser@example.com", "expire_hours": 24}`
@@ -968,14 +924,13 @@ func TestCreateInvite_DefaultRole(t *testing.T) {
 }
 
 func TestCreateInvite_SystemAdminInvitesUser(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "CreateInvite", &authsvc.CreateInviteResponse{
+	svc.On("CreateInvite", mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.CreateInviteResponse{
 		InviteID:  "inv_user002",
 		InviteURL: "https://example.com/register?token=user2-token",
 	}, nil)
-	defer patches.Reset()
 
 	body := `{"email": "user2@example.com", "role": "user"}`
 	c, w := newGinContext("POST", "/admin/invites", body)
@@ -991,7 +946,7 @@ func TestCreateInvite_SystemAdminInvitesUser(t *testing.T) {
 // ── VerifyInvite Edge Cases ──
 
 func TestVerifyInvite_EmptyTokenValue(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("GET", "/auth/register?token=", "")
@@ -1003,7 +958,7 @@ func TestVerifyInvite_EmptyTokenValue(t *testing.T) {
 }
 
 func TestVerifyInvite_NoQueryParams(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("GET", "/auth/register", "")
@@ -1017,7 +972,7 @@ func TestVerifyInvite_NoQueryParams(t *testing.T) {
 // ── UpdateHMACSecret Edge Cases ──
 
 func TestUpdateHMACSecret_EmptyBody(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	c, w := newGinContext("PUT", "/admin/invites/hmac-secret", "")
@@ -1029,7 +984,7 @@ func TestUpdateHMACSecret_EmptyBody(t *testing.T) {
 }
 
 func TestUpdateHMACSecret_ShortSecret(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	// "short" is less than min=16 chars - binding validation rejects before service call
@@ -1045,10 +1000,10 @@ func TestUpdateHMACSecret_ShortSecret(t *testing.T) {
 // ── ListInvites Edge Cases ──
 
 func TestListInvites_SystemAdminSeesAll(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.ListInvitesResponse{
 		Invites: []authsvc.ListInviteResponse{
 			{InviteID: "inv-1", Role: "user", Status: "pending"},
 			{InviteID: "inv-2", Role: "admin", Status: "accepted"},
@@ -1057,7 +1012,6 @@ func TestListInvites_SystemAdminSeesAll(t *testing.T) {
 		Page:  1,
 		Size:  20,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/admin/invites", "")
 	c.Set("user_id", "sys-admin-1")
@@ -1076,10 +1030,10 @@ func TestListInvites_SystemAdminSeesAll(t *testing.T) {
 }
 
 func TestListInvites_AdminSeesOwn(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.ListInvitesResponse{
 		Invites: []authsvc.ListInviteResponse{
 			{InviteID: "inv-3", Role: "user", Status: "pending"},
 		},
@@ -1087,7 +1041,6 @@ func TestListInvites_AdminSeesOwn(t *testing.T) {
 		Page:  1,
 		Size:  20,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/admin/invites", "")
 	c.Set("user_id", "admin-3")
@@ -1100,16 +1053,15 @@ func TestListInvites_AdminSeesOwn(t *testing.T) {
 }
 
 func TestListInvites_LargePageSize(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListInvites", &authsvc.ListInvitesResponse{
+	svc.On("ListInvites", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&authsvc.ListInvitesResponse{
 		Invites: []authsvc.ListInviteResponse{},
 		Total:   0,
 		Page:    1,
 		Size:    100,
 	}, nil)
-	defer patches.Reset()
 
 	c, w := newGinContext("GET", "/admin/invites?page=1&size=100", "")
 	c.Set("user_id", "sys-admin-1")
@@ -1124,7 +1076,7 @@ func TestListInvites_LargePageSize(t *testing.T) {
 // ── CompleteRegistration Edge Cases ──
 
 func TestCompleteRegistration_MissingToken(t *testing.T) {
-	svc := &authsvc.Service{}
+	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
 	body := `{"username": "newuser", "password": "Pass123!", "display_name": "New User"}`

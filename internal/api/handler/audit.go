@@ -12,11 +12,11 @@ import (
 
 // AuditHandler provides HTTP handlers for audit log operations.
 type AuditHandler struct {
-	svc *auditsvc.Service
+	svc auditsvc.AuditService
 }
 
 // NewAuditHandler creates an audit handler.
-func NewAuditHandler(svc *auditsvc.Service) *AuditHandler {
+func NewAuditHandler(svc auditsvc.AuditService) *AuditHandler {
 	return &AuditHandler{svc: svc}
 }
 

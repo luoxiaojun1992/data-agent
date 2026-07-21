@@ -11,11 +11,11 @@ import (
 
 // AuthHandler handles authentication-related HTTP endpoints.
 type AuthHandler struct {
-	authService *authsvc.Service
+	authService authsvc.AuthService
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(authService *authsvc.Service) *AuthHandler {
+func NewAuthHandler(authService authsvc.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 

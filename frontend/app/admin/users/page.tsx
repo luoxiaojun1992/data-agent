@@ -293,7 +293,7 @@ export default function UsersPage() {
 
         {/* User Table */}
         {!loading && users.length > 0 && (
-          <div className="glass" style={{ overflow: 'hidden' }}>
+          <div className="glass" data-testid="admin-users-table" style={{ overflow: 'hidden' }}>
             <table data-testid="user-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'rgba(255,255,255,0.03)' }}>

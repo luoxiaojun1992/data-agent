@@ -9,11 +9,11 @@ import (
 
 // TaskHandler provides HTTP handlers for task operations.
 type TaskHandler struct {
-	svc *task.Service
+	svc task.TaskService
 }
 
 // NewTaskHandler creates a task handler.
-func NewTaskHandler(svc *task.Service) *TaskHandler {
+func NewTaskHandler(svc task.TaskService) *TaskHandler {
 	return &TaskHandler{svc: svc}
 }
 
@@ -95,7 +95,7 @@ func (h *TaskHandler) CancelTask(c *gin.Context) {
 // ListTasks returns recent tasks for the user.
 func (h *TaskHandler) ListTasks(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-	tasks, err := h.svc.ListTasks(userID.(string))
+	tasks, _, err := h.svc.ListTasks(userID.(string), "", 0, 50)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -150,11 +150,12 @@ func (h *TaskHandler) ListAllTasks(c *gin.Context) {
 // RetryTask retries a failed task.
 func (h *TaskHandler) RetryTask(c *gin.Context) {
 	taskID := c.Param("task_id")
-	if err := h.svc.RetryTask(taskID); err != nil {
+	t, err := h.svc.RetryTask(taskID)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "retried", "task_id": taskID})
+	c.JSON(http.StatusOK, gin.H{"status": "retried", "task_id": taskID, "task": t})
 }
 
 // BatchCancelTasks cancels multiple tasks.

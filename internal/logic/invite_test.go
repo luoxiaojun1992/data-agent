@@ -4,12 +4,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"os"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/agiledragon/gomonkey/v2"
 )
 
 func TestGenerateInviteToken(t *testing.T) {
@@ -223,13 +220,7 @@ func TestGenerateInviteToken_EdgeCases(t *testing.T) {
 
 func TestLoadInviteHMACSecret(t *testing.T) {
 	t.Run("env var set", func(t *testing.T) {
-		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
-			if key == "INVITE_HMAC_SECRET" {
-				return "my-test-secret"
-			}
-			return ""
-		})
-		defer patches.Reset()
+		t.Setenv("INVITE_HMAC_SECRET", "my-test-secret")
 
 		secret, err := LoadInviteHMACSecret()
 		if err != nil {
@@ -241,10 +232,7 @@ func TestLoadInviteHMACSecret(t *testing.T) {
 	})
 
 	t.Run("env var not set returns error", func(t *testing.T) {
-		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
-			return ""
-		})
-		defer patches.Reset()
+		t.Setenv("INVITE_HMAC_SECRET", "")
 
 		_, err := LoadInviteHMACSecret()
 		if err == nil {
@@ -257,13 +245,7 @@ func TestLoadInviteHMACSecret(t *testing.T) {
 
 func TestGetInviteBaseURL(t *testing.T) {
 	t.Run("env var set", func(t *testing.T) {
-		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
-			if key == "INVITE_BASE_URL" {
-				return "https://example.com"
-			}
-			return ""
-		})
-		defer patches.Reset()
+		t.Setenv("INVITE_BASE_URL", "https://example.com")
 
 		url := GetInviteBaseURL()
 		if url != "https://example.com" {
@@ -272,10 +254,7 @@ func TestGetInviteBaseURL(t *testing.T) {
 	})
 
 	t.Run("default when not set", func(t *testing.T) {
-		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
-			return ""
-		})
-		defer patches.Reset()
+		t.Setenv("INVITE_BASE_URL", "")
 
 		url := GetInviteBaseURL()
 		if url != "http://localhost:3000" {
@@ -284,13 +263,7 @@ func TestGetInviteBaseURL(t *testing.T) {
 	})
 
 	t.Run("trailing slash stripped", func(t *testing.T) {
-		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
-			if key == "INVITE_BASE_URL" {
-				return "https://example.com/"
-			}
-			return ""
-		})
-		defer patches.Reset()
+		t.Setenv("INVITE_BASE_URL", "https://example.com/")
 
 		url := GetInviteBaseURL()
 		if url != "https://example.com" {
@@ -299,13 +272,7 @@ func TestGetInviteBaseURL(t *testing.T) {
 	})
 
 	t.Run("multiple trailing slashes", func(t *testing.T) {
-		patches := gomonkey.ApplyFunc(os.Getenv, func(key string) string {
-			if key == "INVITE_BASE_URL" {
-				return "https://example.com///"
-			}
-			return ""
-		})
-		defer patches.Reset()
+		t.Setenv("INVITE_BASE_URL", "https://example.com///")
 
 		url := GetInviteBaseURL()
 		if url != "https://example.com" {

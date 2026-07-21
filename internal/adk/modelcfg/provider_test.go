@@ -5,11 +5,16 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 )
+
+func newMockRepo(t *testing.T) *mockrepo.SysConfigRepository {
+	t.Helper()
+	return mockrepo.NewSysConfigRepository(t)
+}
 
 func TestProvider_EnvOnly(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4")
@@ -69,7 +74,6 @@ func TestSortModels(t *testing.T) {
 	if entries[0].Name != "a" || entries[2].Name != "c" {
 		t.Errorf("sort = %v", entries)
 	}
-	// Already sorted stays sorted.
 	sortModels(entries)
 	if entries[0].Name != "a" {
 		t.Errorf("re-sort broke order")
@@ -120,14 +124,11 @@ func TestApplyEnvDefaults(t *testing.T) {
 	}
 }
 
-// ---- DB-path tests (mock SystemConfigRepository via gomonkey) ----
+// ---- DB-path tests (mock SysConfigRepository via mockery) ----
 
 func TestDB_ModelsFromDB_Valid(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-
-	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{
 		Value: `[{"name":"gpt4","base_url":"http://db/v1","is_default":true,"instruction":"sys prompt","capability":"reasoning","token_multiplier":2.0,"fallback_order":0}]`,
 	}, nil)
 
@@ -142,10 +143,8 @@ func TestDB_ModelsFromDB_Valid(t *testing.T) {
 }
 
 func TestDB_ModelsFromDB_GetError(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", (*model.SystemConfig)(nil), fmt.Errorf("db down"))
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "models").Return((*model.SystemConfig)(nil), fmt.Errorf("db down"))
 	p := NewProvider(mockRepo)
 	if p.modelsFromDB() != nil {
 		t.Error("should return nil on DB error")
@@ -153,10 +152,8 @@ func TestDB_ModelsFromDB_GetError(t *testing.T) {
 }
 
 func TestDB_ModelsFromDB_BadJSON(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{Value: "not-json"}, nil)
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: "not-json"}, nil)
 	p := NewProvider(mockRepo)
 	if p.modelsFromDB() != nil {
 		t.Error("should return nil on bad JSON")
@@ -164,10 +161,8 @@ func TestDB_ModelsFromDB_BadJSON(t *testing.T) {
 }
 
 func TestDB_EmbeddingFromDB_Valid(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "embedding").Return(&model.SystemConfig{
 		Value: `{"base_url":"http://emb.db","model":"bge","api_key":"ek"}`,
 	}, nil)
 	p := NewProvider(mockRepo)
@@ -178,10 +173,8 @@ func TestDB_EmbeddingFromDB_Valid(t *testing.T) {
 }
 
 func TestDB_EmbeddingFromDB_Error(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", (*model.SystemConfig)(nil), fmt.Errorf("db down"))
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "embedding").Return((*model.SystemConfig)(nil), fmt.Errorf("db down"))
 	p := NewProvider(mockRepo)
 	e := p.embeddingFromDB()
 	if e.BaseURL != "" || e.Model != "" {
@@ -190,10 +183,8 @@ func TestDB_EmbeddingFromDB_Error(t *testing.T) {
 }
 
 func TestDB_DefaultInstruction_WithDB(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{
 		Value: `[{"name":"g","is_default":true,"instruction":"custom prompt"}]`,
 	}, nil)
 	p := NewProvider(mockRepo)
@@ -203,10 +194,8 @@ func TestDB_DefaultInstruction_WithDB(t *testing.T) {
 }
 
 func TestDB_SetModels(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Upsert", nil)
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
 	p := NewProvider(mockRepo)
 	if err := p.SetModels(context.Background(), []ModelEntry{{Name: "m"}}); err != nil {
 		t.Fatalf("SetModels error: %v", err)
@@ -214,10 +203,8 @@ func TestDB_SetModels(t *testing.T) {
 }
 
 func TestDB_SetEmbedding(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Upsert", nil)
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Upsert", mock.Anything, "model", "embedding", mock.Anything).Return(nil)
 	p := NewProvider(mockRepo)
 	if err := p.SetEmbedding(context.Background(), EmbeddingEntry{BaseURL: "http://e"}); err != nil {
 		t.Fatalf("SetEmbedding error: %v", err)
@@ -225,10 +212,8 @@ func TestDB_SetEmbedding(t *testing.T) {
 }
 
 func TestDB_GetRawModelConfig_WithDB(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "GetAll", []model.SystemConfig{
+	mockRepo := newMockRepo(t)
+	mockRepo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{
 		{Key: "models", Value: `[{"name":"gpt4"}]`},
 		{Key: "embedding", Value: `{"base_url":"http://e"}`},
 	}, nil)
@@ -249,10 +234,8 @@ func TestDB_GetRawModelConfig_WithDB(t *testing.T) {
 }
 
 func TestDB_BuildLLM_SingleBackend(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{
 		Value: `[{"name":"oned","base_url":"http://one/v1","fallback_order":0}]`,
 	}, nil)
 	p := NewProvider(mockRepo)
@@ -280,10 +263,8 @@ func TestDB_BuildLLM_ZeroModels(t *testing.T) {
 }
 
 func TestDB_EmbeddingFromDB_BadJSON(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{Value: "bad-json"}, nil)
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "embedding").Return(&model.SystemConfig{Value: "bad-json"}, nil)
 	p := NewProvider(mockRepo)
 	e := p.embeddingFromDB()
 	if e.BaseURL != "" {
@@ -304,10 +285,8 @@ func TestTrimSpace(t *testing.T) {
 }
 
 func TestProvider_EmbeddingConfig_WithDB(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "Get", &model.SystemConfig{
+	mockRepo := newMockRepo(t)
+	mockRepo.On("Get", mock.Anything, "model", "embedding").Return(&model.SystemConfig{
 		Value: `{"base_url":"http://db-emb","model":"bge-m3"}`,
 	}, nil)
 	p := NewProvider(mockRepo)
@@ -318,10 +297,8 @@ func TestProvider_EmbeddingConfig_WithDB(t *testing.T) {
 }
 
 func TestProvider_GetRawModelConfig_OnlyEmbedding(t *testing.T) {
-	mockRepo := &mongoinfra.SystemConfigRepository{}
-	patches := gomonkey.NewPatches()
-	defer patches.Reset()
-	patches.ApplyMethodReturn(mockRepo, "GetAll", []model.SystemConfig{
+	mockRepo := newMockRepo(t)
+	mockRepo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{
 		{Key: "embedding", Value: `{"base_url":"http://e","model":"m"}`},
 		{Key: "api_url", Value: "http://custom"},
 	}, nil)

@@ -11,12 +11,12 @@ import (
 
 // ArtifactHandler provides HTTP handlers for artifact and workspace operations.
 type ArtifactHandler struct {
-	storage *artifact.Storage
-	wm      *workspace.Manager
+	storage artifact.StorageService
+	wm      workspace.WorkspaceManager
 }
 
 // NewArtifactHandler creates a new HTTP handler.
-func NewArtifactHandler(storage *artifact.Storage, wm *workspace.Manager) *ArtifactHandler {
+func NewArtifactHandler(storage artifact.StorageService, wm workspace.WorkspaceManager) *ArtifactHandler {
 	return &ArtifactHandler{storage: storage, wm: wm}
 }
 
@@ -52,9 +52,15 @@ func (h *ArtifactHandler) Upload(c *gin.Context) {
 // Download handles file download.
 func (h *ArtifactHandler) Download(c *gin.Context) {
 	artifactID := c.Param("id")
-	data, art, err := h.storage.Download(artifactID)
+
+	art, err := h.storage.FindByID(artifactID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := h.storage.Download(artifactID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 

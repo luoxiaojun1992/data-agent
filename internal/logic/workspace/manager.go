@@ -25,7 +25,7 @@ func (m *Manager) ReadFile(userID, sessionID, filename string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("workspace file not found: %w", err)
 	}
-	data, _, err := m.storage.Download(art.ID)
+	data, err := m.storage.Download(art.ID)
 	return data, err
 }
 

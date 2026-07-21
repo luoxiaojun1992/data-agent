@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/mock"
 	"github.com/gin-gonic/gin"
 	apireview "github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
-	apireviewsvc "github.com/luoxiaojun1992/data-agent/internal/service/apireview"
+	mockapireview "github.com/luoxiaojun1992/data-agent/internal/service/apireview/mocks"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -19,12 +19,12 @@ func init() { gin.SetMode(gin.TestMode) }
 // ── NewAPIReviewHandler ──
 
 func TestNewAPIReviewHandler(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 	if h == nil {
 		t.Fatal("NewAPIReviewHandler returned nil")
 	}
-	if h.svc != svc {
+	if h.svc == nil {
 		t.Error("svc not set correctly")
 	}
 }
@@ -32,7 +32,7 @@ func TestNewAPIReviewHandler(t *testing.T) {
 // ── ListAPIReviews ──
 
 func TestListAPIReviews_Success(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	now := time.Now()
@@ -40,8 +40,7 @@ func TestListAPIReviews_Success(t *testing.T) {
 		{ID: "apirev_1", Name: "Review 1", Status: apireview.StatusPending, CreatedAt: now, UpdatedAt: now},
 		{ID: "apirev_2", Name: "Review 2", Status: apireview.StatusApproved, CreatedAt: now, UpdatedAt: now},
 	}
-	patches := gomonkey.ApplyMethodReturn(svc, "ListAll", reviews, nil)
-	defer patches.Reset()
+	svc.On("ListAll").Return( reviews, nil)
 
 	c, w := newGinContext("GET", "/reviews", "")
 	h.ListAPIReviews(c)
@@ -60,11 +59,10 @@ func TestListAPIReviews_Success(t *testing.T) {
 }
 
 func TestListAPIReviews_Empty(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListAll", []apireview.APIReview{}, nil)
-	defer patches.Reset()
+	svc.On("ListAll").Return( []apireview.APIReview{}, nil)
 
 	c, w := newGinContext("GET", "/reviews", "")
 	h.ListAPIReviews(c)
@@ -81,11 +79,10 @@ func TestListAPIReviews_Empty(t *testing.T) {
 }
 
 func TestListAPIReviews_Error(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "ListAll", nil, fmt.Errorf("db error"))
-	defer patches.Reset()
+	svc.On("ListAll").Return( nil, fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/reviews", "")
 	h.ListAPIReviews(c)
@@ -98,7 +95,7 @@ func TestListAPIReviews_Error(t *testing.T) {
 // ── CreateAPIReview ──
 
 func TestCreateAPIReview_Success(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	now := time.Now()
@@ -116,8 +113,7 @@ func TestCreateAPIReview_Success(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Create", mockReview, nil)
-	defer patches.Reset()
+	svc.On("Create", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockReview, nil)
 
 	body := `{"name":"Test API","file_name":"test.proto","domain":"example.com","version":"3.0","endpoints":10,"rate_limit":100}`
 	c, w := newGinContext("POST", "/reviews", body)
@@ -141,7 +137,7 @@ func TestCreateAPIReview_Success(t *testing.T) {
 }
 
 func TestCreateAPIReview_DefaultVersion(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	mockReview := &apireview.APIReview{
@@ -151,8 +147,7 @@ func TestCreateAPIReview_DefaultVersion(t *testing.T) {
 		Submitter: "user-1",
 	}
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Create", mockReview, nil)
-	defer patches.Reset()
+	svc.On("Create", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockReview, nil)
 
 	body := `{"name":"No Version API","file_name":"test.proto"}`
 	c, w := newGinContext("POST", "/reviews", body)
@@ -165,7 +160,7 @@ func TestCreateAPIReview_DefaultVersion(t *testing.T) {
 }
 
 func TestCreateAPIReview_MissingRequired(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	body := `{}`
@@ -179,7 +174,7 @@ func TestCreateAPIReview_MissingRequired(t *testing.T) {
 }
 
 func TestCreateAPIReview_MissingFileName(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	body := `{"name":"Test"}`
@@ -193,7 +188,7 @@ func TestCreateAPIReview_MissingFileName(t *testing.T) {
 }
 
 func TestCreateAPIReview_InvalidJSON(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	c, w := newGinContext("POST", "/reviews", "not-json")
@@ -206,11 +201,10 @@ func TestCreateAPIReview_InvalidJSON(t *testing.T) {
 }
 
 func TestCreateAPIReview_ServiceError(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Create", nil, fmt.Errorf("insert failed"))
-	defer patches.Reset()
+	svc.On("Create", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( nil, fmt.Errorf("insert failed"))
 
 	body := `{"name":"Test API","file_name":"test.proto"}`
 	c, w := newGinContext("POST", "/reviews", body)
@@ -225,11 +219,10 @@ func TestCreateAPIReview_ServiceError(t *testing.T) {
 // ── ApproveAPIReview ──
 
 func TestApproveAPIReview_Success(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Approve", nil)
-	defer patches.Reset()
+	svc.On("Approve", mock.Anything, mock.Anything).Return( nil)
 
 	c, w := newGinContext("POST", "/reviews/apirev_1/approve", "")
 	c.Set("user_id", "reviewer-1")
@@ -245,11 +238,10 @@ func TestApproveAPIReview_Success(t *testing.T) {
 }
 
 func TestApproveAPIReview_Error(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Approve", fmt.Errorf("cannot approve own"))
-	defer patches.Reset()
+	svc.On("Approve", mock.Anything, mock.Anything).Return( fmt.Errorf("cannot approve own"))
 
 	c, w := newGinContext("POST", "/reviews/apirev_1/approve", "")
 	c.Set("user_id", "user-1")
@@ -262,11 +254,10 @@ func TestApproveAPIReview_Error(t *testing.T) {
 }
 
 func TestApproveAPIReview_NotFound(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Approve", fmt.Errorf("find api review: not found"))
-	defer patches.Reset()
+	svc.On("Approve", mock.Anything, mock.Anything).Return( fmt.Errorf("find api review: not found"))
 
 	c, w := newGinContext("POST", "/reviews/nonexistent/approve", "")
 	c.Set("user_id", "reviewer-1")
@@ -281,11 +272,10 @@ func TestApproveAPIReview_NotFound(t *testing.T) {
 // ── RejectAPIReview ──
 
 func TestRejectAPIReview_Success(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Reject", nil)
-	defer patches.Reset()
+	svc.On("Reject", mock.Anything, mock.Anything, mock.Anything).Return( nil)
 
 	body := `{"reason":"Needs more work"}`
 	c, w := newGinContext("POST", "/reviews/apirev_1/reject", body)
@@ -302,7 +292,7 @@ func TestRejectAPIReview_Success(t *testing.T) {
 }
 
 func TestRejectAPIReview_MissingReason(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	body := `{}`
@@ -317,7 +307,7 @@ func TestRejectAPIReview_MissingReason(t *testing.T) {
 }
 
 func TestRejectAPIReview_InvalidJSON(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
 	c, w := newGinContext("POST", "/reviews/apirev_1/reject", "bad")
@@ -331,11 +321,10 @@ func TestRejectAPIReview_InvalidJSON(t *testing.T) {
 }
 
 func TestRejectAPIReview_ServiceError(t *testing.T) {
-	svc := &apireviewsvc.Service{}
+	svc := mockapireview.NewAPIReviewService(t)
 	h := NewAPIReviewHandler(svc)
 
-	patches := gomonkey.ApplyMethodReturn(svc, "Reject", fmt.Errorf("only pending can be rejected"))
-	defer patches.Reset()
+	svc.On("Reject", mock.Anything, mock.Anything, mock.Anything).Return( fmt.Errorf("only pending can be rejected"))
 
 	body := `{"reason":"already approved"}`
 	c, w := newGinContext("POST", "/reviews/apirev_1/reject", body)
