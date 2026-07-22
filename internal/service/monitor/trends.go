@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 )
 
 // TrendPoint represents a single data point in a trend series.
@@ -23,8 +24,11 @@ type DashboardTrends struct {
 	ROITrend     []TrendPoint `json:"roi_trend"`     // weekly ROI
 }
 
-// ComputeTrends computes dashboard trends from real task data.
-func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *DashboardTrends {
+// ComputeTrends computes dashboard trends from real task data plus real token
+// usage buckets. The legacy unused (sessions, docCount) parameters were removed
+// in SPEC-060; token_trend is now populated from llmstats.AggregateByTime
+// output instead of the deleted ×500 placeholder.
+func ComputeTrends(tasks []task.Task, tokenBuckets []llmstats.TimeBucketResult) *DashboardTrends {
 	now := time.Now()
 	t := &DashboardTrends{}
 
@@ -32,12 +36,37 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 	t.DurationDist = computeDurationDist(tasks)
 	t.ReqDist = t.CallTrend
 	t.SuccessTrend = computeSuccessTrend(tasks, now)
-	// TokenTrend is left nil here; SPEC-060 will populate it from
-	// llmstats.AggregateByTime via the dashboard trends endpoint.
+	t.TokenTrend = mapTokenBuckets(tokenBuckets, now)
 	t.OutputStats = computeOutputStats(tasks)
 	t.ROITrend = computeROITrend(tasks, now)
 
 	return t
+}
+
+// mapTokenBuckets maps time-bucketed token usage onto the 6 fixed 4h labels
+// (0时/4时/8时/12时/16时/20时) used by the call_trend series so the two charts
+// share an aligned x-axis. Each bucket's total_tokens (prompt+completion) is
+// summed into the closest label. Empty input yields six zero-valued points so
+// the frontend always renders a fixed-width chart.
+func mapTokenBuckets(buckets []llmstats.TimeBucketResult, now time.Time) []TrendPoint {
+	labels := []string{"0时", "4时", "8时", "12时", "16时", "20时"}
+	bucketValues := []int{0, 4, 8, 12, 16, 20}
+	counts := make([]int64, len(labels))
+	for _, b := range buckets {
+		// Only count buckets within the 24h window shown on the dashboard.
+		if now.Sub(b.BucketStart) > 24*time.Hour {
+			continue
+		}
+		idx := findClosestBucket(b.BucketStart.Hour(), bucketValues)
+		if idx >= 0 {
+			counts[idx] += b.TotalTokens
+		}
+	}
+	trend := make([]TrendPoint, len(labels))
+	for i, label := range labels {
+		trend[i] = TrendPoint{Label: label, Value: int(counts[i])}
+	}
+	return trend
 }
 
 func computeCallTrend(tasks []task.Task, now time.Time) []TrendPoint {

@@ -10,6 +10,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 )
 
 func TestSystemStats(t *testing.T) {
@@ -146,7 +147,7 @@ func TestAbs(t *testing.T) {
 }
 
 func TestComputeTrends_EmptyInput(t *testing.T) {
-	trends := ComputeTrends(nil, nil, 0)
+	trends := ComputeTrends(nil, nil)
 	if trends == nil {
 		t.Fatal("ComputeTrends() should not return nil")
 	}
@@ -159,10 +160,11 @@ func TestComputeTrends_EmptyInput(t *testing.T) {
 	if len(trends.SuccessTrend) != 7 {
 		t.Errorf("SuccessTrend len = %d, want 7", len(trends.SuccessTrend))
 	}
-	// TokenTrend is nil until SPEC-060 wires it to llmstats.AggregateByTime;
-	// the x500 token-trend placeholder was removed in SPEC-059.
-	if len(trends.TokenTrend) != 0 {
-		t.Errorf("TokenTrend len = %d, want 0 (nil until SPEC-060)", len(trends.TokenTrend))
+	// SPEC-060: token_trend now maps to 6 fixed 4h buckets; with nil buckets
+	// all values are 0 but the series still has 6 points aligned with
+	// call_trend.
+	if len(trends.TokenTrend) != 6 {
+		t.Errorf("TokenTrend len = %d, want 6", len(trends.TokenTrend))
 	}
 	if len(trends.ROITrend) != 4 {
 		t.Errorf("ROITrend len = %d, want 4", len(trends.ROITrend))
@@ -186,7 +188,7 @@ func TestComputeTrends_WithTasks(t *testing.T) {
 		},
 	}
 
-	trends := ComputeTrends(tasks, nil, 0)
+	trends := ComputeTrends(tasks, nil)
 	if trends == nil {
 		t.Fatal("ComputeTrends() should not return nil")
 	}
@@ -198,7 +200,7 @@ func TestComputeTrends_WithTasks(t *testing.T) {
 
 func TestComputeTrends_DefaultOutputStats(t *testing.T) {
 	// Tasks with no skill chain produce default output stats
-	trends := ComputeTrends(nil, nil, 0)
+	trends := ComputeTrends(nil, nil)
 	if len(trends.OutputStats) != 2 {
 		t.Errorf("Expected default 2 output stats, got %d", len(trends.OutputStats))
 	}
@@ -291,7 +293,7 @@ func TestComputeTrends_TasksOutsideWindow(t *testing.T) {
 		},
 	}
 
-	trends := ComputeTrends(tasks, nil, 0)
+	trends := ComputeTrends(tasks, nil)
 	if trends == nil {
 		t.Fatal("ComputeTrends() should not return nil")
 	}
@@ -329,7 +331,7 @@ func TestComputeTrends_SuccessTrendAllSuccess(t *testing.T) {
 		{ID: "t2", Status: task.StatusCompleted, CreatedAt: now.Add(-2 * time.Hour)},
 	}
 
-	trends := ComputeTrends(tasks, nil, 0)
+	trends := ComputeTrends(tasks, nil)
 	for _, p := range trends.SuccessTrend {
 		if p.Value != 100 {
 			t.Errorf("SuccessTrend should be 100 when all succeed, got %d for %q", p.Value, p.Label)
@@ -344,7 +346,7 @@ func TestComputeTrends_SuccessTrendAllFailed(t *testing.T) {
 		{ID: "t2", Status: task.StatusFailed, CreatedAt: now.Add(-2 * time.Hour)},
 	}
 
-	trends := ComputeTrends(tasks, nil, 0)
+	trends := ComputeTrends(tasks, nil)
 	// Only the day where tasks land should be 0; other days with no data default to 100
 	hasZeroDay := false
 	for _, p := range trends.SuccessTrend {
@@ -366,7 +368,7 @@ func TestComputeTrends_DurationBuckets(t *testing.T) {
 		{ID: "t3", Status: task.StatusCompleted, CreatedAt: now.Add(-1 * time.Hour), CompletedAt: &completed, DurationMs: 120000}, // 2m -> <5m
 	}
 
-	trends := ComputeTrends(tasks, nil, 0)
+	trends := ComputeTrends(tasks, nil)
 	if len(trends.DurationDist) != 5 {
 		t.Fatalf("DurationDist len = %d, want 5", len(trends.DurationDist))
 	}
@@ -385,14 +387,14 @@ func TestComputeTrends_DurationBuckets(t *testing.T) {
 }
 
 func TestComputeTrends_ROITrend(t *testing.T) {
-	trends := ComputeTrends(nil, nil, 0)
+	trends := ComputeTrends(nil, nil)
 	if len(trends.ROITrend) != 4 {
 		t.Errorf("ROITrend len = %d, want 4", len(trends.ROITrend))
 	}
 }
 
 func TestComputeTrends_ReqDistMirrorsCallTrend(t *testing.T) {
-	trends := ComputeTrends(nil, nil, 0)
+	trends := ComputeTrends(nil, nil)
 	if len(trends.ReqDist) != len(trends.CallTrend) {
 		t.Errorf("ReqDist len %d != CallTrend len %d", len(trends.ReqDist), len(trends.CallTrend))
 	}
@@ -405,7 +407,7 @@ func TestComputeTrends_OutputStatsWithSkillChain(t *testing.T) {
 		{ID: "t2", Status: task.StatusCompleted, CreatedAt: now.Add(-2 * time.Hour), SkillChain: []string{"sql_executor", "pdf_generator"}},
 	}
 
-	trends := ComputeTrends(tasks, nil, 0)
+	trends := ComputeTrends(tasks, nil)
 	// sql_executor should appear twice, pdf_generator once
 	foundSql := false
 	foundPdf := false
@@ -437,9 +439,114 @@ func TestComputeTrends_OldTask(t *testing.T) {
 		ID: "old-task", CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
 		Status: "completed",
 	}
-	trends := ComputeTrends([]task.Task{oldTask}, nil, 0)
+	trends := ComputeTrends([]task.Task{oldTask}, nil)
 	if trends == nil {
 		t.Fatal("should return trends")
 	}
 	// Old task should not appear in 24h/7d/28d buckets
+}
+
+// ===== SPEC-060: mapTokenBuckets unit tests (L1 target 100%) =====
+
+func TestMapTokenBuckets_NilBuckets(t *testing.T) {
+	now := time.Now()
+	trend := mapTokenBuckets(nil, now)
+	if len(trend) != 6 {
+		t.Fatalf("len = %d, want 6", len(trend))
+	}
+	wantLabels := []string{"0时", "4时", "8时", "12时", "16时", "20时"}
+	for i, p := range trend {
+		if p.Label != wantLabels[i] {
+			t.Errorf("trend[%d].Label = %q, want %q", i, p.Label, wantLabels[i])
+		}
+		if p.Value != 0 {
+			t.Errorf("trend[%d].Value = %d, want 0 for nil buckets", i, p.Value)
+		}
+	}
+}
+
+func TestMapTokenBuckets_WithinWindow(t *testing.T) {
+	now := time.Now()
+	// Two buckets in the past 24h: one ~1h ago (hour close to now), one ~5h ago.
+	recent := now.Add(-1 * time.Hour)
+	older := now.Add(-5 * time.Hour)
+	buckets := []llmstats.TimeBucketResult{
+		{BucketStart: recent, TotalTokens: 150},
+		{BucketStart: older, TotalTokens: 250},
+	}
+	trend := mapTokenBuckets(buckets, now)
+	if len(trend) != 6 {
+		t.Fatalf("len = %d, want 6", len(trend))
+	}
+	// Total tokens should be preserved across all buckets.
+	total := 0
+	for _, p := range trend {
+		total += p.Value
+	}
+	if total != 400 {
+		t.Errorf("total tokens = %d, want 400", total)
+	}
+}
+
+func TestMapTokenBuckets_OutsideWindowSkipped(t *testing.T) {
+	now := time.Now()
+	// Bucket older than 24h should be skipped entirely.
+	old := now.Add(-25 * time.Hour)
+	buckets := []llmstats.TimeBucketResult{
+		{BucketStart: old, TotalTokens: 999},
+	}
+	trend := mapTokenBuckets(buckets, now)
+	if len(trend) != 6 {
+		t.Fatalf("len = %d, want 6", len(trend))
+	}
+	for _, p := range trend {
+		if p.Value != 0 {
+			t.Errorf("expected all zero for out-of-window bucket, got %d at %q", p.Value, p.Label)
+		}
+	}
+}
+
+func TestMapTokenBuckets_AlignedToClosestBucket(t *testing.T) {
+	now := time.Now()
+	// A bucket at 02:00 should map to the "0时" label (closest of 0/4/8/...).
+	// Use a fixed recent time so the hour is deterministic.
+	recent := now.Add(-2 * time.Hour)
+	buckets := []llmstats.TimeBucketResult{
+		{BucketStart: recent, TotalTokens: 42},
+	}
+	trend := mapTokenBuckets(buckets, now)
+	if len(trend) != 6 {
+		t.Fatalf("len = %d, want 6", len(trend))
+	}
+	// Exactly one bucket should carry the 42 tokens; the rest stay 0.
+	nonZero := 0
+	for _, p := range trend {
+		if p.Value == 42 {
+			nonZero++
+		}
+	}
+	if nonZero != 1 {
+		t.Errorf("expected exactly 1 non-zero bucket, got %d", nonZero)
+	}
+}
+
+func TestComputeTrends_TokenTrendFromBuckets(t *testing.T) {
+	now := time.Now()
+	tasks := []task.Task{
+		{ID: "t1", Status: task.StatusCompleted, CreatedAt: now.Add(-1 * time.Hour)},
+	}
+	buckets := []llmstats.TimeBucketResult{
+		{BucketStart: now.Add(-1 * time.Hour), TotalTokens: 100},
+	}
+	trends := ComputeTrends(tasks, buckets)
+	if len(trends.TokenTrend) != 6 {
+		t.Fatalf("TokenTrend len = %d, want 6", len(trends.TokenTrend))
+	}
+	total := 0
+	for _, p := range trends.TokenTrend {
+		total += p.Value
+	}
+	if total != 100 {
+		t.Errorf("TokenTrend total = %d, want 100", total)
+	}
 }
