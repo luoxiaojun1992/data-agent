@@ -1,6 +1,6 @@
 # Dashboard trend 接入 + 路径/字段修复
 
-> **SPEC-060** | Status: 设计中
+> **SPEC-060** | Status: ✅ 已实现
 >
 > **来源**: 从 SPEC-059 拆分（2026-07-21 晓军确认）。SPEC-059 聚焦 token 真数据 + 统计分析架构归置设计，本 spec 按该架构实现 dashboard 完整统计分析展示。
 
