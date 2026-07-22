@@ -316,6 +316,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Task:          deps.taskHandler,
 		Dashboard:     handler.NewDashboardHandler(deps.taskService, deps.sessionManager, deps.kbService),
 		IMBind:        imBindHandler,
+		Stats:         handler.NewStatsHandler(deps.llmRecorder),
 		IMWebhook:     imWebhook,
 		HermesURL:     os.Getenv("HERMES_URL"),
 		AppName:       appName,

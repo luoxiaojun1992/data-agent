@@ -38,6 +38,7 @@ type RouteDeps struct {
 	Task         *TaskHandler
 	Dashboard    *DashboardHandler
 	IMBind       *IMBindHandler
+	Stats        *StatsHandler
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
 	IMWebhook http.HandlerFunc
@@ -155,6 +156,9 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	}
 	if deps.Dashboard != nil {
 		RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard)
+	}
+	if deps.Stats != nil {
+		RegisterStatsRoutes(router, deps.JWTManager, deps.Stats)
 	}
 }
 

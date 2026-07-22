@@ -159,8 +159,10 @@ func TestComputeTrends_EmptyInput(t *testing.T) {
 	if len(trends.SuccessTrend) != 7 {
 		t.Errorf("SuccessTrend len = %d, want 7", len(trends.SuccessTrend))
 	}
-	if len(trends.TokenTrend) != 6 {
-		t.Errorf("TokenTrend len = %d, want 6", len(trends.TokenTrend))
+	// TokenTrend is nil until SPEC-060 wires it to llmstats.AggregateByTime;
+	// the x500 token-trend placeholder was removed in SPEC-059.
+	if len(trends.TokenTrend) != 0 {
+		t.Errorf("TokenTrend len = %d, want 0 (nil until SPEC-060)", len(trends.TokenTrend))
 	}
 	if len(trends.ROITrend) != 4 {
 		t.Errorf("ROITrend len = %d, want 4", len(trends.ROITrend))
@@ -379,18 +381,6 @@ func TestComputeTrends_DurationBuckets(t *testing.T) {
 	// <5m bucket gets 2m task
 	if trends.DurationDist[3].Label != "<5m" || trends.DurationDist[3].Value != 1 {
 		t.Errorf("DurationDist[3] = {%q, %d}, want {<5m, 1}", trends.DurationDist[3].Label, trends.DurationDist[3].Value)
-	}
-}
-
-func TestComputeTrends_TokenTrend(t *testing.T) {
-	now := time.Now()
-	tasks := []task.Task{
-		{ID: "t1", Status: task.StatusCompleted, CreatedAt: now.Add(-1 * time.Hour)},
-	}
-
-	trends := ComputeTrends(tasks, nil, 0)
-	if len(trends.TokenTrend) != len(trends.CallTrend) {
-		t.Errorf("TokenTrend len %d != CallTrend len %d", len(trends.TokenTrend), len(trends.CallTrend))
 	}
 }
 
