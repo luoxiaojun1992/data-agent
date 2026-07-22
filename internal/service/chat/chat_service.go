@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/adk/session"
+	genai "google.golang.org/genai"
 
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
@@ -179,40 +180,7 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 		if evt == nil || evt.Content == nil {
 			continue
 		}
-
-		// Forward every part to the frontend as-is.
-		for _, p := range evt.Content.Parts {
-			if p == nil {
-				continue
-			}
-			switch {
-			case p.FunctionCall != nil:
-				argsJSON, _ := json.Marshal(p.FunctionCall.Args)
-				data, _ := json.Marshal(map[string]any{
-					"type": "tool_call",
-					"name": p.FunctionCall.Name,
-					"args": json.RawMessage(argsJSON),
-				})
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
-			case p.FunctionResponse != nil:
-				respJSON, _ := json.Marshal(p.FunctionResponse.Response)
-				data, _ := json.Marshal(map[string]any{
-					"type":     "tool_result",
-					"name":     p.FunctionResponse.Name,
-					"response": json.RawMessage(respJSON),
-				})
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
-			case p.Text != "":
-				data, _ := json.Marshal(map[string]string{
-					"type":    "text",
-					"content": p.Text,
-				})
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
-			}
-		}
+		forwardSSEParts(w, flusher, evt.Content.Parts)
 	}
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -220,6 +188,43 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 
 	s.scheduleMemoryWrite(userID, sessionID)
 	return nil
+}
+
+// forwardSSEParts writes each ADK event part to the SSE stream as-is.
+// Extracted from Stream to reduce cognitive complexity.
+func forwardSSEParts(w http.ResponseWriter, flusher http.Flusher, parts []*genai.Part) {
+	for _, p := range parts {
+		if p == nil {
+			continue
+		}
+		switch {
+		case p.FunctionCall != nil:
+			argsJSON, _ := json.Marshal(p.FunctionCall.Args)
+			data, _ := json.Marshal(map[string]any{
+				"type": "tool_call",
+				"name": p.FunctionCall.Name,
+				"args": json.RawMessage(argsJSON),
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case p.FunctionResponse != nil:
+			respJSON, _ := json.Marshal(p.FunctionResponse.Response)
+			data, _ := json.Marshal(map[string]any{
+				"type":     "tool_result",
+				"name":     p.FunctionResponse.Name,
+				"response": json.RawMessage(respJSON),
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case p.Text != "":
+			data, _ := json.Marshal(map[string]string{
+				"type":    "text",
+				"content": p.Text,
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
 }
 
 // runAndCollect executes one ADK turn and returns the final assistant text.

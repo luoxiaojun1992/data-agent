@@ -60,36 +60,40 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 		router.Use(deps.AuditLogger.AuditMiddleware())
 	}
 
-	// Health check (no auth).
+	// Public routes (no auth).
 	router.GET("/health", HealthCheck)
-
-	// IM Webhook (no auth).
 	if deps.IMWebhook != nil {
 		router.POST("/api/v1/im/feishu/webhook", gin.WrapF(deps.IMWebhook))
 	}
-
-	// IM per-user bind (auth).
 	if deps.IMBind != nil {
 		imBindGroup := router.Group("/api/v1/im/bind")
 		imBindGroup.Use(deps.JWTManager.AuthMiddleware())
 		RegisterIMBindRoutes(imBindGroup, deps.IMBind)
 	}
-
-	// Hermes proxy (no auth).
 	RegisterHermesProxy(router, deps.HermesURL)
-
-	// System monitoring (no auth).
 	router.GET("/api/v1/system/stats", monitor.Handler())
 
 	// Auth routes (no auth).
-	authGroup := router.Group("/api/v1/auth")
-	registerAuthRoutes(authGroup, deps.Auth)
+	registerAuthRoutes(router.Group("/api/v1/auth"), deps.Auth)
 
 	// Protected API routes.
 	api := router.Group("/api/v1")
 	api.Use(deps.JWTManager.AuthMiddleware())
 	registerAuthProtected(api, deps.Auth)
+	registerProtectedAPIRoutes(api, deps)
 
+	// Admin routes (auth).
+	admin := router.Group("/api/v1/admin")
+	admin.Use(deps.JWTManager.AuthMiddleware())
+	registerAdminRoutes(admin, deps.Auth)
+
+	// Feature routes (each guarded by auth middleware).
+	registerFeatureRoutes(router, deps)
+}
+
+// registerProtectedAPIRoutes registers user/role/model/memory/sysconfig routes
+// on the authenticated API group. Extracted to reduce cognitive complexity.
+func registerProtectedAPIRoutes(api *gin.RouterGroup, deps *RouteDeps) {
 	if deps.User != nil {
 		RegisterUserRoutes(api, deps.User)
 	}
@@ -105,13 +109,12 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.SysConfig != nil {
 		RegisterSysConfigRoutes(api, deps.SysConfig)
 	}
+}
 
-	// Admin routes (auth).
-	admin := router.Group("/api/v1/admin")
-	admin.Use(deps.JWTManager.AuthMiddleware())
-	registerAdminRoutes(admin, deps.Auth)
-
-	// Chat routes (auth).
+// registerFeatureRoutes registers chat/agent/session/artifact/knowledge/audit/
+// apireview/notification/task/dashboard routes. Each section is independently
+// guarded by auth middleware. Extracted to reduce cognitive complexity.
+func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.Chat != nil {
 		chatRoutes := router.Group("/api/v1/chat")
 		chatRoutes.Use(deps.JWTManager.AuthMiddleware())
@@ -120,71 +123,55 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 			RegisterEnhanceRoute(chatRoutes, deps.Enhance)
 		}
 	}
-
-	// Agent routes (auth).
 	if deps.Agent != nil {
 		agentRoutes := router.Group("/api/v1/agent")
 		agentRoutes.Use(deps.JWTManager.AuthMiddleware())
 		RegisterAgentRoutes(agentRoutes, deps.Agent)
 	}
-
-	// Session routes (auth).
 	if deps.Session != nil {
 		sessionRoutes := router.Group("/api/v1/sessions")
 		sessionRoutes.Use(deps.JWTManager.AuthMiddleware())
 		RegisterSessionRoutes(sessionRoutes, deps.Session)
 	}
-
-	// Artifact routes (auth).
 	if deps.Artifact != nil {
 		registerArtifactRoutes(router, deps.JWTManager, deps.Artifact)
+		registerWorkspaceRoutes(router, deps.JWTManager, deps.Artifact)
 	}
-
-	// Workspace routes (auth).
-	if deps.Artifact != nil {
-		wsRoutes := router.Group("/api/v1/workspace/:session_id")
-		wsRoutes.Use(deps.JWTManager.AuthMiddleware())
-		wsRoutes.GET("/files", deps.Artifact.ListWorkspace)
-		wsRoutes.GET("/files/:filename", deps.Artifact.ReadWorkspaceFile)
-		wsRoutes.PUT("/files/:filename", deps.Artifact.WriteWorkspaceFile)
-	}
-
-	// Knowledge Base routes (auth).
 	if deps.Knowledge != nil {
 		registerKnowledgeRoutes(router, deps.JWTManager, deps.Knowledge)
+		registerAdminKBRoutes(router, deps.JWTManager, deps.Knowledge)
 	}
-
-	// Admin KB management (auth + PermUserManage).
-	if deps.Knowledge != nil {
-		adminKB := router.Group("/api/v1/admin/knowledge")
-		adminKB.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
-		adminKB.GET("/docs", deps.Knowledge.ListAllDocs)
-	}
-
-	// Audit Log routes (auth + PermAuditLogView).
 	if deps.Audit != nil {
 		registerAuditRoutes(router, deps.JWTManager, deps.Audit)
 	}
-
-	// API Review routes (auth + PermAPIConvert).
 	if deps.APIReview != nil {
 		registerAPIReviewRoutes(router, deps.JWTManager, deps.APIReview)
 	}
-
-	// Notification routes (auth).
 	if deps.Notification != nil {
 		registerNotificationRoutes(router, deps.JWTManager, deps.Notification)
 	}
-
-	// Task routes (auth).
 	if deps.Task != nil {
 		registerTaskRoutes(router, deps.JWTManager, deps.Task)
 	}
-
-	// Dashboard routes.
 	if deps.Dashboard != nil {
 		RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard)
 	}
+}
+
+// registerWorkspaceRoutes registers workspace file routes.
+func registerWorkspaceRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *ArtifactHandler) {
+	wsRoutes := router.Group("/api/v1/workspace/:session_id")
+	wsRoutes.Use(jwt.AuthMiddleware())
+	wsRoutes.GET("/files", h.ListWorkspace)
+	wsRoutes.GET("/files/:filename", h.ReadWorkspaceFile)
+	wsRoutes.PUT("/files/:filename", h.WriteWorkspaceFile)
+}
+
+// registerAdminKBRoutes registers admin KB management routes.
+func registerAdminKBRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *KnowledgeHandler) {
+	adminKB := router.Group("/api/v1/admin/knowledge")
+	adminKB.Use(jwt.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
+	adminKB.GET("/docs", h.ListAllDocs)
 }
 
 func registerAuthRoutes(authGroup *gin.RouterGroup, authHandler *AuthHandler) {
