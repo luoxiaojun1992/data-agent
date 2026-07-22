@@ -27,8 +27,12 @@ jobs:
           # Exclude /mocks packages from coverage: they are auto-generated test
           # helpers with no tests of their own and would unfairly drag down the
           # aggregate coverage percentage (SPEC-055 introduced many mocks).
-          # Keep the original coverpkg scope (adk/api/config/domain/logic/service).
-          COVERPKG=$(go list ./internal/adk/... ./internal/api/... ./internal/config/... ./internal/domain/... ./internal/logic/... ./internal/service/... | grep -v '/mocks' | paste -sd, -)
+          # SPEC-058: adk/* packages depend on external infra (MongoDB/LLM/Qdrant)
+          # and are tested via Docker integration, not UT. Per 晓军 directive
+          # (2026-07-21), they are excluded from the UT coverage gate; their tests
+          # have been deleted. The 98% gate applies to application-layer packages
+          # (api/config/domain/logic/service) only.
+          COVERPKG=$(go list ./internal/api/... ./internal/config/... ./internal/domain/... ./internal/logic/... ./internal/service/... | grep -v '/mocks' | paste -sd, -)
           go test -gcflags=all=-l -p=1 -count=1 -coverprofile=coverage.out \
             -coverpkg="$COVERPKG" \
             ./internal/...
@@ -37,16 +41,15 @@ jobs:
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: ${TOTAL}%"
-          # Threshold lowered from 98% to 80%: main itself only reaches 96.2%
-          # (the 98% gate has been failing on main since it was added).
-          # SPEC-055 introduced new handlers/services + auto-generated mocks
-          # (mocks now excluded from coverage). feat reaches 84.5% after
-          # exclusion; 80% is a realistic transitional bar.
-          if (( $(echo "$TOTAL < 80" | bc -l) )); then
-            echo "ERROR: Coverage ${TOTAL}% below 80% threshold"
+          # SPEC-058: coverage gate restored to 98%. The logic/agent orchestrator
+          # layer, gin-decoupled chat service, extracted handlers, and enhance
+          # service now all have dedicated unit tests. gomonkey is retained
+          # (ADK/stdlib) and -race is not restored (gomonkey+race panics).
+          if (( $(echo "$TOTAL < 98" | bc -l) )); then
+            echo "ERROR: Coverage ${TOTAL}% below 98% threshold"
             exit 1
           fi
-          echo "PASS: Coverage ${TOTAL}% >= 80%"
+          echo "PASS: Coverage ${TOTAL}% >= 98%"
 
       - name: Upload Coverage Report
         if: always()

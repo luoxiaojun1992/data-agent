@@ -9,21 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"google.golang.org/adk/session"
+	genai "google.golang.org/genai"
 
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 )
 
-// Message represents a chat message in the request payload.
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
 // Service handles real-time chat operations backed by the ADK runtime.
-// The HTTP contract (JSON in, SSE out) is unchanged from the legacy engine.
+// It implements domain/chat.ChatService and contains no gin dependency;
+// HTTP/SSE translation is the handler's responsibility.
 type Service struct {
 	rt          *adkruntime.Runtime
 	adkSessions session.Service
@@ -31,6 +27,9 @@ type Service struct {
 	cbReg       *security.CircuitBreakerRegistry
 	memoryWrite func(ctx context.Context, sess session.Session) // optional post-run memory hook
 }
+
+// ensure Service satisfies the domain ChatService contract.
+var _ domainchat.ChatService = (*Service)(nil)
 
 // NewService creates a new Chat Service backed by the ADK runtime.
 func NewService(rt *adkruntime.Runtime, adkSessions session.Service, sessions *Manager, cbReg *security.CircuitBreakerRegistry) *Service {
@@ -50,194 +49,182 @@ func (s *Service) WithMemoryWrite(hook func(ctx context.Context, sess session.Se
 	return s
 }
 
-// ChatRequest represents an incoming chat request.
-type ChatRequest struct {
-	SessionID string    `json:"session_id,omitempty"`
-	Model     string    `json:"model,omitempty"`
-	Messages  []Message `json:"messages"`
-	Message   string    `json:"message,omitempty"` // legacy single-message field from frontend
-	Stream    bool      `json:"stream"`
-	KBID      string    `json:"kb_id,omitempty"`
-}
-
-// HandleChat handles a chat completion request with optional SSE streaming.
-func (s *Service) HandleChat(c *gin.Context) {
-	var req ChatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+// prepareRun validates the request, resolves/creates the session, ensures the
+// ADK session exists with identity injected into state, and returns the
+// resolved session ID, last user message, and run config. Shared by Process
+// and Stream.
+func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, userID, role string) (sessionID, lastMsg string, runCfg adkruntime.RunConfig, err error) {
+	// Convert legacy single message to messages array.
+	messages := req.Messages
+	if len(messages) == 0 && req.Message != "" {
+		messages = []domainchat.Message{{Role: "user", Content: req.Message}}
+	}
+	if len(messages) == 0 {
+		err = domainchat.ErrMessagesRequired
 		return
 	}
 
-	// Convert legacy single message to messages array
-	if len(req.Messages) == 0 && req.Message != "" {
-		req.Messages = []Message{{Role: "user", Content: req.Message}}
-	}
-
-	if len(req.Messages) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "messages required"})
-		return
-	}
-
-	// Validate or create session
-	userID, _ := c.Get("user_id")
-	userIDStr, _ := userID.(string)
-	role, _ := c.Get("role")
-	roleStr, _ := role.(string)
-
+	// Validate or create session.
 	if req.SessionID == "" {
-		sess, err := s.sessions.Create(userIDStr, "chat")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
+		sess, cErr := s.sessions.Create(userID, "chat")
+		if cErr != nil {
+			err = domainchat.ErrSessionCreateFailed
 			return
 		}
-		req.SessionID = sess.ID
+		sessionID = sess.ID
 	} else {
-		sess, err := s.sessions.Get(req.SessionID)
-		if err != nil || sess.UserID != userIDStr {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or unauthorized session"})
+		sess, gErr := s.sessions.Get(req.SessionID)
+		if gErr != nil || sess.UserID != userID {
+			err = domainchat.ErrUnauthorizedSession
 			return
 		}
-		_ = s.sessions.Renew(req.SessionID)
+		sessionID = req.SessionID
+		_ = s.sessions.Renew(sessionID)
 	}
 
-	// Only the last user message enters the ADK run — history lives in the ADK session.
-	lastMsg := lastUserMessage(req.Messages)
+	lastMsg = lastUserMessage(messages)
 	if lastMsg == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user message required"})
+		err = domainchat.ErrUserMessageRequired
 		return
 	}
 
-	// Ensure the ADK session exists and inject identity into its state so that
-	// tools read user_id/role/kb_id from tool.Context.State() instead of LLM params.
+	// Inject identity into ADK session state so tools read user_id/role/kb_id
+	// from tool.Context.State() instead of LLM params.
 	state := map[string]any{
-		"user_id":    userIDStr,
-		"role":       roleStr,
-		"session_id": req.SessionID,
+		"user_id":    userID,
+		"role":       role,
+		"session_id": sessionID,
 	}
 	if req.KBID != "" {
 		state["kb_id"] = req.KBID
 	}
-	if _, err := s.adkSessions.Create(c.Request.Context(), &session.CreateRequest{
+	if _, cerr := s.adkSessions.Create(ctx, &session.CreateRequest{
 		AppName:   s.rt.AppName(),
-		UserID:    userIDStr,
-		SessionID: req.SessionID,
+		UserID:    userID,
+		SessionID: sessionID,
 		State:     state,
-	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to init agent session"})
+	}); cerr != nil {
+		err = domainchat.ErrADKSessionInitFailed
 		return
 	}
 
-	runCfg := adkruntime.RunConfig{
+	runCfg = adkruntime.RunConfig{
 		Streaming:  req.Stream,
 		StateDelta: state,
 	}
-
-	// Stream mode
-	if req.Stream {
-		s.handleStream(c, req, userIDStr, lastMsg, runCfg)
-		return
-	}
-
-	s.handleNonStreamChat(c, req, userIDStr, lastMsg, runCfg)
+	return
 }
 
-// handleNonStreamChat processes a non-streaming chat request.
-func (s *Service) handleNonStreamChat(c *gin.Context, req ChatRequest, userID, message string, runCfg adkruntime.RunConfig) {
+// Process handles a non-streaming chat request and returns the final
+// assistant content. Implements domain/chat.ChatService.
+func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userID, role string) (*domainchat.ChatResponse, error) {
+	sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	if err != nil {
+		return nil, err
+	}
+
 	var content string
 	cb := s.cbReg.GetOrCreate("chat")
-	err := cb.Call(func() error {
-		text, err := s.runAndCollect(c.Request.Context(), userID, req.SessionID, message, runCfg)
-		if err != nil {
-			return err
+	if cErr := cb.Call(func() error {
+		text, rErr := s.runAndCollect(ctx, userID, sessionID, lastMsg, runCfg)
+		if rErr != nil {
+			return rErr
 		}
 		content = text
 		return nil
-	})
-
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
-		return
+	}); cErr != nil {
+		return nil, cErr
 	}
 
-	s.scheduleMemoryWrite(userID, req.SessionID)
-	c.JSON(http.StatusOK, gin.H{
-		"session_id": req.SessionID,
-		"content":    content,
-		"usage":      map[string]int{},
-	})
+	s.scheduleMemoryWrite(userID, sessionID)
+	return &domainchat.ChatResponse{
+		SessionID: sessionID,
+		Content:   content,
+		Usage:     map[string]int{},
+	}, nil
 }
 
-// handleStream handles SSE streaming responses.
-// Forwards every ADK event (tool_call, tool_result, text) to the frontend in real-time.
-func (s *Service) handleStream(c *gin.Context, req ChatRequest, userID, message string, runCfg adkruntime.RunConfig) {
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
-		return
+// Stream handles a streaming chat request, writing SSE events to w.
+// Implements domain/chat.ChatService. The writer must implement
+// http.Flusher (gin and httptest.ResponseRecorder both do).
+func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID, role string, w http.ResponseWriter) error {
+	sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	if err != nil {
+		return err
 	}
 
-	// Send session ID as first event
-	sessionData, _ := json.Marshal(map[string]string{"session_id": req.SessionID})
-	fmt.Fprintf(c.Writer, "data: %s\n\n", sessionData)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("streaming not supported")
+	}
+
+	// Send session ID as first event.
+	sessionData, _ := json.Marshal(map[string]string{"session_id": sessionID})
+	fmt.Fprintf(w, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
-	for evt, err := range s.rt.Run(c.Request.Context(), userID, req.SessionID, message, runCfg) {
-		if err != nil {
-			log.Printf("[chat] run error: %v", err)
-			errData, _ := json.Marshal(map[string]string{"error": err.Error()})
-			fmt.Fprintf(c.Writer, "data: %s\n\n", errData)
+	for evt, rErr := range s.rt.Run(ctx, userID, sessionID, lastMsg, runCfg) {
+		if rErr != nil {
+			log.Printf("[chat] run error: %v", rErr)
+			errData, _ := json.Marshal(map[string]string{"error": rErr.Error()})
+			fmt.Fprintf(w, "data: %s\n\n", errData)
 			flusher.Flush()
-			fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
-			return
+			return nil
 		}
 		if evt == nil || evt.Content == nil {
 			continue
 		}
-
-		// Forward every part to the frontend as-is.
-		for _, p := range evt.Content.Parts {
-			if p == nil {
-				continue
-			}
-			switch {
-			case p.FunctionCall != nil:
-				argsJSON, _ := json.Marshal(p.FunctionCall.Args)
-				data, _ := json.Marshal(map[string]any{
-					"type": "tool_call",
-					"name": p.FunctionCall.Name,
-					"args": json.RawMessage(argsJSON),
-				})
-				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-				flusher.Flush()
-			case p.FunctionResponse != nil:
-				respJSON, _ := json.Marshal(p.FunctionResponse.Response)
-				data, _ := json.Marshal(map[string]any{
-					"type":     "tool_result",
-					"name":     p.FunctionResponse.Name,
-					"response": json.RawMessage(respJSON),
-				})
-				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-				flusher.Flush()
-			case p.Text != "":
-				data, _ := json.Marshal(map[string]string{
-					"type":    "text",
-					"content": p.Text,
-				})
-				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-				flusher.Flush()
-			}
-		}
+		forwardSSEParts(w, flusher, evt.Content.Parts)
 	}
 
-	fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
-	s.scheduleMemoryWrite(userID, req.SessionID)
+	s.scheduleMemoryWrite(userID, sessionID)
+	return nil
+}
+
+// forwardSSEParts writes each ADK event part to the SSE stream as-is.
+// Extracted from Stream to reduce cognitive complexity.
+func forwardSSEParts(w http.ResponseWriter, flusher http.Flusher, parts []*genai.Part) {
+	for _, p := range parts {
+		if p == nil {
+			continue
+		}
+		switch {
+		case p.FunctionCall != nil:
+			argsJSON, _ := json.Marshal(p.FunctionCall.Args)
+			data, _ := json.Marshal(map[string]any{
+				"type": "tool_call",
+				"name": p.FunctionCall.Name,
+				"args": json.RawMessage(argsJSON),
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case p.FunctionResponse != nil:
+			respJSON, _ := json.Marshal(p.FunctionResponse.Response)
+			data, _ := json.Marshal(map[string]any{
+				"type":     "tool_result",
+				"name":     p.FunctionResponse.Name,
+				"response": json.RawMessage(respJSON),
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case p.Text != "":
+			data, _ := json.Marshal(map[string]string{
+				"type":    "text",
+				"content": p.Text,
+			})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
 }
 
 // runAndCollect executes one ADK turn and returns the final assistant text.
@@ -290,7 +277,7 @@ func (s *Service) scheduleMemoryWrite(userID, sessionID string) {
 }
 
 // lastUserMessage returns the content of the last user message.
-func lastUserMessage(messages []Message) string {
+func lastUserMessage(messages []domainchat.Message) string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "user" && strings.TrimSpace(messages[i].Content) != "" {
 			return messages[i].Content

@@ -14,9 +14,9 @@ type Service struct {
 	mock.Mock
 }
 
-// Create provides a mock function with given fields: ctx, name, permissions
-func (_m *Service) Create(ctx context.Context, name string, permissions []string) (*model.Role, error) {
-	ret := _m.Called(ctx, name, permissions)
+// Create provides a mock function with given fields: ctx, name, displayName, permissions
+func (_m *Service) Create(ctx context.Context, name string, displayName string, permissions []string) (*model.Role, error) {
+	ret := _m.Called(ctx, name, displayName, permissions)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
@@ -24,19 +24,19 @@ func (_m *Service) Create(ctx context.Context, name string, permissions []string
 
 	var r0 *model.Role
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, []string) (*model.Role, error)); ok {
-		return rf(ctx, name, permissions)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, []string) (*model.Role, error)); ok {
+		return rf(ctx, name, displayName, permissions)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, []string) *model.Role); ok {
-		r0 = rf(ctx, name, permissions)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, []string) *model.Role); ok {
+		r0 = rf(ctx, name, displayName, permissions)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*model.Role)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
-		r1 = rf(ctx, name, permissions)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, []string) error); ok {
+		r1 = rf(ctx, name, displayName, permissions)
 	} else {
 		r1 = ret.Error(1)
 	}
