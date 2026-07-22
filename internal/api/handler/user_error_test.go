@@ -74,8 +74,8 @@ func TestUserHandler_Create_GenericError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
 	}
-	if !errors.Is(errUserService, usersvc.ErrDuplicate) {
-		// sanity: ensure our sentinel is not accidentally treated as duplicate
+	if errors.Is(errUserService, usersvc.ErrDuplicate) {
+		t.Error("errUserService should not be ErrDuplicate")
 	}
 	if w.Body.String() == "" {
 		t.Errorf("expected non-empty error body")
