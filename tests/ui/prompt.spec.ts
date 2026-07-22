@@ -3,7 +3,10 @@ import { test, expect } from '@playwright/test';
 const uid = crypto.randomUUID().slice(0, 8);
 const MOCKLLM = 'http://mockllm:8082';
 const MOCK_ADMIN_TOKEN = 'test-admin-token';
+const API_BASE = 'http://data-agent:8080/api/v1';
 const USER = { username: `e2e-prompt-${uid}@test.local`, password: 'PromptTest1' };
+const ADMIN = { username: `e2e-prompt-${uid}-admin@test.local`, password: 'PromptAdmin1!', role: 'admin' };
+let adminToken = '';
 
 async function seedMock(request: any, key: string, response: string) {
   await request.post(`${MOCKLLM}/responses`, {
@@ -18,11 +21,31 @@ async function clearMocks(request: any) {
   }).catch(() => {});
 }
 
+// getLLMStats calls the real /api/v1/stats/llm endpoint (admin-only) to verify
+// that enhance calls are recorded into llm_usage. SPEC-059 UI-160.
+async function getLLMStats(request: any, token: string, callPoint: string) {
+  const res = await request.get(`${API_BASE}/stats/llm`, {
+    params: callPoint ? { call_point: callPoint } : {},
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok()) return { stats: [] };
+  return res.json();
+}
+
 test.describe.serial('PROMPT — SPEC-033', () => {
   test.beforeAll(async ({ request }) => {
     // Clear any leftover mock responses from previous runs
     await clearMocks(request);
     await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
+
+    // Register an admin so UI-160 can query /stats/llm (admin-only).
+    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    if (res.status() !== 201) {
+      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
+    } else {
+      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
+    }
+    adminToken = (await res.json()).access_token;
   });
 
   test.afterAll(async ({ request }) => {
@@ -100,27 +123,26 @@ test.describe.serial('PROMPT — SPEC-033', () => {
     await expect(page.locator('[data-testid="chat-send-btn"]')).toBeEnabled();
   });
 
-  // ═══ UI-160: 增强调用不计入 Token 统计 ═══
-  test('[UI-160] Prompt — 增强调用不计入 Token 统计', async ({ page, request }) => {
+  // ═══ UI-160: 增强调用计入 Token 统计 ═══
+  test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, request }) => {
     await clearMocks(request);
-    await seedMock(request, 'test token', '增强后的测试内容');
+    // Unique key per run guarantees a cache miss so the LLM is actually invoked
+    // and recordEnhanceTokens writes a new llm_usage row.
+    await seedMock(request, 'test token ' + uid, '增强后的测试内容');
+
+    const before = await getLLMStats(request, adminToken, 'enhance');
+    const beforeCount = before.stats?.[0]?.count ?? 0;
 
     const input = page.locator('[data-testid="chat-input"]');
-    await input.fill('test token');
-
-    // Record the input value before enhance
-    const beforeValue = await input.inputValue();
-    expect(beforeValue).toBe('test token');
-
+    await input.fill('test token ' + uid);
     await page.locator('[data-testid="chat-enhance-btn"]').click();
-    // Enhanced content should replace the original input
-    await expect(input).not.toHaveValue('test token');
     await expect(input).toHaveValue('增强后的测试内容', { timeout: 5000 });
 
-    // Navigate to dashboard and verify page loads
-    // (Token stats are tracked server-side; we verify enhance UI flow works)
-    await page.goto('/');
-    await page.waitForTimeout(1000);
-    await expect(page.locator('[data-testid="main-content"]')).toBeVisible({ timeout: 5000 });
+    // recordEnhanceTokens writes llm_usage asynchronously; poll /stats/llm
+    // until the enhance call_point count increments.
+    await expect.poll(async () => {
+      const after = await getLLMStats(request, adminToken, 'enhance');
+      return after.stats?.[0]?.count ?? 0;
+    }, { timeout: 5000 }).toBe(beforeCount + 1);
   });
 });

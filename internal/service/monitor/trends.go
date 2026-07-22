@@ -32,7 +32,8 @@ func ComputeTrends(tasks []task.Task, sessions []interface{}, docCount int) *Das
 	t.DurationDist = computeDurationDist(tasks)
 	t.ReqDist = t.CallTrend
 	t.SuccessTrend = computeSuccessTrend(tasks, now)
-	t.TokenTrend = computeTokenTrend(t.CallTrend)
+	// TokenTrend is left nil here; SPEC-060 will populate it from
+	// llmstats.AggregateByTime via the dashboard trends endpoint.
 	t.OutputStats = computeOutputStats(tasks)
 	t.ROITrend = computeROITrend(tasks, now)
 
@@ -122,14 +123,6 @@ func countByStatus(cf *completedFailed, status task.Status) {
 	case task.StatusFailed:
 		cf.failed++
 	}
-}
-
-func computeTokenTrend(callTrend []TrendPoint) []TrendPoint {
-	var trend []TrendPoint
-	for _, p := range callTrend {
-		trend = append(trend, TrendPoint{Label: p.Label, Value: p.Value * 500})
-	}
-	return trend
 }
 
 func computeOutputStats(tasks []task.Task) []TrendPoint {
