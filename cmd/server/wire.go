@@ -314,7 +314,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		APIReview:     deps.apiReviewHandler,
 		Notification:  deps.notifHandler,
 		Task:          deps.taskHandler,
-		Dashboard:     handler.NewDashboardHandler(deps.taskService, deps.sessionManager, deps.kbService),
+		Dashboard:     handler.NewDashboardHandler(deps.taskService, deps.kbService, deps.llmRecorder),
 		IMBind:        imBindHandler,
 		Stats:         handler.NewStatsHandler(deps.llmRecorder),
 		IMWebhook:     imWebhook,

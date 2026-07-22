@@ -91,7 +91,8 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		"/api/v1/notifications/broadcast",
 		"/api/v1/tasks",
 		"/api/v1/admin/tasks",
-		"/api/v1/admin/dashboard",
+		"/api/v1/dashboard",
+		"/api/v1/dashboard/trends",
 		"/api/v1/im/bind",
 	}
 	routeSet := make(map[string]bool, len(routes))

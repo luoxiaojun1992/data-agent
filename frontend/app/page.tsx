@@ -95,13 +95,6 @@ export default function MainPage() {
     { label: '等待', value: taskStats.pending, color: '#FBBF24' },
   ];
 
-  // Time-series charts placeholder — needs /api/v1/dashboard/trends endpoint
-  const emptyChart = (title: string) => (
-    <div className="flex items-center justify-center py-8 text-xs text-[var(--text-secondary)]">
-      📊 {title}（时间序列数据端点待建）
-    </div>
-  );
-
   return (
     <AppLayout>
       <div className="animate-fade-in">

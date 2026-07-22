@@ -100,7 +100,7 @@ export async function getKBSearchHits(
  */
 export async function getDashboardKPIs(token: string): Promise<DashboardKPI | null> {
   try {
-    const res = await fetch(`${API_BASE}/dashboard/stats`, {
+    const res = await fetch(`${API_BASE}/dashboard`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
