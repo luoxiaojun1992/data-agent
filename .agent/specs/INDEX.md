@@ -71,7 +71,7 @@
 | SPEC-055 | 分层架构重构（Controller→Service→Repository→Infra） | **P14** | [spec-055-layer-refactoring.md](spec-055-layer-refactoring.md) | ✅ 已实现 |
 | SPEC-056 | 分层语义纠正（一）：domain ID 解耦 / service SDK 清理 / middleware 解耦 / IMBind 补全 | **P15** | [spec-056-layer-semantics-correction.md](spec-056-layer-semantics-correction.md) | ✅ 已实现 |
 | SPEC-057 | domain model 全量去 bson tag + infra 转换层全量改造 | **P15** | [spec-057-domain-bson-tag-removal.md](spec-057-domain-bson-tag-removal.md) | ✅ 已实现 |
-| SPEC-058 | 分层语义纠正（二）：logic 编排层 / chat 解耦 gin / service 扁平化 / main.go 迁移 / 覆盖率 98% | **P15** | [spec-058-layer-orchestrator-main-migration.md](spec-058-layer-orchestrator-main-migration.md) | 📐 设计中 |
+| SPEC-058 | 分层语义纠正（二）：logic 编排层 / chat 解耦 gin / service 扁平化 / main.go 迁移 / 覆盖率 98% | **P15** | [spec-058-layer-orchestrator-main-migration.md](spec-058-layer-orchestrator-main-migration.md) | ✅ 已实现 |
 | SPEC-059 | 统计分析架构归置 + Token 统计真数据 | **P15** | [spec-059-enhance-token-stats-verification.md](spec-059-enhance-token-stats-verification.md) | 📐 设计中 |
 | SPEC-060 | Dashboard trend 接入 + 路径/字段修复 | **P15** | [spec-060-dashboard-trend-integration.md](spec-060-dashboard-trend-integration.md) | 📐 设计中 |
 

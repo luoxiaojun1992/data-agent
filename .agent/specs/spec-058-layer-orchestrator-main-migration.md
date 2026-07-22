@@ -1,6 +1,6 @@
 # 分层语义纠正（二）：logic 编排层 / chat 解耦 gin / service 扁平化 / main.go 迁移 / 覆盖率恢复 98%
 
-> **SPEC-058** | Status: 设计中
+> **SPEC-058** | Status: 已实现
 >
 > **来源**: 从 SPEC-056 拆分（2026-07-21 晓军确认）。SPEC-056 原 5 块工作中高风险部分集中到本 spec。
 
