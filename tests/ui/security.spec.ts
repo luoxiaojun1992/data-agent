@@ -87,20 +87,17 @@ test.describe('SEC — SPEC-038', () => {
     await page.locator('[data-testid="chat-send-btn"]').click();
     console.log('[UI-185] send clicked, waiting for response');
 
-    // Wait for backend → mockllm → audit → SSE stream → UI render
+    // Wait for backend → mockllm → audit → SSE stream → UI render.
+    // Use toContainText (auto-retry) instead of waitForTimeout+textContent
+    // to eliminate flaky failures from streaming render timing.
     const aiMsg = page.locator('[data-testid="chat-msg-ai-1"]');
     await expect(aiMsg).toBeVisible({ timeout: 20000 });
-    await page.waitForTimeout(4000);
-
-    const text = await aiMsg.textContent();
-    console.log('[UI-185] received:', text?.substring(0, 100));
-
     // Phone masked
-    expect(text).toContain('138****5678');
-    expect(text).not.toContain('13812345678');
+    await expect(aiMsg).toContainText('138****5678', { timeout: 15000 });
+    await expect(aiMsg).not.toContainText('13812345678');
     // ID card masked
-    expect(text).toContain('320***********1234');
-    expect(text).not.toContain('320123199001011234');
+    await expect(aiMsg).toContainText('320***********1234');
+    await expect(aiMsg).not.toContainText('320123199001011234');
   });
 
   // ═══ UI-186: user 角色越权被 RBAC 拦截 ═══

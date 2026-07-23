@@ -90,8 +90,9 @@ test.describe('TOOL CALL — SPEC-046', () => {
     await page.locator('[data-testid="chat-send-btn"]').click();
 
     await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    const aiText = await page.locator('[data-testid^="chat-msg-ai-"]').first().textContent();
-    expect(aiText).toMatch(/销售|1560|1720|趋势/);
+    // Use toContainText (auto-retry) instead of textContent+toMatch to eliminate
+    // flaky failures from streaming render timing (content arrives after element visibility).
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/销售|1560|1720|趋势/, { timeout: 15000 });
   });
 
   // ═══ UI-213: sql_executor tool card with SQL ═══
@@ -109,8 +110,7 @@ test.describe('TOOL CALL — SPEC-046', () => {
     await page.locator('[data-testid="chat-send-btn"]').click();
 
     await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    const aiText = await page.locator('[data-testid^="chat-msg-ai-"]').first().textContent();
-    expect(aiText).toContain('2480');
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText('2480', { timeout: 15000 });
   });
 
   // ═══ UI-214: sql_executor security rejection ═══
@@ -123,11 +123,11 @@ test.describe('TOOL CALL — SPEC-046', () => {
     await page.locator('[data-testid="chat-input"]').fill('删除所有数据');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    // Error or rejection message should appear
+    // Error or rejection message should appear — use toContainText (auto-retry)
+    // to eliminate flaky failures from streaming render timing (error text
+    // is flushed in the finally block, arriving after the element is visible).
     await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
-    const aiText = await page.locator('[data-testid^="chat-msg-ai-"]').first().textContent();
-    console.log('[UI-214] AI response:', aiText?.substring(0, 100));
-    expect(aiText).toMatch(/安全|失败|不允许|禁止|DROP|审核|拦截/i);
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/安全|失败|不允许|禁止|DROP|审核|拦截/i, { timeout: 20000 });
   });
 
   // ═══ UI-215: stats_engine tool card with KPI ═══
@@ -145,8 +145,7 @@ test.describe('TOOL CALL — SPEC-046', () => {
     await page.locator('[data-testid="chat-send-btn"]').click();
 
     await expect(page.locator('[data-testid="chat-tool-call-card-0"]')).toBeVisible({ timeout: 15000 });
-    const aiText = await page.locator('[data-testid^="chat-msg-ai-"]').first().textContent();
-    expect(aiText).toMatch(/1,385|12\.4%|增长率/);
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/1,385|12\.4%|增长率/, { timeout: 15000 });
   });
 
   // ═══ UI-216: save_report tool card ═══
@@ -164,8 +163,7 @@ test.describe('TOOL CALL — SPEC-046', () => {
     await page.locator('[data-testid="chat-send-btn"]').click();
 
     await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    const aiText = await page.locator('[data-testid^="chat-msg-ai-"]').first().textContent();
-    expect(aiText).toMatch(/报告|保存|生成|制品/i);
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/报告|保存|生成|制品/i, { timeout: 15000 });
   });
 
   // ═══ UI-217: 多工具链式调用 ═══
@@ -184,8 +182,7 @@ test.describe('TOOL CALL — SPEC-046', () => {
     await page.locator('[data-testid="chat-send-btn"]').click();
 
     await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    const aiText = await page.locator('[data-testid^="chat-msg-ai-"]').first().textContent();
-    expect(aiText).toMatch(/分析|华北|趋势|增长/i);
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/分析|华北|趋势|增长/i, { timeout: 15000 });
   });
 
   // ═══ UI-218: SQL 复制按钮 ═══

@@ -110,11 +110,8 @@ test.describe('MEM0 — SPEC-046', () => {
     await page.locator('[data-testid="chat-send-btn"]').click();
 
     await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    const aiText = await page.locator('[data-testid^="chat-msg-ai-"]').first().textContent();
-    console.log('[UI-220] AI response:', aiText?.substring(0, 100));
-
-    // Answer should mention the name (if memory worked)
-    expect(aiText).toMatch(/李四|华东/i);
+    // Use toContainText (auto-retry) to eliminate streaming render timing flakiness.
+    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/李四|华东/i, { timeout: 15000 });
   });
 
   // ═══ UI-221: 多用户隔离 ═══
