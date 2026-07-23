@@ -74,6 +74,9 @@
 | SPEC-058 | 分层语义纠正（二）：logic 编排层 / chat 解耦 gin / service 扁平化 / main.go 迁移 / 覆盖率 98% | **P15** | [spec-058-layer-orchestrator-main-migration.md](spec-058-layer-orchestrator-main-migration.md) | ✅ 已实现 |
 | SPEC-059 | 统计分析架构归置 + Token 统计真数据 | **P15** | [spec-059-enhance-token-stats-verification.md](spec-059-enhance-token-stats-verification.md) | ✅ 已实现 |
 | SPEC-060 | Dashboard trend 接入 + 路径/字段修复 | **P15** | [spec-060-dashboard-trend-integration.md](spec-060-dashboard-trend-integration.md) | ✅ 已实现 |
+| SPEC-061 | 配置统一缓存到 Redis 并支持热更新（Cache-Aside + 消除预加载） | **P15** | [spec-061-config-redis-cache-hotreload.md](spec-061-config-redis-cache-hotreload.md) | 📐 设计中 |
+| SPEC-062 | 多模型配置与 Session 绑定模型（per-model Runtime 注册表 + 模型选择器） | **P15** | [spec-062-multi-model-session-binding.md](spec-062-multi-model-session-binding.md) | 📐 设计中 |
+| SPEC-063 | 异步/定时 Agent 任务执行器实现（RFC worker→AgentExecutor→Runtime.Run） | **P15** | [spec-063-async-scheduled-agent-executor.md](spec-063-async-scheduled-agent-executor.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -198,4 +201,25 @@ SPEC-006│               │
                    └──► [P15] SPEC-058 ─── 分层语义纠正（二）: logic 编排层 / chat 解耦 gin /
                                         service 扁平化 / main.go 迁移 1053→300 / 覆盖率 98%
                                         (依赖 SPEC-056 完成)
+
+[P15] SPEC-061 ─── 配置统一缓存到 Redis 并支持热更新
+                   (Cache-Aside: 写DB→刷缓存 / 删DB→删缓存 / 读缓存优先;
+                    消除 LLM/Instruction/Embedding 启动预加载;
+                    依赖 SPEC-003/049/051/055/058 已实现)
+                   │
+                   ▼
+[P15] SPEC-062 ─── 多模型配置与 Session 绑定模型
+                   (per-model Runtime 注册表懒创建; session 绑定 modelId 不可换;
+                    默认模型 IsDefault 逻辑; 模型列表分页;
+                    chat/agent/定时/imbind 模型选择; 前端 ModelSelector;
+                    系统级 LLM map[UseCase]*Runtime; ModelEntry 加 ID 字段;
+                    指纹比对热更新无需Pub/Sub;
+                    依赖 SPEC-061 cache 装饰器就位)
+                   │
+                   ▼
+[P15] SPEC-063 ─── 异步/定时 Agent 任务执行器实现
+                   (AgentExecutor 实现 worker.TaskExecutor; 复用 Runtime.RunAndCollect
+                    同实时执行范式; 修复 pool.go 三缺陷: DB加载task/回写结果/通知;
+                    RFC §16 processTask 映射; 派生user message from Task.Params;
+                    依赖 SPEC-062 Registry 按 task.ModelID 选 Runtime)
 ```
