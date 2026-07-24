@@ -24,15 +24,23 @@ func NewModelConfigHandler(cfgSvc config.Service, provider *modelcfg.Provider) *
 	return &ModelConfigHandler{cfgSvc: cfgSvc, provider: provider}
 }
 
+// modelRoutePath is the base route for model config endpoints (sonar S1192:
+// avoid duplicating the literal across route registrations).
+const modelRoutePath = "/models"
+
+// errProviderNotConfigured is the error message returned when no model
+// provider is wired (sonar S1192: avoid duplicating the literal).
+const errProviderNotConfigured = "model provider not configured"
+
 // RegisterModelConfigRoutes registers model config management routes.
 // SPEC-062 adds structured CRUD endpoints alongside the legacy GET/PUT.
 func RegisterModelConfigRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
-	api.GET("/models", h.Get)
-	api.PUT("/models", h.Put)
-	api.GET("/models/list", h.ListLLM)        // LLM-only, paginated (selector source)
-	api.POST("/models", h.AddModel)            // add single model (auto-gen ID)
-	api.DELETE("/models/:id", h.DeleteModel)   // delete single model
-	api.PATCH("/models/:id/default", h.SetDefault) // set as default
+	api.GET(modelRoutePath, h.Get)
+	api.PUT(modelRoutePath, h.Put)
+	api.GET(modelRoutePath+"/list", h.ListLLM)              // LLM-only, paginated (selector source)
+	api.POST(modelRoutePath, h.AddModel)                     // add single model (auto-gen ID)
+	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)         // delete single model
+	api.PATCH(modelRoutePath+"/:id/default", h.SetDefault)   // set as default
 }
 
 // Get returns the full model configuration. When the page query param is
@@ -108,7 +116,7 @@ func (h *ModelConfigHandler) Put(c *gin.Context) {
 // SPEC-062 §4.1: GET /models/list — only Type==llm models, with pagination.
 func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 	if h.provider == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "model provider not configured"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -130,7 +138,7 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 // empty. SPEC-062 §4.1: POST /models.
 func (h *ModelConfigHandler) AddModel(c *gin.Context) {
 	if h.provider == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "model provider not configured"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
 	var entry modelcfg.ModelEntry
@@ -150,7 +158,7 @@ func (h *ModelConfigHandler) AddModel(c *gin.Context) {
 // returns 200). SPEC-062 §4.1: DELETE /models/:id.
 func (h *ModelConfigHandler) DeleteModel(c *gin.Context) {
 	if h.provider == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "model provider not configured"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
 	id := c.Param("id")
@@ -165,7 +173,7 @@ func (h *ModelConfigHandler) DeleteModel(c *gin.Context) {
 // PATCH /models/:id/default.
 func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 	if h.provider == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "model provider not configured"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
 	id := c.Param("id")

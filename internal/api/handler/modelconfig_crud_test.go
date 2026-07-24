@@ -32,7 +32,7 @@ func ginReq(method, path string, body any) (*gin.Context, *httptest.ResponseReco
 	c, _ := gin.CreateTestContext(w)
 	var buf bytes.Buffer
 	if body != nil {
-		json.NewEncoder(&buf).Encode(body)
+		_ = json.NewEncoder(&buf).Encode(body)
 	}
 	c.Request = httptest.NewRequest(method, path, &buf)
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -54,7 +54,7 @@ func TestModelConfig_ListLLM(t *testing.T) {
 		Models []modelcfg.ModelEntry `json:"models"`
 		Total  int                   `json:"total"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Total != 2 {
 		t.Errorf("total = %d, want 2 (LLM only)", resp.Total)
 	}
@@ -71,7 +71,7 @@ func TestModelConfig_AddModel(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 	var saved modelcfg.ModelEntry
-	json.Unmarshal(w.Body.Bytes(), &saved)
+	_ = json.Unmarshal(w.Body.Bytes(), &saved)
 	if saved.ID == "" {
 		t.Error("auto-generated ID should not be empty")
 	}
@@ -141,7 +141,7 @@ func TestModelConfig_Get_Paginated(t *testing.T) {
 		Models []modelcfg.ModelEntry `json:"models"`
 		Total  int                   `json:"total"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Total != 1 {
 		t.Errorf("total = %d, want 1", resp.Total)
 	}
