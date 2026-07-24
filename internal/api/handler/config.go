@@ -22,12 +22,16 @@ func NewConfigHandler(cfgSvc config.Service, roleSvc role.Service, userRepo repo
 	return &ConfigHandler{cfgSvc: cfgSvc, roleSvc: roleSvc, userRepo: userRepo}
 }
 
+// sysConfigRoutePath is the route path for system configuration endpoints.
+// Defined as a constant to avoid literal duplication (SonarQube critical).
+const sysConfigRoutePath = "/sysconfig/:namespace"
+
 // RegisterSysConfigRoutes registers system configuration routes.
 // Role routes are registered separately via RegisterRoleRoutes.
 func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler) {
-	admin.GET("/sysconfig/:namespace", h.Get)
-	admin.PUT("/sysconfig/:namespace", h.Put)
-	admin.DELETE("/sysconfig/:namespace", h.Delete)
+	admin.GET(sysConfigRoutePath, h.Get)
+	admin.PUT(sysConfigRoutePath, h.Put)
+	admin.DELETE(sysConfigRoutePath, h.Delete)
 	admin.POST("/change-password", h.ChangePassword)
 }
 

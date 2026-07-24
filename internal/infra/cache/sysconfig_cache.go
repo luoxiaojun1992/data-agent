@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
@@ -166,6 +165,3 @@ func (r *SysConfigCacheRepo) Delete(ctx context.Context, namespace, key string) 
 
 // Compile-time interface conformance check.
 var _ repository.SysConfigRepository = (*SysConfigCacheRepo)(nil)
-
-// now is a seam for testing; not currently overridden but available if needed.
-var now = time.Now
