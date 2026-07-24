@@ -57,7 +57,10 @@ func TestAgentHandler_CreateAgentTask_TaskCreateError(t *testing.T) {
 	sessions.On("Create", "u1", "agent", mock.Anything).
 		Return(&domainchat.Session{ID: "s1"}, nil)
 	tasks := taskmocks.NewTaskService(t)
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, (map[string]interface{})(nil), mock.Anything).
+	// SPEC-063: the orchestrator now enriches Params with the title/messages,
+	// so the params arg is matched with mock.Anything (the error path, not the
+	// params shape, is what this test verifies).
+	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, mock.Anything).
 		Return((*domaintask.Task)(nil), errStr("task create failed"))
 	orch := agentlogic.NewOrchestrator(sessions, tasks, nil)
 	h := NewAgentHandler(orch, tasks, nil)
