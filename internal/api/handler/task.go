@@ -63,6 +63,12 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	if req.CronExpr != "" {
 		params["cron_expr"] = req.CronExpr
 	}
+	// SPEC-063: put the title in Params so the async executor (deriveUserMessage)
+	// can extract a user message from it. The orchestrator already does this for
+	// /agent/tasks; the task handler (/tasks) should be consistent.
+	if req.Title != "" {
+		params["title"] = req.Title
+	}
 
 	t, err := h.svc.CreateTask(req.SessionID, userID.(string), taskType, skillChain, params, req.ModelID)
 	if err != nil {

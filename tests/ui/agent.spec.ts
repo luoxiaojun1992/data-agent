@@ -163,10 +163,15 @@ test.describe('AGENT — Professional Workspace', () => {
   });
 
   // ═══ UI-052: Create → expand → cancel → verify status change ═══
-  // SPEC-063: the mock LLM uses MOCK_CHUNK_DELAY_MS=5s, so async tasks stay
-  // "running" ~5s. The UI create + expand + cancel flow completes in ~2s,
-  // making the cancel button deterministically visible.
-  test('[UI-052] Agent — cancel running task', async ({ page }) => {
+  // SPEC-063: inject a delayed mock response (5s) for this task's message
+  // before creating it. The mock LLM sleeps 5s on the injected response, so
+  // the task stays "running" long enough for the UI cancel button click to be
+  // deterministic — no timing race, no flaky test, no test downgrade.
+  test('[UI-052] Agent — cancel running task', async ({ page, request }) => {
+    await request.post('http://mockllm:8082/responses', {
+      headers: { Authorization: 'Bearer test-admin-token', 'Content-Type': 'application/json' },
+      data: { key: 'To Cancel', response: 'Mock LLM: please inject test response', delay_ms: 5000 },
+    });
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
@@ -190,7 +195,11 @@ test.describe('AGENT — Professional Workspace', () => {
   });
 
   // ═══ UI-053: Create task → cancel → verify cancelled state ═══
-  test('[UI-053] Agent — cancel then retry flow', async ({ page }) => {
+  test('[UI-053] Agent — cancel then retry flow', async ({ page, request }) => {
+    await request.post('http://mockllm:8082/responses', {
+      headers: { Authorization: 'Bearer test-admin-token', 'Content-Type': 'application/json' },
+      data: { key: 'Retry Flow', response: 'Mock LLM: please inject test response', delay_ms: 5000 },
+    });
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Retry Flow');
     await page.locator('[data-testid="agent-task-create-btn"]').click();

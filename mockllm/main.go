@@ -65,6 +65,7 @@ type ChatCompletionResponse struct {
 type ResponsesPayload struct {
 	Key      string `json:"key"`
 	Response string `json:"response"`
+	DelayMs  int    `json:"delay_ms"` // optional per-injection delay in ms (SPEC-063 cancel tests)
 }
 
 // toolCallResponse is the JSON format used in test seeds for tool call responses.
@@ -168,20 +169,11 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 // chatHandler handles OpenAI-compatible chat completions.
 func chatHandler(rdb *redis.Client) http.HandlerFunc {
 	defaultReply := envOrDefault("MOCK_DEFAULT_REPLY", "Mock LLM: no response configured")
-	// MOCK_CHUNK_DELAY_MS simulates realistic LLM latency per call. SPEC-063:
-	// without it the mock responds in ~10ms, so async tasks complete before a
-	// cancel can land — the cancel E2E tests (UI-052/053) need tasks to stay
-	// running long enough for the cancel to arrive during RunAndCollect (where
-	// the executor's wasCancelled re-check keeps the cancelled status).
-	chunkDelayMs := envOrDefaultInt("MOCK_CHUNK_DELAY_MS", 0)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
-		}
-		if chunkDelayMs > 0 {
-			time.Sleep(time.Duration(chunkDelayMs) * time.Millisecond)
 		}
 
 		var req ChatCompletionRequest
@@ -204,7 +196,12 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 
 		// Look up response in Redis
 		ctx := context.Background()
-		response := popResponse(ctx, rdb, lookupKey, defaultReply)
+		response, delayMs := popResponse(ctx, rdb, lookupKey, defaultReply)
+		// Per-injection delay (SPEC-063 cancel tests inject delay_ms=5000 so
+		// async tasks stay running long enough for the UI cancel to land).
+		if delayMs > 0 {
+			time.Sleep(time.Duration(delayMs) * time.Millisecond)
+		}
 
 		// If the response is a tool_call JSON, return as OpenAI function_call
 		if fc := tryAsFunctionCall(response); fc != nil {
@@ -225,16 +222,24 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 }
 
 // popResponse tries exact match first, then returns default.
-func popResponse(ctx context.Context, rdb *redis.Client, exactKey, defaultReply string) string {
+func popResponse(ctx context.Context, rdb *redis.Client, exactKey, defaultReply string) (string, int) {
 	log.Printf("[DEBUG] popResponse: looking up key=%s", exactKey)
 	// Exact match
 	if val, err := rdb.LPop(ctx, exactKey).Result(); err == nil && val != "" {
 		log.Printf("[DEBUG] popResponse: FOUND exact match, val_len=%d", len(val))
-		return val
+		// Try new JSON format {"r":"...","d":N} first; fall back to legacy plain text.
+		var stored struct {
+			R string `json:"r"`
+			D int    `json:"d"`
+		}
+		if json.Unmarshal([]byte(val), &stored) == nil && stored.R != "" {
+			return stored.R, stored.D
+		}
+		return val, 0 // legacy plain-text response, no delay
 	}
 
 	log.Printf("[DEBUG] popResponse: no exact match, returning default (len=%d)", len(defaultReply))
-	return defaultReply
+	return defaultReply, 0
 }
 
 // handleFunctionCall writes a response with tool_calls format,
@@ -463,9 +468,19 @@ func responsesHandler(rdb *redis.Client, adminToken string) http.HandlerFunc {
 			// Hash key to match lookup format (SHA256 full hex)
 			keyHash := sha256.Sum256([]byte(payload.Key))
 			redisKey := "mock:resp:" + fmt.Sprintf("%x", keyHash)
-			log.Printf("[DEBUG] responses POST: raw_key=%q raw_key_len=%d hash=%x redis_key=%s response_len=%d",
-				payload.Key, len(payload.Key), keyHash, redisKey, len(payload.Response))
-			if err := rdb.LPush(ctx, redisKey, payload.Response).Err(); err != nil {
+			// Store as JSON so popResponse can extract delay_ms.
+			stored := struct {
+				R string `json:"r"`
+				D int    `json:"d"`
+			}{R: payload.Response, D: payload.DelayMs}
+			data, err := json.Marshal(stored)
+			if err != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"marshal: %v"}`, err), http.StatusInternalServerError)
+				return
+			}
+			log.Printf("[DEBUG] responses POST: raw_key=%q raw_key_len=%d hash=%x redis_key=%s response_len=%d delay_ms=%d",
+				payload.Key, len(payload.Key), keyHash, redisKey, len(payload.Response), payload.DelayMs)
+			if err := rdb.LPush(ctx, redisKey, string(data)).Err(); err != nil {
 				http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusInternalServerError)
 				return
 			}
