@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
+	domainmodel "github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"google.golang.org/adk/model"
 	adksession "google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -579,3 +581,49 @@ func TestScheduleMemoryWrite_GetError(t *testing.T) {
 
 // ensure json import is used (Stream SSE marshalling tested implicitly).
 var _ = json.Marshal
+
+// TestProcess_NewSessionResolvesDefaultModel verifies that when req.Model is
+// empty and a provider is wired, the default model is resolved and bound to
+// the new session (SPEC-062 §5.4). Covers the createNewSession provider path.
+func TestProcess_NewSessionResolvesDefaultModel(t *testing.T) {
+	adkSessions := adksession.InMemoryService()
+	rt, err := adkruntime.New(adkruntime.Config{
+		AppName: "data-agent", Model: &fakeLLM{text: "ok"}, SessionService: adkSessions,
+	})
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{
+		AppName: "data-agent", SessionService: adkSessions,
+	})
+	// Provider with a default model.
+	repo := mockrepo.NewSysConfigRepository(t)
+	raw, _ := json.Marshal([]modelcfg.ModelEntry{
+		{ID: "default-llm", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
+	})
+	repo.On("Get", mock.Anything, "model", "models").Return(&domainmodel.SystemConfig{Value: string(raw)}, nil)
+	provider := modelcfg.NewProvider(repo)
+
+	mgr := &Manager{ttl: 1 * time.Hour}
+	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+	svc := NewService(registry, provider, adkSessions, mgr, cbReg)
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
+	// Patch session Create to avoid needing a real repo.
+	patches.ApplyMethodReturn(mgr, "Create", &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "default-llm"}, nil)
+
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hi"}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if resp.SessionID == "" {
+		t.Error("expected non-empty session ID")
+	}
+	if resp.Content != "ok" {
+		t.Errorf("content = %v, want ok", resp.Content)
+	}
+}

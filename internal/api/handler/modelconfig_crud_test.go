@@ -19,7 +19,7 @@ func newModelTestHandler(t *testing.T, entries []modelcfg.ModelEntry) *ModelConf
 	repo := mockrepo.NewSysConfigRepository(t)
 	raw, _ := json.Marshal(entries)
 	cfg := &model.SystemConfig{Namespace: "model", Key: "models", Value: string(raw)}
-	repo.On("Get", mock.Anything, "model", "models").Return(cfg, nil)
+	repo.On("Get", mock.Anything, "model", "models").Maybe().Return(cfg, nil)
 	repo.On("GetAll", mock.Anything, "model").Maybe().Return([]model.SystemConfig{*cfg}, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Maybe().Return(nil)
 	p := modelcfg.NewProvider(repo)
@@ -187,3 +187,35 @@ func TestModelConfig_SetDefault_NoProvider(t *testing.T) {
 
 // ensure context import used
 var _ = context.Background
+
+func TestModelConfig_Get_RawWithProvider(t *testing.T) {
+	h := newModelTestHandler(t, []modelcfg.ModelEntry{
+		{ID: "m1", Name: "M1", Type: modelcfg.ModelTypeLLM},
+	})
+	// Get without page param → getRaw path (provider non-nil).
+	c, w := ginReq("GET", "/models", nil)
+	h.Get(c)
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestModelConfig_AddModel_BadJSON(t *testing.T) {
+	h := newModelTestHandler(t, nil)
+	c, w := ginReq("POST", "/models", map[string]any{"type": 123})
+	h.AddModel(c)
+	if w.Code != 400 {
+		t.Errorf("expected 400 on bad JSON, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestModelConfig_AddModel_DuplicateID(t *testing.T) {
+	h := newModelTestHandler(t, []modelcfg.ModelEntry{
+		{ID: "existing", Name: "E", Type: modelcfg.ModelTypeLLM},
+	})
+	c, w := ginReq("POST", "/models", modelcfg.ModelEntry{ID: "existing", Name: "Dup", Type: modelcfg.ModelTypeLLM})
+	h.AddModel(c)
+	if w.Code != 400 {
+		t.Errorf("expected 400 on duplicate ID, got %d", w.Code)
+	}
+}

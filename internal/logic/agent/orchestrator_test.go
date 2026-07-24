@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -11,6 +12,9 @@ import (
 	domainchatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	domaintaskmocks "github.com/luoxiaojun1992/data-agent/internal/domain/task/mocks"
+	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
+	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
 func newTestOrchestrator(t *testing.T) (*Orchestrator, *domainchatmocks.SessionService, *domaintaskmocks.TaskService) {
@@ -109,3 +113,52 @@ var (
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// TestCreateAgentTask_WithProvider exercises the resolveModel path with a
+// real Provider (default model resolution). Covers the provider non-nil
+// branch of resolveModel (SPEC-062 §5.5.1).
+func TestCreateAgentTask_WithProvider(t *testing.T) {
+	sessions := domainchatmocks.NewSessionService(t)
+	tasks := domaintaskmocks.NewTaskService(t)
+	repo := mockrepo.NewSysConfigRepository(t)
+	raw, _ := json.Marshal([]modelcfg.ModelEntry{
+		{ID: "def-model", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
+	})
+	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	provider := modelcfg.NewProvider(repo)
+	orch := NewOrchestrator(sessions, tasks, provider)
+
+	sessions.On("Create", "u1", "agent", "def-model").Return(&domainchat.Session{ID: "s1", UserID: "u1", ModelID: "def-model"}, nil)
+	tk := &domaintask.Task{ID: "task_1", SessionID: "s1", Status: domaintask.StatusQueued, CreatedAt: time.Now()}
+	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, "def-model").Return(tk, nil)
+
+	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if resp.TaskID != "task_1" {
+		t.Errorf("task id = %v", resp.TaskID)
+	}
+}
+
+// TestResolveModel_WithExplicitModel verifies that an explicit req.Model is
+// used as-is (no provider default resolution needed).
+func TestResolveModel_WithExplicitModel(t *testing.T) {
+	sessions := domainchatmocks.NewSessionService(t)
+	tasks := domaintaskmocks.NewTaskService(t)
+	orch := NewOrchestrator(sessions, tasks, nil) // nil provider — explicit model should still work
+
+	sessions.On("Create", "u1", "agent", "explicit-model").Return(&domainchat.Session{ID: "s1", UserID: "u1", ModelID: "explicit-model"}, nil)
+	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, "explicit-model").Return(
+		&domaintask.Task{ID: "t1", SessionID: "s1", Status: domaintask.StatusQueued}, nil)
+
+	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{
+		Title: "t", Model: "explicit-model",
+	})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if resp.TaskID != "t1" {
+		t.Errorf("task id = %v", resp.TaskID)
+	}
+}
