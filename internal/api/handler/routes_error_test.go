@@ -30,7 +30,7 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		Auth:         NewAuthHandler(nil),
 		User:         NewUserHandler(nil),
 		Role:         NewRoleHandler(nil),
-		ModelConfig:  NewModelConfigHandler(nil),
+		ModelConfig:  NewModelConfigHandler(nil, nil),
 		SysConfig:    NewConfigHandler(nil, nil, nil),
 		Memory:       NewMemoryHandler(nil, "data-agent"),
 		Chat:         NewChatHandler(nil),

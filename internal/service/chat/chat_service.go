@@ -12,6 +12,7 @@ import (
 	"google.golang.org/adk/session"
 	genai "google.golang.org/genai"
 
+	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
@@ -20,8 +21,13 @@ import (
 // Service handles real-time chat operations backed by the ADK runtime.
 // It implements domain/chat.ChatService and contains no gin dependency;
 // HTTP/SSE translation is the handler's responsibility.
+//
+// SPEC-062: Service resolves the Runtime per session via the Registry (keyed
+// by session.ModelID) instead of a single shared Runtime. The model is bound
+// at session creation and cannot be changed afterwards.
 type Service struct {
-	rt          *adkruntime.Runtime
+	registry    *adkruntime.Registry
+	provider    *modelcfg.Provider
 	adkSessions session.Service
 	sessions    *Manager
 	cbReg       *security.CircuitBreakerRegistry
@@ -31,10 +37,11 @@ type Service struct {
 // ensure Service satisfies the domain ChatService contract.
 var _ domainchat.ChatService = (*Service)(nil)
 
-// NewService creates a new Chat Service backed by the ADK runtime.
-func NewService(rt *adkruntime.Runtime, adkSessions session.Service, sessions *Manager, cbReg *security.CircuitBreakerRegistry) *Service {
+// NewService creates a new Chat Service backed by the ADK runtime registry.
+func NewService(registry *adkruntime.Registry, provider *modelcfg.Provider, adkSessions session.Service, sessions *Manager, cbReg *security.CircuitBreakerRegistry) *Service {
 	return &Service{
-		rt:          rt,
+		registry:    registry,
+		provider:    provider,
 		adkSessions: adkSessions,
 		sessions:    sessions,
 		cbReg:       cbReg,
@@ -49,11 +56,15 @@ func (s *Service) WithMemoryWrite(hook func(ctx context.Context, sess session.Se
 	return s
 }
 
-// prepareRun validates the request, resolves/creates the session, ensures the
-// ADK session exists with identity injected into state, and returns the
-// resolved session ID, last user message, and run config. Shared by Process
-// and Stream.
-func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, userID, role string) (sessionID, lastMsg string, runCfg adkruntime.RunConfig, err error) {
+// prepareRun validates the request, resolves/creates the session (binding the
+// model ID on creation), ensures the ADK session exists with identity injected
+// into state, and returns the resolved session ID, last user message, run
+// config, and the model-bound Runtime. Shared by Process and Stream.
+//
+// SPEC-062: On new sessions, the model is resolved from req.Model (empty →
+// default) and bound permanently. On existing sessions, req.Model is IGNORED
+// and the session's bound ModelID is used (model cannot be changed).
+func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, userID, role string) (rt *adkruntime.Runtime, sessionID, lastMsg string, runCfg adkruntime.RunConfig, err error) {
 	// Convert legacy single message to messages array.
 	messages := req.Messages
 	if len(messages) == 0 && req.Message != "" {
@@ -64,22 +75,40 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 		return
 	}
 
+	var modelID string
 	// Validate or create session.
 	if req.SessionID == "" {
-		sess, cErr := s.sessions.Create(userID, "chat")
+		// New session: resolve modelId from request or default, then bind.
+		modelID = req.Model
+		if modelID == "" && s.provider != nil {
+			if dm, dErr := s.provider.DefaultModel(ctx); dErr == nil && dm != nil {
+				modelID = dm.ID
+			}
+		}
+		sess, cErr := s.sessions.Create(userID, "chat", modelID)
 		if cErr != nil {
 			err = domainchat.ErrSessionCreateFailed
 			return
 		}
 		sessionID = sess.ID
+		modelID = sess.ModelID
 	} else {
+		// Existing session: use the bound model (ignore req.Model — cannot change).
 		sess, gErr := s.sessions.Get(req.SessionID)
 		if gErr != nil || sess.UserID != userID {
 			err = domainchat.ErrUnauthorizedSession
 			return
 		}
 		sessionID = req.SessionID
+		modelID = sess.ModelID
 		_ = s.sessions.Renew(sessionID)
+	}
+
+	// Resolve the Runtime for this session's bound model.
+	rt, rErr := s.registry.GetOrCreate(ctx, modelID)
+	if rErr != nil {
+		err = domainchat.ErrADKSessionInitFailed
+		return
 	}
 
 	lastMsg = lastUserMessage(messages)
@@ -99,7 +128,7 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 		state["kb_id"] = req.KBID
 	}
 	if _, cerr := s.adkSessions.Create(ctx, &session.CreateRequest{
-		AppName:   s.rt.AppName(),
+		AppName:   rt.AppName(),
 		UserID:    userID,
 		SessionID: sessionID,
 		State:     state,
@@ -118,7 +147,7 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 // Process handles a non-streaming chat request and returns the final
 // assistant content. Implements domain/chat.ChatService.
 func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userID, role string) (*domainchat.ChatResponse, error) {
-	sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +155,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 	var content string
 	cb := s.cbReg.GetOrCreate("chat")
 	if cErr := cb.Call(func() error {
-		text, rErr := s.runAndCollect(ctx, userID, sessionID, lastMsg, runCfg)
+		text, rErr := s.runAndCollect(ctx, rt, userID, sessionID, lastMsg, runCfg)
 		if rErr != nil {
 			return rErr
 		}
@@ -148,7 +177,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 // Implements domain/chat.ChatService. The writer must implement
 // http.Flusher (gin and httptest.ResponseRecorder both do).
 func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID, role string, w http.ResponseWriter) error {
-	sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return err
 	}
@@ -167,7 +196,7 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	fmt.Fprintf(w, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
-	for evt, rErr := range s.rt.Run(ctx, userID, sessionID, lastMsg, runCfg) {
+	for evt, rErr := range rt.Run(ctx, userID, sessionID, lastMsg, runCfg) {
 		if rErr != nil {
 			log.Printf("[chat] run error: %v", rErr)
 			errData, _ := json.Marshal(map[string]string{"error": rErr.Error()})
@@ -229,10 +258,10 @@ func forwardSSEParts(w http.ResponseWriter, flusher http.Flusher, parts []*genai
 
 // runAndCollect executes one ADK turn and returns the final assistant text.
 // Intermediate tool call/response events are consumed but not surfaced.
-func (s *Service) runAndCollect(ctx context.Context, userID, sessionID, message string, runCfg adkruntime.RunConfig) (string, error) {
+func (s *Service) runAndCollect(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID, message string, runCfg adkruntime.RunConfig) (string, error) {
 	var finalText strings.Builder
 	runErr := error(nil)
-	for evt, err := range s.rt.Run(ctx, userID, sessionID, message, runCfg) {
+	for evt, err := range rt.Run(ctx, userID, sessionID, message, runCfg) {
 		if err != nil {
 			runErr = err
 			break
@@ -256,15 +285,17 @@ func (s *Service) runAndCollect(ctx context.Context, userID, sessionID, message 
 }
 
 // scheduleMemoryWrite invokes the memory hook asynchronously after the response.
+// Uses the registry's shared app name (all Runtimes share it).
 func (s *Service) scheduleMemoryWrite(userID, sessionID string) {
 	if s.memoryWrite == nil {
 		return
 	}
+	appName := s.registry.AppName()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		resp, err := s.adkSessions.Get(ctx, &session.GetRequest{
-			AppName:   s.rt.AppName(),
+			AppName:   appName,
 			UserID:    userID,
 			SessionID: sessionID,
 		})

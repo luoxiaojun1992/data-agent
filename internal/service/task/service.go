@@ -21,8 +21,8 @@ func NewService(repo repository.TaskRepository, queueRepo repository.QueueReposi
 }
 
 // CreateTask creates a new task, persists it and enqueues it.
-func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) (*task.Task, error) {
-	t := task.NewTask(sessionID, userID, taskType, skillChain, params)
+func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*task.Task, error) {
+	t := task.NewTask(sessionID, userID, taskType, skillChain, params, modelID)
 	t.Status = task.StatusQueued
 	if err := s.repo.Create(context.Background(), t); err != nil {
 		return nil, fmt.Errorf("insert task: %w", err)

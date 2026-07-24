@@ -17,14 +17,14 @@ func newTestOrchestrator(t *testing.T) (*Orchestrator, *domainchatmocks.SessionS
 	t.Helper()
 	sessions := domainchatmocks.NewSessionService(t)
 	tasks := domaintaskmocks.NewTaskService(t)
-	return NewOrchestrator(sessions, tasks), sessions, tasks
+	return NewOrchestrator(sessions, tasks, nil), sessions, tasks
 }
 
 func TestCreateAgentTask_Success(t *testing.T) {
 	orch, sessions, tasks := newTestOrchestrator(t)
-	sessions.On("Create", "u1", "agent").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	tk := &domaintask.Task{ID: "task_1", SessionID: "s1", UserID: "u1", Status: domaintask.StatusPending, CreatedAt: time.Now()}
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{"stats_engine"}, mock.Anything).Return(tk, nil)
+	tasks.On("CreateTask", "s1", "u1", "agent", []string{"stats_engine"}, mock.Anything, mock.Anything).Return(tk, nil)
 
 	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{
 		Title:      "t",
@@ -44,8 +44,8 @@ func TestCreateAgentTask_Success(t *testing.T) {
 
 func TestCreateAgentTask_NoTaskService(t *testing.T) {
 	sessions := domainchatmocks.NewSessionService(t)
-	orch := NewOrchestrator(sessions, nil) // no task service
-	sessions.On("Create", "u1", "agent").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	orch := NewOrchestrator(sessions, nil, nil) // no task service
+	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 
 	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestCreateAgentTask_NoTaskService(t *testing.T) {
 
 func TestCreateAgentTask_SessionError(t *testing.T) {
 	orch, sessions, _ := newTestOrchestrator(t)
-	sessions.On("Create", "u1", "agent").Return((*domainchat.Session)(nil), errSessionDown)
+	sessions.On("Create", "u1", "agent", mock.Anything).Return((*domainchat.Session)(nil), errSessionDown)
 
 	_, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
 	if err == nil {
@@ -74,8 +74,8 @@ func TestCreateAgentTask_SessionError(t *testing.T) {
 
 func TestCreateAgentTask_TaskError(t *testing.T) {
 	orch, sessions, tasks := newTestOrchestrator(t)
-	sessions.On("Create", "u1", "agent").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
-	tasks.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	tasks.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return((*domaintask.Task)(nil), errQueueDown)
 
 	_, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
@@ -86,10 +86,10 @@ func TestCreateAgentTask_TaskError(t *testing.T) {
 
 func TestCreateAgentTask_NilSkillChainNormalized(t *testing.T) {
 	orch, sessions, tasks := newTestOrchestrator(t)
-	sessions.On("Create", "u1", "agent").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	tk := &domaintask.Task{ID: "task_2", SessionID: "s1", UserID: "u1", Status: domaintask.StatusQueued, CreatedAt: time.Now()}
 	// Nil skill chain should be normalized to empty slice, not nil.
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything).Return(tk, nil)
+	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, mock.Anything).Return(tk, nil)
 
 	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
 	if err != nil {

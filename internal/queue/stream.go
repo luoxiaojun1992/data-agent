@@ -39,6 +39,7 @@ func (s *Stream) Enqueue(ctx context.Context, t *task.Task) error {
 		SessionID:  t.SessionID,
 		UserID:     t.UserID,
 		Type:       t.Type,
+		ModelID:    t.ModelID,
 		SkillChain: t.SkillChain,
 		Params:     t.Params,
 		CreatedAt:  t.CreatedAt.Format(time.RFC3339),

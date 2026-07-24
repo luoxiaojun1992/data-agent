@@ -45,7 +45,7 @@ func TestCreateTask_Success(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"agent_exec","session_id":"sess-1","skill_chain":["sql","report"]}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -63,7 +63,7 @@ func TestCreateTask_DefaultType(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_2", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
 
 	// Empty title and type → defaults to "agent_exec"
 	body := `{}`
@@ -82,7 +82,7 @@ func TestCreateTask_FromFrontend(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_3", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
 
 	// Frontend sends "title" and "skills" (not "type" and "skill_chain")
 	body := `{"title":"My Task","skills":["sql","chart"],"description":"Do something"}`
@@ -101,7 +101,7 @@ func TestCreateTask_WithParams(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_4", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"Task","skill_chain":["sql"],"params":{"key":"value"}}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -119,7 +119,7 @@ func TestCreateTask_WithCronExpr(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_5", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( mockTask, nil)
 
 	body := `{"title":"Scheduled","skill_chain":["sql"],"cron_expr":"0 0 * * *"}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -148,7 +148,7 @@ func TestCreateTask_ServiceError(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc)
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( nil, fmt.Errorf("queue full"))
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( nil, fmt.Errorf("queue full"))
 
 	body := `{"title":"agent_exec"}`
 	c, w := newGinContext("POST", "/tasks", body)

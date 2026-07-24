@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	task "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -48,29 +48,29 @@ func (_m *TaskService) CancelTask(id string) error {
 	return r0
 }
 
-// CreateTask provides a mock function with given fields: sessionID, userID, taskType, skillChain, params
-func (_m *TaskService) CreateTask(sessionID string, userID string, taskType string, skillChain []string, params map[string]interface{}) (*domaintask.Task, error) {
-	ret := _m.Called(sessionID, userID, taskType, skillChain, params)
+// CreateTask provides a mock function with given fields: sessionID, userID, taskType, skillChain, params, modelID
+func (_m *TaskService) CreateTask(sessionID string, userID string, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*task.Task, error) {
+	ret := _m.Called(sessionID, userID, taskType, skillChain, params, modelID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateTask")
 	}
 
-	var r0 *domaintask.Task
+	var r0 *task.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}) (*domaintask.Task, error)); ok {
-		return rf(sessionID, userID, taskType, skillChain, params)
+	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}, string) (*task.Task, error)); ok {
+		return rf(sessionID, userID, taskType, skillChain, params, modelID)
 	}
-	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}) *domaintask.Task); ok {
-		r0 = rf(sessionID, userID, taskType, skillChain, params)
+	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}, string) *task.Task); ok {
+		r0 = rf(sessionID, userID, taskType, skillChain, params, modelID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domaintask.Task)
+			r0 = ret.Get(0).(*task.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string, string, []string, map[string]interface{}) error); ok {
-		r1 = rf(sessionID, userID, taskType, skillChain, params)
+	if rf, ok := ret.Get(1).(func(string, string, string, []string, map[string]interface{}, string) error); ok {
+		r1 = rf(sessionID, userID, taskType, skillChain, params, modelID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -79,23 +79,23 @@ func (_m *TaskService) CreateTask(sessionID string, userID string, taskType stri
 }
 
 // GetTask provides a mock function with given fields: id
-func (_m *TaskService) GetTask(id string) (*domaintask.Task, error) {
+func (_m *TaskService) GetTask(id string) (*task.Task, error) {
 	ret := _m.Called(id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTask")
 	}
 
-	var r0 *domaintask.Task
+	var r0 *task.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*domaintask.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(string) (*task.Task, error)); ok {
 		return rf(id)
 	}
-	if rf, ok := ret.Get(0).(func(string) *domaintask.Task); ok {
+	if rf, ok := ret.Get(0).(func(string) *task.Task); ok {
 		r0 = rf(id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domaintask.Task)
+			r0 = ret.Get(0).(*task.Task)
 		}
 	}
 
@@ -109,23 +109,23 @@ func (_m *TaskService) GetTask(id string) (*domaintask.Task, error) {
 }
 
 // ListAllTasks provides a mock function with given fields: userID
-func (_m *TaskService) ListAllTasks(userID string) ([]*domaintask.Task, error) {
+func (_m *TaskService) ListAllTasks(userID string) ([]*task.Task, error) {
 	ret := _m.Called(userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListAllTasks")
 	}
 
-	var r0 []*domaintask.Task
+	var r0 []*task.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) ([]*domaintask.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(string) ([]*task.Task, error)); ok {
 		return rf(userID)
 	}
-	if rf, ok := ret.Get(0).(func(string) []*domaintask.Task); ok {
+	if rf, ok := ret.Get(0).(func(string) []*task.Task); ok {
 		r0 = rf(userID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*domaintask.Task)
+			r0 = ret.Get(0).([]*task.Task)
 		}
 	}
 
@@ -139,24 +139,24 @@ func (_m *TaskService) ListAllTasks(userID string) ([]*domaintask.Task, error) {
 }
 
 // ListTasks provides a mock function with given fields: userID, status, skip, limit
-func (_m *TaskService) ListTasks(userID string, status string, skip int64, limit int64) ([]*domaintask.Task, int64, error) {
+func (_m *TaskService) ListTasks(userID string, status string, skip int64, limit int64) ([]*task.Task, int64, error) {
 	ret := _m.Called(userID, status, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListTasks")
 	}
 
-	var r0 []*domaintask.Task
+	var r0 []*task.Task
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(string, string, int64, int64) ([]*domaintask.Task, int64, error)); ok {
+	if rf, ok := ret.Get(0).(func(string, string, int64, int64) ([]*task.Task, int64, error)); ok {
 		return rf(userID, status, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(string, string, int64, int64) []*domaintask.Task); ok {
+	if rf, ok := ret.Get(0).(func(string, string, int64, int64) []*task.Task); ok {
 		r0 = rf(userID, status, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*domaintask.Task)
+			r0 = ret.Get(0).([]*task.Task)
 		}
 	}
 
@@ -176,23 +176,23 @@ func (_m *TaskService) ListTasks(userID string, status string, skip int64, limit
 }
 
 // RetryTask provides a mock function with given fields: id
-func (_m *TaskService) RetryTask(id string) (*domaintask.Task, error) {
+func (_m *TaskService) RetryTask(id string) (*task.Task, error) {
 	ret := _m.Called(id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RetryTask")
 	}
 
-	var r0 *domaintask.Task
+	var r0 *task.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*domaintask.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(string) (*task.Task, error)); ok {
 		return rf(id)
 	}
-	if rf, ok := ret.Get(0).(func(string) *domaintask.Task); ok {
+	if rf, ok := ret.Get(0).(func(string) *task.Task); ok {
 		r0 = rf(id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domaintask.Task)
+			r0 = ret.Get(0).(*task.Task)
 		}
 	}
 
@@ -206,7 +206,7 @@ func (_m *TaskService) RetryTask(id string) (*domaintask.Task, error) {
 }
 
 // UpdateStatus provides a mock function with given fields: id, status
-func (_m *TaskService) UpdateStatus(id string, status domaintask.Status) error {
+func (_m *TaskService) UpdateStatus(id string, status task.Status) error {
 	ret := _m.Called(id, status)
 
 	if len(ret) == 0 {
@@ -214,7 +214,7 @@ func (_m *TaskService) UpdateStatus(id string, status domaintask.Status) error {
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, domaintask.Status) error); ok {
+	if rf, ok := ret.Get(0).(func(string, task.Status) error); ok {
 		r0 = rf(id, status)
 	} else {
 		r0 = ret.Error(0)
@@ -224,7 +224,7 @@ func (_m *TaskService) UpdateStatus(id string, status domaintask.Status) error {
 }
 
 // UpdateTaskProgress provides a mock function with given fields: id, p
-func (_m *TaskService) UpdateTaskProgress(id string, p *domaintask.TaskProgress) error {
+func (_m *TaskService) UpdateTaskProgress(id string, p *task.TaskProgress) error {
 	ret := _m.Called(id, p)
 
 	if len(ret) == 0 {
@@ -232,7 +232,7 @@ func (_m *TaskService) UpdateTaskProgress(id string, p *domaintask.TaskProgress)
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, *domaintask.TaskProgress) error); ok {
+	if rf, ok := ret.Get(0).(func(string, *task.TaskProgress) error); ok {
 		r0 = rf(id, p)
 	} else {
 		r0 = ret.Error(0)

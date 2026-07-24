@@ -21,12 +21,15 @@ func TestCreateTask_Success(t *testing.T) {
 	repo := mockrepo.NewTaskRepository(t)
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 
-	tsk, err := NewService(repo, nil).CreateTask("s1", "u1", "analysis", []string{"sql", "stats"}, map[string]interface{}{"query": "SELECT 1"})
+	tsk, err := NewService(repo, nil).CreateTask("s1", "u1", "analysis", []string{"sql", "stats"}, map[string]interface{}{"query": "SELECT 1"}, "model_1")
 	if err != nil {
 		t.Fatalf("CreateTask: %v", err)
 	}
 	if tsk == nil || tsk.Status != task.StatusQueued {
 		t.Errorf("unexpected task: status=%s", tsk.Status)
+	}
+	if tsk.ModelID != "model_1" {
+		t.Errorf("ModelID: got %s, want model_1", tsk.ModelID)
 	}
 }
 
@@ -86,7 +89,7 @@ func TestTask_CreateError(t *testing.T) {
 	repo := mockrepo.NewTaskRepository(t)
 	repo.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("db error"))
 
-	_, err := NewService(repo, nil).CreateTask("s1", "u1", "analysis", nil, nil)
+	_, err := NewService(repo, nil).CreateTask("s1", "u1", "analysis", nil, nil, "")
 	if err == nil {
 		t.Fatal("expected error")
 	}

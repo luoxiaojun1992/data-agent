@@ -26,7 +26,7 @@ func newModelCfgGin(method, path, body string) (*gin.Context, *httptest.Response
 func TestModelConfigHandler_Get(t *testing.T) {
 	svc := configmocks.NewService(t)
 	svc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
-	h := NewModelConfigHandler(svc)
+	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("GET", "/models", "")
 	h.Get(c)
 	if w.Code != http.StatusOK {
@@ -43,7 +43,7 @@ func TestModelConfigHandler_Get(t *testing.T) {
 func TestModelConfigHandler_Get_Error(t *testing.T) {
 	svc := configmocks.NewService(t)
 	svc.On("GetAll", mock.Anything, "models").Return(([]model.SystemConfig)(nil), errStr("db"))
-	h := NewModelConfigHandler(svc)
+	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("GET", "/models", "")
 	h.Get(c)
 	if w.Code != http.StatusInternalServerError {
@@ -54,7 +54,7 @@ func TestModelConfigHandler_Get_Error(t *testing.T) {
 func TestModelConfigHandler_Put(t *testing.T) {
 	svc := configmocks.NewService(t)
 	svc.On("Upsert", mock.Anything, "models", "key1", "val1").Return(nil)
-	h := NewModelConfigHandler(svc)
+	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("PUT", "/models", `{"key":"key1","value":"val1"}`)
 	h.Put(c)
 	if w.Code != http.StatusOK {
@@ -64,7 +64,7 @@ func TestModelConfigHandler_Put(t *testing.T) {
 
 func TestModelConfigHandler_Put_InvalidBody(t *testing.T) {
 	svc := configmocks.NewService(t)
-	h := NewModelConfigHandler(svc)
+	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("PUT", "/models", "not-json")
 	h.Put(c)
 	if w.Code != http.StatusBadRequest {
@@ -73,7 +73,7 @@ func TestModelConfigHandler_Put_InvalidBody(t *testing.T) {
 }
 
 func TestNewModelConfigHandler(t *testing.T) {
-	h := NewModelConfigHandler(nil)
+	h := NewModelConfigHandler(nil, nil)
 	if h == nil {
 		t.Error("handler should not be nil")
 	}

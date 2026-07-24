@@ -58,7 +58,11 @@ type ChatService interface {
 //
 //go:generate mockery --name SessionService --output ./mocks --outpkg mocks
 type SessionService interface {
-	Create(userID, sessionType string) (*Session, error)
+	// Create creates a new session bound to the given model ID. modelID is
+	// the ModelEntry.ID to bind (empty = resolved to default by the caller
+	// before persistence; the DB always stores a concrete ID). Once bound,
+	// a session's model cannot be changed.
+	Create(userID, sessionType, modelID string) (*Session, error)
 	Get(id string) (*Session, error)
 	Renew(id string) error
 	Cleanup() (int64, error)

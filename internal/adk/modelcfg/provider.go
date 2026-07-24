@@ -6,6 +6,9 @@ package modelcfg
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -39,6 +42,7 @@ const (
 
 // ModelEntry describes one model in the admin config.
 type ModelEntry struct {
+	ID              string    `json:"id"` // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
 	APIKey          string    `json:"-"` // Vault encrypt
@@ -48,7 +52,7 @@ type ModelEntry struct {
 	UseCases        []string  `json:"use_cases"`
 	TokenMultiplier float64   `json:"token_multiplier"`
 	Temperature     float64   `json:"temperature"` // LLM only
-	MaxTokens       int       `json:"max_tokens"`   // LLM only
+	MaxTokens       int       `json:"max_tokens"`  // LLM only
 	IsDefault       bool      `json:"is_default"`
 	FallbackOrder   int       `json:"fallback_order"`
 }
@@ -78,15 +82,30 @@ func NewProvider(repo repository.SysConfigRepository) *Provider {
 const defaultBaseURL = "https://api.openai.com/v1"
 
 // models returns the configured LLM model list. DB has priority; env fallback.
+// Empty IDs are backfilled from Name (legacy compat) so every entry has a
+// stable identifier after read.
 func (p *Provider) models() []ModelEntry {
 	entries := p.modelsFromDB()
 	if len(entries) > 0 {
 		for i := range entries {
 			p.applyEnvDefaults(&entries[i])
+			p.backfillID(&entries[i])
 		}
 		return entries
 	}
-	return p.modelsFromEnv()
+	entries = p.modelsFromEnv()
+	for i := range entries {
+		p.backfillID(&entries[i])
+	}
+	return entries
+}
+
+// backfillID sets ID = Name when ID is empty (legacy config compat). After
+// admin edits and saves, a proper UUID is generated server-side.
+func (p *Provider) backfillID(m *ModelEntry) {
+	if m.ID == "" {
+		m.ID = m.Name
+	}
 }
 
 // modelsFromDB deserializes the "models" key from the config namespace.
@@ -243,6 +262,217 @@ func (p *Provider) DefaultInstruction(ctx context.Context) string {
 	return "" // caller falls back to runtime.DefaultInstruction
 }
 
+// DefaultModel returns the default LLM model entry: the first entry with
+// IsDefault==true && Type==llm, or if none, the first Type==llm entry.
+// Returns an error when no LLM models are configured.
+func (p *Provider) DefaultModel(ctx context.Context) (*ModelEntry, error) {
+	models := p.models()
+	var firstLLM *ModelEntry
+	for i := range models {
+		if models[i].Type != ModelTypeLLM {
+			continue
+		}
+		if firstLLM == nil {
+			firstLLM = &models[i]
+		}
+		if models[i].IsDefault {
+			return &models[i], nil
+		}
+	}
+	if firstLLM != nil {
+		return firstLLM, nil
+	}
+	return nil, fmt.Errorf("no LLM models configured")
+}
+
+// GetModelByID returns the model entry with the given ID. When modelID is
+// empty, returns the default LLM model (backward compat). Returns an error
+// when the ID is not found.
+func (p *Provider) GetModelByID(ctx context.Context, modelID string) (*ModelEntry, error) {
+	if modelID == "" {
+		return p.DefaultModel(ctx)
+	}
+	models := p.models()
+	for i := range models {
+		if models[i].ID == modelID {
+			return &models[i], nil
+		}
+	}
+	return nil, fmt.Errorf("model %q not found", modelID)
+}
+
+// BuildLLMByID constructs an LLM from the model entry matching modelID.
+// When modelID is empty, uses the default LLM model. This is the per-model
+// construction path used by the Runtime registry (SPEC-062).
+func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM, error) {
+	entry, err := p.GetModelByID(ctx, modelID)
+	if err != nil {
+		return nil, err
+	}
+	backends := p.buildBackends([]ModelEntry{*entry})
+	if len(backends) == 0 {
+		return nil, fmt.Errorf("failed to build LLM for model %q", entry.ID)
+	}
+	return backends[0], nil
+}
+
+// GetModelByUseCase returns the model entry selected for a given use case
+// (cheapest matching LLM, or the first model when none match). Used by the
+// Runtime registry's system-level path to build per-use-case Runtime
+// instances (SPEC-062 §5.3.2).
+func (p *Provider) GetModelByUseCase(ctx context.Context, useCase UseCase) (*ModelEntry, error) {
+	models := p.models()
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models configured")
+	}
+	selected := p.selectModelsByUseCase(models, useCase)
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("no model for use case %q", useCase)
+	}
+	return &selected[0], nil
+}
+
+// ListLLMModels returns the Type==llm model entries (paginated in memory).
+// Returns (models, total, error) where total is the full LLM count. page
+// starts at 1; pageSize is clamped to [1, 100].
+func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	all := p.models()
+	var llmModels []ModelEntry
+	for _, m := range all {
+		if m.Type == ModelTypeLLM {
+			llmModels = append(llmModels, m)
+		}
+	}
+	total := len(llmModels)
+	offset := (page - 1) * pageSize
+	if offset >= total {
+		return []ModelEntry{}, total, nil
+	}
+	end := offset + pageSize
+	if end > total {
+		end = total
+	}
+	return llmModels[offset:end], total, nil
+}
+
+// ConfigHash returns a sha256 hex digest of the JSON-serialized model entry.
+// The Runtime registry uses this fingerprint to detect config changes and
+// rebuild cached Runtime instances (hot-reload without Pub/Sub).
+func ConfigHash(m ModelEntry) string {
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// AddModel appends a single model entry, generating a UUID ID when empty,
+// then persists the full list. Maintains the IsDefault invariant.
+func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, error) {
+	if p.repo == nil {
+		return entry, fmt.Errorf("config repository not available")
+	}
+	if entry.ID == "" {
+		entry.ID = "model_" + newUUID()
+	}
+	models := p.models()
+	for _, m := range models {
+		if m.ID == entry.ID {
+			return entry, fmt.Errorf("model ID %q already exists", entry.ID)
+		}
+	}
+	models = append(models, entry)
+	if err := p.SetModels(ctx, models); err != nil {
+		return entry, err
+	}
+	return entry, nil
+}
+
+// DeleteModel removes the model with the given ID from the list. Idempotent:
+// deleting a non-existent ID is a no-op (returns nil).
+func (p *Provider) DeleteModel(ctx context.Context, id string) error {
+	if p.repo == nil {
+		return fmt.Errorf("config repository not available")
+	}
+	models := p.models()
+	kept := make([]ModelEntry, 0, len(models))
+	removed := false
+	hadDefault := false
+	for _, m := range models {
+		if m.ID == id {
+			removed = true
+			if m.IsDefault {
+				hadDefault = true
+			}
+			continue
+		}
+		kept = append(kept, m)
+	}
+	if !removed {
+		return nil // idempotent delete
+	}
+	// If we removed the default LLM, promote the first remaining LLM.
+	if hadDefault {
+		ensureSingleDefault(kept)
+	}
+	return p.SetModels(ctx, kept)
+}
+
+// SetDefaultModel marks the model with the given ID as the sole default LLM,
+// clearing IsDefault on every other LLM entry. Returns an error when the ID
+// is not found or is not an LLM model.
+func (p *Provider) SetDefaultModel(ctx context.Context, id string) error {
+	if p.repo == nil {
+		return fmt.Errorf("config repository not available")
+	}
+	models := p.models()
+	found := false
+	for i := range models {
+		if models[i].Type != ModelTypeLLM {
+			continue
+		}
+		if models[i].ID == id {
+			models[i].IsDefault = true
+			found = true
+		} else {
+			models[i].IsDefault = false
+		}
+	}
+	if !found {
+		return fmt.Errorf("LLM model %q not found", id)
+	}
+	return p.SetModels(ctx, models)
+}
+
+// newUUID generates a UUID v4 string. Isolated so tests can stub it.
+var newUUID = func() string {
+	return generateUUID()
+}
+
+// generateUUID is the default UUID generator.
+func generateUUID() string {
+	b := make([]byte, 16)
+	if _, err := readRand(b); err != nil {
+		return fmt.Sprintf("%d", os.Getpid()) // fallback, unlikely path
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// readRand reads random bytes (wraps crypto/rand.Read for testability).
+var readRand = rand.Read
+
 // ---- Embedding ----
 
 // EmbeddingConfig returns the embedding model config, DB priority, env fallback.
@@ -281,16 +511,66 @@ func (p *Provider) applyEmbeddingDefaults(e *EmbeddingEntry) {
 
 // ---- Admin API helpers ----
 
-// SetModels serializes and stores the model list (admin PUT).
+// SetModels serializes and stores the model list (admin PUT). It validates
+// ID uniqueness (after backfilling empty IDs from Name) and maintains the
+// IsDefault invariant: exactly one LLM model has IsDefault==true when LLM
+// models exist. The first LLM model is auto-marked default when none is.
 func (p *Provider) SetModels(ctx context.Context, entries []ModelEntry) error {
 	if p.repo == nil {
 		return fmt.Errorf("config repository not available")
 	}
+	for i := range entries {
+		p.backfillID(&entries[i])
+	}
+	if err := validateModelIDs(entries); err != nil {
+		return err
+	}
+	ensureSingleDefault(entries)
 	raw, err := json.Marshal(entries)
 	if err != nil {
 		return fmt.Errorf("marshal models: %w", err)
 	}
 	return p.repo.Upsert(ctx, p.cfgNS, "models", string(raw))
+}
+
+// validateModelIDs rejects duplicate IDs within a model list.
+func validateModelIDs(entries []ModelEntry) error {
+	seen := make(map[string]bool, len(entries))
+	for _, m := range entries {
+		if m.ID == "" {
+			return fmt.Errorf("model entry has empty ID after backfill")
+		}
+		if seen[m.ID] {
+			return fmt.Errorf("duplicate model ID %q", m.ID)
+		}
+		seen[m.ID] = true
+	}
+	return nil
+}
+
+// ensureSingleDefault guarantees at most one LLM model is marked IsDefault.
+// When no LLM model is default, the first LLM model is auto-marked.
+func ensureSingleDefault(entries []ModelEntry) {
+	firstLLM := -1
+	defaultLLM := -1
+	for i, m := range entries {
+		if m.Type != ModelTypeLLM {
+			continue
+		}
+		if firstLLM < 0 {
+			firstLLM = i
+		}
+		if m.IsDefault {
+			if defaultLLM >= 0 {
+				entries[i].IsDefault = false // collapse extras
+			} else {
+				defaultLLM = i
+			}
+		}
+	}
+	if defaultLLM < 0 && firstLLM >= 0 {
+		entries[firstLLM].IsDefault = true
+	}
 }
 
 // SetEmbedding serializes and stores the embedding config (admin PUT).

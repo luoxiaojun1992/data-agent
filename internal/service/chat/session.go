@@ -24,12 +24,13 @@ func NewManager(repo repository.SessionRepository, ttl time.Duration) *Manager {
 // ensure Manager satisfies the domain SessionService contract.
 var _ domainchat.SessionService = (*Manager)(nil)
 
-func (m *Manager) Create(userID, sessionType string) (*domainchat.Session, error) {
+func (m *Manager) Create(userID, sessionType, modelID string) (*domainchat.Session, error) {
 	now := time.Now()
 	s := &domainchat.Session{
 		ID:        "sess_" + uuid.New().String(),
 		UserID:    userID,
 		Type:      sessionType,
+		ModelID:   modelID,
 		Status:    "active",
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -99,6 +100,7 @@ func sessionToRecord(s *domainchat.Session) repository.SessionRecord {
 		ID:        s.ID,
 		UserID:    s.UserID,
 		Title:     s.Type,
+		ModelID:   s.ModelID,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
 		ExpiresAt: s.ExpiresAt,
@@ -111,6 +113,7 @@ func recordToSession(r *repository.SessionRecord) *domainchat.Session {
 		ID:        r.ID,
 		UserID:    r.UserID,
 		Type:      r.Title,
+		ModelID:   r.ModelID,
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 		ExpiresAt: r.ExpiresAt,

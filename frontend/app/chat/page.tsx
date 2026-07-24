@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
+import ModelSelector from '../components/ModelSelector';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -70,6 +71,7 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
+  const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
   const streamingRef = useRef<string>('');
   const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -99,9 +101,14 @@ export default function ChatPage() {
 
   const createSession = async () => {
     try {
-      const res = await apiFetch('/sessions', { method: 'POST' });
+      const res = await apiFetch('/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: selectedModel }),
+      });
       const data = await res.json();
       setSessionId(data.session_id);
+      if (data.model_id) setSelectedModel(data.model_id); // sync resolved default
       return data.session_id;
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -109,7 +116,7 @@ export default function ChatPage() {
     }
   };
 
-  const newSession = () => { setMessages([]); setSessionId(null); setInput(''); };
+  const newSession = () => { setMessages([]); setSessionId(null); setInput(''); setSelectedModel(''); };
 
   const fetchSessions = async () => {
     try {
@@ -206,7 +213,7 @@ export default function ChatPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true }),
+        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel }),
       });
       if (!res.ok) throw new Error('Chat request failed');
       const reader = res.body?.getReader();
@@ -292,6 +299,12 @@ export default function ChatPage() {
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="chat-new-session-btn"
               >新对话</button>
+              <ModelSelector
+                value={selectedModel}
+                onChange={setSelectedModel}
+                disabled={!!sessionId}
+                token={auth.token}
+              />
               <button onClick={toggleSessions}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="chat-session-btn">📋 会话</button>

@@ -20,6 +20,7 @@ type Schedule struct {
 	Enabled    bool                   `json:"enabled" bson:"enabled"`
 	SkillChain []string               `json:"skill_chain" bson:"skill_chain"`
 	Params     map[string]interface{} `json:"params" bson:"params"`
+	ModelID    string                 `json:"model_id" bson:"model_id"` // bound model for scheduled runs
 	LastRun    *time.Time             `json:"last_run" bson:"last_run"`
 	NextRun    time.Time              `json:"next_run" bson:"next_run"`
 	CreatedAt  time.Time              `json:"created_at" bson:"created_at"`
@@ -27,7 +28,7 @@ type Schedule struct {
 
 // TaskCreator is the interface Scheduler uses to create AgentTasks.
 type TaskCreator interface {
-	CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) (taskID string, err error)
+	CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (taskID string, err error)
 }
 
 // Scheduler manages recurring task schedules.
@@ -148,7 +149,7 @@ func (s *Scheduler) executeJob(ctx context.Context, sch *Schedule) {
 	log.Printf("Scheduler: executing %q", sch.Name)
 
 	sessionID := fmt.Sprintf("sched_%s_%d", sch.ID, now.Unix())
-	_, err := s.creator.CreateTask(sessionID, "system", "scheduled", sch.SkillChain, sch.Params)
+	_, err := s.creator.CreateTask(sessionID, "system", "scheduled", sch.SkillChain, sch.Params, sch.ModelID)
 	if err != nil {
 		log.Printf("Scheduler: failed to create task for %q: %v", sch.Name, err)
 		return

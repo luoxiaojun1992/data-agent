@@ -55,9 +55,21 @@ func newTestService(t *testing.T, llm model.LLM) *Service {
 	if err != nil {
 		t.Fatalf("runtime: %v", err)
 	}
+	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{
+		AppName:        "data-agent",
+		SessionService: adkSessions,
+	})
 	mgr := &Manager{ttl: 1 * time.Hour}
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	return NewService(rt, adkSessions, mgr, cbReg)
+	svc := NewService(registry, nil, adkSessions, mgr, cbReg)
+	// Patch GetOrCreate to return the test Runtime (avoids needing a real
+	// Provider with a configured model for unit tests).
+	patches := gomonkey.NewPatches()
+	t.Cleanup(patches.Reset)
+	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
+	return svc
 }
 
 func patchSessionCreate(patches *gomonkey.Patches, svc *Service, sess *domainchat.Session, err error) {
@@ -329,7 +341,7 @@ func TestManager_Create(t *testing.T) {
 	m, repo := newTestManager(t)
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 
-	s, err := m.Create("user1", "chat")
+	s, err := m.Create("user1", "chat", "")
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -340,7 +352,7 @@ func TestManager_Create(t *testing.T) {
 	t.Run("db error", func(t *testing.T) {
 		m2, repo2 := newTestManager(t)
 		repo2.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("db down"))
-		if _, err := m2.Create("user1", "chat"); err == nil {
+		if _, err := m2.Create("user1", "chat", ""); err == nil {
 			t.Error("expected db error")
 		}
 	})

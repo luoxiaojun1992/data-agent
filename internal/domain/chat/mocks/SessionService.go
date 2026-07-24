@@ -42,9 +42,9 @@ func (_m *SessionService) Cleanup() (int64, error) {
 	return r0, r1
 }
 
-// Create provides a mock function with given fields: userID, sessionType
-func (_m *SessionService) Create(userID string, sessionType string) (*chat.Session, error) {
-	ret := _m.Called(userID, sessionType)
+// Create provides a mock function with given fields: userID, sessionType, modelID
+func (_m *SessionService) Create(userID string, sessionType string, modelID string) (*chat.Session, error) {
+	ret := _m.Called(userID, sessionType, modelID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
@@ -52,19 +52,19 @@ func (_m *SessionService) Create(userID string, sessionType string) (*chat.Sessi
 
 	var r0 *chat.Session
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, string) (*chat.Session, error)); ok {
-		return rf(userID, sessionType)
+	if rf, ok := ret.Get(0).(func(string, string, string) (*chat.Session, error)); ok {
+		return rf(userID, sessionType, modelID)
 	}
-	if rf, ok := ret.Get(0).(func(string, string) *chat.Session); ok {
-		r0 = rf(userID, sessionType)
+	if rf, ok := ret.Get(0).(func(string, string, string) *chat.Session); ok {
+		r0 = rf(userID, sessionType, modelID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*chat.Session)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string) error); ok {
-		r1 = rf(userID, sessionType)
+	if rf, ok := ret.Get(1).(func(string, string, string) error); ok {
+		r1 = rf(userID, sessionType, modelID)
 	} else {
 		r1 = ret.Error(1)
 	}

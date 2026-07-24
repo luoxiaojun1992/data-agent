@@ -153,14 +153,17 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		deps.llmCache = llmcache.New(deps.redisClient.Client())
 	}
 
+	// SPEC-062: System-level compaction LLM (baked into the shared ADK
+	// SessionService). This is a single system LLM, not the per-session model
+	// — per-session Runtimes are lazily created by the Registry. compactionLLM
+	// reads config via the SPEC-061 cache so it picks up config on restart.
 	llm, llmErr := deps.modelCfg.BuildLLM(context.Background(), "")
 	if llmErr != nil {
-		logger.Fatal("Failed to build LLM from model config", zap.Error(llmErr))
+		logger.Fatal("Failed to build compaction LLM from model config", zap.Error(llmErr))
 	}
-
-	compactionLLM, cErr := deps.modelCfg.BuildLLM(context.Background(), modelcfg.UseCaseCompaction)
-	if cErr != nil {
-		compactionLLM = llm
+	compactionLLM := llm
+	if cl, cErr := deps.modelCfg.BuildLLM(context.Background(), modelcfg.UseCaseCompaction); cErr == nil {
+		compactionLLM = cl
 	}
 
 	deps.adkSessions = adksession.NewService(mongoClient.DB()).WithCompaction(
@@ -181,29 +184,28 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		logger.Fatal("Failed to build ADK tools", zap.Error(err))
 	}
 
-	rt, err := adkruntime.New(adkruntime.Config{
-		AppName:        appName,
-		Model:          llm,
+	// SPEC-062: Build the per-model Runtime registry (lazy create + fingerprint
+	// hot-reload). Replaces the single shared Runtime; chat.Service resolves a
+	// Runtime per session.ModelID at run time.
+	deps.registry = adkruntime.NewRegistry(adkruntime.RegistryConfig{
+		Provider:       deps.modelCfg,
 		SessionService: deps.adkSessions,
 		MemoryService:  deps.memoryService,
 		Tools:          tools,
 		Auditor:        deps.secAuditor,
-		Instruction:    deps.modelCfg.DefaultInstruction(context.Background()),
+		AppName:        appName,
 	})
-	if err != nil {
-		logger.Fatal("Failed to build ADK runtime", zap.Error(err))
-	}
-	deps.adkRuntime = rt
 
-	deps.chatService = chat.NewService(rt, deps.adkSessions, deps.sessionManager, deps.cbRegistry).
+	deps.chatService = chat.NewService(deps.registry, deps.modelCfg, deps.adkSessions, deps.sessionManager, deps.cbRegistry).
 		WithMemoryWrite(func(ctx context.Context, sess adksessionIF.Session) {
 			if err := deps.memoryService.AddSessionToMemory(ctx, sess); err != nil {
 				logger.Warn("memory write failed", zap.Error(err))
 			}
 		})
 
-	// Orchestrator coordinates session + task for async agent tasks (SPEC-058).
-	deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService)
+	// Orchestrator coordinates session + task for async agent tasks (SPEC-058,
+	// SPEC-062: provider resolves default model for task binding).
+	deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService, deps.modelCfg)
 }
 
 func initEnhance(deps *serverDependencies) {
@@ -278,7 +280,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService)
 	// Re-wire the orchestrator now that the task service exists.
 	if deps.orchestrator != nil {
-		deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService)
+		deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService, deps.modelCfg)
 	}
 
 	sched := scheduler.New(scheduler.NewTaskCreatorFromService(deps.taskService))
@@ -336,7 +338,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Auth:          deps.authHandler,
 		User:          handler.NewUserHandler(user.NewService(deps.userRepo, user.NewBcryptHasher())),
 		Role:          handler.NewRoleHandler(roleSvc),
-		ModelConfig:   handler.NewModelConfigHandler(cfgSvc),
+		ModelConfig:   handler.NewModelConfigHandler(cfgSvc, deps.modelCfg),
 		SysConfig:     handler.NewConfigHandler(cfgSvc, roleSvc, deps.userRepo),
 		Memory:        handler.NewMemoryHandler(deps.memoryService, appName),
 		Chat:          handler.NewChatHandler(deps.chatService),

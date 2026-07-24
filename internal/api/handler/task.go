@@ -28,6 +28,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		SkillChain  []string               `json:"skill_chain"`
 		Params      map[string]interface{} `json:"params"`
 		CronExpr    string                 `json:"cron_expr"`
+		ModelID     string                 `json:"model_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -63,7 +64,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		params["cron_expr"] = req.CronExpr
 	}
 
-	t, err := h.svc.CreateTask(req.SessionID, userID.(string), taskType, skillChain, params)
+	t, err := h.svc.CreateTask(req.SessionID, userID.(string), taskType, skillChain, params, req.ModelID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

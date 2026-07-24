@@ -32,9 +32,9 @@ func newAgentErrGin(method, path, body string) (*gin.Context, *httptest.Response
 // handler should translate the orchestrator error into a 500.
 func TestAgentHandler_CreateAgentTask_SessionCreateError(t *testing.T) {
 	sessions := chatmocks.NewSessionService(t)
-	sessions.On("Create", "u1", "agent").
+	sessions.On("Create", "u1", "agent", mock.Anything).
 		Return((*domainchat.Session)(nil), errStr("session create failed"))
-	orch := agentlogic.NewOrchestrator(sessions, nil)
+	orch := agentlogic.NewOrchestrator(sessions, nil, nil)
 	h := NewAgentHandler(orch, nil, nil)
 
 	c, w := newAgentErrGin("POST", "/agent/tasks", `{"title":"t","messages":[]}`)
@@ -54,12 +54,12 @@ func TestAgentHandler_CreateAgentTask_SessionCreateError(t *testing.T) {
 // The orchestrator returns an error and the handler should respond 500.
 func TestAgentHandler_CreateAgentTask_TaskCreateError(t *testing.T) {
 	sessions := chatmocks.NewSessionService(t)
-	sessions.On("Create", "u1", "agent").
+	sessions.On("Create", "u1", "agent", mock.Anything).
 		Return(&domainchat.Session{ID: "s1"}, nil)
 	tasks := taskmocks.NewTaskService(t)
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, (map[string]interface{})(nil)).
+	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, (map[string]interface{})(nil), mock.Anything).
 		Return((*domaintask.Task)(nil), errStr("task create failed"))
-	orch := agentlogic.NewOrchestrator(sessions, tasks)
+	orch := agentlogic.NewOrchestrator(sessions, tasks, nil)
 	h := NewAgentHandler(orch, tasks, nil)
 
 	c, w := newAgentErrGin("POST", "/agent/tasks", `{"title":"t","messages":[]}`)
@@ -79,9 +79,9 @@ func TestAgentHandler_CreateAgentTask_TaskCreateError(t *testing.T) {
 // nil, and the handler should respond 202 with the fallback response.
 func TestAgentHandler_CreateAgentTask_FallbackSuccess(t *testing.T) {
 	sessions := chatmocks.NewSessionService(t)
-	sessions.On("Create", "u1", "agent").
+	sessions.On("Create", "u1", "agent", mock.Anything).
 		Return(&domainchat.Session{ID: "s1"}, nil)
-	orch := agentlogic.NewOrchestrator(sessions, nil)
+	orch := agentlogic.NewOrchestrator(sessions, nil, nil)
 	h := NewAgentHandler(orch, nil, nil)
 
 	c, w := newAgentErrGin("POST", "/agent/tasks", `{"title":"t","messages":[]}`)
