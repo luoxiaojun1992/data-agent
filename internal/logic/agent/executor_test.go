@@ -270,6 +270,26 @@ func TestExecute_NilNotifier(t *testing.T) {
 	})
 }
 
+// ── Execute: empty SessionID uses the ADK-generated session ID ──
+
+// TestExecute_EmptySessionID exercises the POST /tasks path where a task has no
+// session binding (SessionID=""). The executor creates an ADK session (which
+// auto-generates an ID) and uses that ID for Run, so execution succeeds.
+func TestExecute_EmptySessionID(t *testing.T) {
+	te := newTestExecutor(t, &fakeLLM{text: "async result"})
+	tk := sampleTask()
+	tk.SessionID = "" // task created via POST /tasks without a session binding
+
+	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusRunning).Return(nil)
+	te.tasks.On("UpdateTaskResult", "task_1", mock.Anything).Return(nil)
+	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusCompleted).Return(nil)
+	te.notif.On("Send", mock.Anything, mock.Anything, "task", []string{"u1"}).Return(nil, nil)
+
+	err := te.exec.Execute(context.Background(), tk)
+	require.NoError(t, err, "empty SessionID should not fail — executor creates an ADK session")
+	te.tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
+}
+
 // ── Execute: nil circuit breaker runs unprotected (defensive) ──
 
 func TestExecute_NilCircuitBreaker(t *testing.T) {

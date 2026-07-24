@@ -74,18 +74,28 @@ func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 
 	// 2. Create ADK session with identity injected into state (mirrors
 	//    chat.Service.prepareRun). Create is idempotent (upsert), so re-runs
-	//    on the same session are safe.
+	//    on the same session are safe. When t.SessionID is empty (tasks created
+	//    via POST /tasks without a session binding), the ADK service
+	//    auto-generates a session ID — we capture it from the response and use
+	//    it for the run so Run can find the session it just created.
 	state := buildExecutorState(t)
-	if _, cerr := e.adkSessions.Create(ctx, &session.CreateRequest{
+	resp, cerr := e.adkSessions.Create(ctx, &session.CreateRequest{
 		AppName:   e.registry.AppName(),
 		UserID:    t.UserID,
 		SessionID: t.SessionID,
 		State:     state,
-	}); cerr != nil {
+	})
+	if cerr != nil {
 		err := fmt.Errorf("adk session init: %w", cerr)
 		e.failTask(t, err)
 		return err
 	}
+	runSessionID := t.SessionID
+	if resp != nil && resp.Session.ID() != "" {
+		runSessionID = resp.Session.ID()
+	}
+	// Keep the state's session_id consistent with the actual ADK session.
+	state["session_id"] = runSessionID
 
 	// 3. Resolve the per-model Runtime (SPEC-062). Empty ModelID falls back
 	//    to the default model inside the Registry.
@@ -103,7 +113,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 	runCfg := adkruntime.RunConfig{StateDelta: state}
 
 	var content string
-	execErr := e.runProtected(ctx, rt, t, message, runCfg, &content)
+	execErr := e.runProtected(ctx, rt, t, runSessionID, message, runCfg, &content)
 
 	// 5. Write back result/error + notify.
 	if execErr != nil {
@@ -116,10 +126,12 @@ func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 
 // runProtected invokes Runtime.RunAndCollect inside the "agent" circuit
 // breaker, storing the final text in *content. When no breaker registry is
-// wired (defensive nil), the call runs unprotected.
-func (e *AgentExecutor) runProtected(ctx context.Context, rt *adkruntime.Runtime, t *domaintask.Task, message string, runCfg adkruntime.RunConfig, content *string) error {
+// wired (defensive nil), the call runs unprotected. sessionID is the resolved
+// ADK session ID (may differ from t.SessionID when the latter was empty and the
+// ADK service auto-generated one).
+func (e *AgentExecutor) runProtected(ctx context.Context, rt *adkruntime.Runtime, t *domaintask.Task, sessionID, message string, runCfg adkruntime.RunConfig, content *string) error {
 	run := func() error {
-		text, err := rt.RunAndCollect(ctx, t.UserID, t.SessionID, message, runCfg)
+		text, err := rt.RunAndCollect(ctx, t.UserID, sessionID, message, runCfg)
 		*content = text
 		return err
 	}
