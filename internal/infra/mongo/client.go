@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -98,6 +99,11 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 			{Keys: bson.D{{Key: "token_hash", Value: 1}}},
 			{Keys: bson.D{{Key: "status", Value: 1}}},
 			{Keys: bson.D{{Key: "created_by", Value: 1}}},
+		},
+		// SPEC-061: unique compound index on (namespace, key) for system_configs.
+		// Ensures no duplicate config entries and accelerates Get/Upsert/Delete lookups.
+		model.CollSystemConfigs: {
+			{Keys: bson.D{{Key: "namespace", Value: 1}, {Key: "key", Value: 1}}, Options: options.Index().SetUnique(true)},
 		},
 	}
 

@@ -33,3 +33,7 @@ func (s *service) GetAll(ctx context.Context, namespace string) ([]model.SystemC
 func (s *service) Upsert(ctx context.Context, namespace, key, value string) error {
 	return s.sysConfig.Upsert(ctx, namespace, key, value)
 }
+
+func (s *service) Delete(ctx context.Context, namespace, key string) error {
+	return s.sysConfig.Delete(ctx, namespace, key)
+}

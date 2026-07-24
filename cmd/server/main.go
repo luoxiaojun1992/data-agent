@@ -25,6 +25,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
@@ -66,8 +67,8 @@ func main() {
 type serverDependencies struct {
 	mongoClient      *mongoinfra.Client
 	userRepo         *mongoinfra.UserRepository
-	roleRepo         *mongoinfra.RoleRepository
-	systemConfigRepo *mongoinfra.SystemConfigRepository
+	roleRepo           *mongoinfra.RoleRepository
+	sysConfigCacheRepo *cache.SysConfigCacheRepo
 	vaultClient      *vaultinfra.Client
 	authHandler      *handler.AuthHandler
 	qdrantClient     *qdrantinfra.Client
@@ -138,7 +139,12 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 			logger.Warn("Failed to ensure system admin", zap.Error(err))
 		}
 		deps.roleRepo = mongoinfra.NewRoleRepository(mongoClient.DB())
-		deps.systemConfigRepo = mongoinfra.NewSystemConfigRepository(mongoClient.DB())
+		// SPEC-061: Wrap mongo SysConfigRepository with a Cache-Aside decorator.
+		// Cache is nil until Redis connects in initTaskQueue; until then all
+		// reads/writes pass through to mongo (degrade mode).
+		deps.sysConfigCacheRepo = cache.NewSysConfigCacheRepo(
+			mongoinfra.NewSystemConfigRepository(mongoClient.DB()), nil, 0,
+		)
 	}
 
 	deps.jwtManager = middleware.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)

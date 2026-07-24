@@ -25,6 +25,7 @@ type SysConfigRepository interface {
 	Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error)
 	GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error)
 	Upsert(ctx context.Context, namespace, key, value string) error
+	Delete(ctx context.Context, namespace, key string) error
 }
 
 //go:generate mockery --name ModelConfigRepository --output ./mocks --outpkg mocks
