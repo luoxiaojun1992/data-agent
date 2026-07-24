@@ -168,11 +168,20 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 // chatHandler handles OpenAI-compatible chat completions.
 func chatHandler(rdb *redis.Client) http.HandlerFunc {
 	defaultReply := envOrDefault("MOCK_DEFAULT_REPLY", "Mock LLM: no response configured")
+	// MOCK_CHUNK_DELAY_MS simulates realistic LLM latency per call. SPEC-063:
+	// without it the mock responds in ~10ms, so async tasks complete before a
+	// cancel can land — the cancel E2E tests (UI-052/053) need tasks to stay
+	// running long enough for the cancel to arrive during RunAndCollect (where
+	// the executor's wasCancelled re-check keeps the cancelled status).
+	chunkDelayMs := envOrDefaultInt("MOCK_CHUNK_DELAY_MS", 0)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
+		}
+		if chunkDelayMs > 0 {
+			time.Sleep(time.Duration(chunkDelayMs) * time.Millisecond)
 		}
 
 		var req ChatCompletionRequest
