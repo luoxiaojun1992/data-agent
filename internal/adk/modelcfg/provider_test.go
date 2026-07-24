@@ -362,3 +362,99 @@ func TestConfigHash_EmptyOnError(t *testing.T) {
 		t.Error("valid model should produce non-empty hash")
 	}
 }
+
+func TestGetRawModelConfig(t *testing.T) {
+	repo := mockrepo.NewSysConfigRepository(t)
+	cfgs := []model.SystemConfig{
+		{Namespace: "model", Key: "models", Value: `[{"id":"m1","name":"M1","type":"llm"}]`},
+		{Namespace: "model", Key: "embedding", Value: `{"base_url":"http://x","model":"emb"}`},
+	}
+	repo.On("GetAll", mock.Anything, "model").Return(cfgs, nil)
+	p := NewProvider(repo)
+	raw, err := p.GetRawModelConfig(context.Background())
+	if err != nil {
+		t.Fatalf("GetRawModelConfig: %v", err)
+	}
+	if raw == nil {
+		t.Fatal("expected non-nil raw config")
+	}
+	if _, ok := raw["models"]; !ok {
+		t.Error("expected 'models' key in raw config")
+	}
+	if _, ok := raw["embedding"]; !ok {
+		t.Error("expected 'embedding' key in raw config")
+	}
+	// Legacy defaults should be filled.
+	if _, ok := raw["api_url"]; !ok {
+		t.Error("expected legacy 'api_url' default")
+	}
+}
+
+func TestDefaultInstruction(t *testing.T) {
+	p := newProviderWithModels(t, []ModelEntry{
+		{ID: "m1", Name: "M1", Type: ModelTypeLLM, IsDefault: true, Instruction: "You are helpful."},
+	})
+	inst := p.DefaultInstruction(context.Background())
+	if inst != "You are helpful." {
+		t.Errorf("DefaultInstruction = %q, want 'You are helpful.'", inst)
+	}
+}
+
+func TestDefaultInstruction_NoneSet(t *testing.T) {
+	p := newProviderWithModels(t, []ModelEntry{
+		{ID: "m1", Name: "M1", Type: ModelTypeLLM, Instruction: ""},
+	})
+	inst := p.DefaultInstruction(context.Background())
+	if inst != "" {
+		t.Errorf("DefaultInstruction with no instruction = %q, want empty", inst)
+	}
+}
+
+func TestEmbeddingConfig(t *testing.T) {
+	repo := mockrepo.NewSysConfigRepository(t)
+	repo.On("Get", mock.Anything, "model", "embedding").Return(&model.SystemConfig{
+		Value: `{"base_url":"http://emb:8082","model":"text-embed","api_key":"sk-xxx"}`,
+	}, nil)
+	p := NewProvider(repo)
+	cfg := p.EmbeddingConfig()
+	if cfg.BaseURL != "http://emb:8082" {
+		t.Errorf("BaseURL = %q, want http://emb:8082", cfg.BaseURL)
+	}
+	if cfg.Model != "text-embed" {
+		t.Errorf("Model = %q, want text-embed", cfg.Model)
+	}
+}
+
+func TestEmbeddingConfig_NilRepo(t *testing.T) {
+	p := NewProvider(nil)
+	cfg := p.EmbeddingConfig()
+	// With nil repo, falls back to env defaults (likely empty in tests).
+	// Just verify it doesn't panic.
+	_ = cfg
+}
+
+func TestSetEmbedding(t *testing.T) {
+	repo := mockrepo.NewSysConfigRepository(t)
+	repo.On("Upsert", mock.Anything, "model", "embedding", mock.Anything).Return(nil)
+	p := NewProvider(repo)
+	err := p.SetEmbedding(context.Background(), EmbeddingEntry{BaseURL: "http://x", Model: "emb"})
+	if err != nil {
+		t.Fatalf("SetEmbedding: %v", err)
+	}
+}
+
+func TestSetEmbedding_NilRepo(t *testing.T) {
+	p := NewProvider(nil)
+	err := p.SetEmbedding(context.Background(), EmbeddingEntry{})
+	if err == nil {
+		t.Error("expected error with nil repo")
+	}
+}
+
+func TestSetModels_NilRepo(t *testing.T) {
+	p := NewProvider(nil)
+	err := p.SetModels(context.Background(), []ModelEntry{{ID: "x", Name: "X"}})
+	if err == nil {
+		t.Error("expected error with nil repo")
+	}
+}
