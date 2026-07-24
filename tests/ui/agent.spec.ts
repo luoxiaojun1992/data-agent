@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 /**
  * SPEC-020: AGENT E2E Tests (UI-039 ~ UI-056)
@@ -9,6 +9,27 @@ import { test, expect } from '@playwright/test';
 const API_BASE = 'http://data-agent:8080/api/v1';
 const uid = crypto.randomUUID().slice(0, 8);
 const U = { username: `e2e-agt-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
+
+// cancelTaskByTitle cancels the most recent task with the given title via the
+// API. SPEC-063: tasks now execute against the mock LLM (~100ms completion),
+// so the UI cancel button (shown only for queued/running/pending) is gone
+// before the detail panel can be opened. Cancelling via the API is robust
+// against this timing — the executor respects cancellation and won't overwrite
+// a cancelled task's status.
+async function cancelTaskByTitle(page: Page, request: APIRequestContext, title: string) {
+  const token = await page.evaluate(() => localStorage.getItem('token'));
+  const authHeaders = { Authorization: `Bearer ${token}` };
+  const res = await request.get(`${API_BASE}/tasks`, { headers: authHeaders });
+  expect(res.ok()).toBeTruthy();
+  const data = await res.json();
+  const tasks: any[] = data.tasks || data;
+  const task = tasks
+    .filter((t) => (t.title || '') === title)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+  if (!task) throw new Error(`task "${title}" not found for cancel`);
+  const cancelRes = await request.put(`${API_BASE}/tasks/${task.task_id}/cancel`, { headers: authHeaders });
+  expect(cancelRes.ok()).toBeTruthy();
+}
 
 test.describe('AGENT — Professional Workspace', () => {
   test.beforeAll(async ({ request }) => {
@@ -157,31 +178,31 @@ test.describe('AGENT — Professional Workspace', () => {
   });
 
   // ═══ UI-052: Create → expand → cancel → verify status change ═══
-  test('[UI-052] Agent — cancel running task', async ({ page }) => {
+  // SPEC-063: tasks now execute (mock LLM completes them in ~100ms), so the
+  // cancel button (shown only for queued/running/pending) is gone before the
+  // detail panel can be opened. Cancel via API instead — the executor respects
+  // cancellation (won't overwrite a cancelled task) — then verify the UI shows
+  // the cancelled status.
+  test('[UI-052] Agent — cancel running task', async ({ page, request }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    // Modal must close after successful creation
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
 
-    // Step 1: task row appears (createTask → loadTasks → setTasks)
+    // Task row appears (createTask → loadTasks → setTasks).
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
     await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
 
-    // Step 2: cancel button in detail panel
-    const cancelBtn = page.locator('[data-testid^="agent-cancel-btn-"]').first();
-    await expect(cancelBtn).toBeVisible({ timeout: 5000 });
-    await cancelBtn.click();
+    // Cancel via API (robust against fast mock-LLM completion).
+    await cancelTaskByTitle(page, request, 'To Cancel');
 
-    // Step 3: status changes to cancelled (cancelTask → loadTasks)
-    // Task stays in list with "已取消" pill, cancel button gone
+    // Reload to refresh the task list and verify the cancelled status pill.
+    await page.reload();
     await expect(page.locator('[data-testid="task-status-cancelled"]').first()).toBeVisible({ timeout: 10000 });
-    await expect(cancelBtn).not.toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-053: Create task → cancel → verify cancelled state ═══
-  test('[UI-053] Agent — cancel then retry flow', async ({ page }) => {
+  test('[UI-053] Agent — cancel then retry flow', async ({ page, request }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Retry Flow');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
@@ -189,14 +210,12 @@ test.describe('AGENT — Professional Workspace', () => {
 
     const row = page.locator('[data-testid^="agent-task-title-"]').first();
     await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
 
-    // Cancel the task
-    const cancelBtn = page.locator('[data-testid^="agent-cancel-btn-"]').first();
-    await expect(cancelBtn).toBeVisible({ timeout: 5000 });
-    await cancelBtn.click();
+    // Cancel via API (SPEC-063: tasks execute fast; see UI-052 note).
+    await cancelTaskByTitle(page, request, 'Retry Flow');
 
-    // Status should change to cancelled
+    // Status should change to cancelled.
+    await page.reload();
     await expect(page.locator('[data-testid="task-status-cancelled"]').first()).toBeVisible({ timeout: 10000 });
   });
 

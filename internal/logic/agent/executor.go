@@ -69,6 +69,12 @@ func NewAgentExecutor(
 // Returns the execution error so the worker pool can apply its retry/DLQ
 // policy; the executor has already persisted the failure status + error by then.
 func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
+	// 0. Respect cancellation: a task cancelled before the worker picked it up
+	//    (e.g. user cancelled a still-queued task) is skipped entirely.
+	if t.Status == domaintask.StatusCancelled {
+		return nil
+	}
+
 	// 1. Mark running (RFC §16 step 2).
 	_ = e.tasks.UpdateStatus(t.ID, domaintask.StatusRunning)
 
@@ -115,7 +121,13 @@ func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 	var content string
 	execErr := e.runProtected(ctx, rt, t, runSessionID, message, runCfg, &content)
 
-	// 5. Write back result/error + notify.
+	// 5. Write back result/error + notify — unless the task was cancelled
+	//    during execution (the user may cancel a long-running task). A cancelled
+	//    task must keep its cancelled status; we don't overwrite it with
+	//    completed/failed.
+	if e.wasCancelled(t.ID) {
+		return execErr
+	}
 	if execErr != nil {
 		e.failTask(t, execErr)
 		return execErr
@@ -169,6 +181,17 @@ func (e *AgentExecutor) notify(t *domaintask.Task, title, body string) {
 	if _, err := e.notif.Send(title, body, "task", []string{t.UserID}); err != nil {
 		log.Printf("[executor] notification send failed for user %s (task %s): %v", t.UserID, t.ID, err)
 	}
+}
+
+// wasCancelled re-loads the task and reports whether it was cancelled. Used
+// after RunAndCollect to avoid overwriting a cancellation that arrived during
+// execution (e.g. a user cancelling a long-running task).
+func (e *AgentExecutor) wasCancelled(id string) bool {
+	latest, err := e.tasks.GetTask(id)
+	if err != nil || latest == nil {
+		return false
+	}
+	return latest.Status == domaintask.StatusCancelled
 }
 
 // buildExecutorState constructs the ADK session state map with identity

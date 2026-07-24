@@ -85,6 +85,10 @@ func newTestExecutor(t *testing.T, llm model.LLM) *testExecutor {
 	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
 		return rt, nil
 	})
+	// Optional GetTask for the post-execution wasCancelled re-check (returns a
+	// non-cancelled task so completeTask/failTask proceeds). .Maybe() keeps it
+	// optional so tests that short-circuit before the re-check don't need it.
+	tasks.On("GetTask", mock.Anything).Return(&domaintask.Task{ID: "task_1", Status: domaintask.StatusRunning}, nil).Maybe()
 
 	return &testExecutor{exec: exec, registry: registry, rt: rt, tasks: tasks, notif: notif, patches: patches, adkSess: adkSess}
 }
@@ -264,6 +268,8 @@ func TestExecute_NilNotifier(t *testing.T) {
 
 	tasks.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
 	tasks.On("UpdateTaskResult", mock.Anything, mock.Anything).Return(nil)
+	// wasCancelled re-check (returns a non-cancelled task so completeTask runs).
+	tasks.On("GetTask", mock.Anything).Return(&domaintask.Task{Status: domaintask.StatusRunning}, nil)
 
 	require.NotPanics(t, func() {
 		_ = exec.Execute(context.Background(), sampleTask())
@@ -311,11 +317,68 @@ func TestExecute_NilCircuitBreaker(t *testing.T) {
 
 	tasks.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
 	tasks.On("UpdateTaskResult", mock.Anything, mock.Anything).Return(nil)
+	// wasCancelled re-check (returns a non-cancelled task so completeTask runs).
+	tasks.On("GetTask", mock.Anything).Return(&domaintask.Task{Status: domaintask.StatusRunning}, nil)
 	notif.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 	err = exec.Execute(context.Background(), sampleTask())
 	require.NoError(t, err)
 	tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
+}
+
+// ── Execute: cancellation handling (SPEC-063) ──
+
+// TestExecute_SkipsAlreadyCancelledTask verifies a task cancelled before the
+// worker picked it up is skipped entirely (no running status, no execution).
+func TestExecute_SkipsAlreadyCancelledTask(t *testing.T) {
+	te := newTestExecutor(t, &fakeLLM{text: "ok"})
+	tk := sampleTask()
+	tk.Status = domaintask.StatusCancelled // cancelled before pickup
+
+	err := te.exec.Execute(context.Background(), tk)
+	require.NoError(t, err)
+
+	// Must NOT transition to running or call the model.
+	te.tasks.AssertNotCalled(t, "UpdateStatus", "task_1", domaintask.StatusRunning)
+	te.tasks.AssertNotCalled(t, "UpdateTaskResult", mock.Anything, mock.Anything)
+	te.notif.AssertNotCalled(t, "Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestExecute_CancelledDuringExecution verifies that a task cancelled while
+// RunAndCollect is in flight keeps its cancelled status — the executor must NOT
+// overwrite it with completed/failed. Built without newTestExecutor so the
+// wasCancelled GetTask can return a cancelled task (newTestExecutor's .Maybe()
+// would otherwise shadow it).
+func TestExecute_CancelledDuringExecution(t *testing.T) {
+	adkSess := adksession.InMemoryService()
+	rt, err := adkruntime.New(adkruntime.Config{
+		AppName: "data-agent", Model: &fakeLLM{text: "result"}, SessionService: adkSess,
+	})
+	require.NoError(t, err)
+	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{AppName: "data-agent", SessionService: adkSess})
+	tasks := domaintaskmocks.NewTaskService(t)
+	notif := notificationmocks.NewNotificationService(t)
+	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+	exec := NewAgentExecutor(registry, adkSess, tasks, notif, cbReg)
+
+	patches := gomonkey.NewPatches()
+	t.Cleanup(patches.Reset)
+	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
+
+	tk := sampleTask()
+	tasks.On("UpdateStatus", "task_1", domaintask.StatusRunning).Return(nil)
+	// wasCancelled re-check returns a CANCELLED task → executor must skip
+	// completeTask (not overwrite cancelled with completed).
+	tasks.On("GetTask", "task_1").Return(&domaintask.Task{ID: "task_1", Status: domaintask.StatusCancelled}, nil)
+
+	err = exec.Execute(context.Background(), tk)
+	require.NoError(t, err)
+
+	tasks.AssertNotCalled(t, "UpdateTaskResult", mock.Anything, mock.Anything)
+	tasks.AssertNotCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
+	notif.AssertNotCalled(t, "Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 // ── deriveUserMessage: key priority (L1) ──
