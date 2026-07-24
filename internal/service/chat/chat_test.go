@@ -579,6 +579,53 @@ func TestScheduleMemoryWrite_GetError(t *testing.T) {
 	}
 }
 
+// TestStream_ToolCallEvent covers the forwardSSEParts FunctionCall branch
+// (pre-existing 40% coverage gap). Uses a fakeLLM that emits a tool-call
+// part followed by text.
+func TestStream_ToolCallEvent(t *testing.T) {
+	llm := &queueLLM{queue: []*model.LLMResponse{
+		{Content: &genai.Content{Role: "model", Parts: []*genai.Part{
+			{FunctionCall: &genai.FunctionCall{Name: "sql_validate", Args: map[string]any{"q": "SELECT 1"}}},
+		}}},
+		{Content: genai.NewContentFromText("done", "model")},
+	}}
+	svc := newTestService(t, llm)
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+
+	w := httptest.NewRecorder()
+	err := svc.Stream(context.Background(), domainchat.ChatRequest{Message: "hi", Stream: true}, "u1", "admin", w)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"type":"tool_call"`) {
+		t.Errorf("expected tool_call event in SSE: %s", body)
+	}
+	if !strings.Contains(body, `"content":"done"`) {
+		t.Errorf("expected text event: %s", body)
+	}
+}
+
+// TestProcess_WithKBID covers the buildState kb_id branch.
+func TestProcess_WithKBID(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "ok"})
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		Message: "hi", KBID: "kb-123",
+	}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("content = %v", resp.Content)
+	}
+}
+
 // ensure json import is used (Stream SSE marshalling tested implicitly).
 var _ = json.Marshal
 
