@@ -75,7 +75,7 @@
 | SPEC-059 | 统计分析架构归置 + Token 统计真数据 | **P15** | [spec-059-enhance-token-stats-verification.md](spec-059-enhance-token-stats-verification.md) | ✅ 已实现 |
 | SPEC-060 | Dashboard trend 接入 + 路径/字段修复 | **P15** | [spec-060-dashboard-trend-integration.md](spec-060-dashboard-trend-integration.md) | ✅ 已实现 |
 | SPEC-061 | 配置统一缓存到 Redis 并支持热更新（Cache-Aside + 消除预加载） | **P15** | [spec-061-config-redis-cache-hotreload.md](spec-061-config-redis-cache-hotreload.md) | ✅ 已实现 |
-| SPEC-062 | 多模型配置与 Session 绑定模型（per-model Runtime 注册表 + 模型选择器） | **P15** | [spec-062-multi-model-session-binding.md](spec-062-multi-model-session-binding.md) | 📐 设计中 |
+| SPEC-062 | 多模型配置与 Session 绑定模型（per-model Runtime 注册表 + 模型选择器） | **P15** | [spec-062-multi-model-session-binding.md](spec-062-multi-model-session-binding.md) | ✅ 已实现 |
 | SPEC-063 | 异步/定时 Agent 任务执行器实现（RFC worker→AgentExecutor→Runtime.Run） | **P15** | [spec-063-async-scheduled-agent-executor.md](spec-063-async-scheduled-agent-executor.md) | 📐 设计中 |
 
 ## Phase 对应与依赖

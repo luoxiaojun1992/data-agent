@@ -1,6 +1,6 @@
 # 多模型配置与 Session 绑定模型
 
-> **SPEC-062** | Status: 设计中
+> **SPEC-062** | Status: 已实现
 
 ## 1. 目标
 
