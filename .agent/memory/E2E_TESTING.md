@@ -166,8 +166,12 @@
 | UI-235 | Dashboard — 多用户数据隔离 | ✅ 已实现 |
 | UI-236 | Dashboard — 时间筛选有效 | ✅ 已实现 |
 | UI-237 | Dashboard — 全 trend 真数据显示（SPEC-060） | ✅ 已实现 |
+| UI-238 | Chat — ModelSelector 可见且可选（SPEC-062） | ✅ 已实现 |
+| UI-239 | Chat — 已有 session 时 ModelSelector 锁定（SPEC-062） | ✅ 已实现 |
+| UI-240 | Admin — 模型列表结构化展示（SPEC-062） | ✅ 已实现 |
+| UI-241 | Admin — 模型新增与设默认（SPEC-062） | ✅ 已实现 |
 
-**合计**: 146 个真实用例 + 7 个手动测试用例
+**合计**: 150 个真实用例 + 7 个手动测试用例
 
 ## data-testid 命名规范
 

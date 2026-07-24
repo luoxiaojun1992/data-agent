@@ -23,6 +23,10 @@ export default function ModelsPage() {
   const [showHermesKey, setShowHermesKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  // SPEC-062: structured model list (multi-model CRUD)
+  const [modelList, setModelList] = useState<any[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newModel, setNewModel] = useState({ name: '', base_url: '', type: 'llm', instruction: '', is_default: false });
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
@@ -49,9 +53,56 @@ export default function ModelsPage() {
     }
   }, [apiFetch]);
 
+  // SPEC-062: fetch structured model list (multi-model CRUD).
+  const fetchModelList = useCallback(async () => {
+    try {
+      const res = await apiFetch('/models?page=1&page_size=50');
+      if (res.ok) {
+        const data = await res.json();
+        setModelList(data.models || []);
+      }
+    } catch (err) {
+      console.error('fetchModelList:', err);
+    }
+  }, [apiFetch]);
+
+  const addModel = async () => {
+    if (!newModel.name.trim()) return;
+    try {
+      const res = await apiFetch('/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newModel),
+      });
+      if (res.ok) {
+        showToast('模型已添加', 'success');
+        setShowAddModal(false);
+        setNewModel({ name: '', base_url: '', type: 'llm', instruction: '', is_default: false });
+        fetchModelList();
+      } else {
+        const d = await res.json();
+        showToast(d.error || '添加失败', 'error');
+      }
+    } catch { showToast('添加失败', 'error'); }
+  };
+
+  const deleteModel = async (id: string) => {
+    try {
+      const res = await apiFetch(`/models/${id}`, { method: 'DELETE' });
+      if (res.ok) { showToast('已删除', 'success'); fetchModelList(); }
+    } catch { showToast('删除失败', 'error'); }
+  };
+
+  const setDefaultModel = async (id: string) => {
+    try {
+      const res = await apiFetch(`/models/${id}/default`, { method: 'PATCH' });
+      if (res.ok) { showToast('已设为默认', 'success'); fetchModelList(); }
+    } catch { showToast('设置失败', 'error'); }
+  };
+
   useEffect(() => {
-    if (auth.hydrated) fetchConfig();
-  }, [auth.hydrated, fetchConfig]);
+    if (auth.hydrated) { fetchConfig(); fetchModelList(); }
+  }, [auth.hydrated, fetchConfig, fetchModelList]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -277,6 +328,79 @@ export default function ModelsPage() {
               style={{ ...inputStyle, opacity: 0.5, cursor: 'not-allowed' }} />
           </ConfigRow>
         </div>
+
+        {/* SPEC-062: Structured Multi-Model List */}
+        <div className="glass" data-testid="model-list-card" style={{ padding: '24px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>模型列表（多模型管理）</h3>
+            <button
+              data-testid="model-add-btn"
+              onClick={() => setShowAddModal(true)}
+              style={{ background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 16px', fontSize: '13px', cursor: 'pointer' }}
+            >+ 新增模型</button>
+          </div>
+          <div style={{ overflowX: 'auto' }} data-testid="model-list-table">
+            <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-secondary)' }}>ID</th>
+                  <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-secondary)' }}>名称</th>
+                  <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-secondary)' }}>类型</th>
+                  <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-secondary)' }}>默认</th>
+                  <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-secondary)' }}>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modelList.length === 0 && (
+                  <tr><td colSpan={5} style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }} data-testid="model-list-empty">暂无模型</td></tr>
+                )}
+                {modelList.map((m, i) => (
+                  <tr key={m.id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
+                    <td style={{ padding: '8px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }} data-testid={`model-list-id-${i}`}>{m.id ? m.id.slice(0, 12) : '-'}</td>
+                    <td style={{ padding: '8px', color: 'var(--text-primary)' }}>{m.name}</td>
+                    <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{m.type}</td>
+                    <td style={{ padding: '8px' }}>
+                      {m.is_default ? (
+                        <span data-testid={`model-list-default-${i}`} style={{ color: '#10b981' }}>✓ 默认</span>
+                      ) : (
+                        <button data-testid={`model-list-set-default-${i}`} onClick={() => setDefaultModel(m.id)}
+                          style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px 8px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}>设为默认</button>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <button data-testid={`model-list-delete-${i}`} onClick={() => deleteModel(m.id)}
+                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>删除</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Add Model Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="model-add-modal">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setShowAddModal(false)} />
+            <div className="relative glass p-6 rounded-2xl max-w-md w-full mx-4 space-y-3">
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>新增模型</h3>
+              <input data-testid="model-add-name" placeholder="模型名称（如 GPT-4o）" value={newModel.name} onChange={e => setNewModel({ ...newModel, name: e.target.value })} style={inputStyle} />
+              <input data-testid="model-add-url" placeholder="Base URL" value={newModel.base_url} onChange={e => setNewModel({ ...newModel, base_url: e.target.value })} style={inputStyle} />
+              <select data-testid="model-add-type" value={newModel.type} onChange={e => setNewModel({ ...newModel, type: e.target.value })} style={inputStyle}>
+                <option value="llm">LLM</option>
+                <option value="embedding">Embedding</option>
+              </select>
+              <textarea data-testid="model-add-instruction" placeholder="系统提示词（可选）" value={newModel.instruction} onChange={e => setNewModel({ ...newModel, instruction: e.target.value })} style={{ ...inputStyle, minHeight: '60px' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                <input type="checkbox" checked={newModel.is_default} onChange={e => setNewModel({ ...newModel, is_default: e.target.checked })} data-testid="model-add-default" /> 设为默认模型
+              </label>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button data-testid="model-add-cancel" onClick={() => setShowAddModal(false)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 16px', color: 'var(--text-secondary)', cursor: 'pointer' }}>取消</button>
+                <button data-testid="model-add-confirm" onClick={addModel} style={{ background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 16px', cursor: 'pointer' }}>添加</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Save Button */}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

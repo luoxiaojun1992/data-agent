@@ -47,6 +47,7 @@ type SessionRecord struct {
 	ID          string     `bson:"_id"`
 	UserID      string     `bson:"user_id"`
 	Title       string     `bson:"title"`
+	ModelID     string     `bson:"model_id"`
 	CreatedAt   time.Time  `bson:"created_at"`
 	UpdatedAt   time.Time  `bson:"updated_at"`
 	ExpiresAt   time.Time  `bson:"expires_at"`

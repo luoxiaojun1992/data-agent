@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 )
@@ -19,19 +20,20 @@ import (
 type Orchestrator struct {
 	sessions domainchat.SessionService
 	tasks    domaintask.TaskService
+	provider *modelcfg.Provider // resolves the default model when req.Model is empty
 }
 
 // NewOrchestrator creates an agent orchestrator wired to the chat session
-// and task domain contracts.
-func NewOrchestrator(sessions domainchat.SessionService, tasks domaintask.TaskService) *Orchestrator {
-	return &Orchestrator{sessions: sessions, tasks: tasks}
+// and task domain contracts. provider may be nil (default model disabled).
+func NewOrchestrator(sessions domainchat.SessionService, tasks domaintask.TaskService, provider *modelcfg.Provider) *Orchestrator {
+	return &Orchestrator{sessions: sessions, tasks: tasks, provider: provider}
 }
 
 // CreateAgentTaskRequest is the domain-level input for creating an async
 // agent task.
 type CreateAgentTaskRequest struct {
 	Title      string                 `json:"title"`
-	Model      string                 `json:"model"`
+	Model      string                 `json:"model"` // ModelEntry.ID; empty = default
 	Messages   []domainchat.Message   `json:"messages"`
 	SkillChain []string               `json:"skill_chain"`
 	Params     map[string]interface{} `json:"params"`
@@ -46,12 +48,31 @@ type CreateAgentTaskResponse struct {
 	Note      string `json:"note,omitempty"`
 }
 
-// CreateAgentTask creates a session and enqueues an async agent task via the
-// task service. When no task service is configured (Redis unavailable), it
-// returns a memory-fallback response so the caller can still answer the
-// request without failing.
+// resolveModel returns the model ID to bind: req.Model when set, otherwise
+// the default LLM model ID (empty when no default is configured).
+func (o *Orchestrator) resolveModel(ctx context.Context, modelID string) string {
+	if modelID != "" {
+		return modelID
+	}
+	if o.provider == nil {
+		return ""
+	}
+	if dm, err := o.provider.DefaultModel(ctx); err == nil && dm != nil {
+		return dm.ID
+	}
+	return ""
+}
+
+// CreateAgentTask creates a session (binding the model) and enqueues an async
+// agent task via the task service. When no task service is configured (Redis
+// unavailable), it returns a memory-fallback response so the caller can still
+// answer the request without failing.
+//
+// SPEC-062: The model is resolved from req.Model (empty → default) and bound
+// to the session + task so the worker (SPEC-063) can select the right Runtime.
 func (o *Orchestrator) CreateAgentTask(ctx context.Context, userID string, req CreateAgentTaskRequest) (*CreateAgentTaskResponse, error) {
-	sess, err := o.sessions.Create(userID, "agent")
+	modelID := o.resolveModel(ctx, req.Model)
+	sess, err := o.sessions.Create(userID, "agent", modelID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session")
 	}
@@ -62,7 +83,7 @@ func (o *Orchestrator) CreateAgentTask(ctx context.Context, userID string, req C
 		if skillChain == nil {
 			skillChain = []string{}
 		}
-		t, err := o.tasks.CreateTask(sess.ID, userID, taskType, skillChain, req.Params)
+		t, err := o.tasks.CreateTask(sess.ID, userID, taskType, skillChain, req.Params, sess.ModelID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task")
 		}

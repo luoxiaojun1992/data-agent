@@ -48,9 +48,9 @@ func (_m *TaskService) CancelTask(id string) error {
 	return r0
 }
 
-// CreateTask provides a mock function with given fields: sessionID, userID, taskType, skillChain, params
-func (_m *TaskService) CreateTask(sessionID string, userID string, taskType string, skillChain []string, params map[string]interface{}) (*task.Task, error) {
-	ret := _m.Called(sessionID, userID, taskType, skillChain, params)
+// CreateTask provides a mock function with given fields: sessionID, userID, taskType, skillChain, params, modelID
+func (_m *TaskService) CreateTask(sessionID string, userID string, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*task.Task, error) {
+	ret := _m.Called(sessionID, userID, taskType, skillChain, params, modelID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateTask")
@@ -58,19 +58,19 @@ func (_m *TaskService) CreateTask(sessionID string, userID string, taskType stri
 
 	var r0 *task.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}) (*task.Task, error)); ok {
-		return rf(sessionID, userID, taskType, skillChain, params)
+	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}, string) (*task.Task, error)); ok {
+		return rf(sessionID, userID, taskType, skillChain, params, modelID)
 	}
-	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}) *task.Task); ok {
-		r0 = rf(sessionID, userID, taskType, skillChain, params)
+	if rf, ok := ret.Get(0).(func(string, string, string, []string, map[string]interface{}, string) *task.Task); ok {
+		r0 = rf(sessionID, userID, taskType, skillChain, params, modelID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*task.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string, string, []string, map[string]interface{}) error); ok {
-		r1 = rf(sessionID, userID, taskType, skillChain, params)
+	if rf, ok := ret.Get(1).(func(string, string, string, []string, map[string]interface{}, string) error); ok {
+		r1 = rf(sessionID, userID, taskType, skillChain, params, modelID)
 	} else {
 		r1 = ret.Error(1)
 	}

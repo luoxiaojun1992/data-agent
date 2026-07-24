@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
+	domainmodel "github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"google.golang.org/adk/model"
 	adksession "google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -55,9 +57,21 @@ func newTestService(t *testing.T, llm model.LLM) *Service {
 	if err != nil {
 		t.Fatalf("runtime: %v", err)
 	}
+	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{
+		AppName:        "data-agent",
+		SessionService: adkSessions,
+	})
 	mgr := &Manager{ttl: 1 * time.Hour}
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	return NewService(rt, adkSessions, mgr, cbReg)
+	svc := NewService(registry, nil, adkSessions, mgr, cbReg)
+	// Patch GetOrCreate to return the test Runtime (avoids needing a real
+	// Provider with a configured model for unit tests).
+	patches := gomonkey.NewPatches()
+	t.Cleanup(patches.Reset)
+	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
+	return svc
 }
 
 func patchSessionCreate(patches *gomonkey.Patches, svc *Service, sess *domainchat.Session, err error) {
@@ -189,7 +203,7 @@ func TestProcess_ExistingSession(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "answer"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "bound-model"}, nil)
 
 	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
 		SessionID: "s1", Message: "hi",
@@ -199,6 +213,30 @@ func TestProcess_ExistingSession(t *testing.T) {
 	}
 	if resp.Content != "answer" {
 		t.Errorf("content = %v", resp.Content)
+	}
+}
+
+// TestProcess_ExistingSessionIgnoresReqModel verifies the immutable binding
+// constraint (SPEC-062): when a session already has a bound ModelID, the
+// req.Model field is IGNORED — the session's bound model is always used.
+func TestProcess_ExistingSessionIgnoresReqModel(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "ok"})
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	// Session is bound to "original-model"; request tries to switch to "other".
+	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "original-model"}, nil)
+
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		SessionID: "s1", Model: "other-model-attempt", Message: "hi",
+	}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success (model switch ignored), got %v", err)
+	}
+	if resp.SessionID != "s1" {
+		t.Errorf("session_id = %v, want s1", resp.SessionID)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("content = %v, want ok", resp.Content)
 	}
 }
 
@@ -329,7 +367,7 @@ func TestManager_Create(t *testing.T) {
 	m, repo := newTestManager(t)
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 
-	s, err := m.Create("user1", "chat")
+	s, err := m.Create("user1", "chat", "")
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -340,7 +378,7 @@ func TestManager_Create(t *testing.T) {
 	t.Run("db error", func(t *testing.T) {
 		m2, repo2 := newTestManager(t)
 		repo2.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("db down"))
-		if _, err := m2.Create("user1", "chat"); err == nil {
+		if _, err := m2.Create("user1", "chat", ""); err == nil {
 			t.Error("expected db error")
 		}
 	})
@@ -541,5 +579,98 @@ func TestScheduleMemoryWrite_GetError(t *testing.T) {
 	}
 }
 
+// TestStream_ToolCallEvent covers the forwardSSEParts FunctionCall branch
+// (pre-existing 40% coverage gap). Uses a fakeLLM that emits a tool-call
+// part followed by text.
+func TestStream_ToolCallEvent(t *testing.T) {
+	llm := &queueLLM{queue: []*model.LLMResponse{
+		{Content: &genai.Content{Role: "model", Parts: []*genai.Part{
+			{FunctionCall: &genai.FunctionCall{Name: "sql_validate", Args: map[string]any{"q": "SELECT 1"}}},
+		}}},
+		{Content: genai.NewContentFromText("done", "model")},
+	}}
+	svc := newTestService(t, llm)
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+
+	w := httptest.NewRecorder()
+	err := svc.Stream(context.Background(), domainchat.ChatRequest{Message: "hi", Stream: true}, "u1", "admin", w)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"type":"tool_call"`) {
+		t.Errorf("expected tool_call event in SSE: %s", body)
+	}
+	if !strings.Contains(body, `"content":"done"`) {
+		t.Errorf("expected text event: %s", body)
+	}
+}
+
+// TestProcess_WithKBID covers the buildState kb_id branch.
+func TestProcess_WithKBID(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "ok"})
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		Message: "hi", KBID: "kb-123",
+	}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("content = %v", resp.Content)
+	}
+}
+
 // ensure json import is used (Stream SSE marshalling tested implicitly).
 var _ = json.Marshal
+
+// TestProcess_NewSessionResolvesDefaultModel verifies that when req.Model is
+// empty and a provider is wired, the default model is resolved and bound to
+// the new session (SPEC-062 §5.4). Covers the createNewSession provider path.
+func TestProcess_NewSessionResolvesDefaultModel(t *testing.T) {
+	adkSessions := adksession.InMemoryService()
+	rt, err := adkruntime.New(adkruntime.Config{
+		AppName: "data-agent", Model: &fakeLLM{text: "ok"}, SessionService: adkSessions,
+	})
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{
+		AppName: "data-agent", SessionService: adkSessions,
+	})
+	// Provider with a default model.
+	repo := mockrepo.NewSysConfigRepository(t)
+	raw, _ := json.Marshal([]modelcfg.ModelEntry{
+		{ID: "default-llm", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
+	})
+	repo.On("Get", mock.Anything, "model", "models").Return(&domainmodel.SystemConfig{Value: string(raw)}, nil)
+	provider := modelcfg.NewProvider(repo)
+
+	mgr := &Manager{ttl: 1 * time.Hour}
+	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+	svc := NewService(registry, provider, adkSessions, mgr, cbReg)
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
+	// Patch session Create to avoid needing a real repo.
+	patches.ApplyMethodReturn(mgr, "Create", &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "default-llm"}, nil)
+
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{Message: "hi"}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if resp.SessionID == "" {
+		t.Error("expected non-empty session ID")
+	}
+	if resp.Content != "ok" {
+		t.Errorf("content = %v, want ok", resp.Content)
+	}
+}

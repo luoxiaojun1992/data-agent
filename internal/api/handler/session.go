@@ -36,7 +36,11 @@ func (h *SessionHandler) List(c *gin.Context) {
 func (h *SessionHandler) Create(c *gin.Context) {
 	userID := c.GetString("user_id")
 	sType := c.DefaultQuery("type", "chat")
-	s, err := h.mgr.Create(userID, sType)
+	var body struct {
+		ModelID string `json:"model_id"`
+	}
+	_ = c.ShouldBindJSON(&body) // optional body; ignore parse errors (empty model_id)
+	s, err := h.mgr.Create(userID, sType, body.ModelID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -45,6 +49,7 @@ func (h *SessionHandler) Create(c *gin.Context) {
 	// The frontend (chat/page.tsx createSession) reads data.session_id directly.
 	c.JSON(http.StatusCreated, gin.H{
 		"session_id": s.ID,
+		"model_id":   s.ModelID,
 		"expires_at": s.ExpiresAt,
 	})
 }

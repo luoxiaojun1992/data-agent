@@ -133,7 +133,7 @@ func TestCreateTask_WithQueue(t *testing.T) {
 	queue := mockrepo.NewQueueRepository(t)
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	queue.On("Enqueue", mock.Anything, mock.Anything).Return(nil)
-	tsk, err := NewService(repo, queue).CreateTask("s1", "u1", "agent", []string{"sql"}, nil)
+	tsk, err := NewService(repo, queue).CreateTask("s1", "u1", "agent", []string{"sql"}, nil, "model_x")
 	if err != nil {
 		t.Fatalf("CreateTask with queue: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestCreateTask_QueueError_BestEffort(t *testing.T) {
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	queue.On("Enqueue", mock.Anything, mock.Anything).Return(fmt.Errorf("redis down"))
 	// best-effort: returns task even if queue fails
-	tsk, err := NewService(repo, queue).CreateTask("s1", "u1", "agent", nil, nil)
+	tsk, err := NewService(repo, queue).CreateTask("s1", "u1", "agent", nil, nil, "")
 	if err != nil {
 		t.Fatalf("CreateTask should be best-effort on queue error: %v", err)
 	}

@@ -78,7 +78,7 @@ type serverDependencies struct {
 	redisClient      *redis.Client
 	// ADK + chat wiring (populated by wire.go init functions).
 	modelCfg       *modelcfg.Provider
-	adkRuntime     *adkruntime.Runtime
+	registry       *adkruntime.Registry
 	adkSessions    *adksession.Service
 	memoryService  memory.Service
 	memoryKit      *memoryx.Kit

@@ -18,7 +18,7 @@ import (
 func TestModelConfigHandler_Put_ServiceError(t *testing.T) {
 	svc := configmocks.NewService(t)
 	svc.On("Upsert", mock.Anything, "models", "key1", "val1").Return(errStr("db down"))
-	h := NewModelConfigHandler(svc)
+	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("PUT", "/models", `{"key":"key1","value":"val1"}`)
 	h.Put(c)
 	if w.Code != http.StatusInternalServerError {
@@ -35,7 +35,7 @@ func TestModelConfigHandler_Put_ServiceError(t *testing.T) {
 func TestModelConfigHandler_Get_ServiceErrorReturningEmptyList(t *testing.T) {
 	svc := configmocks.NewService(t)
 	svc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{}, nil)
-	h := NewModelConfigHandler(svc)
+	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("GET", "/models", "")
 	h.Get(c)
 	if w.Code != http.StatusOK {
@@ -55,7 +55,7 @@ func TestRegisterModelConfigRoutes(t *testing.T) {
 	svc := configmocks.NewService(t)
 	svc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
 	svc.On("Upsert", mock.Anything, "models", "k", "v").Return(nil)
-	h := NewModelConfigHandler(svc)
+	h := NewModelConfigHandler(svc, nil)
 	api := r.Group("/api/v1")
 	RegisterModelConfigRoutes(api, h)
 

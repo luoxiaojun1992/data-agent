@@ -43,7 +43,7 @@ func TestSessionHandler_List(t *testing.T) {
 
 func TestSessionHandler_Create(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("Create", "u1", "chat").Return(&domainchat.Session{ID: "s2", ExpiresAt: time.Now().Add(time.Hour)}, nil)
+	mgr.On("Create", "u1", "chat", "").Return(&domainchat.Session{ID: "s2", ExpiresAt: time.Now().Add(time.Hour)}, nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("POST", "/sessions?type=chat")
 	c.Set("user_id", "u1")
@@ -60,7 +60,7 @@ func TestSessionHandler_Create(t *testing.T) {
 
 func TestSessionHandler_Create_Error(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("Create", "u1", "chat").Return((*domainchat.Session)(nil), errStr("db"))
+	mgr.On("Create", "u1", "chat", "").Return((*domainchat.Session)(nil), errStr("db"))
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("POST", "/sessions")
 	c.Set("user_id", "u1")

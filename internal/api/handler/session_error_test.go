@@ -71,7 +71,7 @@ func TestSessionHandler_Restore_ServiceError(t *testing.T) {
 // is present (regression guard for the error-path neighbors).
 func TestSessionHandler_Create_NilSession(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("Create", "u1", "chat").Return(&domainchat.Session{ID: "s2"}, nil)
+	mgr.On("Create", "u1", "chat", "").Return(&domainchat.Session{ID: "s2"}, nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("POST", "/sessions?type=chat")
 	c.Set("user_id", "u1")
@@ -95,7 +95,7 @@ func TestRegisterSessionRoutes(t *testing.T) {
 	r := gin.New()
 	mgr := chatmocks.NewSessionService(t)
 	mgr.On("ListByUser", "u1").Return([]*domainchat.Session{{ID: "s1"}}, nil)
-	mgr.On("Create", "u1", "chat").Return(&domainchat.Session{ID: "s2", ExpiresAt: time.Now().Add(time.Hour)}, nil)
+	mgr.On("Create", "u1", "chat", "").Return(&domainchat.Session{ID: "s2", ExpiresAt: time.Now().Add(time.Hour)}, nil)
 	h := NewSessionHandler(mgr)
 	api := r.Group("/api/v1/sessions")
 	api.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() })

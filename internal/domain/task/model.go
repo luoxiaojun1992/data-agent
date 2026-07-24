@@ -25,6 +25,7 @@ type Task struct {
 	SessionID   string                 `json:"session_id"`
 	UserID      string                 `json:"user_id"`
 	Type        string                 `json:"type"` // "agent_exec", "scheduled_exec"
+	ModelID     string                 `json:"model_id"` // bound model ID (ModelEntry.ID); worker uses this to select a Runtime
 	Status      Status                 `json:"status"`
 	SkillChain  []string               `json:"skill_chain"`
 	Params      map[string]interface{} `json:"params"`
@@ -48,7 +49,7 @@ type TaskProgress struct {
 }
 
 // NewTask creates a new task with a generated ID.
-func NewTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) *Task {
+func NewTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) *Task {
 	now := time.Now()
 	totalSteps := len(skillChain)
 	if totalSteps == 0 {
@@ -59,6 +60,7 @@ func NewTask(sessionID, userID, taskType string, skillChain []string, params map
 		SessionID:  sessionID,
 		UserID:     userID,
 		Type:       taskType,
+		ModelID:    modelID,
 		Status:     StatusPending,
 		SkillChain: skillChain,
 		Params:     params,
@@ -82,6 +84,7 @@ type ScheduledTask struct {
 	CronExpr   string                 `json:"cron_expr"`
 	SkillChain []string               `json:"skill_chain"`
 	Params     map[string]interface{} `json:"params"`
+	ModelID    string                 `json:"model_id"` // bound model for scheduled runs
 	Status     string                 `json:"status"` // active, paused, deleted
 	LastRunAt  *time.Time             `json:"last_run_at,omitempty"`
 	NextRunAt  *time.Time             `json:"next_run_at,omitempty"`
@@ -95,6 +98,7 @@ type QueueMessage struct {
 	SessionID  string                 `json:"session_id"`
 	UserID     string                 `json:"user_id"`
 	Type       string                 `json:"type"`
+	ModelID    string                 `json:"model_id"` // worker selects Runtime by this
 	SkillChain []string               `json:"skill_chain"`
 	Params     map[string]interface{} `json:"params"`
 	CreatedAt  string                 `json:"created_at"`

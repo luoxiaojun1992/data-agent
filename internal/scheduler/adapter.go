@@ -14,8 +14,8 @@ func NewTaskCreatorFromService(svc *task_svc.Service) TaskCreator {
 	return &taskServiceAdapter{svc: svc}
 }
 
-func (a *taskServiceAdapter) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) (string, error) {
-	t, err := a.svc.CreateTask(sessionID, userID, taskType, skillChain, params)
+func (a *taskServiceAdapter) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (string, error) {
+	t, err := a.svc.CreateTask(sessionID, userID, taskType, skillChain, params, modelID)
 	if err != nil {
 		return "", err
 	}

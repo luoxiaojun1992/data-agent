@@ -10,7 +10,7 @@ package task
 //
 //go:generate mockery --name TaskService --output ./mocks --outpkg mocks
 type TaskService interface {
-	CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}) (*Task, error)
+	CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*Task, error)
 	GetTask(id string) (*Task, error)
 	CancelTask(id string) error
 	ListTasks(userID string, status string, skip, limit int64) ([]*Task, int64, error)
