@@ -34,35 +34,38 @@ func RegisterModelConfigRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
 	api.PATCH("/models/:id/default", h.SetDefault) // set as default
 }
 
-// Get returns the full model configuration (structured []ModelEntry + legacy
-// flat keys) for the admin config page. Supports optional pagination via
-// page/page_size query params when only structured models are needed.
+// Get returns the full model configuration. When the page query param is
+// present, returns a paginated structured []ModelEntry response; otherwise
+// returns the raw config map (legacy flat keys + structured models).
 func (h *ModelConfigHandler) Get(c *gin.Context) {
 	if h.provider == nil {
 		h.legacyGet(c)
 		return
 	}
 	ctx := c.Request.Context()
-	if pageStr := c.Query("page"); pageStr != "" {
-		// Paginated structured response.
-		page, _ := strconv.Atoi(pageStr)
-		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-		modelType := c.Query("type")
-		if modelType == "llm" || pageSize > 0 {
-			models, total, err := h.provider.ListLLMModels(ctx, page, pageSize)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{
-				"models":    models,
-				"total":     total,
-				"page":      page,
-				"page_size": pageSize,
-			})
-			return
-		}
+	if c.Query("page") != "" {
+		h.getPaginated(c, ctx)
+		return
 	}
+	h.getRaw(c, ctx)
+}
+
+// getPaginated returns a paginated LLM-only model list.
+func (h *ModelConfigHandler) getPaginated(c *gin.Context, ctx context.Context) {
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	models, total, err := h.provider.ListLLMModels(ctx, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"models": models, "total": total, "page": page, "page_size": pageSize,
+	})
+}
+
+// getRaw returns the full raw config map (structured + legacy flat keys).
+func (h *ModelConfigHandler) getRaw(c *gin.Context, ctx context.Context) {
 	raw, err := h.provider.GetRawModelConfig(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

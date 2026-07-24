@@ -201,7 +201,7 @@ func TestProcess_ExistingSession(t *testing.T) {
 	svc := newTestService(t, &fakeLLM{text: "answer"})
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "bound-model"}, nil)
 
 	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
 		SessionID: "s1", Message: "hi",
@@ -211,6 +211,30 @@ func TestProcess_ExistingSession(t *testing.T) {
 	}
 	if resp.Content != "answer" {
 		t.Errorf("content = %v", resp.Content)
+	}
+}
+
+// TestProcess_ExistingSessionIgnoresReqModel verifies the immutable binding
+// constraint (SPEC-062): when a session already has a bound ModelID, the
+// req.Model field is IGNORED — the session's bound model is always used.
+func TestProcess_ExistingSessionIgnoresReqModel(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "ok"})
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	// Session is bound to "original-model"; request tries to switch to "other".
+	patchSessionGet(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "original-model"}, nil)
+
+	resp, err := svc.Process(context.Background(), domainchat.ChatRequest{
+		SessionID: "s1", Model: "other-model-attempt", Message: "hi",
+	}, "u1", "admin")
+	if err != nil {
+		t.Fatalf("expected success (model switch ignored), got %v", err)
+	}
+	if resp.SessionID != "s1" {
+		t.Errorf("session_id = %v, want s1", resp.SessionID)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("content = %v, want ok", resp.Content)
 	}
 }
 
