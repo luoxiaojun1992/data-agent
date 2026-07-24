@@ -65,3 +65,13 @@ func (r *SystemConfigRepository) Upsert(ctx context.Context, namespace, key, val
 	}
 	return nil
 }
+
+// Delete removes a config value by namespace and key. Idempotent: returns nil
+// if the document does not exist (project convention: delete never 404s).
+func (r *SystemConfigRepository) Delete(ctx context.Context, namespace, key string) error {
+	_, err := r.coll.DeleteOne(ctx, bson.M{"namespace": namespace, "key": key})
+	if err != nil {
+		return fmt.Errorf("delete config: %w", err)
+	}
+	return nil
+}

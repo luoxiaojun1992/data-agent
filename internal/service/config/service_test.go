@@ -55,6 +55,24 @@ func TestService_Upsert(t *testing.T) {
 	}
 }
 
+func TestService_Delete(t *testing.T) {
+	repo := repomocks.NewSysConfigRepository(t)
+	repo.On("Delete", mock.Anything, "models", "k").Return(nil)
+	svc := NewService(repo)
+	if err := svc.Delete(context.Background(), "models", "k"); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+}
+
+func TestService_Delete_Error(t *testing.T) {
+	repo := repomocks.NewSysConfigRepository(t)
+	repo.On("Delete", mock.Anything, "models", "k").Return(errStr("db"))
+	svc := NewService(repo)
+	if err := svc.Delete(context.Background(), "models", "k"); err == nil {
+		t.Error("expected error")
+	}
+}
+
 type errStr string
 
 func (e errStr) Error() string { return string(e) }

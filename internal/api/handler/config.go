@@ -27,6 +27,7 @@ func NewConfigHandler(cfgSvc config.Service, roleSvc role.Service, userRepo repo
 func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler) {
 	admin.GET("/sysconfig/:namespace", h.Get)
 	admin.PUT("/sysconfig/:namespace", h.Put)
+	admin.DELETE("/sysconfig/:namespace", h.Delete)
 	admin.POST("/change-password", h.ChangePassword)
 }
 
@@ -53,6 +54,24 @@ func (h *ConfigHandler) Put(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已保存"})
+}
+
+// Delete removes a config entry by namespace and key (SPEC-061).
+// Request body: {"key":"<key>"}. Idempotent — returns 200 even if the
+// entry does not exist (project convention: delete never 404s).
+func (h *ConfigHandler) Delete(c *gin.Context) {
+	var req struct {
+		Key string `json:"key"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.cfgSvc.Delete(c.Request.Context(), c.Param("namespace"), req.Key); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
 func validatePasswordComplexity(pw string) bool {

@@ -14,6 +14,24 @@ type SysConfigRepository struct {
 	mock.Mock
 }
 
+// Delete provides a mock function with given fields: ctx, namespace, key
+func (_m *SysConfigRepository) Delete(ctx context.Context, namespace string, key string) error {
+	ret := _m.Called(ctx, namespace, key)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Delete")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, namespace, key)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Get provides a mock function with given fields: ctx, namespace, key
 func (_m *SysConfigRepository) Get(ctx context.Context, namespace string, key string) (*model.SystemConfig, error) {
 	ret := _m.Called(ctx, namespace, key)

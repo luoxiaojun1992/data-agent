@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	adkmemory "github.com/luoxiaojun1992/data-agent/internal/adk/memory"
@@ -69,7 +70,7 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 }
 
 func initADKModel(deps *serverDependencies) {
-	deps.modelCfg = modelcfg.NewProvider(deps.systemConfigRepo)
+	deps.modelCfg = modelcfg.NewProvider(deps.sysConfigCacheRepo)
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {
@@ -110,15 +111,39 @@ func initMemoryBackend(deps *serverDependencies, mongoClient *mongoinfra.Client,
 	deps.memoryKit = kit
 }
 
+// buildEmbedFn creates an embedding function that reads the embedding config
+// on every call (via cache→DB) instead of baking a snapshot at startup.
+// This ensures config changes (model/baseURL/APIKey) take effect without
+// restart (SPEC-061 §5.3.1 — eliminate config value preloading).
+//
+// The embedder instance is cached and reused as long as the config is
+// unchanged; it is rebuilt when the config differs (instance cache, not
+// config cache — does not violate rule 5). A mutex guards the instance
+// swap; the actual embedding call runs outside the lock to avoid
+// serialising concurrent requests.
 func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text string) ([]float32, error) {
-	cfg := deps.modelCfg.EmbeddingConfig()
-	if cfg.BaseURL == "" {
-		return nil
+	var (
+		mu       sync.Mutex
+		lastCfg  modelcfg.EmbeddingEntry
+		embedder func(ctx context.Context, text string) ([]float32, error)
+	)
+	return func(ctx context.Context, text string) ([]float32, error) {
+		cfg := deps.modelCfg.EmbeddingConfig() // reads cache→DB each call, hot-reload
+		if cfg.BaseURL == "" {
+			return nil, nil
+		}
+		mu.Lock()
+		if embedder == nil || cfg != lastCfg {
+			e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
+				BaseURL: cfg.BaseURL, Model: cfg.Model, APIKey: cfg.APIKey,
+			})
+			embedder = func(ctx context.Context, text string) ([]float32, error) { return e(ctx, text) }
+			lastCfg = cfg
+		}
+		fn := embedder
+		mu.Unlock()
+		return fn(ctx, text)
 	}
-	e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
-		BaseURL: cfg.BaseURL, Model: cfg.Model, APIKey: cfg.APIKey,
-	})
-	return func(ctx context.Context, text string) ([]float32, error) { return e(ctx, text) }
 }
 
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
@@ -202,13 +227,14 @@ func initArtifacts(deps *serverDependencies, mongoClient *mongoinfra.Client, cfg
 
 func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.kbService = knowledge.NewService(mongoinfra.NewKBRepository(mongoClient.DB()))
-	embCfg := deps.modelCfg.EmbeddingConfig()
-	if embCfg.BaseURL != "" && deps.qdrantClient != nil {
-		embedFn := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
-			BaseURL: embCfg.BaseURL, Model: embCfg.Model, APIKey: embCfg.APIKey,
-		})
-		rawEmbed := func(ctx context.Context, text string) ([]float32, error) { return embedFn(ctx, text) }
-		kEmbedFn := cachedEmbedFn(rawEmbed, deps.llmCache, deps.llmRecorder, embCfg.Model)
+	// SPEC-061: Use on-demand embed function (reads cache→DB per call) instead
+	// of preloading embedding config at startup. Vector index is set up whenever
+	// Qdrant is available; the embed function returns (nil, nil) if config is
+	// empty, and picks up new config without restart once admin configures it.
+	if deps.qdrantClient != nil {
+		rawEmbed := buildEmbedFn(deps)
+		kEmbedFn := cachedEmbedFn(rawEmbed, deps.llmCache, deps.llmRecorder,
+			getEnvOrDefault("EMBEDDING_MODEL", "embedding"))
 		vectorStore := qdrantinfra.NewVectorStore(deps.qdrantClient)
 		deps.kbService.WithVectorIndex(vectorStore, knowledge.EmbeddingFunc(kEmbedFn))
 	}
@@ -231,6 +257,15 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 		return
 	}
 	deps.redisClient = redisClient
+
+	// SPEC-061: Inject Redis-backed cache into the SysConfig Cache-Aside
+	// decorator. Until this point the decorator degrades to direct mongo
+	// reads (cache==nil). After injection, all config reads go through
+	// Redis first (cache→DB on miss), enabling hot-reload of config values.
+	if deps.sysConfigCacheRepo != nil {
+		deps.sysConfigCacheRepo.SetCache(redis.NewCacheRepo(redisClient.Client()))
+		logger.Info("SysConfig cache decorator activated (Redis)")
+	}
 
 	taskStream, streamErr := queue.NewStream(redisClient.Client())
 	if streamErr != nil {
@@ -269,7 +304,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 // buildRouteDeps constructs the handler wiring for route registration. All
 // HTTP handlers are built here; main.go itself defines no handler funcs.
 func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Logger) *handler.RouteDeps {
-	cfgSvc := configsvc.NewService(deps.systemConfigRepo)
+	cfgSvc := configsvc.NewService(deps.sysConfigCacheRepo)
 	roleSvc := role.NewService(deps.roleRepo)
 
 	var imWebhook http.HandlerFunc
