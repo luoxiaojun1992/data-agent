@@ -8,6 +8,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
@@ -83,7 +84,11 @@ func (o *Orchestrator) CreateAgentTask(ctx context.Context, userID string, req C
 		if skillChain == nil {
 			skillChain = []string{}
 		}
-		t, err := o.tasks.CreateTask(sess.ID, userID, taskType, skillChain, req.Params, sess.ModelID)
+		// SPEC-063: embed the title + last user message into Params so the
+		// async executor (deriveUserMessage) can recover the user input that
+		// would otherwise be lost at the task boundary.
+		params := enrichTaskParams(req)
+		t, err := o.tasks.CreateTask(sess.ID, userID, taskType, skillChain, params, sess.ModelID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task")
 		}
@@ -101,4 +106,50 @@ func (o *Orchestrator) CreateAgentTask(ctx context.Context, userID string, req C
 		Status:    "queued",
 		Note:      "Redis not available — task will not be executed",
 	}, nil
+}
+
+// enrichTaskParams merges caller-provided params with the request title and
+// last user message so the async AgentExecutor (SPEC-063 deriveUserMessage)
+// can recover the user input. Caller-provided keys always take precedence and
+// are never overwritten.
+func enrichTaskParams(req CreateAgentTaskRequest) map[string]interface{} {
+	params := map[string]interface{}{}
+	for k, v := range req.Params {
+		params[k] = v
+	}
+	if req.Title != "" {
+		if _, ok := params["title"]; !ok {
+			params["title"] = req.Title
+		}
+	}
+	// Inject the last user message only when the caller hasn't already supplied
+	// one of the conventional message keys (query/message/prompt/description).
+	if !hasUserMessageKey(params) {
+		if msg := lastUserMessageText(req.Messages); msg != "" {
+			params["message"] = msg
+		}
+	}
+	return params
+}
+
+// hasUserMessageKey reports whether params already carry a user-message key
+// that deriveUserMessage would pick up.
+func hasUserMessageKey(params map[string]interface{}) bool {
+	for _, k := range []string{"query", "message", "prompt", "description"} {
+		if _, ok := params[k]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// lastUserMessageText returns the content of the last user-role message, or
+// "" when there is none.
+func lastUserMessageText(msgs []domainchat.Message) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "user" && strings.TrimSpace(msgs[i].Content) != "" {
+			return msgs[i].Content
+		}
+	}
+	return ""
 }

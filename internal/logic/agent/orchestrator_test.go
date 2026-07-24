@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domainchatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
@@ -113,6 +115,98 @@ var (
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// ── enrichTaskParams / lastUserMessageText / hasUserMessageKey (SPEC-063) ──
+
+func TestEnrichTaskParams_InjectsTitleAndMessage(t *testing.T) {
+	req := CreateAgentTaskRequest{
+		Title:    "营收分析",
+		Messages: []domainchat.Message{{Role: "user", Content: "分析上季度营收"}},
+	}
+	params := enrichTaskParams(req)
+	assert.Equal(t, "营收分析", params["title"])
+	assert.Equal(t, "分析上季度营收", params["message"])
+}
+
+func TestEnrichTaskParams_CallerKeysTakePrecedence(t *testing.T) {
+	// Caller-provided query/message must not be overwritten.
+	req := CreateAgentTaskRequest{
+		Title:    "t",
+		Messages: []domainchat.Message{{Role: "user", Content: "from-messages"}},
+		Params:   map[string]interface{}{"query": "from-caller"},
+	}
+	params := enrichTaskParams(req)
+	assert.Equal(t, "from-caller", params["query"])
+	// message not injected because a message key (query) already exists.
+	_, hasMsg := params["message"]
+	assert.False(t, hasMsg)
+}
+
+func TestEnrichTaskParams_DoesNotOverwriteExistingMessage(t *testing.T) {
+	req := CreateAgentTaskRequest{
+		Messages: []domainchat.Message{{Role: "user", Content: "ignored"}},
+		Params:   map[string]interface{}{"message": "kept"},
+	}
+	params := enrichTaskParams(req)
+	assert.Equal(t, "kept", params["message"])
+}
+
+func TestEnrichTaskParams_NoMessages(t *testing.T) {
+	req := CreateAgentTaskRequest{Title: "t", Params: map[string]interface{}{"k": 1}}
+	params := enrichTaskParams(req)
+	assert.Equal(t, "t", params["title"])
+	assert.Equal(t, 1, params["k"])
+	_, hasMsg := params["message"]
+	assert.False(t, hasMsg, "no message injected when there are no user messages")
+}
+
+func TestEnrichTaskParams_NilParams(t *testing.T) {
+	req := CreateAgentTaskRequest{Title: "t", Messages: []domainchat.Message{{Role: "user", Content: "hi"}}}
+	params := enrichTaskParams(req)
+	assert.Equal(t, "t", params["title"])
+	assert.Equal(t, "hi", params["message"])
+}
+
+func TestLastUserMessageText(t *testing.T) {
+	assert.Equal(t, "second", lastUserMessageText([]domainchat.Message{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "reply"},
+		{Role: "user", Content: "second"},
+	}))
+	assert.Equal(t, "", lastUserMessageText([]domainchat.Message{{Role: "assistant", Content: "x"}}))
+	assert.Equal(t, "", lastUserMessageText([]domainchat.Message{{Role: "user", Content: "  "}}))
+	assert.Equal(t, "", lastUserMessageText(nil))
+}
+
+func TestHasUserMessageKey(t *testing.T) {
+	assert.True(t, hasUserMessageKey(map[string]interface{}{"query": "q"}))
+	assert.True(t, hasUserMessageKey(map[string]interface{}{"description": "d"}))
+	assert.False(t, hasUserMessageKey(map[string]interface{}{"title": "t"}))
+	assert.False(t, hasUserMessageKey(map[string]interface{}{}))
+	assert.False(t, hasUserMessageKey(nil))
+}
+
+// TestCreateAgentTask_ParamsEnrichedWithMessage verifies the task is created
+// with Params carrying the injected user message (SPEC-063 deriveUserMessage).
+func TestCreateAgentTask_ParamsEnrichedWithMessage(t *testing.T) {
+	orch, sessions, tasks := newTestOrchestrator(t)
+	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	tk := &domaintask.Task{ID: "task_1", SessionID: "s1", Status: domaintask.StatusQueued, CreatedAt: time.Now()}
+	// Capture the params passed to CreateTask.
+	var capturedParams map[string]interface{}
+	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.MatchedBy(func(p map[string]interface{}) bool {
+		capturedParams = p
+		return p["message"] == "分析营收" && p["title"] == "Q3分析"
+	}), mock.Anything).Return(tk, nil)
+
+	_, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{
+		Title:    "Q3分析",
+		Messages: []domainchat.Message{{Role: "user", Content: "分析营收"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "分析营收", capturedParams["message"])
+	assert.Equal(t, "Q3分析", capturedParams["title"])
+}
 
 // TestCreateAgentTask_WithProvider exercises the resolveModel path with a
 // real Provider (default model resolution). Covers the provider non-nil

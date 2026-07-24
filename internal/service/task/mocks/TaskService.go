@@ -205,6 +205,24 @@ func (_m *TaskService) RetryTask(id string) (*task.Task, error) {
 	return r0, r1
 }
 
+// UpdateError provides a mock function with given fields: id, errMsg
+func (_m *TaskService) UpdateError(id string, errMsg string) error {
+	ret := _m.Called(id, errMsg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateError")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = rf(id, errMsg)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // UpdateStatus provides a mock function with given fields: id, status
 func (_m *TaskService) UpdateStatus(id string, status task.Status) error {
 	ret := _m.Called(id, status)

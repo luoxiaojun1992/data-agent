@@ -68,6 +68,12 @@ func (s *Service) UpdateTaskResult(id string, result map[string]interface{}) err
 	return s.repo.UpdateResult(context.Background(), id, result)
 }
 
+// UpdateError persists the failure error and marks the task failed. Used by
+// the async AgentExecutor (SPEC-063).
+func (s *Service) UpdateError(id string, errMsg string) error {
+	return s.repo.UpdateError(context.Background(), id, errMsg)
+}
+
 // UpdateStatus updates the task status field only.
 func (s *Service) UpdateStatus(id string, status task.Status) error {
 	t, err := s.repo.Get(context.Background(), id)
