@@ -24,7 +24,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/config"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
@@ -280,14 +279,4 @@ func getEnvOrDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
-}
-
-type simpleExecutor struct {
-	taskSvc interface{}
-}
-
-func (e *simpleExecutor) Execute(ctx context.Context, t *task.Task) error {
-	_ = ctx
-	_ = t
-	return nil
 }

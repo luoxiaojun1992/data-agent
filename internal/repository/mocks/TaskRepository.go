@@ -194,6 +194,24 @@ func (_m *TaskRepository) Retry(ctx context.Context, id string, t *task.Task) er
 	return r0
 }
 
+// UpdateError provides a mock function with given fields: ctx, id, errMsg
+func (_m *TaskRepository) UpdateError(ctx context.Context, id string, errMsg string) error {
+	ret := _m.Called(ctx, id, errMsg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateError")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, id, errMsg)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // UpdateProgress provides a mock function with given fields: ctx, id, p
 func (_m *TaskRepository) UpdateProgress(ctx context.Context, id string, p *task.TaskProgress) error {
 	ret := _m.Called(ctx, id, p)

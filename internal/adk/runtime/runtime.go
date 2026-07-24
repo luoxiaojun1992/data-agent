@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"strings"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -122,6 +123,37 @@ func (rt *Runtime) Run(ctx context.Context, userID, sessionID, message string, r
 		opts = append(opts, runner.WithStateDelta(rc.StateDelta))
 	}
 	return rt.runner.Run(ctx, userID, sessionID, msg, agentCfg, opts...)
+}
+
+// RunAndCollect executes one ADK turn and returns the final assistant text.
+// It iterates the Run event stream, collecting text from final-response events
+// and surfacing the first error (breaking on it). Intermediate tool call /
+// response events are consumed but not surfaced.
+//
+// Shared by chat.Service (real-time path) and the async AgentExecutor
+// (SPEC-063) so both paths use identical collection logic — async tasks execute
+// with the same semantics as a real-time chat turn.
+func (rt *Runtime) RunAndCollect(ctx context.Context, userID, sessionID, message string, rc RunConfig) (string, error) {
+	var finalText strings.Builder
+	runErr := error(nil)
+	for evt, err := range rt.Run(ctx, userID, sessionID, message, rc) {
+		if err != nil {
+			runErr = err
+			break
+		}
+		if evt == nil || evt.Content == nil || !evt.IsFinalResponse() {
+			continue
+		}
+		for _, p := range evt.Content.Parts {
+			if p != nil && p.Text != "" {
+				finalText.WriteString(p.Text)
+			}
+		}
+	}
+	if runErr != nil {
+		return "", runErr
+	}
+	return finalText.String(), nil
 }
 
 // AppName returns the configured app name.

@@ -296,7 +296,18 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	}
 	logger.Info("Scheduler started with default tasks")
 
-	workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, &simpleExecutor{taskSvc: deps.taskService})
+	// SPEC-063: replace the no-op simpleExecutor stub with a real AgentExecutor
+	// that reuses the Runtime.RunAndCollect execution path. The executor owns
+	// all DB write-back (status/result/error) and user notification; the pool
+	// only consumes + loads the task from DB + applies retry/DLQ.
+	executor := agentlogic.NewAgentExecutor(
+		deps.registry,    // SPEC-062 per-model Runtime registry
+		deps.adkSessions, // ADK session service (identity injection)
+		deps.taskService, // task load/status/result/error
+		deps.notifSvc,    // completion/failure notification
+		deps.cbRegistry,  // circuit breaker around Runtime.Run
+	)
+	workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, executor, deps.taskService)
 	go func() {
 		workerPool.Start(context.Background())
 	}()
