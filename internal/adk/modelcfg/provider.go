@@ -101,25 +101,19 @@ const defaultBaseURL = "https://api.openai.com/v1"
 
 // models returns the configured LLM model list. DB has priority; env fallback.
 // Empty IDs are backfilled from Name (legacy compat) so every entry has a
-// stable identifier after read. APIKey/BaseURL empty values fall back to the
-// legacy flat config (api_key/api_url) so per-model config can be partially
-// overridden while still inheriting credentials from the default config.
+// stable identifier after read. Per-model API keys are resolved from Vault
+// references at load time. API keys are NOT shared — each model must have
+// its own key. BaseURL falls back to the legacy flat config when empty.
 func (p *Provider) models() []ModelEntry {
 	entries := p.modelsFromDB()
 	if len(entries) > 0 {
-		legacyCfg := p.legacyConfig()
-		legacyAPIKey := legacyCfg["api_key"]
-		legacyBaseURL := legacyCfg["api_url"]
+		legacyBaseURL := p.legacyCfgValue("api_url")
 		ctx := context.Background()
 		for i := range entries {
 			p.applyEnvDefaults(&entries[i])
 			// Resolve Vault reference to actual plaintext API key (in memory only).
 			p.resolveAPIKey(ctx, &entries[i])
-			// Per-model fields may be empty (json:"-" hid them previously); fall
-			// back to the legacy flat config when the model has no key of its own.
-			if entries[i].APIKey == "" && legacyAPIKey != "" {
-				entries[i].APIKey = legacyAPIKey
-			}
+			// BaseURL may fall back to legacy config (services can share endpoint).
 			if entries[i].BaseURL == "" && legacyBaseURL != "" {
 				entries[i].BaseURL = legacyBaseURL
 			}
@@ -135,21 +129,25 @@ func (p *Provider) models() []ModelEntry {
 }
 
 // resolveAPIKey transparently decrypts a Vault reference into plaintext.
-// When the field already looks like plaintext (no '/' or doesn't start with
-// the expected prefix), it's left as-is so legacy callers/tests keep working.
-// When vault is unavailable, the reference is kept as-is (will surface as an
-// auth error at chat time, which is easier to diagnose than silently dropping).
+// When the field already looks like plaintext (no prefix), it's left as-is
+// so legacy callers/tests keep working. When vault is unavailable but the
+// field is a Vault path, it stays as-is (will surface as an auth error at
+// chat time, which is easier to diagnose than silently dropping).
 func (p *Provider) resolveAPIKey(ctx context.Context, m *ModelEntry) {
-	if m.APIKey == "" || p.vault == nil {
+	if m.APIKey == "" {
 		return
 	}
 	if !looksLikeVaultPath(m.APIKey) {
 		return // already plaintext
 	}
+	if p.vault == nil {
+		return // Vault path stays — will fail at auth time
+	}
 	plain, err := p.vault.Retrieve(ctx, m.APIKey)
 	if err == nil && plain != "" {
 		m.APIKey = plain
 	}
+	// Decrypt failure keeps the path — auth error will surface at LLM call time.
 }
 
 // looksLikeVaultPath reports whether the string resembles one of our Vault
@@ -157,6 +155,19 @@ func (p *Provider) resolveAPIKey(ctx context.Context, m *ModelEntry) {
 // references from plaintext so we only call Vault.Retrieve when needed.
 func looksLikeVaultPath(s string) bool {
 	return strings.HasPrefix(s, "data-agent/")
+}
+
+// legacyCfgValue returns a single legacy flat-config value from the same
+// namespace. Returns "" when the key is not found or the repo is nil.
+func (p *Provider) legacyCfgValue(key string) string {
+	if p.repo == nil {
+		return ""
+	}
+	cfg, err := p.repo.Get(context.Background(), p.cfgNS, key)
+	if err != nil || cfg == nil {
+		return ""
+	}
+	return cfg.Value
 }
 
 // legacyConfig returns the legacy flat config map (api_url/api_key/...) from
@@ -472,15 +483,16 @@ func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, 
 	if entry.ID == "" {
 		entry.ID = "model_" + newUUID()
 	}
-	// Encrypt plaintext API key into a Vault reference (best effort).
-	if entry.APIKey != "" && p.vault != nil && !looksLikeVaultPath(entry.APIKey) {
+	// Encrypt plaintext API key into a Vault reference.
+	if entry.APIKey != "" && !looksLikeVaultPath(entry.APIKey) {
+		if p.vault == nil {
+			return entry, fmt.Errorf("vault client is required to store API keys; ensure VAULT_ADDR/VAULT_TOKEN are configured")
+		}
 		path := ModelAPIKeyVaultPath(entry.ID)
 		if err := p.vault.Store(ctx, path, entry.APIKey); err != nil {
-			fmt.Printf("DEBUG AddModel vault.Store err: %v\n", err)
-		} else {
-			fmt.Printf("DEBUG AddModel vault.Store OK, path=%s\n", path)
-			entry.APIKey = path
+			return entry, fmt.Errorf("vault store api_key for %q: %w", entry.ID, err)
 		}
+		entry.APIKey = path
 	}
 	models := p.models()
 	for _, m := range models {

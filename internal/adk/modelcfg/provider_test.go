@@ -17,6 +17,8 @@ func newProviderWithModels(t *testing.T, entries []ModelEntry) *Provider {
 	repo := mockrepo.NewSysConfigRepository(t)
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	// legacyCfgValue("api_url") calls Get; return nil so BaseURL stays empty (test has no legacy config).
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
 	// legacyConfig() calls GetAll; return an empty list so fallback chain returns empty.
 	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
 	return NewProvider(repo, nil)
@@ -262,6 +264,7 @@ func TestSetDefaultModel_Success(t *testing.T) {
 	}
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
 	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
 	p := NewProvider(repo, nil)
@@ -319,6 +322,7 @@ func TestDeleteModel_PromoteNewDefault(t *testing.T) {
 	}
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
 	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
 	p := NewProvider(repo, nil)
@@ -336,6 +340,7 @@ func TestAddModel_DuplicateIDRejected(t *testing.T) {
 	entries := []ModelEntry{{ID: "existing", Name: "E", Type: ModelTypeLLM}}
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
 	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
 	p := NewProvider(repo, nil)
 

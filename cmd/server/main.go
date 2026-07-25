@@ -153,8 +153,8 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	deps.qdrantClient = qdrantinfra.NewClient(getEnvOrDefault("QDRANT_URL", "qdrant:6334"))
 
 	initAuthService(&deps, mongoClient, logger)
-	initADKModel(&deps)
 	initVault(&deps, logger)
+	initADKModel(&deps)
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initServices(&deps, mongoClient, logger)
