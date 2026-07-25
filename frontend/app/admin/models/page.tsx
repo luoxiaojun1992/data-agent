@@ -26,7 +26,7 @@ export default function ModelsPage() {
   // SPEC-062: structured model list (multi-model CRUD)
   const [modelList, setModelList] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newModel, setNewModel] = useState({ name: '', base_url: '', type: 'llm', instruction: '', is_default: false });
+  const [newModel, setNewModel] = useState({ name: '', base_url: '', type: 'llm', instruction: '', temperature: '0.7', max_tokens: '16000', is_default: false });
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
@@ -35,18 +35,19 @@ export default function ModelsPage() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await apiFetch('/model-config');
+      const res = await apiFetch('/models');
       if (res.ok) {
         const data = await res.json();
-        if (data.api_url) setApiUrl(data.api_url);
-        if (data.model_name) setModelName(data.model_name);
-        if (data.context_len) setContextLen(Number(data.context_len));
-        if (data.max_output) setMaxOutput(Number(data.max_output));
-        if (data.temperature) setTemperature(String(data.temperature));
-        if (data.top_p) setTopP(String(data.top_p));
-        if (data.hermes_url) setHermesUrl(data.hermes_url);
-        setApiKeyExists(data.api_key_exists);
-        if (data.api_key_exists) setApiKey('••••••••••');
+        const m = data.models || {};
+        if (m.api_url) setApiUrl(m.api_url);
+        if (m.model_name) setModelName(m.model_name);
+        if (m.context_len) setContextLen(Number(m.context_len));
+        if (m.max_output) setMaxOutput(Number(m.max_output));
+        if (m.temperature) setTemperature(String(m.temperature));
+        if (m.top_p) setTopP(String(m.top_p));
+        if (m.hermes_url) setHermesUrl(m.hermes_url);
+        setApiKeyExists(m.api_key_exists);
+        if (m.api_key_exists) setApiKey('••••••••••');
       }
     } catch {
       // defaults
@@ -72,13 +73,28 @@ export default function ModelsPage() {
       const res = await apiFetch('/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newModel),
+        body: JSON.stringify({
+          ...newModel,
+          temperature: parseFloat(newModel.temperature) || 0.7,
+          max_tokens: parseInt(newModel.max_tokens, 10) || 16000,
+        }),
       });
       if (res.ok) {
         showToast('模型已添加', 'success');
         setShowAddModal(false);
-        setNewModel({ name: '', base_url: '', type: 'llm', instruction: '', is_default: false });
+        setNewModel({ name: '', base_url: '', type: 'llm', instruction: '', temperature: '0.7', max_tokens: '16000', is_default: false });
         fetchModelList();
+        // SPEC-062 fix: 若新增设为默认，立即同步 legacy flat config
+        // 让"默认 LLM 模型配置"卡片中的 api_url/model_name 也更新为新模型
+        if (newModel.is_default) {
+          try {
+            await apiFetch('/models', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'model_name', value: newModel.name }) });
+            if (newModel.base_url) {
+              await apiFetch('/models', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'api_url', value: newModel.base_url }) });
+            }
+            fetchConfig();
+          } catch { /* 默认同步失败不影响主流程 */ }
+        }
       } else {
         const d = await res.json();
         showToast(d.error || '添加失败', 'error');
@@ -96,7 +112,28 @@ export default function ModelsPage() {
   const setDefaultModel = async (id: string) => {
     try {
       const res = await apiFetch(`/models/${id}/default`, { method: 'PATCH' });
-      if (res.ok) { showToast('已设为默认', 'success'); fetchModelList(); }
+      if (res.ok) {
+        showToast('已设为默认', 'success');
+        fetchModelList();
+        // SPEC-062 fix: 同步 legacy flat config，让"默认 LLM 模型配置"卡片立即更新
+        try {
+          const listRes = await apiFetch('/models?page=1&page_size=50');
+          if (listRes.ok) {
+            const data = await listRes.json();
+            const def = (data.models || []).find((m: any) => m.is_default);
+            if (def) {
+              if (def.name) {
+                await apiFetch('/models', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'model_name', value: def.name }) });
+                setModelName(def.name);
+              }
+              if (def.base_url) {
+                await apiFetch('/models', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'api_url', value: def.base_url }) });
+                setApiUrl(def.base_url);
+              }
+            }
+          }
+        } catch { /* 默认同步失败不影响主流程 */ }
+      }
     } catch { showToast('设置失败', 'error'); }
   };
 
@@ -107,35 +144,37 @@ export default function ModelsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const body: Record<string, string> = {
-        api_url: apiUrl,
-        model_name: modelName,
-        context_len: String(contextLen),
-        max_output: String(maxOutput),
-        temperature,
-        top_p: topP,
-        hermes_url: hermesUrl,
-      };
-      // Only include API key if it was changed (not masked)
+      // 后端 PUT /models 接收 {key, value} 单字段格式，需逐字段调用
+      const fields: { key: string; value: string }[] = [
+        { key: 'api_url', value: apiUrl },
+        { key: 'model_name', value: modelName },
+        { key: 'context_len', value: String(contextLen) },
+        { key: 'max_output', value: String(maxOutput) },
+        { key: 'temperature', value: temperature },
+        { key: 'top_p', value: topP },
+        { key: 'hermes_url', value: hermesUrl },
+      ];
       if (apiKey && apiKey !== '••••••••••') {
-        body.api_key = apiKey;
+        fields.push({ key: 'api_key', value: apiKey });
       }
       if (hermesApiKey) {
-        body.hermes_api_key = hermesApiKey;
+        fields.push({ key: 'hermes_api_key', value: hermesApiKey });
       }
-      const res = await apiFetch('/model-config', {
-        method: 'PUT',
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        showToast(d.error || '保存失败', 'error');
-        return;
+      for (const f of fields) {
+        const res = await apiFetch('/models', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(f),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || `保存 ${f.key} 失败`);
+        }
       }
       showToast('配置已保存', 'success');
       fetchConfig();
-    } catch {
-      showToast('保存失败', 'error');
+    } catch (e: any) {
+      showToast(e?.message || '保存失败', 'error');
     } finally {
       setSaving(false);
     }
@@ -149,10 +188,11 @@ export default function ModelsPage() {
     }
     // Fetch decrypted key from HashiCorp Vault
     try {
-      const res = await apiFetch('/model-config');
+      const res = await apiFetch('/models');
       if (res.ok) {
         const data = await res.json();
-        if (data.api_key_exists) {
+        const m = data.models || {};
+        if (m.api_key_exists) {
           try {
             const decryptRes = await apiFetch('/vault/decrypt', {
               method: 'POST',
@@ -392,6 +432,16 @@ export default function ModelsPage() {
                 <option value="embedding">Embedding</option>
               </select>
               <textarea data-testid="model-add-instruction" placeholder="系统提示词（可选）" value={newModel.instruction} onChange={e => setNewModel({ ...newModel, instruction: e.target.value })} style={{ ...inputStyle, minHeight: '60px' }} />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#7A7A7A', marginBottom: '4px' }}>Temperature</label>
+                  <input data-testid="model-add-temperature" type="number" step="0.1" min="0" max="2" value={newModel.temperature} onChange={e => setNewModel({ ...newModel, temperature: e.target.value })} style={inputStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#7A7A7A', marginBottom: '4px' }}>最大输出 tokens</label>
+                  <input data-testid="model-add-max-tokens" type="number" step="1000" min="1" value={newModel.max_tokens} onChange={e => setNewModel({ ...newModel, max_tokens: e.target.value })} style={inputStyle} />
+                </div>
+              </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                 <input type="checkbox" checked={newModel.is_default} onChange={e => setNewModel({ ...newModel, is_default: e.target.checked })} data-testid="model-add-default" /> 设为默认模型
               </label>
