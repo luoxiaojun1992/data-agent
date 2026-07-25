@@ -258,7 +258,7 @@ func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, log
 		return fmt.Errorf("hash admin password: %w", err)
 	}
 	admin := &model.User{
-		Username:        "系统管理员",
+		Username:        "admin@admin.com",
 		PasswordHash:    passwordHash,
 		Role:            model.RoleSystemAdmin,
 		PasswordChanged: false,
