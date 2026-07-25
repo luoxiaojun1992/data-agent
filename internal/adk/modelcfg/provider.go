@@ -83,12 +83,25 @@ const defaultBaseURL = "https://api.openai.com/v1"
 
 // models returns the configured LLM model list. DB has priority; env fallback.
 // Empty IDs are backfilled from Name (legacy compat) so every entry has a
-// stable identifier after read.
+// stable identifier after read. APIKey/BaseURL empty values fall back to the
+// legacy flat config (api_key/api_url) so per-model config can be partially
+// overridden while still inheriting credentials from the default config.
 func (p *Provider) models() []ModelEntry {
 	entries := p.modelsFromDB()
 	if len(entries) > 0 {
+		legacyCfg := p.legacyConfig()
+		legacyAPIKey := legacyCfg["api_key"]
+		legacyBaseURL := legacyCfg["api_url"]
 		for i := range entries {
 			p.applyEnvDefaults(&entries[i])
+			// Per-model fields are not persisted for APIKey (json:"-"), so fall
+			// back to the legacy flat config when the model has no key of its own.
+			if entries[i].APIKey == "" && legacyAPIKey != "" {
+				entries[i].APIKey = legacyAPIKey
+			}
+			if entries[i].BaseURL == "" && legacyBaseURL != "" {
+				entries[i].BaseURL = legacyBaseURL
+			}
 			p.backfillID(&entries[i])
 		}
 		return entries
@@ -98,6 +111,27 @@ func (p *Provider) models() []ModelEntry {
 		p.backfillID(&entries[i])
 	}
 	return entries
+}
+
+// legacyConfig returns the legacy flat config map (api_url/api_key/...) from
+// the same namespace. Used as a fallback source when structured models have
+// empty fields that the json:"-" tag prevented from persisting.
+func (p *Provider) legacyConfig() map[string]string {
+	out := map[string]string{}
+	if p.repo == nil {
+		return out
+	}
+	cfgs, err := p.repo.GetAll(context.Background(), p.cfgNS)
+	if err != nil {
+		return out
+	}
+	for _, c := range cfgs {
+		if c.Key == "models" || c.Key == "embedding" {
+			continue // skip the structured list JSON blobs
+		}
+		out[c.Key] = c.Value
+	}
+	return out
 }
 
 // backfillID sets ID = Name when ID is empty (legacy config compat). After
