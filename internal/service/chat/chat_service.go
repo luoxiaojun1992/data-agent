@@ -281,30 +281,10 @@ func forwardSSEParts(w http.ResponseWriter, flusher http.Flusher, parts []*genai
 
 // runAndCollect executes one ADK turn and returns the final assistant text.
 // Intermediate tool call/response events are consumed but not surfaced.
+// Delegates to Runtime.RunAndCollect (shared with the async executor, SPEC-063)
+// so real-time and async paths use identical collection semantics.
 func (s *Service) runAndCollect(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID, message string, runCfg adkruntime.RunConfig) (string, error) {
-	var finalText strings.Builder
-	runErr := error(nil)
-	for evt, err := range rt.Run(ctx, userID, sessionID, message, runCfg) {
-		if err != nil {
-			runErr = err
-			break
-		}
-		if evt == nil || evt.Content == nil {
-			continue
-		}
-		if !evt.IsFinalResponse() {
-			continue
-		}
-		for _, p := range evt.Content.Parts {
-			if p != nil && p.Text != "" {
-				finalText.WriteString(p.Text)
-			}
-		}
-	}
-	if runErr != nil {
-		return "", runErr
-	}
-	return finalText.String(), nil
+	return rt.RunAndCollect(ctx, userID, sessionID, message, runCfg)
 }
 
 // scheduleMemoryWrite invokes the memory hook asynchronously after the response.

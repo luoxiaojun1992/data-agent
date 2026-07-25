@@ -17,6 +17,9 @@ type TaskService interface {
 	UpdateTaskProgress(id string, p *TaskProgress) error
 	UpdateTaskResult(id string, result map[string]interface{}) error
 	UpdateStatus(id string, status Status) error
+	// UpdateError writes the failure error message and marks the task failed.
+	// Used by the async AgentExecutor (SPEC-063) to persist the failure cause.
+	UpdateError(id string, errMsg string) error
 	ListAllTasks(userID string) ([]*Task, error)
 	RetryTask(id string) (*Task, error)
 	BatchCancelTasks(ids []string) error

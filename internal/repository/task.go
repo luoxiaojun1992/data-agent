@@ -18,6 +18,9 @@ type TaskRepository interface {
 	ListAll(ctx context.Context, userID string) ([]*task.Task, error)
 	UpdateProgress(ctx context.Context, id string, p *task.TaskProgress) error
 	UpdateResult(ctx context.Context, id string, result map[string]interface{}) error
+	// UpdateError writes the failure error and sets status=failed atomically.
+	// Used by the async executor (SPEC-063) to persist failure causes.
+	UpdateError(ctx context.Context, id string, errMsg string) error
 	Retry(ctx context.Context, id string, t *task.Task) error
 	CountByStatus(ctx context.Context, userID string, status string) (int64, error)
 }

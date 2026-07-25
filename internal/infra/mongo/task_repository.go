@@ -90,6 +90,13 @@ func (r *TaskRepository) UpdateResult(ctx context.Context, id string, result map
 	return err
 }
 
+// UpdateError writes the failure error message and marks the task failed in a
+// single atomic update. Used by the async AgentExecutor (SPEC-063).
+func (r *TaskRepository) UpdateError(ctx context.Context, id string, errMsg string) error {
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"error": errMsg, "status": task.StatusFailed}})
+	return err
+}
+
 func (r *TaskRepository) Retry(ctx context.Context, id string, t *task.Task) error {
 	_, err := r.coll.ReplaceOne(ctx, bson.M{"_id": id}, taskToDoc(t))
 	return err

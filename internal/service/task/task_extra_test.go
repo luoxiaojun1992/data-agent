@@ -55,6 +55,26 @@ func TestUpdateTaskResult(t *testing.T) {
 	}
 }
 
+// TestUpdateError verifies the failure-error write-back delegates to the repo
+// (SPEC-063 executor failure path).
+func TestUpdateError(t *testing.T) {
+	repo := mockrepo.NewTaskRepository(t)
+	repo.On("UpdateError", mock.Anything, "t1", "boom").Return(nil)
+	err := NewService(repo, nil).UpdateError("t1", "boom")
+	if err != nil {
+		t.Fatalf("UpdateError: %v", err)
+	}
+}
+
+func TestUpdateError_RepoError(t *testing.T) {
+	repo := mockrepo.NewTaskRepository(t)
+	repo.On("UpdateError", mock.Anything, "t1", mock.Anything).Return(fmt.Errorf("db down"))
+	err := NewService(repo, nil).UpdateError("t1", "boom")
+	if err == nil {
+		t.Error("expected repo error to propagate")
+	}
+}
+
 func TestUpdateStatus_Success(t *testing.T) {
 	repo := mockrepo.NewTaskRepository(t)
 	repo.On("Get", mock.Anything, "t1").Return(&task.Task{ID: "t1", Status: task.StatusRunning}, nil)
