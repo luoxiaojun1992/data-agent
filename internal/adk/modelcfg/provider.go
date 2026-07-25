@@ -475,7 +475,10 @@ func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, 
 	// Encrypt plaintext API key into a Vault reference (best effort).
 	if entry.APIKey != "" && p.vault != nil && !looksLikeVaultPath(entry.APIKey) {
 		path := ModelAPIKeyVaultPath(entry.ID)
-		if err := p.vault.Store(ctx, path, entry.APIKey); err == nil {
+		if err := p.vault.Store(ctx, path, entry.APIKey); err != nil {
+			fmt.Printf("DEBUG AddModel vault.Store err: %v\n", err)
+		} else {
+			fmt.Printf("DEBUG AddModel vault.Store OK, path=%s\n", path)
 			entry.APIKey = path
 		}
 	}
