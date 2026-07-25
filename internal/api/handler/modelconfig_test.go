@@ -25,7 +25,7 @@ func newModelCfgGin(method, path, body string) (*gin.Context, *httptest.Response
 
 func TestModelConfigHandler_Get(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
+	svc.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("GET", "/models", "")
 	h.Get(c)
@@ -42,7 +42,7 @@ func TestModelConfigHandler_Get(t *testing.T) {
 
 func TestModelConfigHandler_Get_Error(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("GetAll", mock.Anything, "models").Return(([]model.SystemConfig)(nil), errStr("db"))
+	svc.On("GetAll", mock.Anything, "model").Return(([]model.SystemConfig)(nil), errStr("db"))
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("GET", "/models", "")
 	h.Get(c)
@@ -53,7 +53,7 @@ func TestModelConfigHandler_Get_Error(t *testing.T) {
 
 func TestModelConfigHandler_Put(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("Upsert", mock.Anything, "models", "key1", "val1").Return(nil)
+	svc.On("Upsert", mock.Anything, "model", "key1", "val1").Return(nil)
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("PUT", "/models", `{"key":"key1","value":"val1"}`)
 	h.Put(c)

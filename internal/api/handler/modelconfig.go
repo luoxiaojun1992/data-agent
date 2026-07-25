@@ -85,7 +85,7 @@ func (h *ModelConfigHandler) getRaw(c *gin.Context, ctx context.Context) {
 
 // legacyGet is the pre-SPEC-062 GET path used when no Provider is wired.
 func (h *ModelConfigHandler) legacyGet(c *gin.Context) {
-	cfgs, err := h.cfgSvc.GetAll(c.Request.Context(), "models")
+	cfgs, err := h.cfgSvc.GetAll(c.Request.Context(), "model")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -105,7 +105,7 @@ func (h *ModelConfigHandler) Put(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.cfgSvc.Upsert(c.Request.Context(), "models", req.Key, req.Value); err != nil {
+	if err := h.cfgSvc.Upsert(c.Request.Context(), "model", req.Key, req.Value); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

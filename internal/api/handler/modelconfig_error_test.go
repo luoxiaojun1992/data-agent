@@ -17,7 +17,7 @@ import (
 // underlying config service Upsert call fails.
 func TestModelConfigHandler_Put_ServiceError(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("Upsert", mock.Anything, "models", "key1", "val1").Return(errStr("db down"))
+	svc.On("Upsert", mock.Anything, "model", "key1", "val1").Return(errStr("db down"))
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("PUT", "/models", `{"key":"key1","value":"val1"}`)
 	h.Put(c)
@@ -34,7 +34,7 @@ func TestModelConfigHandler_Put_ServiceError(t *testing.T) {
 // correctly. This exercises the Get happy path with no rows.
 func TestModelConfigHandler_Get_ServiceErrorReturningEmptyList(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{}, nil)
+	svc.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil)
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("GET", "/models", "")
 	h.Get(c)
@@ -53,8 +53,8 @@ func TestRegisterModelConfigRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	svc := configmocks.NewService(t)
-	svc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
-	svc.On("Upsert", mock.Anything, "models", "k", "v").Return(nil)
+	svc.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
+	svc.On("Upsert", mock.Anything, "model", "k", "v").Return(nil)
 	h := NewModelConfigHandler(svc, nil)
 	api := r.Group("/api/v1")
 	RegisterModelConfigRoutes(api, h)
