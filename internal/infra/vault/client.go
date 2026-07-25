@@ -45,6 +45,9 @@ func NewClient() (*Client, error) {
 // Store writes a secret value to Vault KV v2 at the given path.
 // path should be like "data-agent/api_key" (without mount prefix).
 func (c *Client) Store(ctx context.Context, path, value string) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("vault client not initialized")
+	}
 	data := map[string]interface{}{
 		"data": map[string]interface{}{
 			path: value,
@@ -62,6 +65,9 @@ func (c *Client) Store(ctx context.Context, path, value string) error {
 
 // Retrieve reads a secret value from Vault KV v2 at the given path.
 func (c *Client) Retrieve(ctx context.Context, path string) (string, error) {
+	if c == nil || c.client == nil {
+		return "", fmt.Errorf("vault client not initialized")
+	}
 	fullPath := fmt.Sprintf("/v1/%s/data/%s", c.mount, path)
 	secret, err := c.client.Logical().ReadWithContext(ctx, fullPath)
 	if err != nil {
