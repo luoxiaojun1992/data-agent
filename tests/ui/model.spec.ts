@@ -141,19 +141,15 @@ test.describe('MODEL CONFIG — SPEC-025', () => {
     await expect(keyInput).toHaveAttribute('type', 'text');
   });
 
-  // ═══ UI-097: Model Name 下拉选择 ═══
-  test('[UI-097] Model — Model Name 下拉选择', async ({ page }) => {
-    const select = page.locator('[data-testid="model-name-select"]');
-    await expect(select).toBeVisible();
+  // ═══ UI-097: Model Name 输入框 ═══
+  test('[UI-097] Model — Model Name 输入框', async ({ page }) => {
+    const input = page.locator('[data-testid="model-name-input"]');
+    await expect(input).toBeVisible();
+    await expect(input).toHaveAttribute('type', 'text');
 
-    // Should have multiple options
-    const options = select.locator('option');
-    const count = await options.count();
-    expect(count).toBeGreaterThanOrEqual(2);
-
-    // Select Claude
-    await select.selectOption('claude-3.5-sonnet');
-    await expect(select).toHaveValue('claude-3.5-sonnet');
+    // Should accept free-form model name
+    await input.fill('custom-model-name');
+    await expect(input).toHaveValue('custom-model-name');
   });
 
   // ═══ UI-098: 上下文长度 Stepper ═══

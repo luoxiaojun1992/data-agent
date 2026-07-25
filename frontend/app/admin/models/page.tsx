@@ -240,13 +240,14 @@ export default function ModelsPage() {
 
           {/* Model Name */}
           <ConfigRow label="Model Name" tid="model-name">
-            <select data-testid="model-name-select" value={modelName} onChange={(e) => setModelName(e.target.value)}
-              style={inputStyle}>
-              <option value="gpt-4o">GPT-4o</option>
-              <option value="gpt-4o-mini">GPT-4o-mini</option>
-              <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-            </select>
+            <input
+              data-testid="model-name-input"
+              type="text"
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              placeholder="输入模型名称（如 gpt-4o）"
+              style={inputStyle}
+            />
           </ConfigRow>
 
           {/* Context Length */}
