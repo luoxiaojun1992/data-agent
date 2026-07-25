@@ -22,7 +22,7 @@ func newModelTestHandler(t *testing.T, entries []modelcfg.ModelEntry) *ModelConf
 	repo.On("Get", mock.Anything, "model", "models").Maybe().Return(cfg, nil)
 	repo.On("GetAll", mock.Anything, "model").Maybe().Return([]model.SystemConfig{*cfg}, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Maybe().Return(nil)
-	p := modelcfg.NewProvider(repo)
+	p := modelcfg.NewProvider(repo, nil)
 	return NewModelConfigHandler(nil, p)
 }
 

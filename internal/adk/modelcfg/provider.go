@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"google.golang.org/adk/model"
 
@@ -45,7 +46,7 @@ type ModelEntry struct {
 	ID              string    `json:"id"` // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
-	APIKey          string    `json:"-"` // Vault encrypt
+	APIKey          string    `json:"api_key_ref,omitempty"` // Vault reference path (e.g. "data-agent/models/<id>/api_key"). Plaintext on input from frontend; resolved to plaintext in memory at load time.
 	Type            ModelType `json:"type"`
 	Instruction     string    `json:"instruction"` // LLM only
 	Capability      string    `json:"capability"`  // LLM only
@@ -57,11 +58,19 @@ type ModelEntry struct {
 	FallbackOrder   int       `json:"fallback_order"`
 }
 
+// VaultStore is the minimal Vault interface the Provider needs for per-model
+// API key encryption. The concrete *vault.Client satisfies this; tests can
+// inject a fake. Nil-safe: nil vault means plaintext fallback only.
+type VaultStore interface {
+	Store(ctx context.Context, path, value string) error
+	Retrieve(ctx context.Context, path string) (string, error)
+}
+
 // EmbeddingEntry describes the embedding model config.
 type EmbeddingEntry struct {
 	BaseURL string `json:"base_url"`
 	Model   string `json:"model"`
-	APIKey  string `json:"-"`
+	APIKey  string `json:"api_key_ref,omitempty"` // Vault reference path; decrypted at runtime
 }
 
 // Provider reads model configurations from system_config with env fallback.
@@ -69,12 +78,21 @@ type EmbeddingEntry struct {
 // retrieving the agent's system instruction.
 type Provider struct {
 	repo  repository.SysConfigRepository
-	cfgNS string // system_config namespace, default "model"
+	vault VaultStore // optional; when non-nil, per-model API keys are stored/retrieved via Vault
+	cfgNS string     // system_config namespace, default "model"
 }
 
 // NewProvider creates a config provider. Passing nil repo means "env only".
-func NewProvider(repo repository.SysConfigRepository) *Provider {
-	return &Provider{repo: repo, cfgNS: "model"}
+// Pass a non-nil vault to enable per-model API key encryption.
+func NewProvider(repo repository.SysConfigRepository, vault VaultStore) *Provider {
+	return &Provider{repo: repo, vault: vault, cfgNS: "model"}
+}
+
+// ModelAPIKeyVaultPath returns the Vault KV v2 path used to store the API key
+// for the model with the given ID. Stable across reloads so the same model
+// always points to the same Vault entry.
+func ModelAPIKeyVaultPath(modelID string) string {
+	return "data-agent/models/" + modelID + "/api_key"
 }
 
 // ---- LLM models ----
@@ -92,9 +110,12 @@ func (p *Provider) models() []ModelEntry {
 		legacyCfg := p.legacyConfig()
 		legacyAPIKey := legacyCfg["api_key"]
 		legacyBaseURL := legacyCfg["api_url"]
+		ctx := context.Background()
 		for i := range entries {
 			p.applyEnvDefaults(&entries[i])
-			// Per-model fields are not persisted for APIKey (json:"-"), so fall
+			// Resolve Vault reference to actual plaintext API key (in memory only).
+			p.resolveAPIKey(ctx, &entries[i])
+			// Per-model fields may be empty (json:"-" hid them previously); fall
 			// back to the legacy flat config when the model has no key of its own.
 			if entries[i].APIKey == "" && legacyAPIKey != "" {
 				entries[i].APIKey = legacyAPIKey
@@ -111,6 +132,31 @@ func (p *Provider) models() []ModelEntry {
 		p.backfillID(&entries[i])
 	}
 	return entries
+}
+
+// resolveAPIKey transparently decrypts a Vault reference into plaintext.
+// When the field already looks like plaintext (no '/' or doesn't start with
+// the expected prefix), it's left as-is so legacy callers/tests keep working.
+// When vault is unavailable, the reference is kept as-is (will surface as an
+// auth error at chat time, which is easier to diagnose than silently dropping).
+func (p *Provider) resolveAPIKey(ctx context.Context, m *ModelEntry) {
+	if m.APIKey == "" || p.vault == nil {
+		return
+	}
+	if !looksLikeVaultPath(m.APIKey) {
+		return // already plaintext
+	}
+	plain, err := p.vault.Retrieve(ctx, m.APIKey)
+	if err == nil && plain != "" {
+		m.APIKey = plain
+	}
+}
+
+// looksLikeVaultPath reports whether the string resembles one of our Vault
+// KV v2 paths (e.g. "data-agent/models/<id>/api_key"). Used to distinguish
+// references from plaintext so we only call Vault.Retrieve when needed.
+func looksLikeVaultPath(s string) bool {
+	return strings.HasPrefix(s, "data-agent/")
 }
 
 // legacyConfig returns the legacy flat config map (api_url/api_key/...) from
@@ -412,12 +458,26 @@ func ConfigHash(m ModelEntry) string {
 
 // AddModel appends a single model entry, generating a UUID ID when empty,
 // then persists the full list. Maintains the IsDefault invariant.
+//
+// When entry.APIKey is plaintext (e.g. from the admin POST body) and the
+// Provider has a Vault client configured, the plaintext is stored in Vault
+// at a per-model path and the entry's APIKey field is replaced with the
+// Vault reference path. When vault is unavailable, the plaintext is kept
+// as-is and persisted to MongoDB (legacy plaintext path) so users on a
+// dev/test setup without Vault are not blocked.
 func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, error) {
 	if p.repo == nil {
 		return entry, fmt.Errorf("config repository not available")
 	}
 	if entry.ID == "" {
 		entry.ID = "model_" + newUUID()
+	}
+	// Encrypt plaintext API key into a Vault reference (best effort).
+	if entry.APIKey != "" && p.vault != nil && !looksLikeVaultPath(entry.APIKey) {
+		path := ModelAPIKeyVaultPath(entry.ID)
+		if err := p.vault.Store(ctx, path, entry.APIKey); err == nil {
+			entry.APIKey = path
+		}
 	}
 	models := p.models()
 	for _, m := range models {

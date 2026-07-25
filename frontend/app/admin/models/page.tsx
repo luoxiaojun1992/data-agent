@@ -26,7 +26,7 @@ export default function ModelsPage() {
   // SPEC-062: structured model list (multi-model CRUD)
   const [modelList, setModelList] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newModel, setNewModel] = useState({ name: '', base_url: '', type: 'llm', instruction: '', temperature: '0.7', max_tokens: '16000', is_default: false });
+  const [newModel, setNewModel] = useState({ name: '', base_url: '', type: 'llm', instruction: '', api_key: '', temperature: '0.7', max_tokens: '16000', is_default: false });
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
@@ -82,7 +82,7 @@ export default function ModelsPage() {
       if (res.ok) {
         showToast('模型已添加', 'success');
         setShowAddModal(false);
-        setNewModel({ name: '', base_url: '', type: 'llm', instruction: '', temperature: '0.7', max_tokens: '16000', is_default: false });
+        setNewModel({ name: '', base_url: '', type: 'llm', instruction: '', api_key: '', temperature: '0.7', max_tokens: '16000', is_default: false });
         fetchModelList();
         // SPEC-062 fix: 若新增设为默认，立即同步 legacy flat config
         // 让"默认 LLM 模型配置"卡片中的 api_url/model_name 也更新为新模型
@@ -272,7 +272,17 @@ export default function ModelsPage() {
                   color: 'var(--text-secondary)', fontSize: '16px',
                 }}
               >
-                {showApiKey ? '🙈' : '👁'}
+                {showApiKey ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                )}
               </button>
             </div>
             {apiKeyExists && <span data-testid="model-api-key-masked" style={{ display: 'none' }} />}
@@ -359,7 +369,17 @@ export default function ModelsPage() {
               <button onClick={() => setShowHermesKey(!showHermesKey)}
                 style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px',
                   padding: '6px 10px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '16px' }}>
-                {showHermesKey ? '🙈' : '👁'}
+                {showHermesKey ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                )}
               </button>
             </div>
           </ConfigRow>
@@ -432,6 +452,7 @@ export default function ModelsPage() {
                 <option value="embedding">Embedding</option>
               </select>
               <textarea data-testid="model-add-instruction" placeholder="系统提示词（可选）" value={newModel.instruction} onChange={e => setNewModel({ ...newModel, instruction: e.target.value })} style={{ ...inputStyle, minHeight: '60px' }} />
+              <input data-testid="model-add-api-key" type="password" placeholder="API Key（可选，留空则继承默认配置）" value={newModel.api_key || ''} onChange={e => setNewModel({ ...newModel, api_key: e.target.value })} style={inputStyle} />
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '12px', color: '#7A7A7A', marginBottom: '4px' }}>Temperature</label>

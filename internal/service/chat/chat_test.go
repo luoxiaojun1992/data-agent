@@ -649,7 +649,8 @@ func TestProcess_NewSessionResolvesDefaultModel(t *testing.T) {
 		{ID: "default-llm", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
 	})
 	repo.On("Get", mock.Anything, "model", "models").Return(&domainmodel.SystemConfig{Value: string(raw)}, nil)
-	provider := modelcfg.NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]domainmodel.SystemConfig{}, nil).Maybe()
+	provider := modelcfg.NewProvider(repo, nil)
 
 	mgr := &Manager{ttl: 1 * time.Hour}
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())

@@ -219,7 +219,8 @@ func TestCreateAgentTask_WithProvider(t *testing.T) {
 		{ID: "def-model", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
 	})
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
-	provider := modelcfg.NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	provider := modelcfg.NewProvider(repo, nil)
 	orch := NewOrchestrator(sessions, tasks, provider)
 
 	sessions.On("Create", "u1", "agent", "def-model").Return(&domainchat.Session{ID: "s1", UserID: "u1", ModelID: "def-model"}, nil)

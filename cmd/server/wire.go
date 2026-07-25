@@ -70,7 +70,7 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 }
 
 func initADKModel(deps *serverDependencies) {
-	deps.modelCfg = modelcfg.NewProvider(deps.sysConfigCacheRepo)
+	deps.modelCfg = modelcfg.NewProvider(deps.sysConfigCacheRepo, deps.vaultClient)
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {

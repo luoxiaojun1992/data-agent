@@ -17,7 +17,9 @@ func newProviderWithModels(t *testing.T, entries []ModelEntry) *Provider {
 	repo := mockrepo.NewSysConfigRepository(t)
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
-	return NewProvider(repo)
+	// legacyConfig() calls GetAll; return an empty list so fallback chain returns empty.
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	return NewProvider(repo, nil)
 }
 
 func TestDefaultModel_IsDefaultPriority(t *testing.T) {
@@ -193,7 +195,7 @@ func TestEnsureSingleDefault_CollapseExtras(t *testing.T) {
 }
 
 func TestBackfillID_EmptyUsesName(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	m := ModelEntry{Name: "Legacy"}
 	p.backfillID(&m)
 	if m.ID != "Legacy" {
@@ -203,7 +205,7 @@ func TestBackfillID_EmptyUsesName(t *testing.T) {
 
 func TestSetModels_DuplicateIDRejected(t *testing.T) {
 	repo := mockrepo.NewSysConfigRepository(t)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	entries := []ModelEntry{
 		{ID: "dup", Name: "A"},
 		{ID: "dup", Name: "B"},
@@ -219,7 +221,8 @@ func TestAddModel_AutoGenID(t *testing.T) {
 	// Empty DB → no existing models.
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: ""}, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
 	entry := ModelEntry{Name: "NewModel", Type: ModelTypeLLM}
 	saved, err := p.AddModel(context.Background(), entry)
@@ -234,7 +237,7 @@ func TestAddModel_AutoGenID(t *testing.T) {
 func TestDeleteModel_Idempotent(t *testing.T) {
 	repo := mockrepo.NewSysConfigRepository(t)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: "[]"}, nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	// Deleting a non-existent ID should not error (idempotent).
 	if err := p.DeleteModel(context.Background(), "nonexistent"); err != nil {
 		t.Errorf("idempotent delete should not error: %v", err)
@@ -260,7 +263,8 @@ func TestSetDefaultModel_Success(t *testing.T) {
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
 	if err := p.SetDefaultModel(context.Background(), "m2"); err != nil {
 		t.Fatalf("SetDefaultModel: %v", err)
@@ -316,7 +320,8 @@ func TestDeleteModel_PromoteNewDefault(t *testing.T) {
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
 	if err := p.DeleteModel(context.Background(), "m1"); err != nil {
 		t.Fatalf("DeleteModel: %v", err)
@@ -331,7 +336,8 @@ func TestAddModel_DuplicateIDRejected(t *testing.T) {
 	entries := []ModelEntry{{ID: "existing", Name: "E", Type: ModelTypeLLM}}
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
-	p := NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
 	_, err := p.AddModel(context.Background(), ModelEntry{ID: "existing", Name: "Dup"})
 	if err == nil {
@@ -370,7 +376,7 @@ func TestGetRawModelConfig(t *testing.T) {
 		{Namespace: "model", Key: "embedding", Value: `{"base_url":"http://x","model":"emb"}`},
 	}
 	repo.On("GetAll", mock.Anything, "model").Return(cfgs, nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	raw, err := p.GetRawModelConfig(context.Background())
 	if err != nil {
 		t.Fatalf("GetRawModelConfig: %v", err)
@@ -415,7 +421,7 @@ func TestEmbeddingConfig(t *testing.T) {
 	repo.On("Get", mock.Anything, "model", "embedding").Return(&model.SystemConfig{
 		Value: `{"base_url":"http://emb:8082","model":"text-embed","api_key":"sk-xxx"}`,
 	}, nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	cfg := p.EmbeddingConfig()
 	if cfg.BaseURL != "http://emb:8082" {
 		t.Errorf("BaseURL = %q, want http://emb:8082", cfg.BaseURL)
@@ -426,7 +432,7 @@ func TestEmbeddingConfig(t *testing.T) {
 }
 
 func TestEmbeddingConfig_NilRepo(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	cfg := p.EmbeddingConfig()
 	// With nil repo, falls back to env defaults (likely empty in tests).
 	// Just verify it doesn't panic.
@@ -436,7 +442,7 @@ func TestEmbeddingConfig_NilRepo(t *testing.T) {
 func TestSetEmbedding(t *testing.T) {
 	repo := mockrepo.NewSysConfigRepository(t)
 	repo.On("Upsert", mock.Anything, "model", "embedding", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	err := p.SetEmbedding(context.Background(), EmbeddingEntry{BaseURL: "http://x", Model: "emb"})
 	if err != nil {
 		t.Fatalf("SetEmbedding: %v", err)
@@ -444,7 +450,7 @@ func TestSetEmbedding(t *testing.T) {
 }
 
 func TestSetEmbedding_NilRepo(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	err := p.SetEmbedding(context.Background(), EmbeddingEntry{})
 	if err == nil {
 		t.Error("expected error with nil repo")
@@ -452,7 +458,7 @@ func TestSetEmbedding_NilRepo(t *testing.T) {
 }
 
 func TestSetModels_NilRepo(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	err := p.SetModels(context.Background(), []ModelEntry{{ID: "x", Name: "X"}})
 	if err == nil {
 		t.Error("expected error with nil repo")
