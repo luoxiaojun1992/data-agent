@@ -46,7 +46,7 @@ type ModelEntry struct {
 	ID              string    `json:"id"` // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
-	APIKey          string    `json:"api_key_ref,omitempty"` // Vault reference path (e.g. "data-agent/models/<id>/api_key"). Plaintext on input from frontend; resolved to plaintext in memory at load time.
+	APIKey          string    `json:"api_key,omitempty"` // On input: plaintext (from frontend). On persisted output: Vault reference path. Resolved to plaintext in memory by Provider.models() before use.
 	Type            ModelType `json:"type"`
 	Instruction     string    `json:"instruction"` // LLM only
 	Capability      string    `json:"capability"`  // LLM only
@@ -70,7 +70,7 @@ type VaultStore interface {
 type EmbeddingEntry struct {
 	BaseURL string `json:"base_url"`
 	Model   string `json:"model"`
-	APIKey  string `json:"api_key_ref,omitempty"` // Vault reference path; decrypted at runtime
+	APIKey  string `json:"api_key,omitempty"` // Same dual semantics as ModelEntry.APIKey.
 }
 
 // Provider reads model configurations from system_config with env fallback.
