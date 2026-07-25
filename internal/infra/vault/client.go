@@ -45,6 +45,7 @@ func NewClient() (*Client, error) {
 // Store writes a secret value to Vault KV v2 at the given path.
 // path should be like "data-agent/api_key" (without mount prefix).
 func (c *Client) Store(ctx context.Context, path, value string) error {
+	fmt.Printf("DEBUG Vault.Store: c==nil=%v c.client==nil=%v path=%s\n", c == nil, c != nil && c.client == nil, path)
 	if c == nil || c.client == nil {
 		return fmt.Errorf("vault client not initialized")
 	}
