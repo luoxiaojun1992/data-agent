@@ -43,18 +43,19 @@ const (
 
 // ModelEntry describes one model in the admin config.
 type ModelEntry struct {
-	ID              string    `json:"id"` // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
+	ID              string    `json:"id"`              // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
 	APIKey          string    `json:"api_key,omitempty"` // On input: plaintext (from frontend). On persisted output: Vault reference path. Resolved to plaintext in memory by Provider.models() before use.
 	Type            ModelType `json:"type"`
 	Instruction     string    `json:"instruction"` // LLM only
 	Capability      string    `json:"capability"`  // LLM only
-	UseCases        []string  `json:"use_cases"`
+	UseCases        []string  `json:"use_cases"`   // declared capabilities (informational)
 	TokenMultiplier float64   `json:"token_multiplier"`
 	Temperature     float64   `json:"temperature"` // LLM only
 	MaxTokens       int       `json:"max_tokens"`  // LLM only
-	IsDefault       bool      `json:"is_default"`
+	IsDefault       bool      `json:"is_default"`      // legacy global default (backward compat); prefer IsDefaultFor
+	IsDefaultFor    []string  `json:"is_default_for"`  // per-use-case default: ["chat","enhance","compaction","task"]; each use case has exactly one default model
 	FallbackOrder   int       `json:"fallback_order"`
 }
 
@@ -223,7 +224,8 @@ func (p *Provider) modelsFromEnv() []ModelEntry {
 		APIKey:          os.Getenv("LLM_API_KEY"),
 		Type:            ModelTypeLLM,
 		UseCases:        []string{"chat", "task", "enhance", "compaction"},
-		Instruction:     "", // uses DefaultInstruction in runtime
+		IsDefaultFor:    []string{"chat"},
+		Instruction:     "",
 		Capability:      "",
 		TokenMultiplier: 1.0,
 		Temperature:     0.7,
@@ -269,49 +271,83 @@ func (p *Provider) applyEnvDefaults(m *ModelEntry) {
 	}
 }
 
-// BuildLLM constructs an LLM from the configured models, filtered by UseCase.
-// When useCase is empty (""), returns the first/default model (backward compat).
-// Otherwise, filters by Type=llm and UseCases containing the given use case.
+// BuildLLM constructs an LLM from the model designated as default for the
+// given use case. When useCase is empty, uses the chat default.
+// System processes (enhance, compaction, memory, kb_chunking) MUST go through
+// this path — they are not allowed to pick arbitrary models by their UseCases
+// declaration field.
 func (p *Provider) BuildLLM(ctx context.Context, useCase UseCase) (model.LLM, error) {
-	models := p.models()
-	if len(models) == 0 {
-		return nil, fmt.Errorf("no LLM models configured")
+	entry, err := p.GetModelByUseCase(ctx, useCase)
+	if err != nil {
+		return nil, err
 	}
-	selected := p.selectModelsByUseCase(models, useCase)
-	backends := p.buildBackends(selected)
+	backends := p.buildBackends([]ModelEntry{*entry})
+	if len(backends) == 0 {
+		return nil, fmt.Errorf("failed to build LLM for use case %q", useCase)
+	}
 	return backends[0], nil
 }
 
-// selectModelsByUseCase returns the candidate model entries for a use case.
-// Empty useCase returns all models. Filtered to LLM type with matching UseCases.
-func (p *Provider) selectModelsByUseCase(models []ModelEntry, useCase UseCase) []ModelEntry {
-	if useCase == "" {
-		return models
+// GetModelByUseCase returns the model designated as default for the given
+// use case. Priority: 1) is_default_for contains use case, 2) legacy is_default,
+// 3) first LLM model. Each use case MUST have exactly one default model.
+func (p *Provider) GetModelByUseCase(ctx context.Context, useCase UseCase) (*ModelEntry, error) {
+	models := p.models()
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models configured")
 	}
-	var candidates []ModelEntry
-	for _, m := range models {
-		if m.Type != ModelTypeLLM {
-			continue
+	// 1. Per-use-case default: find model with this use case in is_default_for.
+	for i := range models {
+		if models[i].Type == ModelTypeLLM && isDefaultForUseCase(models[i], string(useCase)) {
+			return &models[i], nil
 		}
-		if hasUseCase(m, useCase) {
-			candidates = append(candidates, m)
+	}
+	// 2. Legacy global default fallback.
+	for i := range models {
+		if models[i].IsDefault && models[i].Type == ModelTypeLLM {
+			return &models[i], nil
 		}
 	}
-	if len(candidates) == 0 {
-		return models
+	// 3. First LLM fallback.
+	for i := range models {
+		if models[i].Type == ModelTypeLLM {
+			return &models[i], nil
+		}
 	}
-	sortModelsByCost(candidates)
-	return candidates
+	return nil, fmt.Errorf("no model for use case %q", useCase)
 }
 
-// hasUseCase reports whether the model declares the given use case.
-func hasUseCase(m ModelEntry, useCase UseCase) bool {
-	for _, uc := range m.UseCases {
-		if uc == string(useCase) {
+// isDefaultForUseCase reports whether the model is designated as the explicit
+// default for the given use case.
+func isDefaultForUseCase(m ModelEntry, useCase string) bool {
+	for _, uc := range m.IsDefaultFor {
+		if uc == useCase {
 			return true
 		}
 	}
 	return false
+}
+
+// selectModelsByUseCase returns candidates for a use case. Now delegates to
+// the per-use-case default model via GetModelByUseCase.
+func (p *Provider) selectModelsByUseCase(models []ModelEntry, useCase UseCase) []ModelEntry {
+	entry, err := p.GetModelByUseCase(context.Background(), useCase)
+	if err != nil {
+		// If no model found for this use case, return all models as fallback.
+		return filterLLMs(models)
+	}
+	return []ModelEntry{*entry}
+}
+
+// filterLLMs returns only LLM-type models from the list.
+func filterLLMs(models []ModelEntry) []ModelEntry {
+	var out []ModelEntry
+	for _, m := range models {
+		if m.Type == ModelTypeLLM {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // buildBackends creates the model.LLM chain sorted by FallbackOrder.
@@ -343,37 +379,20 @@ func sortModelsByCost(entries []ModelEntry) {
 	}
 }
 
-// DefaultInstruction returns the system prompt of the default model.
+// DefaultInstruction returns the system prompt of the model that is default
+// for the chat use case (or the global default if no per-use-case default is set).
 func (p *Provider) DefaultInstruction(ctx context.Context) string {
-	for _, m := range p.models() {
-		if m.IsDefault && m.Instruction != "" {
-			return m.Instruction
-		}
+	m, err := p.DefaultModel(ctx)
+	if err == nil && m.Instruction != "" {
+		return m.Instruction
 	}
-	return "" // caller falls back to runtime.DefaultInstruction
+	return ""
 }
 
-// DefaultModel returns the default LLM model entry: the first entry with
-// IsDefault==true && Type==llm, or if none, the first Type==llm entry.
-// Returns an error when no LLM models are configured.
+// DefaultModel returns the model designated as default for the "chat" use case.
+// Falls back to legacy is_default, then first LLM.
 func (p *Provider) DefaultModel(ctx context.Context) (*ModelEntry, error) {
-	models := p.models()
-	var firstLLM *ModelEntry
-	for i := range models {
-		if models[i].Type != ModelTypeLLM {
-			continue
-		}
-		if firstLLM == nil {
-			firstLLM = &models[i]
-		}
-		if models[i].IsDefault {
-			return &models[i], nil
-		}
-	}
-	if firstLLM != nil {
-		return firstLLM, nil
-	}
-	return nil, fmt.Errorf("no LLM models configured")
+	return p.GetModelByUseCase(ctx, UseCaseChat)
 }
 
 // GetModelByID returns the model entry with the given ID. When modelID is
@@ -405,22 +424,6 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 		return nil, fmt.Errorf("failed to build LLM for model %q", entry.ID)
 	}
 	return backends[0], nil
-}
-
-// GetModelByUseCase returns the model entry selected for a given use case
-// (cheapest matching LLM, or the first model when none match). Used by the
-// Runtime registry's system-level path to build per-use-case Runtime
-// instances (SPEC-062 §5.3.2).
-func (p *Provider) GetModelByUseCase(ctx context.Context, useCase UseCase) (*ModelEntry, error) {
-	models := p.models()
-	if len(models) == 0 {
-		return nil, fmt.Errorf("no models configured")
-	}
-	selected := p.selectModelsByUseCase(models, useCase)
-	if len(selected) == 0 {
-		return nil, fmt.Errorf("no model for use case %q", useCase)
-	}
-	return &selected[0], nil
 }
 
 // ListLLMModels returns the Type==llm model entries (paginated in memory).
@@ -514,33 +517,33 @@ func (p *Provider) DeleteModel(ctx context.Context, id string) error {
 		return fmt.Errorf("config repository not available")
 	}
 	models := p.models()
+	var removedUseCases []string
+	var removedGlobalDefault bool
 	kept := make([]ModelEntry, 0, len(models))
-	removed := false
-	hadDefault := false
 	for _, m := range models {
 		if m.ID == id {
-			removed = true
-			if m.IsDefault {
-				hadDefault = true
-			}
+			removedGlobalDefault = m.IsDefault
+			removedUseCases = append(removedUseCases, m.IsDefaultFor...)
 			continue
 		}
 		kept = append(kept, m)
 	}
-	if !removed {
+	if len(kept) == len(models) {
 		return nil // idempotent delete
 	}
-	// If we removed the default LLM, promote the first remaining LLM.
-	if hadDefault {
+	// Promote defaults as needed.
+	if removedGlobalDefault {
 		ensureSingleDefault(kept)
 	}
+	ensurePerUseCaseDefaults(kept, removedUseCases)
 	return p.SetModels(ctx, kept)
 }
 
-// SetDefaultModel marks the model with the given ID as the sole default LLM,
-// clearing IsDefault on every other LLM entry. Returns an error when the ID
-// is not found or is not an LLM model.
-func (p *Provider) SetDefaultModel(ctx context.Context, id string) error {
+// SetDefaultModel marks the model with :id as default for the given use cases.
+// When useCases is empty or contains "chat", it sets the legacy is_default flag
+// for backward compat. For specific use cases, it sets is_default_for.
+// Clearing defaults on other models is done per-use-case.
+func (p *Provider) SetDefaultModel(ctx context.Context, id string, useCases []string) error {
 	if p.repo == nil {
 		return fmt.Errorf("config repository not available")
 	}
@@ -551,16 +554,34 @@ func (p *Provider) SetDefaultModel(ctx context.Context, id string) error {
 			continue
 		}
 		if models[i].ID == id {
-			models[i].IsDefault = true
+			// Set legacy global default if requested or no specific use cases.
+			if len(useCases) == 0 || containsStr(useCases, "chat") {
+				models[i].IsDefault = true
+			}
+			// Set per-use-case defaults.
+			for _, uc := range useCases {
+				if !isDefaultForUseCase(models[i], uc) {
+					models[i].IsDefaultFor = append(models[i].IsDefaultFor, uc)
+				}
+			}
 			found = true
 		} else {
-			models[i].IsDefault = false
+			// Clear defaults on other models for these use cases.
+			if len(useCases) == 0 || containsStr(useCases, "chat") {
+				models[i].IsDefault = false
+			}
+			models[i].IsDefaultFor = removeStrAll(models[i].IsDefaultFor, useCases)
 		}
 	}
 	if !found {
 		return fmt.Errorf("LLM model %q not found", id)
 	}
 	return p.SetModels(ctx, models)
+}
+
+// SetDefaultModelPlain marks a model as the default for chat (legacy compat).
+func (p *Provider) setDefaultModelPlain(ctx context.Context, id string) error {
+	return p.SetDefaultModel(ctx, id, []string{"chat"})
 }
 
 // newUUID generates a UUID v4 string. Isolated so tests can stub it.
@@ -793,4 +814,54 @@ func trimSpace(s string) string {
 		j--
 	}
 	return s[i : j+1]
+}
+
+// containsStr reports whether s is in the list.
+func containsStr(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// removeStrAll removes all occurrences of given strings from the list.
+func removeStrAll(list, toRemove []string) []string {
+	if len(toRemove) == 0 {
+		return list
+	}
+	removeSet := make(map[string]bool, len(toRemove))
+	for _, s := range toRemove {
+		removeSet[s] = true
+	}
+	var out []string
+	for _, v := range list {
+		if !removeSet[v] {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// ensurePerUseCaseDefaults promotes first LLM as default for orphaned use cases.
+func ensurePerUseCaseDefaults(entries []ModelEntry, orphanedUseCases []string) {
+	if len(orphanedUseCases) == 0 {
+		return
+	}
+	firstLLM := -1
+	for i, m := range entries {
+		if m.Type == ModelTypeLLM && firstLLM < 0 {
+			firstLLM = i
+			break
+		}
+	}
+	if firstLLM < 0 {
+		return
+	}
+	for _, uc := range orphanedUseCases {
+		if !isDefaultForUseCase(entries[firstLLM], uc) {
+			entries[firstLLM].IsDefaultFor = append(entries[firstLLM].IsDefaultFor, uc)
+		}
+	}
 }

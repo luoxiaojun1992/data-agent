@@ -169,17 +169,25 @@ func (h *ModelConfigHandler) DeleteModel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已删除", "id": id})
 }
 
-// SetDefault marks the model with :id as the sole default LLM. SPEC-062 §4.1:
-// PATCH /models/:id/default.
+// SetDefault marks the model with :id as default for the given use cases.
+// If no use_cases are specified, defaults to "chat".
+// PATCH /models/:id/default
 func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 	if h.provider == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
 	id := c.Param("id")
-	if err := h.provider.SetDefaultModel(c.Request.Context(), id); err != nil {
+	var req struct {
+		UseCases []string `json:"use_cases"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if len(req.UseCases) == 0 {
+		req.UseCases = []string{"chat"}
+	}
+	if err := h.provider.SetDefaultModel(c.Request.Context(), id, req.UseCases); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "已设为默认", "id": id})
+	c.JSON(http.StatusOK, gin.H{"message": "已设为默认", "id": id, "use_cases": req.UseCases})
 }

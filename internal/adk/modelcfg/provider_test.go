@@ -250,7 +250,7 @@ func TestSetDefaultModel_NotFound(t *testing.T) {
 	p := newProviderWithModels(t, []ModelEntry{
 		{ID: "m1", Name: "M1", Type: ModelTypeLLM},
 	})
-	err := p.SetDefaultModel(context.Background(), "nonexistent")
+	err := p.SetDefaultModel(context.Background(), "nonexistent", nil)
 	if err == nil {
 		t.Error("expected error for nonexistent model")
 	}
@@ -269,15 +269,15 @@ func TestSetDefaultModel_Success(t *testing.T) {
 	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
 	p := NewProvider(repo, nil)
 
-	if err := p.SetDefaultModel(context.Background(), "m2"); err != nil {
+	if err := p.SetDefaultModel(context.Background(), "m2", nil); err != nil {
 		t.Fatalf("SetDefaultModel: %v", err)
 	}
 }
 
 func TestGetModelByUseCase(t *testing.T) {
 	p := newProviderWithModels(t, []ModelEntry{
-		{ID: "chat", Name: "Chat", Type: ModelTypeLLM, UseCases: []string{"chat"}},
-		{ID: "enh", Name: "Enh", Type: ModelTypeLLM, UseCases: []string{"enhance"}, TokenMultiplier: 0.5},
+		{ID: "chat", Name: "Chat", Type: ModelTypeLLM, IsDefaultFor: []string{"chat"}},
+		{ID: "enh", Name: "Enh", Type: ModelTypeLLM, IsDefaultFor: []string{"enhance"}},
 	})
 	m, err := p.GetModelByUseCase(context.Background(), UseCaseEnhance)
 	if err != nil {
