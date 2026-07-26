@@ -57,8 +57,8 @@ func (c *Client) Store(ctx context.Context, path, value string) error {
 		},
 	}
 
-	// KV v2 path: /v1/{mount}/data/{path}
-	fullPath := fmt.Sprintf("/v1/%s/data/%s", c.mount, path)
+	// KV v2 path: {mount}/data/{path} (Vault Go client adds /v1 prefix)
+	fullPath := fmt.Sprintf("%s/data/%s", c.mount, path)
 	_, err := c.client.Logical().WriteWithContext(ctx, fullPath, data)
 	if err != nil {
 		return fmt.Errorf("vault store %s: %w", path, err)
@@ -71,7 +71,7 @@ func (c *Client) Retrieve(ctx context.Context, path string) (string, error) {
 	if c == nil || c.client == nil {
 		return "", fmt.Errorf("vault client not initialized")
 	}
-	fullPath := fmt.Sprintf("/v1/%s/data/%s", c.mount, path)
+	fullPath := fmt.Sprintf("%s/data/%s", c.mount, path)
 	secret, err := c.client.Logical().ReadWithContext(ctx, fullPath)
 	if err != nil {
 		return "", fmt.Errorf("vault retrieve %s: %w", path, err)
