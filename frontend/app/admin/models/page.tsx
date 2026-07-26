@@ -52,7 +52,7 @@ export default function ModelsPage() {
 
   const fetchModelList = useCallback(async () => {
     try {
-      const res = await apiFetch('/models?page=1&page_size=100');
+      const res = await apiFetch('/models/list?page=1&page_size=100');
       if (res.ok) {
         const data = await res.json();
         setModelList(data.models || []);
