@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -222,6 +223,15 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 
 	for evt, rErr := range rt.Run(ctx, userID, sessionID, lastMsg, runCfg) {
 		if rErr != nil {
+			// If the session persistence failed AFTER the LLM stream completed
+			// (client disconnected before MongoDB write), the response text has
+			// already been delivered to the user. Don't surface this as an error.
+			if isSessionPersistenceError(rErr) {
+				log.Printf("[chat] session persistence failed (response already delivered, ignoring): %v (session=%s)", rErr, sessionID)
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return nil
+			}
 			log.Printf("[chat] run error: %v (session=%s)", rErr, sessionID)
 			errData, _ := json.Marshal(map[string]string{"error": rErr.Error()})
 			fmt.Fprintf(w, "data: %s\n\n", errData)
@@ -320,4 +330,20 @@ func lastUserMessage(messages []domainchat.Message) string {
 		}
 	}
 	return ""
+}
+
+// isSessionPersistenceError reports whether err is a session-append failure
+// (AppendEvent returned context canceled) that occurs AFTER the LLM stream
+// has already delivered the assistant response. In that case the response
+// text has reached the user; the only thing that failed is the post-stream
+// MongoDB write, and surfacing it to the frontend would replace the visible
+// answer with a "network error".
+func isSessionPersistenceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "failed to add event to session") ||
+		strings.Contains(s, "append event: context canceled") ||
+		errors.Is(err, context.Canceled) && strings.Contains(s, "session")
 }
