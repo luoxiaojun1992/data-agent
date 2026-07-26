@@ -95,6 +95,10 @@ func (m *Manager) SetRecoveryHours(hours int) error {
 	return m.repo.SetRecoveryHours(context.Background(), hours)
 }
 
+func (m *Manager) SetTitle(id, title string) error {
+	return m.repo.SetTitle(context.Background(), id, title)
+}
+
 func sessionToRecord(s *domainchat.Session) repository.SessionRecord {
 	r := repository.SessionRecord{
 		ID:        s.ID,

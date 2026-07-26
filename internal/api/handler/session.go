@@ -6,14 +6,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	"google.golang.org/adk/session"
 )
 
 type SessionHandler struct {
-	mgr chat.SessionService
+	mgr         chat.SessionService
+	adkSessions session.Service
+	appName     string
 }
 
-func NewSessionHandler(mgr chat.SessionService) *SessionHandler {
-	return &SessionHandler{mgr: mgr}
+func NewSessionHandler(mgr chat.SessionService, adkSessions session.Service) *SessionHandler {
+	return &SessionHandler{mgr: mgr, adkSessions: adkSessions, appName: "data-agent"}
 }
 
 func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
@@ -22,6 +25,7 @@ func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
 	// /deleted must be registered before /:id so the static path wins (UI-181).
 	rg.GET("/deleted", h.ListDeleted)
 	rg.GET("/:id", h.Get)
+	rg.GET("/:id/messages", h.Messages)
 	rg.PUT("/:id", h.Renew)
 	rg.DELETE("/:id", h.Delete)
 	rg.POST("/:id/restore", h.Restore)
@@ -104,4 +108,66 @@ func (h *SessionHandler) ListDeleted(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"sessions": userSessions})
+}
+
+// Messages returns the ADK session events as a flat list of {role, content}
+// messages suitable for re-hydrating the frontend chat UI. Events without
+// text content (tool calls, intermediate) are filtered out; compaction
+// summaries are skipped so the user only sees the original conversation.
+func (h *SessionHandler) Messages(c *gin.Context) {
+	if h.adkSessions == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "adk session service not configured"})
+		return
+	}
+	userID := c.GetString("user_id")
+	sessionID := c.Param("id")
+
+	resp, err := h.adkSessions.Get(c.Request.Context(), &session.GetRequest{
+		AppName:   h.appName,
+		UserID:    userID,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	type msg struct {
+		Role      string `json:"role"`
+		Content   string `json:"content"`
+		Timestamp string `json:"timestamp"`
+	}
+	events := resp.Session.Events()
+	var messages []msg
+	for i := 0; i < events.Len(); i++ {
+		ev := events.At(i)
+		if ev == nil || ev.LLMResponse.Content == nil {
+			continue
+		}
+		var content string
+		for _, p := range ev.LLMResponse.Content.Parts {
+			if p != nil && p.Text != "" {
+				content += p.Text
+			}
+		}
+		if content == "" {
+			continue
+		}
+		role := ev.Author
+		if role == "" {
+			role = "assistant"
+		}
+		// Skip compaction summaries — they are not part of the original conversation.
+		if ev.LLMResponse.CustomMetadata != nil {
+			if _, ok := ev.LLMResponse.CustomMetadata["compaction"]; ok {
+				continue
+			}
+		}
+		messages = append(messages, msg{
+			Role:      role,
+			Content:   content,
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }

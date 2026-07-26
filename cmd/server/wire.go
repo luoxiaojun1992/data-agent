@@ -355,7 +355,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Chat:          handler.NewChatHandler(deps.chatService),
 		Enhance:       handler.NewEnhanceHandler(deps.enhanceService),
 		Agent:         handler.NewAgentHandler(deps.orchestrator, deps.taskService, toolLister),
-		Session:       handler.NewSessionHandler(deps.sessionManager),
+		Session:       handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),
 		Artifact:      deps.artifactHandler,
 		Knowledge:     deps.kbHandler,
 		Audit:         deps.auditHandler,

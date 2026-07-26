@@ -71,4 +71,6 @@ type SessionService interface {
 	Restore(id string) error
 	ListDeleted(before time.Time, limit int64) ([]*Session, error)
 	SetRecoveryHours(hours int) error
+	// SetTitle updates the session title (first user prompt snippet).
+	SetTitle(id, title string) error
 }

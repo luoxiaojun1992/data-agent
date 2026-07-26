@@ -89,6 +89,11 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 		err = domainchat.ErrUserMessageRequired
 		return
 	}
+	// Auto-set session title from the first user message. Failures are
+	// non-fatal — the session continues to work, just without a nice title.
+	if titleErr := s.sessions.SetTitle(sessionID, truncateTitle(lastMsg, 30)); titleErr != nil {
+		log.Printf("[chat] set title: %v (session=%s)", titleErr, sessionID)
+	}
 
 	state := buildState(userID, role, sessionID, req.KBID)
 	if _, cerr := s.adkSessions.Create(ctx, &session.CreateRequest{
@@ -346,4 +351,15 @@ func isSessionPersistenceError(err error) bool {
 	return strings.Contains(s, "failed to add event to session") ||
 		strings.Contains(s, "append event: context canceled") ||
 		errors.Is(err, context.Canceled) && strings.Contains(s, "session")
+}
+
+// truncateTitle returns the first maxRunes of s, trimming trailing whitespace
+// so the session list shows a clean snippet.
+func truncateTitle(s string, maxRunes int) string {
+	s = strings.TrimSpace(s)
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes])
 }

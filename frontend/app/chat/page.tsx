@@ -126,6 +126,28 @@ export default function ChatPage() {
     } catch { /* ignore */ }
   };
 
+  const loadSessionMessages = async (id: string) => {
+    try {
+      const res = await apiFetch(`/sessions/${id}/messages`);
+      const data = await res.json();
+      const msgs: Message[] = (data.messages || []).map((m: any) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.timestamp || Date.now()),
+      }));
+      setMessages(msgs);
+    } catch (err) {
+      console.error('Failed to load session messages:', err);
+      setMessages([]);
+    }
+  };
+
+  const selectSession = (id: string) => {
+    setSessionId(id);
+    loadSessionMessages(id);
+    setShowSessions(false);
+  };
+
   const toggleSessions = () => {
     const next = !showSessions;
     setShowSessions(next);
@@ -436,15 +458,19 @@ export default function ChatPage() {
                   ))}
                 </div>
               )}
-              {sessions.filter(s => !sessionSearch || s.id.includes(sessionSearch)).map(s => (
-                  <button key={s.id} onClick={() => { setSessionId(s.id); setMessages([]); }}
+              {sessions.filter(s => !sessionSearch || (s.title || s.id).toLowerCase().includes(sessionSearch.toLowerCase())).map(s => (
+                  <button key={s.id} onClick={() => selectSession(s.id)}
                     className={`w-full text-left px-2 py-1.5 text-xs hover:bg-white/5 rounded transition-colors ${s.id === sessionId ? 'bg-[var(--accent)]/10' : ''}`}
                     data-testid={`session-item-${s.id}`}>
-                    <span className="text-[var(--text-primary)]" data-testid="session-item-title">Session {s.id.slice(-8)}</span>
-                    <span className="text-[var(--text-secondary)] ml-2" data-testid="session-item-meta">{new Date(s.created_at).toLocaleDateString()}</span>
-                    <button onClick={e => deleteSession(s.id, e)}
-                      className="float-right text-[10px] text-red-400 hover:text-red-300"
-                      data-testid={`session-delete-${s.id}`}>删除</button>
+                    <div className="flex items-start justify-between gap-1">
+                      <span className="text-[var(--text-primary)] line-clamp-2 break-all" data-testid="session-item-title">
+                        {s.title || `Session ${s.id.slice(-8)}`}
+                      </span>
+                      <button onClick={e => deleteSession(s.id, e)}
+                        className="flex-shrink-0 text-[10px] text-red-400 hover:text-red-300"
+                        data-testid={`session-delete-${s.id}`}>删除</button>
+                    </div>
+                    <span className="text-[var(--text-secondary)] text-[10px]" data-testid="session-item-meta">{new Date(s.created_at).toLocaleDateString()}</span>
                   </button>
                 ))}
               </div>

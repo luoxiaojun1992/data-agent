@@ -89,4 +89,9 @@ func (r *SessionRepository) SetRecoveryHours(ctx context.Context, hours int) err
 	return err
 }
 
+func (r *SessionRepository) SetTitle(ctx context.Context, id, title string) error {
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"title": title}})
+	return err
+}
+
 var _ repository.SessionRepository = (*SessionRepository)(nil)
