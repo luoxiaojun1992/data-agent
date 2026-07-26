@@ -11,6 +11,10 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  type?: 'text' | 'tool_call' | 'tool_result';
+  name?: string;
+  args?: Record<string, any>;
+  result?: Record<string, any>;
   toolCall?: { name: string; input: string; output: string };
   table?: { headers: string[]; rows: string[][] };
 }
@@ -134,7 +138,11 @@ export default function ChatPage() {
       // Normalize anything non-user to assistant so the chat UI renders it.
       const msgs: Message[] = (data.messages || []).map((m: any) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content,
+        content: m.content || '',
+        type: m.type || 'text',
+        name: m.name,
+        args: m.args,
+        result: m.result,
         timestamp: new Date(m.timestamp || Date.now()),
       }));
       setMessages(msgs);
@@ -375,7 +383,31 @@ export default function ChatPage() {
                   }`}
                   data-testid={msg.role === 'user' ? `chat-msg-user-${i}` : `chat-msg-ai-${i}`}
                 >
-                  {msg.role === 'assistant' ? (
+                  {msg.role === 'assistant' && msg.type === 'tool_call' ? (
+                    <div className="text-xs">
+                      <span className="text-[var(--accent)]">🔧 {msg.name || 'tool'}</span>
+                      {msg.args && Object.keys(msg.args).length > 0 && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-[var(--text-secondary)]">参数</summary>
+                          <pre className="mt-1 p-2 rounded text-[10px] bg-black/20 overflow-x-auto max-h-32">
+                            {JSON.stringify(msg.args, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  ) : msg.role === 'assistant' && msg.type === 'tool_result' ? (
+                    <div className="text-xs">
+                      <span className="text-green-400">✅ {msg.name || 'tool'}</span>
+                      {msg.result && Object.keys(msg.result).length > 0 && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-[var(--text-secondary)]">结果</summary>
+                          <pre className="mt-1 p-2 rounded text-[10px] bg-black/20 overflow-x-auto max-h-32">
+                            {JSON.stringify(msg.result, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  ) : msg.role === 'assistant' ? (
                     <ChatContent content={msg.content} copyMsg={copyMsg} setCopyMsg={setCopyMsg} />
                   ) : (
                     <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
