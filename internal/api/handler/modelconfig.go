@@ -33,14 +33,15 @@ const modelRoutePath = "/models"
 const errProviderNotConfigured = "model provider not configured"
 
 // RegisterModelConfigRoutes registers model config management routes.
-// SPEC-062 adds structured CRUD endpoints alongside the legacy GET/PUT.
 func RegisterModelConfigRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
 	api.GET(modelRoutePath, h.Get)
 	api.PUT(modelRoutePath, h.Put)
 	api.GET(modelRoutePath+"/list", h.ListLLM)              // LLM-only, paginated (selector source)
 	api.POST(modelRoutePath, h.AddModel)                     // add single model (auto-gen ID)
-	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)         // delete single model
+	api.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)      // decrypt per-model API key
 	api.PATCH(modelRoutePath+"/:id/default", h.SetDefault)   // set as default
+	api.PATCH(modelRoutePath+"/:id", h.UpdateModel)          // update model fields
+	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)         // delete single model
 }
 
 // Get returns the full model configuration. When the page query param is
@@ -59,7 +60,7 @@ func (h *ModelConfigHandler) Get(c *gin.Context) {
 	h.getRaw(c, ctx)
 }
 
-// getPaginated returns a paginated LLM-only model list.
+// getPaginated returns a paginated LLM-only model list. API keys are masked.
 func (h *ModelConfigHandler) getPaginated(c *gin.Context, ctx context.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
@@ -67,6 +68,11 @@ func (h *ModelConfigHandler) getPaginated(c *gin.Context, ctx context.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	for i := range models {
+		if models[i].APIKey != "" {
+			models[i].APIKey = "••••••••••"
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"models": models, "total": total, "page": page, "page_size": pageSize,
@@ -190,4 +196,41 @@ func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已设为默认", "id": id, "use_cases": req.UseCases})
+}
+
+// GetAPIKey decrypts and returns the plaintext API key for a model.
+// GET /models/:id/api-key
+func (h *ModelConfigHandler) GetAPIKey(c *gin.Context) {
+	if h.provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	id := c.Param("id")
+	plaintext, err := h.provider.DecryptModelAPIKey(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"plaintext": plaintext})
+}
+
+// UpdateModel updates an existing model's fields.
+// PATCH /models/:id
+func (h *ModelConfigHandler) UpdateModel(c *gin.Context) {
+	if h.provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	id := c.Param("id")
+	var entry modelcfg.ModelEntry
+	if err := c.ShouldBindJSON(&entry); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	updated, err := h.provider.UpdateModel(c.Request.Context(), id, entry)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, updated)
 }

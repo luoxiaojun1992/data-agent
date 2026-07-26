@@ -510,6 +510,68 @@ func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, 
 	return entry, nil
 }
 
+// DecryptModelAPIKey retrieves the plaintext API key for a model from Vault.
+// Reads directly from DB (without Vault resolution) to get the Vault path,
+// then decrypts from Vault. Returns an error if no Vault-stored key exists.
+func (p *Provider) DecryptModelAPIKey(ctx context.Context, modelID string) (string, error) {
+	if p.vault == nil {
+		return "", fmt.Errorf("vault client not available")
+	}
+	rawModels := p.modelsFromDB()
+	for _, m := range rawModels {
+		if m.ID == modelID {
+			if m.APIKey == "" || !looksLikeVaultPath(m.APIKey) {
+				return "", fmt.Errorf("model %q has no Vault-stored API key", modelID)
+			}
+			return p.vault.Retrieve(ctx, m.APIKey)
+		}
+	}
+	return "", fmt.Errorf("model %q not found", modelID)
+}
+
+// UpdateModel updates an existing model entry by ID. When api_key is provided
+// and is plaintext, it is stored in Vault and replaced with the Vault path.
+// When api_key is empty, the existing Vault path is preserved from DB.
+// The returned model NEVER exposes the plaintext API key.
+func (p *Provider) UpdateModel(ctx context.Context, id string, entry ModelEntry) (ModelEntry, error) {
+	if p.repo == nil {
+		return entry, fmt.Errorf("config repository not available")
+	}
+	models := p.modelsFromDB()
+	if models == nil {
+		models = p.models()
+	}
+	found := false
+	for i := range models {
+		if models[i].ID == id {
+			entry.ID = id
+			if entry.APIKey == "" {
+				entry.APIKey = models[i].APIKey
+			} else if !looksLikeVaultPath(entry.APIKey) {
+				if p.vault == nil {
+					return entry, fmt.Errorf("vault client is required to store API keys; ensure VAULT_ADDR/VAULT_TOKEN are configured")
+				}
+				path := ModelAPIKeyVaultPath(id)
+				if err := p.vault.Store(ctx, path, entry.APIKey); err != nil {
+					return entry, fmt.Errorf("vault store api_key for %q: %w", id, err)
+				}
+				entry.APIKey = path
+			}
+			models[i] = entry
+			found = true
+			break
+		}
+	}
+	if !found {
+		return entry, fmt.Errorf("model %q not found", id)
+	}
+	if err := p.SetModels(ctx, models); err != nil {
+		return entry, err
+	}
+	entry.APIKey = "••••••••••"
+	return entry, nil
+}
+
 // DeleteModel removes the model with the given ID from the list. Idempotent:
 // deleting a non-existent ID is a no-op (returns nil).
 func (p *Provider) DeleteModel(ctx context.Context, id string) error {
