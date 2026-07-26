@@ -208,6 +208,7 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -223,35 +224,19 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 		if rErr != nil {
 			log.Printf("[chat] run error: %v (session=%s)", rErr, sessionID)
 			errData, _ := json.Marshal(map[string]string{"error": rErr.Error()})
-			if n, werr := fmt.Fprintf(w, "data: %s\n\n", errData); werr != nil {
-				log.Printf("[chat] write error event failed: %v (wrote=%d)", werr, n)
-			}
+			fmt.Fprintf(w, "data: %s\n\n", errData)
 			flusher.Flush()
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
 			return nil
 		}
-		if evt == nil {
+		if evt == nil || evt.Content == nil {
 			continue
-		}
-		if evt.Content == nil {
-			continue
-		}
-		for _, p := range evt.Content.Parts {
-			if p == nil || p.Text == "" {
-				continue
-			}
 		}
 		forwardSSEParts(w, flusher, evt.Content.Parts)
 	}
 
-	// Detect client disconnect: if ctx is cancelled, log it. Some streams end
-	// abruptly without yielding an error event.
-	if ctx.Err() != nil {
-		log.Printf("[chat] stream aborted (session=%s, ctx_err=%v)", sessionID, ctx.Err())
-	} else {
-		log.Printf("[chat] stream completed normally (session=%s)", sessionID)
-	}
+	log.Printf("[chat] stream completed normally (session=%s)", sessionID)
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
