@@ -40,11 +40,13 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	if req.Stream {
+		// Write stream directly to the raw http.ResponseWriter, not gin's wrapper,
+		// to avoid gin adding headers or interfering with chunked transfer.
 		if err := h.svc.Stream(ctx, req, userID, role, c.Writer); err != nil {
-			// Stream only returns an error before any SSE bytes are written
-			// (prepareRun failures); map to the appropriate HTTP status.
 			c.JSON(chatErrorStatus(err), gin.H{"error": err.Error()})
 		}
+		c.Abort()
+		c.Writer.Flush()
 		return
 	}
 
