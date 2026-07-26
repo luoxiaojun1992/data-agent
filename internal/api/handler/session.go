@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -133,9 +134,13 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 	}
 
 	type msg struct {
-		Role      string `json:"role"`
-		Content   string `json:"content"`
-		Timestamp string `json:"timestamp"`
+		Role      string         `json:"role"`
+		Content   string         `json:"content"`
+		Type      string         `json:"type,omitempty"`
+		Name      string         `json:"name,omitempty"`
+		Args      map[string]any `json:"args,omitempty"`
+		Result    map[string]any `json:"result,omitempty"`
+		Timestamp string         `json:"timestamp"`
 	}
 	events := resp.Session.Events()
 	var messages []msg
@@ -144,30 +149,57 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		if ev == nil || ev.LLMResponse.Content == nil {
 			continue
 		}
-		var content string
-		for _, p := range ev.LLMResponse.Content.Parts {
-			if p != nil && p.Text != "" {
-				content += p.Text
-			}
-		}
-		if content == "" {
-			continue
-		}
-		role := ev.Author
-		if role == "" {
-			role = "assistant"
-		}
 		// Skip compaction summaries — they are not part of the original conversation.
 		if ev.LLMResponse.CustomMetadata != nil {
 			if _, ok := ev.LLMResponse.CustomMetadata["compaction"]; ok {
 				continue
 			}
 		}
-		messages = append(messages, msg{
-			Role:      role,
-			Content:   content,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-		})
+		role := ev.Author
+		if role == "" {
+			role = "assistant"
+		}
+		ts := ev.Timestamp.UTC().Format(time.RFC3339)
+		for _, p := range ev.LLMResponse.Content.Parts {
+			if p == nil {
+				continue
+			}
+			switch {
+			case p.Text != "":
+				messages = append(messages, msg{Role: role, Content: p.Text, Type: "text", Timestamp: ts})
+			case p.FunctionCall != nil:
+				messages = append(messages, msg{
+					Role: role, Type: "tool_call",
+					Name: p.FunctionCall.Name, Args: p.FunctionCall.Args,
+					Timestamp: ts,
+				})
+			case p.FunctionResponse != nil:
+				messages = append(messages, msg{
+					Role: role, Type: "tool_result",
+					Name: p.FunctionResponse.Name, Result: asMap(p.FunctionResponse.Response),
+					Timestamp: ts,
+				})
+			}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
+}
+
+// asMap converts a generic JSON-decoded value into a map. Used for tool
+// response payloads which may be any shape after JSON round-tripping.
+func asMap(v any) map[string]any {
+	if v == nil {
+		return nil
+	}
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	// Re-marshal/unmarshal to normalize any nested map types.
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	return m
 }

@@ -130,8 +130,10 @@ export default function ChatPage() {
     try {
       const res = await apiFetch(`/sessions/${id}/messages`);
       const data = await res.json();
+      // ADK event authors can be "user", "data_agent", "system", etc.
+      // Normalize anything non-user to assistant so the chat UI renders it.
       const msgs: Message[] = (data.messages || []).map((m: any) => ({
-        role: m.role,
+        role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content,
         timestamp: new Date(m.timestamp || Date.now()),
       }));
