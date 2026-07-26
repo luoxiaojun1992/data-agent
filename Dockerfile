@@ -6,7 +6,7 @@ WORKDIR /app
 COPY go.mod ./
 # Copy patched ADK vendor dir before go mod download (replace directive needs it)
 COPY vendor_adk_v1.5.0/ ./vendor_adk_v1.5.0/
-RUN go mod download
+RUN go env -w GOPROXY=https://goproxy.cn,direct && go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /data-agent ./cmd/server
 
