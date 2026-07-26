@@ -70,6 +70,8 @@ func Load(path string) (*Config, error) {
 	_ = v.BindEnv("seaweedfs.master", "SEAWEEDFS_MASTER")
 	_ = v.BindEnv("seaweedfs.filer", "SEAWEEDFS_FILER")
 	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
+	_ = v.BindEnv("server.read_timeout", "SERVER_READ_TIMEOUT")
+	_ = v.BindEnv("server.write_timeout", "SERVER_WRITE_TIMEOUT")
 
 	// Set defaults
 	v.SetDefault("server.port", 8080)
