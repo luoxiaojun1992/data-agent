@@ -41,7 +41,6 @@ export default function ModelsPage() {
 
   // Hermes config state (独立卡片)
   const [hermesUrl, setHermesUrl] = useState('http://hermes:8081');
-  const [hermesModel, setHermesModel] = useState('hermes-3-70b');
   const [hermesApiKey, setHermesApiKey] = useState('');
   const [hermesApiKeyExists, setHermesApiKeyExists] = useState(false);
   const [showHermesKey, setShowHermesKey] = useState(false);
@@ -256,7 +255,6 @@ export default function ModelsPage() {
     try {
       const fields: { key: string; value: string }[] = [
         { key: 'hermes_url', value: hermesUrl },
-        { key: 'hermes_model', value: hermesModel },
       ];
       if (hermesApiKey && hermesApiKey !== MASK) {
         fields.push({ key: 'hermes_api_key', value: hermesApiKey });
@@ -404,10 +402,6 @@ export default function ModelsPage() {
 
           <Field label="Hermes URL">
             <input data-testid="hermes-url-input" value={hermesUrl} onChange={e => setHermesUrl(e.target.value)} placeholder="http://hermes:8081" style={inputStyle} />
-          </Field>
-
-          <Field label="默认模型">
-            <input data-testid="hermes-model-input" value={hermesModel} onChange={e => setHermesModel(e.target.value)} placeholder="hermes-3-70b" style={inputStyle} />
           </Field>
 
           <Field label="API Key">
