@@ -153,6 +153,12 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		if ev == nil || ev.LLMResponse.Content == nil {
 			continue
 		}
+		// Skip compaction summaries — they are not part of the original conversation.
+		// Compaction events have either: (1) custommetadata.compaction flag set, OR
+		// (2) author="compaction" (older ADK format with no custommetadata).
+		if ev.Author == "compaction" {
+			continue
+		}
 		if ev.LLMResponse.CustomMetadata != nil {
 			if _, ok := ev.LLMResponse.CustomMetadata["compaction"]; ok {
 				continue
