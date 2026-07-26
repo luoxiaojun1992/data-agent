@@ -49,7 +49,6 @@ type ModelEntry struct {
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
 	APIKey          string    `json:"api_key,omitempty"` // On input: plaintext (from frontend). On persisted output: Vault reference path. Resolved to plaintext in memory by Provider.models() before use.
-	APIKeyExists    bool      `json:"api_key_exists"`     // whether APIKey is non-empty (the json:"" default-zero omitempty hides APIKey when unset; this flag preserves that signal)
 	Type            ModelType `json:"type"`
 	Instruction     string    `json:"instruction"` // LLM only
 	Capability      string    `json:"capability"`  // LLM only
@@ -218,9 +217,6 @@ func (p *Provider) modelsFromDB() []ModelEntry {
 	var entries []ModelEntry
 	if json.Unmarshal([]byte(cfg.Value), &entries) != nil {
 		return nil
-	}
-	for i := range entries {
-		entries[i].APIKeyExists = entries[i].APIKey != ""
 	}
 	return entries
 }

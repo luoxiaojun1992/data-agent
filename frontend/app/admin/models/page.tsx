@@ -316,7 +316,8 @@ export default function ModelsPage() {
                 )}
                 {filtered.map((m, i) => {
                   const isRevealed = !!revealedKeys[m.id];
-                  const keyDisplay = isRevealed ? revealedKeys[m.id] : (m.api_key_exists ? MASK : '未设置');
+                  const hasKey = !!m.api_key;
+                  const keyDisplay = isRevealed ? revealedKeys[m.id] : (hasKey ? MASK : '未设置');
                   return (
                     <tr key={m.id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
                       <td style={{ padding: '10px 12px' }}>
