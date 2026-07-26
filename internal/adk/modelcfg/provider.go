@@ -256,12 +256,10 @@ func (p *Provider) modelsFromEnv() []ModelEntry {
 }
 
 // applyEnvDefaults fills zero values from env (per-model override).
+// API key is NEVER filled from env — each model must have its own Vault-stored key.
 func (p *Provider) applyEnvDefaults(m *ModelEntry) {
 	if m.BaseURL == "" {
 		m.BaseURL = envOrDefault("LLM_BASE_URL", defaultBaseURL)
-	}
-	if m.APIKey == "" {
-		m.APIKey = os.Getenv("LLM_API_KEY")
 	}
 	if m.Temperature == 0 {
 		m.Temperature = 0.7
@@ -517,37 +515,25 @@ func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, 
 }
 
 // DecryptModelAPIKey retrieves the plaintext API key for a model from Vault.
-// Reads directly from DB (without Vault resolution) to get the Vault path,
-// then decrypts from Vault. For legacy models with plaintext keys in MongoDB,
-// auto-migrates the key to Vault on first access (returns the same plaintext).
+// The model MUST have its API key stored in Vault (a data-agent/... path).
+// Plaintext keys in MongoDB are NOT supported — models must be saved via
+// AddModel/UpdateModel which encrypt the key to Vault on write.
 func (p *Provider) DecryptModelAPIKey(ctx context.Context, modelID string) (string, error) {
 	if p.vault == nil {
 		return "", fmt.Errorf("vault client not available")
 	}
 	rawModels := p.modelsFromDB()
-	for i := range rawModels {
-		if rawModels[i].ID != modelID {
+	for _, m := range rawModels {
+		if m.ID != modelID {
 			continue
 		}
-		m := &rawModels[i]
 		if m.APIKey == "" {
 			return "", fmt.Errorf("model %q has no API key", modelID)
 		}
-		if looksLikeVaultPath(m.APIKey) {
-			return p.vault.Retrieve(ctx, m.APIKey)
+		if !looksLikeVaultPath(m.APIKey) {
+			return "", fmt.Errorf("model %q has a legacy plaintext API key — re-save the model to encrypt it to Vault", modelID)
 		}
-		// Legacy plaintext key — auto-migrate to Vault.
-		path := ModelAPIKeyVaultPath(modelID)
-		if err := p.vault.Store(ctx, path, m.APIKey); err != nil {
-			return "", fmt.Errorf("vault migrate api_key for %q: %w", modelID, err)
-		}
-		// Persist the Vault path reference back to DB.
-		updatedModels := append([]ModelEntry{}, rawModels...)
-		updatedModels[i].APIKey = path
-		if err := p.SetModels(ctx, updatedModels); err != nil {
-			return "", fmt.Errorf("persist vault path for %q: %w", modelID, err)
-		}
-		return m.APIKey, nil
+		return p.vault.Retrieve(ctx, m.APIKey)
 	}
 	return "", fmt.Errorf("model %q not found", modelID)
 }
