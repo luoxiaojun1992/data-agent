@@ -564,10 +564,14 @@ func (p *Provider) DecryptModelAPIKey(ctx context.Context, modelID string) (stri
 	return "", fmt.Errorf("model %q not found", modelID)
 }
 
-// UpdateModel updates an existing model entry by ID. When api_key is provided
-// and is plaintext, it is stored in Vault and replaced with the Vault path.
-// When api_key is empty, the existing Vault path is preserved from DB.
-// The returned model NEVER exposes the plaintext API key.
+// UpdateModel updates an existing model entry by ID. API key handling:
+//   - Empty → keep existing Vault path.
+//   - "••••••••••" (masked) → keep existing Vault path.
+//   - "data-agent/..." (Vault path) → keep as-is (frontend received it from list).
+//   - Any other string → treat as new plaintext key, encrypt to Vault, replace.
+//
+// The returned model includes the Vault path in the APIKey field — the caller
+// should NOT mask it so the frontend can use it for subsequent updates.
 func (p *Provider) UpdateModel(ctx context.Context, id string, entry ModelEntry) (ModelEntry, error) {
 	if p.repo == nil {
 		return entry, fmt.Errorf("config repository not available")
@@ -580,9 +584,13 @@ func (p *Provider) UpdateModel(ctx context.Context, id string, entry ModelEntry)
 	for i := range models {
 		if models[i].ID == id {
 			entry.ID = id
-			if entry.APIKey == "" {
+			if isMaskedKey(entry.APIKey) || entry.APIKey == "" {
+				// Keep existing Vault path.
 				entry.APIKey = models[i].APIKey
-			} else if !looksLikeVaultPath(entry.APIKey) {
+			} else if looksLikeVaultPath(entry.APIKey) {
+				// Already a Vault path — no change needed.
+			} else {
+				// New plaintext key → store in Vault.
 				if p.vault == nil {
 					return entry, fmt.Errorf("vault client is required to store API keys; ensure VAULT_ADDR/VAULT_TOKEN are configured")
 				}
@@ -603,8 +611,12 @@ func (p *Provider) UpdateModel(ctx context.Context, id string, entry ModelEntry)
 	if err := p.SetModels(ctx, models); err != nil {
 		return entry, err
 	}
-	entry.APIKey = "••••••••••"
 	return entry, nil
+}
+
+// isMaskedKey returns true if s looks like a masked API key (all bullets).
+func isMaskedKey(s string) bool {
+	return s == "••••••••••" || s == strings.Repeat("•", len(s))
 }
 
 // DeleteModel removes the model with the given ID from the list. Idempotent:

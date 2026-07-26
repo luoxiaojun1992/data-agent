@@ -60,7 +60,8 @@ func (h *ModelConfigHandler) Get(c *gin.Context) {
 	h.getRaw(c, ctx)
 }
 
-// getPaginated returns a paginated LLM-only model list. API keys are masked.
+// getPaginated returns a paginated LLM-only model list. API keys are
+// decrypted from Vault — the caller (admin UI) is trusted to handle them.
 func (h *ModelConfigHandler) getPaginated(c *gin.Context, ctx context.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
@@ -68,11 +69,6 @@ func (h *ModelConfigHandler) getPaginated(c *gin.Context, ctx context.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-	for i := range models {
-		if models[i].APIKey != "" {
-			models[i].APIKey = "••••••••••"
-		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"models": models, "total": total, "page": page, "page_size": pageSize,
