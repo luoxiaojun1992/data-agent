@@ -11,10 +11,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"os"
 	"strings"
 
 	"google.golang.org/adk/model"
+	"google.golang.org/genai"
 
 	"github.com/ieshan/adk-go-pkg/model/openai"
 	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
@@ -367,9 +369,33 @@ func (p *Provider) buildBackends(models []ModelEntry) []model.LLM {
 		if err != nil {
 			continue
 		}
-		backends = append(backends, adkmodel.NewCompatLLM(llm))
+		wrapped := adkmodel.NewCompatLLM(llm)
+		if m.MaxTokens > 0 {
+			wrapped = &maxTokensLLM{inner: wrapped, maxTokens: int32(m.MaxTokens)}
+		}
+		backends = append(backends, wrapped)
 	}
 	return backends
+}
+
+// maxTokensLLM wraps a model.LLM to set a default MaxOutputTokens on every
+// GenerateContent call, overriding only when the caller hasn't set one.
+type maxTokensLLM struct {
+	inner     model.LLM
+	maxTokens int32
+}
+
+func (m *maxTokensLLM) Name() string                                         { return m.inner.Name() }
+func (m *maxTokensLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	if req.Config == nil || req.Config.MaxOutputTokens == 0 {
+		cfg := req.Config
+		if cfg == nil {
+			cfg = &genai.GenerateContentConfig{}
+		}
+		cfg.MaxOutputTokens = m.maxTokens
+		req.Config = cfg
+	}
+	return m.inner.GenerateContent(ctx, req, stream)
 }
 
 // sortModelsByCost sorts candidates by token cost (ascending).
