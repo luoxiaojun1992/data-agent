@@ -275,8 +275,11 @@ func (p *Provider) applyEnvDefaults(m *ModelEntry) {
 // given use case. When useCase is empty, uses the chat default.
 // System processes (enhance, compaction, memory, kb_chunking) MUST go through
 // this path — they are not allowed to pick arbitrary models by their UseCases
-// declaration field.
+// declaration field. Empty useCase falls back to chat.
 func (p *Provider) BuildLLM(ctx context.Context, useCase UseCase) (model.LLM, error) {
+	if useCase == "" {
+		useCase = UseCaseChat
+	}
 	entry, err := p.GetModelByUseCase(ctx, useCase)
 	if err != nil {
 		return nil, err

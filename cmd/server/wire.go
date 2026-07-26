@@ -157,7 +157,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// SessionService). This is a single system LLM, not the per-session model
 	// — per-session Runtimes are lazily created by the Registry. compactionLLM
 	// reads config via the SPEC-061 cache so it picks up config on restart.
-	llm, llmErr := deps.modelCfg.BuildLLM(context.Background(), "")
+	llm, llmErr := deps.modelCfg.BuildLLM(context.Background(), modelcfg.UseCaseCompaction)
 	if llmErr != nil {
 		logger.Fatal("Failed to build compaction LLM from model config", zap.Error(llmErr))
 	}
