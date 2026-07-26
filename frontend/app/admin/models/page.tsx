@@ -33,6 +33,8 @@ export default function ModelsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>(null);
+  const [editActualKey, setEditActualKey] = useState<string | null>(null); // fetched plaintext, null=not loaded
+  const [editKeyLoaded, setEditKeyLoaded] = useState(false);
   const [showEditKey, setShowEditKey] = useState(false);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -143,25 +145,43 @@ export default function ModelsPage() {
     } catch { showToast('设置失败', 'error'); }
   };
 
-  const openEdit = (m: any) => {
+  const openEdit = async (m: any) => {
     setEditingId(m.id);
     setShowEditKey(false);
+    setEditActualKey(null);
+    setEditKeyLoaded(false);
     setEditForm({
       id: m.id,
       name: m.name || '',
       base_url: m.base_url || '',
       type: m.type || 'llm',
       instruction: m.instruction || '',
-      api_key: MASK,
-      context_len: String(m.context_len ?? 128000),
-      max_tokens: String(m.max_tokens ?? 16000),
+      api_key: MASK, // will be replaced once plaintext is fetched
+      context_len: String(m.context_len > 0 ? m.context_len : 128000),
+      max_tokens: String(m.max_tokens > 0 ? m.max_tokens : 128000),
       temperature: String(m.temperature ?? 0.7),
       is_default: !!m.is_default,
       is_default_for: m.is_default_for || [],
     });
+    // Fetch the plaintext API key from Vault so the eye button in the modal
+    // can actually toggle between plaintext and mask.
+    try {
+      const res = await apiFetch(`/models/${m.id}/api-key`);
+      if (res.ok) {
+        const data = await res.json();
+        setEditActualKey(data.plaintext || '');
+        setEditKeyLoaded(true);
+      }
+    } catch { /* leave as MASK-only */ }
   };
 
-  const closeEdit = () => { setEditingId(null); setEditForm(null); setShowEditKey(false); };
+  const closeEdit = () => {
+    setEditingId(null);
+    setEditForm(null);
+    setShowEditKey(false);
+    setEditActualKey(null);
+    setEditKeyLoaded(false);
+  };
 
   const saveEdit = async () => {
     if (!editForm) return;
@@ -440,18 +460,33 @@ export default function ModelsPage() {
                   <input
                     data-testid="model-edit-api-key"
                     type={showEditKey ? 'text' : 'password'}
-                    value={editForm.api_key}
-                    onChange={e => setEditForm({ ...editForm, api_key: e.target.value })}
+                    // Show fetched plaintext when toggled; otherwise MASK.
+                    // editForm.api_key (user typing) takes precedence over both.
+                    value={
+                      showEditKey && editKeyLoaded && editActualKey !== null
+                        ? editActualKey
+                        : editForm.api_key
+                    }
+                    onChange={e => {
+                      setEditForm({ ...editForm, api_key: e.target.value });
+                      // User started typing — drop the fetched plaintext so
+                      // we never silently re-save the old key.
+                      if (editActualKey !== null) setEditActualKey(null);
+                    }}
                     placeholder="留空保持原值"
-                    style={{ ...inputStyle, flex: 1 }}
+                    style={{ ...inputStyle, flex: 1, fontFamily: showEditKey ? 'monospace' : 'inherit' }}
                   />
                   <button
                     data-testid="model-edit-api-key-eye"
                     onClick={() => setShowEditKey(!showEditKey)}
-                    title={showEditKey ? '隐藏' : '显示'}
-                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                    title={showEditKey ? '隐藏' : '显示明文'}
+                    disabled={!editKeyLoaded}
+                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 10px', cursor: editKeyLoaded ? 'pointer' : 'not-allowed', color: editKeyLoaded ? 'var(--text-secondary)' : 'rgba(255,255,255,0.2)', display: 'inline-flex', alignItems: 'center', opacity: editKeyLoaded ? 1 : 0.5 }}
                   ><EyeIcon open={showEditKey} /></button>
                 </div>
+                {!editKeyLoaded && (
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">加载中…</p>
+                )}
               </Field>
 
               <Field label="系统提示词">
