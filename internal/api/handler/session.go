@@ -143,13 +143,16 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		Timestamp string         `json:"timestamp"`
 	}
 	events := resp.Session.Events()
+	// Merge consecutive text parts from the same author into a single message.
+	// The ieshan OpenAI client emits text as Partial=true chunks; the ADK
+	// runner's final event has finish_reason but empty content. Without
+	// merging, each streaming chunk would show up as a separate bubble.
 	var messages []msg
 	for i := 0; i < events.Len(); i++ {
 		ev := events.At(i)
 		if ev == nil || ev.LLMResponse.Content == nil {
 			continue
 		}
-		// Skip compaction summaries — they are not part of the original conversation.
 		if ev.LLMResponse.CustomMetadata != nil {
 			if _, ok := ev.LLMResponse.CustomMetadata["compaction"]; ok {
 				continue
@@ -166,7 +169,12 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 			}
 			switch {
 			case p.Text != "":
-				messages = append(messages, msg{Role: role, Content: p.Text, Type: "text", Timestamp: ts})
+				// Append or merge with the previous text message from the same author.
+				if n := len(messages); n > 0 && messages[n-1].Role == role && messages[n-1].Type == "text" {
+					messages[n-1].Content += p.Text
+				} else {
+					messages = append(messages, msg{Role: role, Content: p.Text, Type: "text", Timestamp: ts})
+				}
 			case p.FunctionCall != nil:
 				messages = append(messages, msg{
 					Role: role, Type: "tool_call",

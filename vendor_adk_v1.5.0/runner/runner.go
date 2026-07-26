@@ -252,19 +252,19 @@ func (r *Runner) Run(ctx context.Context, userID, sessionID string, msg *genai.C
 				}
 			}
 
-		// only commit non-partial event to a session service.
+		// Persist both partial and non-partial events. Partial chunks hold the
+		// streaming text content (ieshan's final event has finish_reason but
+		// empty content — the actual text only lives in partial chunks).
 		// Use a detached context for session persistence — the request ctx
 		// may be cancelled as soon as the SSE stream finishes, but the
 		// session write must still succeed.
-		if !event.LLMResponse.Partial {
-			persistCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			if err := r.sessionService.AppendEvent(persistCtx, storedSession, event); err != nil {
-				cancel()
-				yield(nil, fmt.Errorf("failed to add event to session: %w", err))
-				return
-			}
+		persistCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := r.sessionService.AppendEvent(persistCtx, storedSession, event); err != nil {
 			cancel()
+			yield(nil, fmt.Errorf("failed to add event to session: %w", err))
+			return
 		}
+		cancel()
 
 			if !yield(event, nil) {
 				return
