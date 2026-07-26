@@ -44,10 +44,10 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 			c.JSON(chatErrorStatus(err), gin.H{"error": err.Error()})
 			return
 		}
-		// Force chunked transfer to finalize — gin may otherwise try to write
-		// extra headers after the SSE body has already been sent.
+		// Flush the SSE body. Do NOT touch c.Status here — the response has
+		// already been written with headers, and any later gin's status/c.Abort
+		// would corrupt the chunked transfer encoding.
 		c.Writer.Flush()
-		c.Status(http.StatusOK)
 		c.Abort()
 		return
 	}
