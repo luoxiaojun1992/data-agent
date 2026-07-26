@@ -105,16 +105,18 @@ const defaultBaseURL = "https://api.openai.com/v1"
 // stable identifier after read. Per-model API keys are resolved from Vault
 // references at load time. API keys are NOT shared — each model must have
 // its own key. BaseURL falls back to the legacy flat config when empty.
+// Empty Type is treated as "llm" (legacy compat).
 func (p *Provider) models() []ModelEntry {
 	entries := p.modelsFromDB()
 	if len(entries) > 0 {
 		legacyBaseURL := p.legacyCfgValue("api_url")
 		ctx := context.Background()
 		for i := range entries {
+			if entries[i].Type == "" {
+				entries[i].Type = ModelTypeLLM
+			}
 			p.applyEnvDefaults(&entries[i])
-			// Resolve Vault reference to actual plaintext API key (in memory only).
 			p.resolveAPIKey(ctx, &entries[i])
-			// BaseURL may fall back to legacy config (services can share endpoint).
 			if entries[i].BaseURL == "" && legacyBaseURL != "" {
 				entries[i].BaseURL = legacyBaseURL
 			}
