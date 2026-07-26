@@ -116,6 +116,8 @@ func (h *ModelConfigHandler) Put(c *gin.Context) {
 
 // ListLLM returns the LLM-only model list (paginated) for the model selector.
 // SPEC-062 §4.1: GET /models/list — only Type==llm models, with pagination.
+// API key is masked; api_key_exists flag tells the frontend whether to render
+// the eye button (decrypt endpoint).
 func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 	if h.provider == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
@@ -128,6 +130,20 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	for i := range models {
+		if models[i].APIKey != "" {
+			models[i].APIKey = "••••••••••"
+		}
+		// Apply sane defaults for legacy DB rows where fields weren't tracked.
+		if models[i].ContextLen == 0 {
+			models[i].ContextLen = 128000
+		}
+		if models[i].MaxTokens == 0 {
+			models[i].MaxTokens = 16000
+		}
+	}
+	// Decorate with api_key_exists for the frontend (the JSON tag on APIKey
+	// is "omitempty" so an empty string would otherwise signal "not set").
 	c.JSON(http.StatusOK, gin.H{
 		"models":    models,
 		"total":     total,

@@ -49,6 +49,7 @@ type ModelEntry struct {
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
 	APIKey          string    `json:"api_key,omitempty"` // On input: plaintext (from frontend). On persisted output: Vault reference path. Resolved to plaintext in memory by Provider.models() before use.
+	APIKeyExists    bool      `json:"api_key_exists"`     // whether APIKey is non-empty (the json:"" default-zero omitempty hides APIKey when unset; this flag preserves that signal)
 	Type            ModelType `json:"type"`
 	Instruction     string    `json:"instruction"` // LLM only
 	Capability      string    `json:"capability"`  // LLM only
@@ -217,6 +218,9 @@ func (p *Provider) modelsFromDB() []ModelEntry {
 	var entries []ModelEntry
 	if json.Unmarshal([]byte(cfg.Value), &entries) != nil {
 		return nil
+	}
+	for i := range entries {
+		entries[i].APIKeyExists = entries[i].APIKey != ""
 	}
 	return entries
 }
@@ -459,6 +463,10 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 // ListLLMModels returns the Type==llm model entries (paginated in memory).
 // Returns (models, total, error) where total is the full LLM count. page
 // starts at 1; pageSize is clamped to [1, 100].
+//
+// Uses modelsFromDB so API keys stay as Vault paths in the returned slice
+// (the caller masks them at the API layer). Calling p.models() here would
+// decrypt to plaintext and leak keys through the list endpoint.
 func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if page < 1 {
 		page = 1
@@ -469,7 +477,7 @@ func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]Mod
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	all := p.models()
+	all := p.modelsFromDB()
 	var llmModels []ModelEntry
 	for _, m := range all {
 		if m.Type == ModelTypeLLM {
