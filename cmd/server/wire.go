@@ -244,7 +244,15 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 		// Auto-create Qdrant collection at startup (like a migration).
 		// Vectors are associated with KB doc IDs via payload metadata,
 		// enabling shared KB support without vector migration.
-		vectorDim := getEnvOrDefaultInt("EMBEDDING_VECTOR_DIM", 768)
+		// Dimension priority: DB embedding model config → env → default 768.
+		vectorDim := 768
+		if deps.modelCfg != nil {
+			if emb, err := deps.modelCfg.GetDefaultEmbeddingModel(context.Background()); err == nil && emb != nil && emb.EmbeddingDim > 0 {
+				vectorDim = emb.EmbeddingDim
+			} else if v := getEnvOrDefaultInt("EMBEDDING_VECTOR_DIM", 0); v > 0 {
+				vectorDim = v
+			}
+		}
 		if err := vectorStore.EnsureCollection(context.Background(), "kb_chunks", vectorDim); err != nil {
 			log.Printf("[kb] WARNING: failed to ensure Qdrant collection kb_chunks: %v", err)
 		}

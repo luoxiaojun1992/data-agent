@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"iter"
 	"os"
+	"strconv"
 	"strings"
 
 	"google.golang.org/adk/model"
@@ -54,12 +55,13 @@ type ModelEntry struct {
 	Capability      string    `json:"capability"`  // LLM only
 	UseCases        []string  `json:"use_cases"`   // declared capabilities (informational)
 	TokenMultiplier float64   `json:"token_multiplier"`
-	Temperature     float64   `json:"temperature"`    // LLM only
-	MaxTokens       int       `json:"max_tokens"`     // LLM output tokens
-	ContextLen      int       `json:"context_len"`    // LLM input context window
-	IsDefault       bool      `json:"is_default"`     // legacy global default (backward compat); prefer IsDefaultFor
-	IsDefaultFor    []string  `json:"is_default_for"` // per-use-case default: ["chat","enhance","compaction","task"]; each use case has exactly one default model
+	Temperature     float64   `json:"temperature"`     // LLM only
+	MaxTokens       int       `json:"max_tokens"`      // LLM output tokens
+	ContextLen      int       `json:"context_len"`     // LLM input context window
+	IsDefault       bool      `json:"is_default"`      // legacy global default (backward compat); prefer IsDefaultFor
+	IsDefaultFor    []string  `json:"is_default_for"`  // per-use-case default: ["chat","enhance","compaction","task"]; each use case has exactly one default model
 	FallbackOrder   int       `json:"fallback_order"`
+	EmbeddingDim    int       `json:"embedding_dim"`   // embedding only: vector dimension (e.g. 768 for nomic-embed-text)
 }
 
 // VaultStore is the minimal Vault interface the Provider needs for per-model
@@ -271,6 +273,13 @@ func (p *Provider) applyEnvDefaults(m *ModelEntry) {
 	}
 	if m.TokenMultiplier == 0 {
 		m.TokenMultiplier = 1.0
+	}
+	if m.EmbeddingDim == 0 && m.Type == ModelTypeEmbedding {
+		if v := os.Getenv("EMBEDDING_VECTOR_DIM"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				m.EmbeddingDim = n
+			}
+		}
 	}
 }
 

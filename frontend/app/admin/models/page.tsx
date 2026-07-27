@@ -28,6 +28,7 @@ type ModelEntry = {
   max_tokens?: number;
   temperature?: number;
   api_key?: string;
+  embedding_dim?: number;
 };
 
 function isEmbedding(m: ModelEntry): boolean {
@@ -226,12 +227,13 @@ export default function ModelsPage() {
       base_url: m.base_url || '',
       type: m.type || 'llm',
       instruction: m.instruction || '',
-      api_key: MASK, // will be replaced once plaintext is fetched
+      api_key: MASK,
       context_len: String((m.context_len ?? 0) > 0 ? (m.context_len ?? 0) : 128000),
       max_tokens: String((m.max_tokens ?? 0) > 0 ? (m.max_tokens ?? 0) : 128000),
       temperature: String(m.temperature ?? 0.7),
       is_default: !!m.is_default,
       is_default_for: m.is_default_for || [],
+      embedding_dim: String(m.embedding_dim ?? 768),
     });
     // Fetch the plaintext API key from Vault so the eye button in the modal
     // can actually toggle between plaintext and mask.
@@ -265,6 +267,7 @@ export default function ModelsPage() {
         context_len: parseInt(editForm.context_len, 10) || 128000,
         max_tokens: parseInt(editForm.max_tokens, 10) || 16000,
         temperature: parseFloat(editForm.temperature) || 0.7,
+        embedding_dim: parseInt(editForm.embedding_dim, 10) || 768,
       };
       if (editForm.api_key && editForm.api_key !== MASK) body.api_key = editForm.api_key;
       const res = await apiFetch(`/models/${editForm.id}`, {
@@ -302,6 +305,7 @@ export default function ModelsPage() {
       temperature: '0.7',
       is_default: false,
       is_default_for: [] as string[],
+      embedding_dim: '768',
     });
     setEditActualKey(null);
     setEditKeyLoaded(false);
@@ -319,6 +323,7 @@ export default function ModelsPage() {
         context_len: parseInt(editForm.context_len, 10) || 128000,
         max_tokens: parseInt(editForm.max_tokens, 10) || 128000,
         temperature: parseFloat(editForm.temperature) || 0.7,
+        embedding_dim: parseInt(editForm.embedding_dim, 10) || 768,
       };
       if (editForm.api_key && editForm.api_key !== MASK) body.api_key = editForm.api_key;
       const res = await apiFetch('/models', {
@@ -680,6 +685,12 @@ export default function ModelsPage() {
                   <p className="text-[10px] text-[var(--text-secondary)] mt-1">加载中…</p>
                 )}
               </Field>
+
+              {editForm.type === 'embedding' && (
+                <Field label="向量维度">
+                  <input data-testid="model-edit-embedding-dim" type="number" step="128" min="1" value={editForm.embedding_dim} onChange={e => setEditForm({ ...editForm, embedding_dim: e.target.value })} placeholder="768" style={inputStyle} />
+                </Field>
+              )}
 
               {editForm.type !== 'embedding' && (
                 <>
