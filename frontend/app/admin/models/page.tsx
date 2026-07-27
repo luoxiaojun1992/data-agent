@@ -268,6 +268,7 @@ export default function ModelsPage() {
         max_tokens: parseInt(editForm.max_tokens, 10) || 16000,
         temperature: parseFloat(editForm.temperature) || 0.7,
         embedding_dim: parseInt(editForm.embedding_dim, 10) || 768,
+        is_default_for: editForm.is_default_for || [],
       };
       if (editForm.api_key && editForm.api_key !== MASK) body.api_key = editForm.api_key;
       const res = await apiFetch(`/models/${editForm.id}`, {
@@ -324,6 +325,7 @@ export default function ModelsPage() {
         max_tokens: parseInt(editForm.max_tokens, 10) || 128000,
         temperature: parseFloat(editForm.temperature) || 0.7,
         embedding_dim: parseInt(editForm.embedding_dim, 10) || 768,
+        is_default_for: editForm.is_default_for || [],
       };
       if (editForm.api_key && editForm.api_key !== MASK) body.api_key = editForm.api_key;
       const res = await apiFetch('/models', {
