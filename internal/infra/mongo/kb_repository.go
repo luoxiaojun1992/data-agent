@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
@@ -77,10 +78,12 @@ func (r *KBRepository) ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeD
 	return out, nil
 }
 
-func (r *KBRepository) UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount int) error {
+func (r *KBRepository) UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount, progressPercent int) error {
 	_, err := r.db.Collection("knowledge_docs").UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{
-		"status":      status,
-		"chunk_count": chunkCount,
+		"status":           status,
+		"chunk_count":      chunkCount,
+		"progress_percent": progressPercent,
+		"updated_at":       time.Now(),
 	}})
 	return err
 }

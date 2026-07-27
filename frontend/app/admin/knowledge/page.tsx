@@ -13,6 +13,7 @@ interface Doc {
   size_bytes: number;
   status: string;
   chunk_count: number;
+  progress_percent: number;
   tags: string[];
   created_at: string;
 }
@@ -260,7 +261,7 @@ export default function KnowledgePage() {
                 <span data-testid={`kb-doc-status-${doc.id}`} data-status={doc.status}
                   style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: 500,
                     background: statusBg(doc.status), color: statusColor(doc.status) }}>
-                  {statusIcon(doc.status)} {statusLabel(doc.status)}
+                  {statusIcon(doc.status)} {statusLabel(doc.status, doc.progress_percent)}
                 </span>
               </div>
               {/* Tags */}
@@ -301,9 +302,11 @@ export default function KnowledgePage() {
   );
 }
 
-const statusLabel = (s: string) => {
-  const m: Record<string, string> = { ready: '已索引 ✓', indexing: '索引中 ⟳', uploaded: '已上传', failed: '索引失败', pending: '等待索引' };
-  return m[s] || s;
+const statusLabel = (s: string, progress: number) => {
+  const m: Record<string, string> = { ready: '已索引 ✓', indexing: '索引中', uploaded: '已上传', failed: '索引失败', pending: '等待索引' };
+  const base = m[s] || s;
+  if (s === 'indexing') return `${base} ${progress}%`;
+  return base;
 };
 const statusIcon = (s: string) => {
   const m: Record<string, string> = { ready: '✅', indexing: '🔄', uploaded: '📤', failed: '❌' };

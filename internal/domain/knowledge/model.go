@@ -17,17 +17,18 @@ const (
 
 // KnowledgeDoc represents a knowledge base document metadata (MongoDB).
 type KnowledgeDoc struct {
-	ID           string    `json:"id"`
-	UserID       string    `json:"user_id"`
-	Title        string    `json:"title"`
-	FileName     string    `json:"file_name"`
-	FileType     string    `json:"file_type"` // pdf, docx, xlsx, md, txt
-	SizeBytes    int64     `json:"size_bytes"`
-	Status       DocStatus `json:"status"`
-	ChunkCount   int       `json:"chunk_count"`
-	GridFSFileID string    `json:"gridfs_file_id,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	UserID          string    `json:"user_id"`
+	Title           string    `json:"title"`
+	FileName        string    `json:"file_name"`
+	FileType        string    `json:"file_type"` // pdf, docx, xlsx, md, txt
+	SizeBytes       int64     `json:"size_bytes"`
+	Status          DocStatus `json:"status"`
+	ChunkCount      int       `json:"chunk_count"`
+	ProgressPercent int       `json:"progress_percent"` // 0-100, for indexing progress display
+	GridFSFileID    string    `json:"gridfs_file_id,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // DocContent stores the parsed text content (MongoDB GridFS).

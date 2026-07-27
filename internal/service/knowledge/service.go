@@ -89,7 +89,7 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 	if len(vectors) > 0 {
 		_ = s.vector.Upsert(context.Background(), s.vecCol, vectors)
 	}
-	return s.kb.UpdateDocStatus(context.Background(), docID, knowledge.StatusIndexing, len(chunks))
+	return s.kb.UpdateDocStatus(context.Background(), docID, knowledge.StatusIndexing, len(chunks), 0)
 }
 
 // Search searches the knowledge base using vector + text fallback.
@@ -175,13 +175,13 @@ func (s *Service) IndexDocument(ctx context.Context, docID string, llmChunkFn fu
 		return fmt.Errorf("no chunks produced for doc %s", docID)
 	}
 
-	// 4. Embedding + vector store + MongoDB chunks
+	// 4. Embedding + vector store + MongoDB chunks (sets status=indexing, progress=0)
 	if err := s.AddChunks(docID, allChunks); err != nil {
 		return fmt.Errorf("add chunks: %w", err)
 	}
 
-	// 5. Update status to ready
-	return s.kb.UpdateDocStatus(ctx, docID, knowledge.StatusReady, len(allChunks))
+	// 5. Mark as ready with 100% progress
+	return s.kb.UpdateDocStatus(ctx, docID, knowledge.StatusReady, len(allChunks), 100)
 }
 
 const chunkWindowSize = 4096

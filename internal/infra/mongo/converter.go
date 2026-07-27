@@ -521,16 +521,17 @@ func docToArtifact(d bson.M) *artifact.Artifact {
 
 func knowledgeDocToDoc(k *knowledge.KnowledgeDoc) bson.M {
 	doc := bson.M{
-		"_id":         k.ID,
-		"user_id":     k.UserID,
-		"title":       k.Title,
-		"file_name":   k.FileName,
-		"file_type":   k.FileType,
-		"size_bytes":  k.SizeBytes,
-		"status":      k.Status,
-		"chunk_count": k.ChunkCount,
-		"created_at":  k.CreatedAt,
-		"updated_at":  k.UpdatedAt,
+		"_id":              k.ID,
+		"user_id":          k.UserID,
+		"title":            k.Title,
+		"file_name":        k.FileName,
+		"file_type":        k.FileType,
+		"size_bytes":       k.SizeBytes,
+		"status":           k.Status,
+		"chunk_count":      k.ChunkCount,
+		"progress_percent": k.ProgressPercent,
+		"created_at":       k.CreatedAt,
+		"updated_at":       k.UpdatedAt,
 	}
 	if k.GridFSFileID != "" {
 		doc["gridfs_file_id"] = k.GridFSFileID
@@ -540,17 +541,18 @@ func knowledgeDocToDoc(k *knowledge.KnowledgeDoc) bson.M {
 
 func docToKnowledgeDoc(d bson.M) *knowledge.KnowledgeDoc {
 	return &knowledge.KnowledgeDoc{
-		ID:           getStr(d, "_id"),
-		UserID:       getStr(d, "user_id"),
-		Title:        getStr(d, "title"),
-		FileName:     getStr(d, "file_name"),
-		FileType:     getStr(d, "file_type"),
-		SizeBytes:    getInt64(d, "size_bytes"),
-		Status:       knowledge.DocStatus(getStr(d, "status")),
-		ChunkCount:   getInt(d, "chunk_count"),
-		GridFSFileID: getStr(d, "gridfs_file_id"),
-		CreatedAt:    getTime(d, "created_at"),
-		UpdatedAt:    getTime(d, "updated_at"),
+		ID:              getStr(d, "_id"),
+		UserID:          getStr(d, "user_id"),
+		Title:           getStr(d, "title"),
+		FileName:        getStr(d, "file_name"),
+		FileType:        getStr(d, "file_type"),
+		SizeBytes:       getInt64(d, "size_bytes"),
+		Status:          knowledge.DocStatus(getStr(d, "status")),
+		ChunkCount:      getInt(d, "chunk_count"),
+		ProgressPercent: getInt(d, "progress_percent"),
+		GridFSFileID:    getStr(d, "gridfs_file_id"),
+		CreatedAt:       getTime(d, "created_at"),
+		UpdatedAt:       getTime(d, "updated_at"),
 	}
 }
 

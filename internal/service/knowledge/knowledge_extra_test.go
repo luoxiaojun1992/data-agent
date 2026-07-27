@@ -85,7 +85,7 @@ func TestAddChunks_WithoutVectorRepo(t *testing.T) {
 			t.Errorf("DocID = %q, want doc1", chunks[0].DocID)
 		}
 	})
-	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 2).Return(nil)
+	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 2, 0).Return(nil)
 
 	svc := NewService(kbRepo)
 	if err := svc.AddChunks("doc1", []string{"chunk one", "chunk two"}); err != nil {
@@ -98,7 +98,7 @@ func TestAddChunks_WithoutVectorRepo(t *testing.T) {
 func TestAddChunks_WithVectorUpsert(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
-	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 2).Return(nil)
+	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 2, 0).Return(nil)
 
 	vecRepo := mockrepo.NewVectorRepository(t)
 	vecRepo.On("Upsert", mock.Anything, "kb_chunks", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
@@ -126,7 +126,7 @@ func TestAddChunks_WithVectorUpsert(t *testing.T) {
 func TestAddChunks_EmbedErrorSkipsVectors(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
-	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 1).Return(nil)
+	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 1, 0).Return(nil)
 
 	// Note: Upsert must NOT be called, so no expectation is registered.
 	// mockery will fail the test if Upsert is invoked.
@@ -166,7 +166,7 @@ func TestAddChunks_KBAddChunksError(t *testing.T) {
 func TestAddChunks_UpdateDocStatusError(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
-	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 1).Return(errors.New("status update failed"))
+	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 1, 0).Return(errors.New("status update failed"))
 
 	svc := NewService(kbRepo)
 	err := svc.AddChunks("doc1", []string{"x"})
@@ -188,7 +188,7 @@ func TestAddChunks_EmptyTexts(t *testing.T) {
 			t.Errorf("expected nil chunks slice, got %v", chunks)
 		}
 	})
-	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 0).Return(nil)
+	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 0, 0).Return(nil)
 
 	svc := NewService(kbRepo)
 	if err := svc.AddChunks("doc1", []string{}); err != nil {

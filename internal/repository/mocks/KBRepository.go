@@ -254,17 +254,17 @@ func (_m *KBRepository) SearchChunks(ctx context.Context, query string, topK int
 	return r0, r1
 }
 
-// UpdateDocStatus provides a mock function with given fields: ctx, id, status, chunkCount
-func (_m *KBRepository) UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount int) error {
-	ret := _m.Called(ctx, id, status, chunkCount)
+// UpdateDocStatus provides a mock function with given fields: ctx, id, status, chunkCount, progressPercent
+func (_m *KBRepository) UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount int, progressPercent int) error {
+	ret := _m.Called(ctx, id, status, chunkCount, progressPercent)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateDocStatus")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, knowledge.DocStatus, int) error); ok {
-		r0 = rf(ctx, id, status, chunkCount)
+	if rf, ok := ret.Get(0).(func(context.Context, string, knowledge.DocStatus, int, int) error); ok {
+		r0 = rf(ctx, id, status, chunkCount, progressPercent)
 	} else {
 		r0 = ret.Error(0)
 	}
