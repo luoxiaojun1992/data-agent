@@ -115,9 +115,10 @@ func (h *SessionHandler) ListDeleted(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"sessions": userSessions})
 }
 
-// Messages returns every currently uncompressed ADK event in canonical chat
-// event form. Synthetic compaction summaries are intentionally omitted; all
-// remaining text, tool calls, and tool results are kept in chronological order.
+// Messages returns the latest 50 ADK events converted to canonical chat form.
+// Compaction summaries are skipped; everything else (user, agent text, tool calls,
+// tool results) is kept exactly as stored in MongoDB. Consecutive text parts from
+// the same role are merged into a single bubble (streaming tokens).
 func (h *SessionHandler) Messages(c *gin.Context) {
 	if h.adkSessions == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "adk session service not configured"})
@@ -160,6 +161,10 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 			}
 			messages = append(messages, event)
 		}
+	}
+	// Keep only the latest 50.
+	if len(messages) > 50 {
+		messages = messages[len(messages)-50:]
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }
