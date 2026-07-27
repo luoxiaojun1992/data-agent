@@ -129,20 +129,24 @@ func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text strin
 		embedder func(ctx context.Context, text string) ([]float32, error)
 	)
 	return func(ctx context.Context, text string) ([]float32, error) {
-		cfg := deps.modelCfg.EmbeddingConfig() // reads cache→DB each call, hot-reload
-		if cfg.BaseURL == "" {
-			// Fallback to default embedding model from admin model list.
-			if emb, err := deps.modelCfg.GetDefaultEmbeddingModel(ctx); err == nil && emb != nil && emb.BaseURL != "" {
-				cfg.BaseURL = emb.BaseURL
-				cfg.Model = emb.Name
-				if cfg.APIKey == "" {
-					cfg.APIKey = emb.APIKey
-				}
+		// Priority: admin model list → legacy sysconfig/env fallback.
+		cfg := deps.modelCfg.EmbeddingConfig()
+		modelURL := cfg.BaseURL
+		modelName := cfg.Model
+
+		// Model list takes priority.
+		if emb, err := deps.modelCfg.GetDefaultEmbeddingModel(ctx); err == nil && emb != nil && emb.BaseURL != "" {
+			modelURL = emb.BaseURL
+			modelName = emb.Name
+			if cfg.APIKey == "" {
+				cfg.APIKey = emb.APIKey
 			}
 		}
-		if cfg.BaseURL == "" {
+		if modelURL == "" {
 			return nil, nil
 		}
+		cfg.BaseURL = modelURL
+		cfg.Model = modelName
 		mu.Lock()
 		if embedder == nil || cfg != lastCfg {
 			e := adkmemory.NewOpenAIEmbedding(adkmemory.OpenAIEmbeddingConfig{
