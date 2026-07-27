@@ -88,7 +88,7 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 				log.Printf("[kb] embed returned nil for chunk=%s (check embedding config)", chunk.ID)
 				continue
 			}
-			vectors = append(vectors, repository.VectorPoint{ID: chunk.ID, Vector: vec, Metadata: map[string]interface{}{"doc_id": docID}})
+			vectors = append(vectors, repository.VectorPoint{ID: chunk.ID, Vector: vec, Metadata: map[string]interface{}{"doc_id": docID, "content": text}})
 		}
 	}
 	if err := s.kb.AddChunks(context.Background(), chunks); err != nil {
@@ -126,7 +126,9 @@ func (s *Service) vectorSearch(query string, topK int) []knowledge.SearchResult 
 	}
 	var results []knowledge.SearchResult
 	for _, h := range hits {
-		results = append(results, knowledge.SearchResult{ChunkID: h.ID, Score: float64(h.Score)})
+		docID, _ := h.Metadata["doc_id"].(string)
+		content, _ := h.Metadata["content"].(string)
+		results = append(results, knowledge.SearchResult{ChunkID: h.ID, DocID: docID, Content: content, Score: float64(h.Score), Source: "qdrant"})
 	}
 	return results
 }
