@@ -21,7 +21,9 @@ func NewVectorStore(client *Client) *VectorStore {
 func stringToInt64(s string) int64 {
 	h := fnv.New64a()
 	h.Write([]byte(s))
-	return int64(h.Sum64())
+	// Qdrant requires non‑negative point IDs. FNV-64a can produce values
+	// with the high bit set, so we clear the sign bit.
+	return int64(h.Sum64() & (1<<63 - 1))
 }
 
 func int64ToString(i int64) string {
