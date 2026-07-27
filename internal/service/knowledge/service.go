@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"sort"
 	"time"
@@ -78,16 +79,25 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 		chunk := &knowledge.Chunk{ID: "chunk_" + uuid.New().String(), DocID: docID, Content: text}
 		chunks = append(chunks, chunk)
 		if s.embed != nil && s.vector != nil {
-			if vec, err := s.embed(context.Background(), text); err == nil {
-				vectors = append(vectors, repository.VectorPoint{ID: chunk.ID, Vector: vec, Metadata: map[string]interface{}{"doc_id": docID}})
+			vec, err := s.embed(context.Background(), text)
+			if err != nil {
+				log.Printf("[kb] embed failed for chunk=%s: %v", chunk.ID, err)
+				continue
 			}
+			if vec == nil {
+				log.Printf("[kb] embed returned nil for chunk=%s (check embedding config)", chunk.ID)
+				continue
+			}
+			vectors = append(vectors, repository.VectorPoint{ID: chunk.ID, Vector: vec, Metadata: map[string]interface{}{"doc_id": docID}})
 		}
 	}
 	if err := s.kb.AddChunks(context.Background(), chunks); err != nil {
 		return fmt.Errorf("add chunks: %w", err)
 	}
 	if len(vectors) > 0 {
-		_ = s.vector.Upsert(context.Background(), s.vecCol, vectors)
+		if err := s.vector.Upsert(context.Background(), s.vecCol, vectors); err != nil {
+			log.Printf("[kb] upsert vectors to Qdrant failed: %v", err)
+		}
 	}
 	return s.kb.UpdateDocStatus(context.Background(), docID, knowledge.StatusIndexing, len(chunks), 0)
 }
