@@ -381,12 +381,12 @@ func TestSearch_SortsByScoreDesc(t *testing.T) {
 // TestUploadFile_CreateDocError verifies UploadFile surfaces the CreateDoc error.
 func TestUploadFile_CreateDocError(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("CreateDoc", mock.Anything, mock.Anything).Return(errors.New("gridfs upload failed"))
+	kbRepo.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("gridfs upload failed"))
 
 	svc := NewService(kbRepo)
 	id, err := svc.UploadFile("report.pdf", "application/pdf", strings.NewReader("body"))
 	if err == nil {
-		t.Fatal("expected error from CreateDoc")
+		t.Fatal("expected error from GridFS upload")
 	}
 	if id != "" {
 		t.Errorf("id should be empty on error, got %q", id)
@@ -396,24 +396,10 @@ func TestUploadFile_CreateDocError(t *testing.T) {
 	}
 }
 
-// TestUploadFile_ReturnsDocID verifies UploadFile returns the created doc's ID.
+// TestUploadFile_ReturnsDocID verifies UploadFile returns a GridFS file ID.
 func TestUploadFile_ReturnsDocID(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("CreateDoc", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		doc := args.Get(1).(*knowledge.KnowledgeDoc)
-		if doc.FileName != "notes.txt" {
-			t.Errorf("FileName = %q, want notes.txt", doc.FileName)
-		}
-		if doc.FileType != "text/plain" {
-			t.Errorf("FileType = %q, want text/plain", doc.FileType)
-		}
-		if !strings.HasPrefix(doc.GridFSFileID, "fs_") {
-			t.Errorf("GridFSFileID should start with fs_, got %q", doc.GridFSFileID)
-		}
-		if doc.Status != knowledge.StatusUploaded {
-			t.Errorf("Status = %v, want %v", doc.Status, knowledge.StatusUploaded)
-		}
-	})
+	kbRepo.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	svc := NewService(kbRepo)
 	id, err := svc.UploadFile("notes.txt", "text/plain", strings.NewReader("hello"))

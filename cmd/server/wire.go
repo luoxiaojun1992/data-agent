@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -239,6 +240,14 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 			getEnvOrDefault("EMBEDDING_MODEL", "embedding"))
 		vectorStore := qdrantinfra.NewVectorStore(deps.qdrantClient)
 		deps.kbService.WithVectorIndex(vectorStore, knowledge.EmbeddingFunc(kEmbedFn))
+
+		// Auto-create Qdrant collection at startup (like a migration).
+		// Vectors are associated with KB doc IDs via payload metadata,
+		// enabling shared KB support without vector migration.
+		vectorDim := getEnvOrDefaultInt("EMBEDDING_VECTOR_DIM", 768)
+		if err := vectorStore.EnsureCollection(context.Background(), "kb_chunks", vectorDim); err != nil {
+			log.Printf("[kb] WARNING: failed to ensure Qdrant collection kb_chunks: %v", err)
+		}
 	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }

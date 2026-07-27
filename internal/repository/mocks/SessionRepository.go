@@ -242,6 +242,7 @@ func (_m *SessionRepository) SetTitle(ctx context.Context, id string, title stri
 	return r0
 }
 
+// NewSessionRepository creates a new instance of SessionRepository. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewSessionRepository(t interface {
 	mock.TestingT

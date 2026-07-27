@@ -143,8 +143,9 @@ func (s *Service) UploadFile(fileName, contentType string, reader io.Reader) (st
 }
 
 // IndexDocument performs the full indexing pipeline on a knowledge document:
-// GridFS download → LLM semantic chunking → Embedding → Qdrant + MongoDB write.
-// llmChunkFn is called to split the text into semantic chunks (handler-driven).
+// GridFS chunked download → sentence boundary splitting → LLM semantic chunking
+// → Embedding → Qdrant + MongoDB write. llmChunkFn is called for each
+// sentence-delimited segment to produce semantic chunks (handler-driven).
 func (s *Service) IndexDocument(ctx context.Context, docID string, llmChunkFn func(text string) ([]string, error)) error {
 	doc, err := s.kb.GetDoc(ctx, docID)
 	if err != nil {
@@ -157,22 +158,97 @@ func (s *Service) IndexDocument(ctx context.Context, docID string, llmChunkFn fu
 		return fmt.Errorf("download file %s: %w", doc.GridFSFileID, err)
 	}
 
-	// 2. LLM semantic chunking (handler-driven, not agent-controlled)
-	chunks, err := llmChunkFn(string(data))
-	if err != nil {
-		return fmt.Errorf("llm chunk: %w", err)
+	// 2. Split into sentence-boundary segments via fixed-window reading.
+	//    Avoids loading giant files entirely into memory for LLM chunking.
+	segments := splitBySentence(string(data), chunkWindowSize)
+
+	// 3. LLM semantic chunking per segment
+	var allChunks []string
+	for _, seg := range segments {
+		chunks, err := llmChunkFn(seg)
+		if err != nil {
+			return fmt.Errorf("llm chunk: %w", err)
+		}
+		allChunks = append(allChunks, chunks...)
 	}
-	if len(chunks) == 0 {
+	if len(allChunks) == 0 {
 		return fmt.Errorf("no chunks produced for doc %s", docID)
 	}
 
-	// 3. Embedding + vector store + MongoDB chunks
-	if err := s.AddChunks(docID, chunks); err != nil {
+	// 4. Embedding + vector store + MongoDB chunks
+	if err := s.AddChunks(docID, allChunks); err != nil {
 		return fmt.Errorf("add chunks: %w", err)
 	}
 
-	// 4. Update status to ready
-	return s.kb.UpdateDocStatus(ctx, docID, knowledge.StatusReady, len(chunks))
+	// 5. Update status to ready
+	return s.kb.UpdateDocStatus(ctx, docID, knowledge.StatusReady, len(allChunks))
+}
+
+const chunkWindowSize = 4096
+
+// splitBySentence reads text in fixed-size windows, splitting at sentence
+// boundaries (。 or . followed by whitespace/newline). If 3 consecutive
+// windows have no boundary, the accumulated text is yielded as-is.
+func splitBySentence(text string, windowSize int) []string {
+	var segments []string
+	var buf []rune
+	runes := []rune(text)
+	noBoundaryCount := 0
+
+	for i := 0; i < len(runes); {
+		end := i + windowSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		buf = append(buf, runes[i:end]...)
+
+		// Find the last sentence boundary in the buffer.
+		boundaryIdx := lastSentenceBoundary(buf)
+		if boundaryIdx >= 0 {
+			// Split: everything up to and including the boundary.
+			segments = append(segments, string(buf[:boundaryIdx+1]))
+			buf = buf[boundaryIdx+1:]
+			noBoundaryCount = 0
+		} else {
+			noBoundaryCount++
+			if noBoundaryCount >= 3 {
+				// Force yield after 3 windows without a boundary.
+				segments = append(segments, string(buf))
+				buf = nil
+				noBoundaryCount = 0
+			}
+		}
+		i = end
+	}
+
+	// Flush remaining text.
+	if len(buf) > 0 {
+		segments = append(segments, string(buf))
+	}
+	return segments
+}
+
+// lastSentenceBoundary returns the index of the last sentence boundary
+// character in the buffer (。 or . when followed by space/newline/end), or -1.
+func lastSentenceBoundary(buf []rune) int {
+	for i := len(buf) - 1; i >= 0; i-- {
+		if buf[i] == '。' {
+			return i
+		}
+		if buf[i] == '.' {
+			// English period: only count as sentence boundary when followed
+			// by whitespace, newline, end-of-buffer, or another punctuation.
+			if i+1 >= len(buf) || isSentenceEnd(rune(buf[i+1])) {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func isSentenceEnd(r rune) bool {
+	return r == ' ' || r == '\n' || r == '\t' || r == '\r' ||
+		r == '。' || r == '！' || r == '？' || r == '.' || r == '!' || r == '?'
 }
 
 type SearchResponse struct {

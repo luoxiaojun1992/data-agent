@@ -242,7 +242,7 @@ func TestListAllDocs_Success(t *testing.T) {
 
 func TestUploadFile_Success(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
-	repo.On("CreateDoc", mock.Anything, mock.Anything).Return(nil)
+	repo.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	fileID, err := NewService(repo).UploadFile("test.pdf", "application/pdf", strings.NewReader("content"))
 	if err != nil {

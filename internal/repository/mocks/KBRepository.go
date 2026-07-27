@@ -4,6 +4,7 @@ package mocks
 
 import (
 	context "context"
+	io "io"
 
 	knowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	mock "github.com/stretchr/testify/mock"
@@ -94,6 +95,36 @@ func (_m *KBRepository) DeleteDoc(ctx context.Context, id string) error {
 	}
 
 	return r0
+}
+
+// DownloadFile provides a mock function with given fields: ctx, fileID
+func (_m *KBRepository) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	ret := _m.Called(ctx, fileID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DownloadFile")
+	}
+
+	var r0 []byte
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]byte, error)); ok {
+		return rf(ctx, fileID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) []byte); ok {
+		r0 = rf(ctx, fileID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, fileID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // GetDoc provides a mock function with given fields: ctx, id
@@ -234,6 +265,24 @@ func (_m *KBRepository) UpdateDocStatus(ctx context.Context, id string, status k
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, knowledge.DocStatus, int) error); ok {
 		r0 = rf(ctx, id, status, chunkCount)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// UploadFile provides a mock function with given fields: ctx, fileID, reader
+func (_m *KBRepository) UploadFile(ctx context.Context, fileID string, reader io.Reader) error {
+	ret := _m.Called(ctx, fileID, reader)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UploadFile")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, io.Reader) error); ok {
+		r0 = rf(ctx, fileID, reader)
 	} else {
 		r0 = ret.Error(0)
 	}

@@ -58,6 +58,20 @@ func (v *VectorStore) Search(ctx context.Context, collection string, vector []fl
 	return hits, nil
 }
 
+// EnsureCollection creates the Qdrant collection if it doesn't exist.
+// This is called at startup (like a migration) so KB documents can be
+// indexed immediately without manual collection setup.
+func (v *VectorStore) EnsureCollection(ctx context.Context, collection string, vectorSize int) error {
+	exists, err := v.client.HasCollection(collection)
+	if err != nil {
+		return fmt.Errorf("qdrant check collection %s: %w", collection, err)
+	}
+	if exists {
+		return nil
+	}
+	return v.client.CreateCollection(collection, vectorSize, "Cosine")
+}
+
 // DeleteCollection implements repository.VectorRepository.
 func (v *VectorStore) DeleteCollection(ctx context.Context, collection string) error {
 	// Qdrant client doesn't have a direct collection delete — no-op for now.
