@@ -343,3 +343,43 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **日期**: 2026-07-20 | **影响**: go-ut 误报通过（99.5% ≥ 97%），实际 bc 比较用 97 → `$TOTAL < 97`  
 **根因**: 覆盖率阈值出现在两个位置：(1) echo 消息 `"ERROR: Coverage ${TOTAL}% below 96%"` (2) bc 比较 `$(echo "$TOTAL < 97" | bc -l)`。sed `s/97%/96%/g` 只改了 echo 消息，bc 比较中 `97` 不带 `%` 符号，sed 不匹配。  
 **教训**: 改阈值时 `grep` 所有出现位置——`9[0-9]` 而非 `97%`
+
+---
+
+## 部署与运维（2026-07-27）
+
+### MongoDB `$push` 字段名必须与 Go struct bson tag 一致
+**日期**: 2026-07-27 | **影响**: `raw_events` 一直为 null，display_events 分层存储不生效，前端只看到 DA 摘要没有用户消息
+**根因**: `$push: {display_events: event}` 但 `sessionDoc.RawEvents` 的 bson tag 是 `"raw_events"`，字段名不匹配。
+**解决**: 统一使用 `raw_events`。
+**教训**: MongoDB `$push` 的目标字段名必须与 struct bson tag 对应字段名完全一致。
+
+### MongoDB `$push` to null field 会报错
+**日期**: 2026-07-27 | **影响**: 新 session 的第一个 event 就失败："The field 'raw_events' must be an array but is of type null"
+**根因**: Create() 初始化 sessionDoc 时 RawEvents 字段默认为 nil（Go zero value），MongoDB `$push` 要求字段是 array。
+**解决**: 在 Create 中初始化为 `RawEvents: []*session.Event{}`。
+**教训**: MongoDB 文档初始化时，所有需要 `$push` 的 array 字段必须显式设为空数组 `[]`，不能用 nil。
+
+### Docker Compose `down` 删除网络导致 DNS 解析失败
+**日期**: 2026-07-27 | **影响**: 重建后 data-agent 反复 panic：`lookup mongodb on 127.0.0.53:53: connection refused`
+**根因**: `docker compose down` 删除 `data-agent_default` 网络，重新 `up` 后容器 /etc/resolv.conf 被 systemd-resolved (127.0.0.53) 接管，无法解析 Docker service name。
+**解决**: `docker compose down && docker compose up -d` 完整重建全部服务。不要单独 `down data-agent`。
+**教训**: 网络变化时必须完整 `down` + `up -d` 全部，单独重启可能使用旧的 DNS 配置。
+
+### Vault dev mode 是纯内存，容器重建后数据丢失
+**日期**: 2026-07-27 | **影响**: 所有存好的 API Key 丢失，"解密失败" toast
+**根因**: Vault dev mode 不持久化任何数据，`docker compose down` 重建容器 = 数据清空。
+**解决**: 正常部署只用 `docker compose up -d` 不动容器。生产环境切 raft storage + volume。
+**教训**: Vault dev mode = ephemeral。生产必须 raft + volume。
+
+### 前端 `NEXT_PUBLIC_API_URL` 编译时内联，浏览器无法解析 Docker hostname
+**日期**: 2026-07-27 | **影响**: 浏览器端 API 调用 `http://data-agent:8080/...` 全部 connection refused
+**根因**: `NEXT_PUBLIC_*` 在 `next build` 时编译到 JS bundle 中，浏览器无法解析 Docker 内部 hostname `data-agent`。
+**解决**: nginx 反向代理 80→frontend:3000 + 80/api/→data-agent:8080/api/，前端用相对路径 `/api/v1`。
+**教训**: 前端 client-side API URL 必须用相对路径或公网地址，不能用 Docker 内部名称。
+
+### 生产服务器安全：端口 8080 被矿机占用
+**日期**: 2026-07-27 | **影响**: docker compose up 反复失败 "address already in use"
+**根因**: 服务器上有 `python3 -m src.api`（`/root/hk-ipo-risk-pipeline/`）占用 8080，每次 kill 后自动重启。
+**解决**: `kill -9` + `rm -rf /root/hk-ipo-risk-pipeline` 彻底删除。
+**教训**: 部署前 `ss -tlnp | grep <port>` 确认端口未被非预期进程占用。发现矿机直接删除目录。

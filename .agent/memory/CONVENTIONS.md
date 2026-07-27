@@ -110,6 +110,9 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 17 | **降级/删除功能以通过测试** | 测试挂 → 修实现 bug 或修测试基础设施，**严禁删除功能**。功能设计是深思熟虑的，测试是保护功能的。 |
 | 18 | **绕过用户的技术方案自搞一套** | 用户给的技术方案必须先严格执行。被技术限制卡住 → 解释限制并询问，**不要静默替换成简单/hack 方案** |
 | 19 | **测试里凭想象写 data-testid** | 写 `data-testid="xxx"` 前必须 `grep -r xxx frontend/` 确认元素存在。避免一轮 CI 白跑 |
+| 20 | **MongoDB `$push` 字段名与 Go struct bson tag 不一致** | `$push` 的目标 MongoDB 字段名必须与对应 Go struct 的 `bson:"field_name"` tag 完全一致 |
+| 21 | **MongoDB 文档初始化 array 字段用 nil** | 所有需要 `$push` 的 array 字段必须在 Create 时初始化为空数组 `[]*T{}`，不能依赖 nil → `$push` 报错 |
+| 22 | **前端 `NEXT_PUBLIC_API_URL` 用 Docker 内部 hostname** | 前端 client-side API 调用必须用相对路径（走 nginx 代理）或公网地址，浏览器无法解析 Docker 内部名称 |
 
 ## 开发工作流约定
 
