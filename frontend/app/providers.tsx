@@ -12,6 +12,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Close sidebar on route change (mobile UX)
   React.useEffect(() => { setSidebarOpen(false); }, [pathname]);
@@ -49,10 +50,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0`}
       >
-        <Sidebar username={auth.username} role={auth.role} onLogout={logout} onToggle={() => setSidebarOpen(false)} />
+        <Sidebar username={auth.username} role={auth.role} onLogout={logout} onToggle={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} onCollapseToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
       </div>
 
-      <main className="flex-1 lg:ml-60 ml-0" data-testid="main-content">
+      <main className={`flex-1 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60'} ml-0`} data-testid="main-content">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px 0 24px' }}>
           {/* Hamburger button — visible only on mobile */}
           <button

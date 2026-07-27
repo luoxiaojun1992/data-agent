@@ -153,8 +153,8 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	deps.qdrantClient = qdrantinfra.NewClient(getEnvOrDefault("QDRANT_URL", "qdrant:6334"))
 
 	initAuthService(&deps, mongoClient, logger)
-	initADKModel(&deps)
 	initVault(&deps, logger)
+	initADKModel(&deps)
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initServices(&deps, mongoClient, logger)
@@ -258,7 +258,7 @@ func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, log
 		return fmt.Errorf("hash admin password: %w", err)
 	}
 	admin := &model.User{
-		Username:        "系统管理员",
+		Username:        "admin@admin.com",
 		PasswordHash:    passwordHash,
 		Role:            model.RoleSystemAdmin,
 		PasswordChanged: false,

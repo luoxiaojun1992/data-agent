@@ -224,7 +224,24 @@ func (_m *SessionRepository) SetRecoveryHours(ctx context.Context, hours int) er
 	return r0
 }
 
-// NewSessionRepository creates a new instance of SessionRepository. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+// SetTitle provides a mock function with given fields: ctx, id, title
+func (_m *SessionRepository) SetTitle(ctx context.Context, id string, title string) error {
+	ret := _m.Called(ctx, id, title)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetTitle")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, id, title)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // The first argument is typically a *testing.T value.
 func NewSessionRepository(t interface {
 	mock.TestingT

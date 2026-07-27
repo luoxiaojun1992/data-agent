@@ -40,6 +40,7 @@ type SessionRepository interface {
 	Restore(ctx context.Context, id string) error
 	ListDeleted(ctx context.Context, before time.Time, limit int64) ([]*SessionRecord, error)
 	SetRecoveryHours(ctx context.Context, hours int) error
+	SetTitle(ctx context.Context, id, title string) error
 }
 
 // SessionRecord is the session data record used by the repository.

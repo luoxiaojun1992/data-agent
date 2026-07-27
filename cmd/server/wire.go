@@ -70,7 +70,7 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 }
 
 func initADKModel(deps *serverDependencies) {
-	deps.modelCfg = modelcfg.NewProvider(deps.sysConfigCacheRepo)
+	deps.modelCfg = modelcfg.NewProvider(deps.sysConfigCacheRepo, deps.vaultClient)
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {
@@ -157,7 +157,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// SessionService). This is a single system LLM, not the per-session model
 	// — per-session Runtimes are lazily created by the Registry. compactionLLM
 	// reads config via the SPEC-061 cache so it picks up config on restart.
-	llm, llmErr := deps.modelCfg.BuildLLM(context.Background(), "")
+	llm, llmErr := deps.modelCfg.BuildLLM(context.Background(), modelcfg.UseCaseCompaction)
 	if llmErr != nil {
 		logger.Fatal("Failed to build compaction LLM from model config", zap.Error(llmErr))
 	}
@@ -355,7 +355,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Chat:          handler.NewChatHandler(deps.chatService),
 		Enhance:       handler.NewEnhanceHandler(deps.enhanceService),
 		Agent:         handler.NewAgentHandler(deps.orchestrator, deps.taskService, toolLister),
-		Session:       handler.NewSessionHandler(deps.sessionManager),
+		Session:       handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),
 		Artifact:      deps.artifactHandler,
 		Knowledge:     deps.kbHandler,
 		Audit:         deps.auditHandler,

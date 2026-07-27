@@ -40,7 +40,8 @@ func (r *SessionRepository) Renew(ctx context.Context, id string, newExpiry time
 }
 
 func (r *SessionRepository) ListByUser(ctx context.Context, userID string) ([]*repository.SessionRecord, error) {
-	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID, "deleted_at": bson.M{"$exists": false}})
+	opts := options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}})
+	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID, "deleted_at": bson.M{"$exists": false}}, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +87,14 @@ func (r *SessionRepository) ListDeleted(ctx context.Context, before time.Time, l
 
 func (r *SessionRepository) SetRecoveryHours(ctx context.Context, hours int) error {
 	_, err := r.coll.UpdateMany(ctx, bson.M{}, bson.M{"$set": bson.M{"recovery_hours": hours}})
+	return err
+}
+
+func (r *SessionRepository) SetTitle(ctx context.Context, id, title string) error {
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{
+		"title":      title,
+		"updated_at": time.Now(),
+	}})
 	return err
 }
 

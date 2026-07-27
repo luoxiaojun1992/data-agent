@@ -250,6 +250,56 @@ func() {
 
 ---
 
+## 2026-07-26 新增（SPEC-063 模型配置 + ADK 补丁 + SSE 流式修复）
+
+### ADK v1.5.0 跳过 `Content==nil` 事件时未检查 `finish_reason`
+**日期**: 2026-07-26 | **影响**: deepseek-v4-pro 流式响应的最后一个 chunk（`content=""`, `finish_reason="stop"`）被跳过 → ADK 误认为 `Partial=true` → 前端 "network error"
+**根因**: `base_flow.go:592`: `if resp.Content == nil && resp.ErrorCode == "" && !resp.Interrupted` 继续跳过，未检查 `resp.FinishReason`。deepseek-v4-pro 的 reasoning 模式额外输出 `reasoning_content` chunk（带内容无 finish_reason），最后一个 content="" 的 chunk 才是真正结束信号。
+**解决**: 加 `&& resp.FinishReason == ""` 到跳过条件。同时修复第 144 行：将 `TODO: last event is not final` panic 改为 `log.Printf(...)` + return（Partial 事件已送达用户，不应中断）。
+**教训**: 切换 LLM vendor（OpenAI→DeepSeek）时，必须验证流式响应的 chunk 结构与 ADK 库的事件过滤逻辑兼容。
+
+### ADK runner 用同一 ctx 做 LLM streaming 和 session AppendEvent → 请求 ctx 取消后 session 持久化失败
+**日期**: 2026-07-26 | **影响**: LLM 流完成但 MongoDB 写入报 "context canceled" → ADK `Run()` 返回 error → 前端 "network error"
+**根因**: `runner.go:257`: `r.sessionService.AppendEvent(ctx, storedSession, event)` 使用请求 ctx。SSE 流结束/客户端断开 → ctx 取消 → AppendEvent 失败。
+**解决**: 用 `context.WithTimeout(context.Background(), 30s)` 做 detached context 调用 AppendEvent。
+**教训**: 流式 HTTP handler 中，session 持久化等 side effect 应使用与请求 ctx 无关的 background context。请求 ctx 只应控制 SSE 写入循环。
+
+### Go HTTP server `WriteTimeout=10s` 精确截断 SSE 流式响应
+**日期**: 2026-07-26 | **影响**: curl 接收恰好 10 秒后 nginx 报 "upstream prematurely closed" → 浏览器 `ERR_INCOMPLETE_CHUNKED_ENCODING`
+**根因**: Viper 的 `AutomaticEnv()` 在未 `BindEnv` 的 key 上不生效。`config.yaml` 中 `read_timeout: 10s` 未被 `SERVER_READ_TIMEOUT=600s` env 覆盖 → Go HTTP server 10s 后主动断开。
+**解决**: 三管齐下: (1) `config.go` 默认值改为 600s (2) 显式 `BindEnv("server.read_timeout", "SERVER_READ_TIMEOUT")` (3) docker-compose 加 env。
+**教训**: Viper 的 `AutomaticEnv()` 是按需查找，不是全局注入。任何依赖 env var override 的 key 必须显式 `BindEnv`。config.yaml 中不建议放开发期默认值——应放在默认函数中。
+
+### nginx `proxy_send_timeout` 默认 60s → SSE 长时间无数据被断连
+**日期**: 2026-07-26 | **影响**: deepseek-v4-pro 推理暂停 30-60s 时 nginx 断开连接
+**解决**: nginx config 加 `proxy_send_timeout 600s; proxy_read_timeout 600s;`
+**教训**: 流式 API 经 nginx 代理时，`proxy_send_timeout`/`proxy_read_timeout` 必须与 LLM 推理超时对齐。
+
+### 模型 API Key 严禁 env fallback 或 MongoDB 明文存储
+**日期**: 2026-07-26 | **影响**: 多个模型共享 `LLM_API_KEY` → 无法独立管理 → 安全风险
+**解决**: 去掉 `applyEnvDefaults` 中的 API Key fallback；`AddModel`/`UpdateModel` 强制 Vault 加密；`GET /models/:id/api-key` 命令式解密。
+**教训**: API Key → Vault 是单向门：一旦实现，不提供明文武迁逻辑。
+
+### Per-use-case 默认模型：不是全局唯一 `is_default`
+**日期**: 2026-07-26 | **影响**: enhance/compaction/memory 等系统流程无独立的默认模型概念
+**解决**: `ModelEntry.IsDefaultFor []string`，每个 use case 一个默认模型。`GetModelByUseCase(useCase)` 按 `IsDefaultFor` 匹配。
+**教训**: 多模型系统必须有 per-use-case 的默认模型绑定。
+
+### deepseek-v4-pro `reasoning_content` 消耗 max_tokens → 32k 不够导致 Partial 截断
+**日期**: 2026-07-26 | **影响**: ADK `TODO: last event is not final`
+**根因**: deepseek-v4-pro 的 `reasoning_tokens` + `completion_tokens` 加总超过 max_tokens=32000。
+**解决**: `max_tokens` 设为 128000。
+**教训**: 使用 reasoning-capable 模型时，max_tokens 需预留 2-4x 给 chain-of-thought。
+
+### Session title 从首条用户提示词自动填充
+**日期**: 2026-07-26 | **影响**: 前端会话列表只显示 "Session xxx"
+**解决**: `prepareRun` 时 `SetTitle(sessionID, truncateTitle(msg, 30))`；`GET /sessions/:id/messages` 返回非压缩事件。
+**教训**: session 标题应在首条消息时一次性写入 DB，不要在读取时动态计算。
+
+### Config 默认值放在 Go code 而非 config.yaml
+**日期**: 2026-07-26 | **教训**: config.yaml 中的开发期默认值会随 Docker 镜像固化，覆盖 env var。Go `SetDefault` 为生产默认，`BindEnv` + env 为动态覆盖。
+
+---
 ## 2026-07-20 新增（SPEC-053）
 
 ### Go 函数类型别名不兼容

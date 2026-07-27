@@ -15,8 +15,8 @@ import (
 // plus a paginated LLM-only list for the model selector. Legacy key/value
 // upsert is preserved for backward compatibility.
 type ModelConfigHandler struct {
-	cfgSvc    config.Service
-	provider  *modelcfg.Provider
+	cfgSvc   config.Service
+	provider *modelcfg.Provider
 }
 
 // NewModelConfigHandler creates a new ModelConfigHandler.
@@ -33,14 +33,16 @@ const modelRoutePath = "/models"
 const errProviderNotConfigured = "model provider not configured"
 
 // RegisterModelConfigRoutes registers model config management routes.
-// SPEC-062 adds structured CRUD endpoints alongside the legacy GET/PUT.
 func RegisterModelConfigRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
 	api.GET(modelRoutePath, h.Get)
 	api.PUT(modelRoutePath, h.Put)
-	api.GET(modelRoutePath+"/list", h.ListLLM)              // LLM-only, paginated (selector source)
-	api.POST(modelRoutePath, h.AddModel)                     // add single model (auto-gen ID)
-	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)         // delete single model
-	api.PATCH(modelRoutePath+"/:id/default", h.SetDefault)   // set as default
+	api.GET(modelRoutePath+"/list", h.ListLLM)             // LLM-only, paginated (selector source)
+	api.GET(modelRoutePath+"/embedding", h.ListEmbedding)  // embedding models (admin UI)
+	api.POST(modelRoutePath, h.AddModel)                   // add single model (auto-gen ID)
+	api.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)    // decrypt per-model API key
+	api.PATCH(modelRoutePath+"/:id/default", h.SetDefault) // set as default
+	api.PATCH(modelRoutePath+"/:id", h.UpdateModel)        // update model fields
+	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)       // delete single model
 }
 
 // Get returns the full model configuration. When the page query param is
@@ -59,7 +61,8 @@ func (h *ModelConfigHandler) Get(c *gin.Context) {
 	h.getRaw(c, ctx)
 }
 
-// getPaginated returns a paginated LLM-only model list.
+// getPaginated returns a paginated LLM-only model list. API keys are
+// decrypted from Vault — the caller (admin UI) is trusted to handle them.
 func (h *ModelConfigHandler) getPaginated(c *gin.Context, ctx context.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
@@ -85,7 +88,7 @@ func (h *ModelConfigHandler) getRaw(c *gin.Context, ctx context.Context) {
 
 // legacyGet is the pre-SPEC-062 GET path used when no Provider is wired.
 func (h *ModelConfigHandler) legacyGet(c *gin.Context) {
-	cfgs, err := h.cfgSvc.GetAll(c.Request.Context(), "models")
+	cfgs, err := h.cfgSvc.GetAll(c.Request.Context(), "model")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -105,7 +108,7 @@ func (h *ModelConfigHandler) Put(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.cfgSvc.Upsert(c.Request.Context(), "models", req.Key, req.Value); err != nil {
+	if err := h.cfgSvc.Upsert(c.Request.Context(), "model", req.Key, req.Value); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -114,6 +117,8 @@ func (h *ModelConfigHandler) Put(c *gin.Context) {
 
 // ListLLM returns the LLM-only model list (paginated) for the model selector.
 // SPEC-062 §4.1: GET /models/list — only Type==llm models, with pagination.
+// API key is masked; api_key_exists flag tells the frontend whether to render
+// the eye button (decrypt endpoint).
 func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 	if h.provider == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
@@ -126,12 +131,46 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	for i := range models {
+		if models[i].APIKey != "" {
+			models[i].APIKey = "••••••••••"
+		}
+		// Apply sane defaults for legacy DB rows where fields weren't tracked.
+		if models[i].ContextLen == 0 {
+			models[i].ContextLen = 128000
+		}
+		if models[i].MaxTokens == 0 {
+			models[i].MaxTokens = 16000
+		}
+	}
+	// Decorate with api_key_exists for the frontend (the JSON tag on APIKey
+	// is "omitempty" so an empty string would otherwise signal "not set").
 	c.JSON(http.StatusOK, gin.H{
 		"models":    models,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+// ListEmbedding returns the embedding-type model list for the admin UI.
+// GET /models/embedding
+func (h *ModelConfigHandler) ListEmbedding(c *gin.Context) {
+	if h.provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	models, err := h.provider.ListEmbeddingModels(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	for i := range models {
+		if models[i].APIKey != "" {
+			models[i].APIKey = "••••••••••"
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"models": models})
 }
 
 // AddModel adds a single model entry. The backend auto-generates the ID when
@@ -169,17 +208,82 @@ func (h *ModelConfigHandler) DeleteModel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已删除", "id": id})
 }
 
-// SetDefault marks the model with :id as the sole default LLM. SPEC-062 §4.1:
-// PATCH /models/:id/default.
+// SetDefault marks the model with :id as default for the given use cases.
+// If no use_cases are specified, the model's own Type decides: LLM models
+// default to the chat use case; embedding models flip the IsDefault flag
+// (only one embedding model can be default at a time).
+// PATCH /models/:id/default
 func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 	if h.provider == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
 	id := c.Param("id")
-	if err := h.provider.SetDefaultModel(c.Request.Context(), id); err != nil {
+	var req struct {
+		UseCases []string `json:"use_cases"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	// Look up the target to decide whether it is an LLM or embedding entry so
+	// the embedding single-default semantics are respected automatically.
+	all := h.provider.ListAllModels(c.Request.Context())
+	var target *modelcfg.ModelEntry
+	for i := range all {
+		if all[i].ID == id {
+			target = &all[i]
+			break
+		}
+	}
+	if target != nil && target.Type == modelcfg.ModelTypeEmbedding {
+		if err := h.provider.SetDefaultEmbedding(c.Request.Context(), id); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "已设为默认 embedding", "id": id})
+		return
+	}
+	if len(req.UseCases) == 0 {
+		req.UseCases = []string{"chat"}
+	}
+	if err := h.provider.SetDefaultModel(c.Request.Context(), id, req.UseCases); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "已设为默认", "id": id})
+	c.JSON(http.StatusOK, gin.H{"message": "已设为默认", "id": id, "use_cases": req.UseCases})
+}
+
+// GetAPIKey decrypts and returns the plaintext API key for a model.
+// GET /models/:id/api-key
+func (h *ModelConfigHandler) GetAPIKey(c *gin.Context) {
+	if h.provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	id := c.Param("id")
+	plaintext, err := h.provider.DecryptModelAPIKey(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"plaintext": plaintext})
+}
+
+// UpdateModel updates an existing model's fields.
+// PATCH /models/:id
+func (h *ModelConfigHandler) UpdateModel(c *gin.Context) {
+	if h.provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	id := c.Param("id")
+	var entry modelcfg.ModelEntry
+	if err := c.ShouldBindJSON(&entry); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	updated, err := h.provider.UpdateModel(c.Request.Context(), id, entry)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, updated)
 }

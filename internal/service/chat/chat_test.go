@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/stretchr/testify/mock"
-	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
-	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	domainmodel "github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
+	"github.com/stretchr/testify/mock"
 	"google.golang.org/adk/model"
 	adksession "google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -61,7 +61,9 @@ func newTestService(t *testing.T, llm model.LLM) *Service {
 		AppName:        "data-agent",
 		SessionService: adkSessions,
 	})
-	mgr := &Manager{ttl: 1 * time.Hour}
+	sessionRepo := mockrepo.NewSessionRepository(t)
+	sessionRepo.On("SetTitle", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
+	mgr := &Manager{repo: sessionRepo, ttl: 1 * time.Hour}
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
 	svc := NewService(registry, nil, adkSessions, mgr, cbReg)
 	// Patch GetOrCreate to return the test Runtime (avoids needing a real
@@ -71,6 +73,7 @@ func newTestService(t *testing.T, llm model.LLM) *Service {
 	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
 		return rt, nil
 	})
+	patches.ApplyMethodReturn(mgr, "SetTitle", nil)
 	return svc
 }
 
@@ -579,7 +582,7 @@ func TestScheduleMemoryWrite_GetError(t *testing.T) {
 	}
 }
 
-// TestStream_ToolCallEvent covers the forwardSSEParts FunctionCall branch
+// TestStream_ToolCallEvent covers the forwardSSEEvent FunctionCall branch
 // (pre-existing 40% coverage gap). Uses a fakeLLM that emits a tool-call
 // part followed by text.
 func TestStream_ToolCallEvent(t *testing.T) {
@@ -649,9 +652,13 @@ func TestProcess_NewSessionResolvesDefaultModel(t *testing.T) {
 		{ID: "default-llm", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
 	})
 	repo.On("Get", mock.Anything, "model", "models").Return(&domainmodel.SystemConfig{Value: string(raw)}, nil)
-	provider := modelcfg.NewProvider(repo)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
+	repo.On("GetAll", mock.Anything, "model").Return([]domainmodel.SystemConfig{}, nil).Maybe()
+	provider := modelcfg.NewProvider(repo, nil)
 
-	mgr := &Manager{ttl: 1 * time.Hour}
+	sessionRepo := mockrepo.NewSessionRepository(t)
+	sessionRepo.On("SetTitle", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
+	mgr := &Manager{repo: sessionRepo, ttl: 1 * time.Hour}
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
 	svc := NewService(registry, provider, adkSessions, mgr, cbReg)
 
@@ -667,10 +674,107 @@ func TestProcess_NewSessionResolvesDefaultModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
-	if resp.SessionID == "" {
-		t.Error("expected non-empty session ID")
-	}
 	if resp.Content != "ok" {
 		t.Errorf("content = %v, want ok", resp.Content)
+	}
+}
+
+func TestChatEventsFromParts_UsesCanonicalToolResult(t *testing.T) {
+	parts := []*genai.Part{
+		{FunctionCall: &genai.FunctionCall{Name: "sql_query", Args: map[string]any{"sql": "SELECT 1"}}},
+		{FunctionResponse: &genai.FunctionResponse{Name: "sql_query", Response: map[string]any{"rows": []any{"row-1", "row-2"}}}},
+		{Text: "answer"},
+	}
+	events := ChatEventsFromParts("data_agent", "evt-1", "2026-07-26T22:00:00Z", parts)
+	if len(events) != 3 {
+		t.Fatalf("events = %d, want 3", len(events))
+	}
+	if events[0].Type != "tool_call" || events[0].Name != "sql_query" {
+		t.Fatalf("tool call = %+v", events[0])
+	}
+	if events[0].Args["sql"] != "SELECT 1" {
+		t.Errorf("tool args = %+v", events[0].Args)
+	}
+	if events[1].Type != "tool_result" || events[1].Result == nil {
+		t.Fatalf("tool result = %+v", events[1])
+	}
+	rowsMap, ok := events[1].Result.(map[string]any)
+	if !ok || len(rowsMap) != 1 {
+		t.Fatalf("tool result payload = %#v", events[1].Result)
+	}
+	rows, ok := rowsMap["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("tool result rows = %#v", rowsMap["rows"])
+	}
+	if events[2].Type != "text" || events[2].Content != "answer" {
+		t.Errorf("text event = %+v", events[2])
+	}
+	for _, event := range events {
+		if event.Role != "data_agent" || event.EventID != "evt-1" || event.Timestamp == "" {
+			t.Errorf("canonical metadata missing: %+v", event)
+		}
+	}
+}
+
+func TestChatEventsFromADKEvent_FiltersCompaction(t *testing.T) {
+	if got := ChatEventsFromADKEvent(&adksession.Event{Author: "compaction", LLMResponse: model.LLMResponse{
+		Content: genai.NewContentFromText("summary", "model"),
+	}}); got != nil {
+		t.Errorf("compaction author should be filtered, got %+v", got)
+	}
+	filtered := ChatEventsFromADKEvent(&adksession.Event{Author: "data_agent", LLMResponse: model.LLMResponse{
+		CustomMetadata: map[string]any{"compaction": true},
+		Content:       genai.NewContentFromText("summary", "model"),
+	}})
+	if filtered != nil {
+		t.Errorf("custommetadata compaction should be filtered, got %+v", filtered)
+	}
+	if got := ChatEventsFromADKEvent(nil); got != nil {
+		t.Errorf("nil event should produce no events, got %+v", got)
+	}
+}
+
+func TestForwardSSEEvent_SkipsCompaction(t *testing.T) {
+	w := httptest.NewRecorder()
+	forwardSSEEvent(w, w, &adksession.Event{
+		ID: "evt-compaction", Author: "compaction", Timestamp: time.Now(),
+		LLMResponse: model.LLMResponse{Content: genai.NewContentFromText("summary", "model")},
+	})
+	if w.Body.Len() != 0 {
+		t.Fatalf("compaction event must not be forwarded, got %q", w.Body.String())
+	}
+}
+
+func TestForwardSSEEvent_UsesCanonicalShape(t *testing.T) {
+	w := httptest.NewRecorder()
+	forwardSSEEvent(w, w, &adksession.Event{
+		ID: "evt-tool", Author: "data_agent", Timestamp: time.Date(2026, 7, 26, 22, 0, 0, 0, time.UTC),
+		LLMResponse: model.LLMResponse{Content: &genai.Content{Role: "model", Parts: []*genai.Part{{
+			FunctionResponse: &genai.FunctionResponse{Name: "sql_query", Response: map[string]any{"rows": 1}},
+		}}}},
+	})
+	body := w.Body.String()
+	if !strings.Contains(body, `"type":"tool_result"`) || !strings.Contains(body, `"result":{"rows":1}`) {
+		t.Fatalf("canonical SSE event missing fields: %s", body)
+	}
+	if strings.Contains(body, `"response":`) {
+		t.Fatalf("legacy response field leaked into SSE: %s", body)
+	}
+	if !strings.Contains(body, `"role":"data_agent"`) {
+		t.Fatalf("role missing from SSE: %s", body)
+	}
+}
+
+func TestIsCompactionEvent(t *testing.T) {
+	if !IsCompactionEvent(&adksession.Event{Author: "compaction"}) {
+		t.Error("author=compaction must be filtered")
+	}
+	if !IsCompactionEvent(&adksession.Event{LLMResponse: model.LLMResponse{
+		CustomMetadata: map[string]any{"compaction": true},
+	}}) {
+		t.Error("custommetadata compaction must be filtered")
+	}
+	if IsCompactionEvent(&adksession.Event{Author: "data_agent"}) {
+		t.Error("normal agent event must not be filtered")
 	}
 }

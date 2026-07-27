@@ -95,11 +95,15 @@ func (m *Manager) SetRecoveryHours(hours int) error {
 	return m.repo.SetRecoveryHours(context.Background(), hours)
 }
 
+func (m *Manager) SetTitle(id, title string) error {
+	return m.repo.SetTitle(context.Background(), id, title)
+}
+
 func sessionToRecord(s *domainchat.Session) repository.SessionRecord {
 	r := repository.SessionRecord{
 		ID:        s.ID,
 		UserID:    s.UserID,
-		Title:     s.Type,
+		Title:     s.Title,
 		ModelID:   s.ModelID,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
@@ -112,7 +116,8 @@ func recordToSession(r *repository.SessionRecord) *domainchat.Session {
 	return &domainchat.Session{
 		ID:        r.ID,
 		UserID:    r.UserID,
-		Type:      r.Title,
+		Type:      "chat",
+		Title:     r.Title,
 		ModelID:   r.ModelID,
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,

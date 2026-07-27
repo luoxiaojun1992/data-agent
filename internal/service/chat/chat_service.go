@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -87,6 +88,11 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 	if lastMsg == "" {
 		err = domainchat.ErrUserMessageRequired
 		return
+	}
+	// Auto-set session title from the first user message. Failures are
+	// non-fatal — the session continues to work, just without a nice title.
+	if titleErr := s.sessions.SetTitle(sessionID, truncateTitle(lastMsg, 30)); titleErr != nil {
+		log.Printf("[chat] set title: %v (session=%s)", titleErr, sessionID)
 	}
 
 	state := buildState(userID, role, sessionID, req.KBID)
@@ -208,6 +214,7 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -221,7 +228,16 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 
 	for evt, rErr := range rt.Run(ctx, userID, sessionID, lastMsg, runCfg) {
 		if rErr != nil {
-			log.Printf("[chat] run error: %v", rErr)
+			// If the session persistence failed AFTER the LLM stream completed
+			// (client disconnected before MongoDB write), the response text has
+			// already been delivered to the user. Don't surface this as an error.
+			if isSessionPersistenceError(rErr) {
+				log.Printf("[chat] session persistence failed (response already delivered, ignoring): %v (session=%s)", rErr, sessionID)
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return nil
+			}
+			log.Printf("[chat] run error: %v (session=%s)", rErr, sessionID)
 			errData, _ := json.Marshal(map[string]string{"error": rErr.Error()})
 			fmt.Fprintf(w, "data: %s\n\n", errData)
 			flusher.Flush()
@@ -232,9 +248,10 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 		if evt == nil || evt.Content == nil {
 			continue
 		}
-		forwardSSEParts(w, flusher, evt.Content.Parts)
+		forwardSSEEvent(w, flusher, evt)
 	}
 
+	log.Printf("[chat] stream completed normally (session=%s)", sessionID)
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
@@ -242,41 +259,86 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	return nil
 }
 
-// forwardSSEParts writes each ADK event part to the SSE stream as-is.
-// Extracted from Stream to reduce cognitive complexity.
-func forwardSSEParts(w http.ResponseWriter, flusher http.Flusher, parts []*genai.Part) {
+// forwardSSEEvent writes the same canonical event shape used by the session
+// history endpoint. Keeping conversion in one place prevents live SSE and
+// reloaded history from using different field names or dropping tool payloads.
+func forwardSSEEvent(w http.ResponseWriter, flusher http.Flusher, ev *session.Event) {
+	for _, chatEvent := range ChatEventsFromADKEvent(ev) {
+		data, err := json.Marshal(chatEvent)
+		if err != nil {
+			log.Printf("[chat] marshal stream event: %v", err)
+			continue
+		}
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+// ChatEventsFromADKEvent converts one persisted/streamed ADK event, including
+// canonical author/timestamp metadata. Synthetic compaction summaries are
+// filtered here so SSE and history apply the exact same rule.
+func ChatEventsFromADKEvent(ev *session.Event) []domainchat.ChatEvent {
+	if ev == nil || ev.Content == nil || IsCompactionEvent(ev) {
+		return nil
+	}
+	role := ev.Author
+	if role == "" {
+		role = "assistant"
+	}
+	return ChatEventsFromParts(
+		role,
+		ev.ID,
+		ev.Timestamp.UTC().Format(time.RFC3339),
+		ev.Content.Parts,
+	)
+}
+
+// ChatEventsFromParts converts ADK content parts to the canonical chat event
+// representation shared by streaming and history responses.
+func ChatEventsFromParts(role, eventID, timestamp string, parts []*genai.Part) []domainchat.ChatEvent {
+	events := make([]domainchat.ChatEvent, 0, len(parts))
 	for _, p := range parts {
 		if p == nil {
 			continue
 		}
 		switch {
 		case p.FunctionCall != nil:
-			argsJSON, _ := json.Marshal(p.FunctionCall.Args)
-			data, _ := json.Marshal(map[string]any{
-				"type": "tool_call",
-				"name": p.FunctionCall.Name,
-				"args": json.RawMessage(argsJSON),
+			events = append(events, domainchat.ChatEvent{
+				EventID: eventID, Role: role, Type: "tool_call",
+				Name: p.FunctionCall.Name, Args: p.FunctionCall.Args,
+				Timestamp: timestamp,
 			})
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
 		case p.FunctionResponse != nil:
-			respJSON, _ := json.Marshal(p.FunctionResponse.Response)
-			data, _ := json.Marshal(map[string]any{
-				"type":     "tool_result",
-				"name":     p.FunctionResponse.Name,
-				"response": json.RawMessage(respJSON),
+			events = append(events, domainchat.ChatEvent{
+				EventID: eventID, Role: role, Type: "tool_result",
+				Name: p.FunctionResponse.Name, Result: p.FunctionResponse.Response,
+				Timestamp: timestamp,
 			})
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
 		case p.Text != "":
-			data, _ := json.Marshal(map[string]string{
-				"type":    "text",
-				"content": p.Text,
+			events = append(events, domainchat.ChatEvent{
+				EventID: eventID, Role: role, Type: "text",
+				Content: p.Text, Timestamp: timestamp,
 			})
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
 		}
 	}
+	return events
+}
+
+// IsCompactionEvent identifies synthetic summaries that are context for the
+// model but are not original user/assistant/tool transcript entries.
+func IsCompactionEvent(ev *session.Event) bool {
+	if ev == nil {
+		return false
+	}
+	if ev.Author == "compaction" {
+		return true
+	}
+	if ev.LLMResponse.CustomMetadata != nil {
+		if _, ok := ev.LLMResponse.CustomMetadata["compaction"]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // runAndCollect executes one ADK turn and returns the final assistant text.
@@ -318,4 +380,31 @@ func lastUserMessage(messages []domainchat.Message) string {
 		}
 	}
 	return ""
+}
+
+// isSessionPersistenceError reports whether err is a session-append failure
+// (AppendEvent returned context canceled) that occurs AFTER the LLM stream
+// has already delivered the assistant response. In that case the response
+// text has reached the user; the only thing that failed is the post-stream
+// MongoDB write, and surfacing it to the frontend would replace the visible
+// answer with a "network error".
+func isSessionPersistenceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "failed to add event to session") ||
+		strings.Contains(s, "append event: context canceled") ||
+		errors.Is(err, context.Canceled) && strings.Contains(s, "session")
+}
+
+// truncateTitle returns the first maxRunes of s, trimming trailing whitespace
+// so the session list shows a clean snippet.
+func truncateTitle(s string, maxRunes int) string {
+	s = strings.TrimSpace(s)
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes])
 }

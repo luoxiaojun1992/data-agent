@@ -29,7 +29,8 @@ type sessionDoc struct {
 	AppName   string           `bson:"app_name"`
 	UserID    string           `bson:"user_id"`
 	State     map[string]any   `bson:"state"`
-	Events    []*session.Event `bson:"events"`
+	Events    []*session.Event `bson:"events"`        // compacted for LLM
+	RawEvents []*session.Event `bson:"raw_events"`    // never pruned, for display
 	UpdatedAt time.Time        `bson:"updated_at"`
 }
 
@@ -71,6 +72,7 @@ func (s *Service) Create(ctx context.Context, req *session.CreateRequest) (*sess
 		UserID:    req.UserID,
 		State:     map[string]any{},
 		Events:    []*session.Event{},
+		RawEvents: []*session.Event{},
 		UpdatedAt: time.Now(),
 	}
 	for k, v := range req.State {
@@ -132,6 +134,19 @@ func (s *Service) List(ctx context.Context, req *session.ListRequest) (*session.
 	return resp, cursor.Err()
 }
 
+// DisplayEvents returns the never-compacted display events for a session.
+// Falls back to session events when display_events is empty (legacy sessions).
+func (s *Service) DisplayEvents(ctx context.Context, appName, userID, sessionID string) ([]*session.Event, error) {
+	doc, err := s.find(ctx, appName, userID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(doc.RawEvents) > 0 {
+		return doc.RawEvents, nil
+	}
+	return doc.Events, nil
+}
+
 // Delete removes a session. Deleting a non-existent session is a no-op (idempotent).
 func (s *Service) Delete(ctx context.Context, req *session.DeleteRequest) error {
 	_, err := s.coll.DeleteOne(ctx, bson.M{
@@ -156,7 +171,10 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 	}
 
 	update := bson.M{
-		"$push": bson.M{"events": event},
+		"$push": bson.M{
+			"events":     event,
+			"raw_events": event,
+		},
 		"$set":  bson.M{"updated_at": time.Now()},
 	}
 	setFields := update["$set"].(bson.M)
@@ -277,7 +295,11 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 
 	_, err = s.coll.UpdateOne(ctx,
 		bson.M{"_id": sess.ID()},
-		bson.M{"$set": bson.M{"events": newEvents, "updated_at": time.Now()}},
+		bson.M{"$set": bson.M{
+			"events":     newEvents,
+			"updated_at": time.Now(),
+			// raw_events is NOT touched — it accumulates forever.
+		}},
 	)
 	if err != nil {
 		return fmt.Errorf("rewrite compacted events: %w", err)

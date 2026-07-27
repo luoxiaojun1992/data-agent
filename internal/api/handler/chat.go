@@ -41,10 +41,14 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 
 	if req.Stream {
 		if err := h.svc.Stream(ctx, req, userID, role, c.Writer); err != nil {
-			// Stream only returns an error before any SSE bytes are written
-			// (prepareRun failures); map to the appropriate HTTP status.
 			c.JSON(chatErrorStatus(err), gin.H{"error": err.Error()})
+			return
 		}
+		// Flush the SSE body. Do NOT touch c.Status here — the response has
+		// already been written with headers, and any later gin's status/c.Abort
+		// would corrupt the chunked transfer encoding.
+		c.Writer.Flush()
+		c.Abort()
 		return
 	}
 

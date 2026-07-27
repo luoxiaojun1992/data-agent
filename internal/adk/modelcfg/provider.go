@@ -11,9 +11,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"os"
+	"strings"
 
 	"google.golang.org/adk/model"
+	"google.golang.org/genai"
 
 	"github.com/ieshan/adk-go-pkg/model/openai"
 	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
@@ -45,23 +48,33 @@ type ModelEntry struct {
 	ID              string    `json:"id"` // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
-	APIKey          string    `json:"-"` // Vault encrypt
+	APIKey          string    `json:"api_key,omitempty"` // On input: plaintext (from frontend). On persisted output: Vault reference path. Resolved to plaintext in memory by Provider.models() before use.
 	Type            ModelType `json:"type"`
 	Instruction     string    `json:"instruction"` // LLM only
 	Capability      string    `json:"capability"`  // LLM only
-	UseCases        []string  `json:"use_cases"`
+	UseCases        []string  `json:"use_cases"`   // declared capabilities (informational)
 	TokenMultiplier float64   `json:"token_multiplier"`
-	Temperature     float64   `json:"temperature"` // LLM only
-	MaxTokens       int       `json:"max_tokens"`  // LLM only
-	IsDefault       bool      `json:"is_default"`
+	Temperature     float64   `json:"temperature"`    // LLM only
+	MaxTokens       int       `json:"max_tokens"`     // LLM output tokens
+	ContextLen      int       `json:"context_len"`    // LLM input context window
+	IsDefault       bool      `json:"is_default"`     // legacy global default (backward compat); prefer IsDefaultFor
+	IsDefaultFor    []string  `json:"is_default_for"` // per-use-case default: ["chat","enhance","compaction","task"]; each use case has exactly one default model
 	FallbackOrder   int       `json:"fallback_order"`
+}
+
+// VaultStore is the minimal Vault interface the Provider needs for per-model
+// API key encryption. The concrete *vault.Client satisfies this; tests can
+// inject a fake. Nil-safe: nil vault means plaintext fallback only.
+type VaultStore interface {
+	Store(ctx context.Context, path, value string) error
+	Retrieve(ctx context.Context, path string) (string, error)
 }
 
 // EmbeddingEntry describes the embedding model config.
 type EmbeddingEntry struct {
 	BaseURL string `json:"base_url"`
 	Model   string `json:"model"`
-	APIKey  string `json:"-"`
+	APIKey  string `json:"api_key,omitempty"` // Same dual semantics as ModelEntry.APIKey.
 }
 
 // Provider reads model configurations from system_config with env fallback.
@@ -69,12 +82,21 @@ type EmbeddingEntry struct {
 // retrieving the agent's system instruction.
 type Provider struct {
 	repo  repository.SysConfigRepository
-	cfgNS string // system_config namespace, default "model"
+	vault VaultStore // optional; when non-nil, per-model API keys are stored/retrieved via Vault
+	cfgNS string     // system_config namespace, default "model"
 }
 
 // NewProvider creates a config provider. Passing nil repo means "env only".
-func NewProvider(repo repository.SysConfigRepository) *Provider {
-	return &Provider{repo: repo, cfgNS: "model"}
+// Pass a non-nil vault to enable per-model API key encryption.
+func NewProvider(repo repository.SysConfigRepository, vault VaultStore) *Provider {
+	return &Provider{repo: repo, vault: vault, cfgNS: "model"}
+}
+
+// ModelAPIKeyVaultPath returns the Vault KV v2 path used to store the API key
+// for the model with the given ID. Stable across reloads so the same model
+// always points to the same Vault entry.
+func ModelAPIKeyVaultPath(modelID string) string {
+	return "data-agent/models/" + modelID + "/api_key"
 }
 
 // ---- LLM models ----
@@ -83,12 +105,24 @@ const defaultBaseURL = "https://api.openai.com/v1"
 
 // models returns the configured LLM model list. DB has priority; env fallback.
 // Empty IDs are backfilled from Name (legacy compat) so every entry has a
-// stable identifier after read.
+// stable identifier after read. Per-model API keys are resolved from Vault
+// references at load time. API keys are NOT shared — each model must have
+// its own key. BaseURL falls back to the legacy flat config when empty.
+// Empty Type is treated as "llm" (legacy compat).
 func (p *Provider) models() []ModelEntry {
 	entries := p.modelsFromDB()
 	if len(entries) > 0 {
+		legacyBaseURL := p.legacyCfgValue("api_url")
+		ctx := context.Background()
 		for i := range entries {
+			if entries[i].Type == "" {
+				entries[i].Type = ModelTypeLLM
+			}
 			p.applyEnvDefaults(&entries[i])
+			p.resolveAPIKey(ctx, &entries[i])
+			if entries[i].BaseURL == "" && legacyBaseURL != "" {
+				entries[i].BaseURL = legacyBaseURL
+			}
 			p.backfillID(&entries[i])
 		}
 		return entries
@@ -98,6 +132,69 @@ func (p *Provider) models() []ModelEntry {
 		p.backfillID(&entries[i])
 	}
 	return entries
+}
+
+// resolveAPIKey transparently decrypts a Vault reference into plaintext.
+// When the field already looks like plaintext (no prefix), it's left as-is
+// so legacy callers/tests keep working. When vault is unavailable but the
+// field is a Vault path, it stays as-is (will surface as an auth error at
+// chat time, which is easier to diagnose than silently dropping).
+func (p *Provider) resolveAPIKey(ctx context.Context, m *ModelEntry) {
+	if m.APIKey == "" {
+		return
+	}
+	if !looksLikeVaultPath(m.APIKey) {
+		return // already plaintext
+	}
+	if p.vault == nil {
+		return // Vault path stays — will fail at auth time
+	}
+	plain, err := p.vault.Retrieve(ctx, m.APIKey)
+	if err == nil && plain != "" {
+		m.APIKey = plain
+	}
+	// Decrypt failure keeps the path — auth error will surface at LLM call time.
+}
+
+// looksLikeVaultPath reports whether the string resembles one of our Vault
+// KV v2 paths (e.g. "data-agent/models/<id>/api_key"). Used to distinguish
+// references from plaintext so we only call Vault.Retrieve when needed.
+func looksLikeVaultPath(s string) bool {
+	return strings.HasPrefix(s, "data-agent/")
+}
+
+// legacyCfgValue returns a single legacy flat-config value from the same
+// namespace. Returns "" when the key is not found or the repo is nil.
+func (p *Provider) legacyCfgValue(key string) string {
+	if p.repo == nil {
+		return ""
+	}
+	cfg, err := p.repo.Get(context.Background(), p.cfgNS, key)
+	if err != nil || cfg == nil {
+		return ""
+	}
+	return cfg.Value
+}
+
+// legacyConfig returns the legacy flat config map (api_url/api_key/...) from
+// the same namespace. Used as a fallback source when structured models have
+// empty fields that the json:"-" tag prevented from persisting.
+func (p *Provider) legacyConfig() map[string]string {
+	out := map[string]string{}
+	if p.repo == nil {
+		return out
+	}
+	cfgs, err := p.repo.GetAll(context.Background(), p.cfgNS)
+	if err != nil {
+		return out
+	}
+	for _, c := range cfgs {
+		if c.Key == "models" || c.Key == "embedding" {
+			continue // skip the structured list JSON blobs
+		}
+		out[c.Key] = c.Value
+	}
+	return out
 }
 
 // backfillID sets ID = Name when ID is empty (legacy config compat). After
@@ -132,7 +229,8 @@ func (p *Provider) modelsFromEnv() []ModelEntry {
 		APIKey:          os.Getenv("LLM_API_KEY"),
 		Type:            ModelTypeLLM,
 		UseCases:        []string{"chat", "task", "enhance", "compaction"},
-		Instruction:     "", // uses DefaultInstruction in runtime
+		IsDefaultFor:    []string{"chat"},
+		Instruction:     "",
 		Capability:      "",
 		TokenMultiplier: 1.0,
 		Temperature:     0.7,
@@ -160,12 +258,10 @@ func (p *Provider) modelsFromEnv() []ModelEntry {
 }
 
 // applyEnvDefaults fills zero values from env (per-model override).
+// API key is NEVER filled from env — each model must have its own Vault-stored key.
 func (p *Provider) applyEnvDefaults(m *ModelEntry) {
 	if m.BaseURL == "" {
 		m.BaseURL = envOrDefault("LLM_BASE_URL", defaultBaseURL)
-	}
-	if m.APIKey == "" {
-		m.APIKey = os.Getenv("LLM_API_KEY")
 	}
 	if m.Temperature == 0 {
 		m.Temperature = 0.7
@@ -178,49 +274,86 @@ func (p *Provider) applyEnvDefaults(m *ModelEntry) {
 	}
 }
 
-// BuildLLM constructs an LLM from the configured models, filtered by UseCase.
-// When useCase is empty (""), returns the first/default model (backward compat).
-// Otherwise, filters by Type=llm and UseCases containing the given use case.
+// BuildLLM constructs an LLM from the model designated as default for the
+// given use case. When useCase is empty, uses the chat default.
+// System processes (enhance, compaction, memory, kb_chunking) MUST go through
+// this path — they are not allowed to pick arbitrary models by their UseCases
+// declaration field. Empty useCase falls back to chat.
 func (p *Provider) BuildLLM(ctx context.Context, useCase UseCase) (model.LLM, error) {
-	models := p.models()
-	if len(models) == 0 {
-		return nil, fmt.Errorf("no LLM models configured")
+	if useCase == "" {
+		useCase = UseCaseChat
 	}
-	selected := p.selectModelsByUseCase(models, useCase)
-	backends := p.buildBackends(selected)
+	entry, err := p.GetModelByUseCase(ctx, useCase)
+	if err != nil {
+		return nil, err
+	}
+	backends := p.buildBackends([]ModelEntry{*entry})
+	if len(backends) == 0 {
+		return nil, fmt.Errorf("failed to build LLM for use case %q", useCase)
+	}
 	return backends[0], nil
 }
 
-// selectModelsByUseCase returns the candidate model entries for a use case.
-// Empty useCase returns all models. Filtered to LLM type with matching UseCases.
-func (p *Provider) selectModelsByUseCase(models []ModelEntry, useCase UseCase) []ModelEntry {
-	if useCase == "" {
-		return models
+// GetModelByUseCase returns the model designated as default for the given
+// use case. Priority: 1) is_default_for contains use case, 2) legacy is_default,
+// 3) first LLM model. Each use case MUST have exactly one default model.
+func (p *Provider) GetModelByUseCase(ctx context.Context, useCase UseCase) (*ModelEntry, error) {
+	models := p.models()
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models configured")
 	}
-	var candidates []ModelEntry
-	for _, m := range models {
-		if m.Type != ModelTypeLLM {
-			continue
+	// 1. Per-use-case default: find model with this use case in is_default_for.
+	for i := range models {
+		if models[i].Type == ModelTypeLLM && isDefaultForUseCase(models[i], string(useCase)) {
+			return &models[i], nil
 		}
-		if hasUseCase(m, useCase) {
-			candidates = append(candidates, m)
+	}
+	// 2. Legacy global default fallback.
+	for i := range models {
+		if models[i].IsDefault && models[i].Type == ModelTypeLLM {
+			return &models[i], nil
 		}
 	}
-	if len(candidates) == 0 {
-		return models
+	// 3. First LLM fallback.
+	for i := range models {
+		if models[i].Type == ModelTypeLLM {
+			return &models[i], nil
+		}
 	}
-	sortModelsByCost(candidates)
-	return candidates
+	return nil, fmt.Errorf("no model for use case %q", useCase)
 }
 
-// hasUseCase reports whether the model declares the given use case.
-func hasUseCase(m ModelEntry, useCase UseCase) bool {
-	for _, uc := range m.UseCases {
-		if uc == string(useCase) {
+// isDefaultForUseCase reports whether the model is designated as the explicit
+// default for the given use case.
+func isDefaultForUseCase(m ModelEntry, useCase string) bool {
+	for _, uc := range m.IsDefaultFor {
+		if uc == useCase {
 			return true
 		}
 	}
 	return false
+}
+
+// selectModelsByUseCase returns candidates for a use case. Now delegates to
+// the per-use-case default model via GetModelByUseCase.
+func (p *Provider) selectModelsByUseCase(models []ModelEntry, useCase UseCase) []ModelEntry {
+	entry, err := p.GetModelByUseCase(context.Background(), useCase)
+	if err != nil {
+		// If no model found for this use case, return all models as fallback.
+		return filterLLMs(models)
+	}
+	return []ModelEntry{*entry}
+}
+
+// filterLLMs returns only LLM-type models from the list.
+func filterLLMs(models []ModelEntry) []ModelEntry {
+	var out []ModelEntry
+	for _, m := range models {
+		if m.Type == ModelTypeLLM {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // buildBackends creates the model.LLM chain sorted by FallbackOrder.
@@ -236,9 +369,33 @@ func (p *Provider) buildBackends(models []ModelEntry) []model.LLM {
 		if err != nil {
 			continue
 		}
-		backends = append(backends, adkmodel.NewCompatLLM(llm))
+		wrapped := adkmodel.NewCompatLLM(llm)
+		if m.MaxTokens > 0 {
+			wrapped = &maxTokensLLM{inner: wrapped, maxTokens: int32(m.MaxTokens)}
+		}
+		backends = append(backends, wrapped)
 	}
 	return backends
+}
+
+// maxTokensLLM wraps a model.LLM to set a default MaxOutputTokens on every
+// GenerateContent call, overriding only when the caller hasn't set one.
+type maxTokensLLM struct {
+	inner     model.LLM
+	maxTokens int32
+}
+
+func (m *maxTokensLLM) Name() string { return m.inner.Name() }
+func (m *maxTokensLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	if req.Config == nil || req.Config.MaxOutputTokens == 0 {
+		cfg := req.Config
+		if cfg == nil {
+			cfg = &genai.GenerateContentConfig{}
+		}
+		cfg.MaxOutputTokens = m.maxTokens
+		req.Config = cfg
+	}
+	return m.inner.GenerateContent(ctx, req, stream)
 }
 
 // sortModelsByCost sorts candidates by token cost (ascending).
@@ -252,37 +409,20 @@ func sortModelsByCost(entries []ModelEntry) {
 	}
 }
 
-// DefaultInstruction returns the system prompt of the default model.
+// DefaultInstruction returns the system prompt of the model that is default
+// for the chat use case (or the global default if no per-use-case default is set).
 func (p *Provider) DefaultInstruction(ctx context.Context) string {
-	for _, m := range p.models() {
-		if m.IsDefault && m.Instruction != "" {
-			return m.Instruction
-		}
+	m, err := p.DefaultModel(ctx)
+	if err == nil && m.Instruction != "" {
+		return m.Instruction
 	}
-	return "" // caller falls back to runtime.DefaultInstruction
+	return ""
 }
 
-// DefaultModel returns the default LLM model entry: the first entry with
-// IsDefault==true && Type==llm, or if none, the first Type==llm entry.
-// Returns an error when no LLM models are configured.
+// DefaultModel returns the model designated as default for the "chat" use case.
+// Falls back to legacy is_default, then first LLM.
 func (p *Provider) DefaultModel(ctx context.Context) (*ModelEntry, error) {
-	models := p.models()
-	var firstLLM *ModelEntry
-	for i := range models {
-		if models[i].Type != ModelTypeLLM {
-			continue
-		}
-		if firstLLM == nil {
-			firstLLM = &models[i]
-		}
-		if models[i].IsDefault {
-			return &models[i], nil
-		}
-	}
-	if firstLLM != nil {
-		return firstLLM, nil
-	}
-	return nil, fmt.Errorf("no LLM models configured")
+	return p.GetModelByUseCase(ctx, UseCaseChat)
 }
 
 // GetModelByID returns the model entry with the given ID. When modelID is
@@ -316,25 +456,100 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 	return backends[0], nil
 }
 
-// GetModelByUseCase returns the model entry selected for a given use case
-// (cheapest matching LLM, or the first model when none match). Used by the
-// Runtime registry's system-level path to build per-use-case Runtime
-// instances (SPEC-062 §5.3.2).
-func (p *Provider) GetModelByUseCase(ctx context.Context, useCase UseCase) (*ModelEntry, error) {
+// ListEmbeddingModels returns all Type==embedding model entries. The admin UI
+// uses this to render the embedding-model table; API keys stay as Vault
+// references (never decrypted here) and are masked at the API layer.
+func (p *Provider) ListEmbeddingModels(ctx context.Context) ([]ModelEntry, error) {
+	if p.repo == nil {
+		return nil, nil
+	}
+	all := p.modelsFromDB()
+	var out []ModelEntry
+	for _, m := range all {
+		if m.Type == ModelTypeEmbedding {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// SetDefaultEmbedding clears any previous embedding default and marks the
+// supplied ID as the active embedding model. There is exactly one embedding
+// default at any time so system flows (KB indexing, memory embedding) can
+// unambiguously resolve it via GetDefaultEmbeddingModel.
+func (p *Provider) SetDefaultEmbedding(ctx context.Context, id string) error {
+	if p.repo == nil {
+		return fmt.Errorf("config repository not available")
+	}
+	models := p.models()
+	found := false
+	for i := range models {
+		if models[i].Type != ModelTypeEmbedding {
+			continue
+		}
+		if models[i].ID == id {
+			models[i].IsDefault = true
+			found = true
+		} else {
+			models[i].IsDefault = false
+		}
+	}
+	if !found {
+		return fmt.Errorf("embedding model %q not found", id)
+	}
+	return p.SetModels(ctx, models)
+}
+
+// GetDefaultEmbeddingModel resolves the active embedding model entry,
+// preferring an explicit IsDefault flag and falling back to the first
+// embedding model so legacy configurations keep working.
+func (p *Provider) GetDefaultEmbeddingModel(ctx context.Context) (*ModelEntry, error) {
 	models := p.models()
 	if len(models) == 0 {
-		return nil, fmt.Errorf("no models configured")
+		return nil, fmt.Errorf("no embedding model configured")
 	}
-	selected := p.selectModelsByUseCase(models, useCase)
-	if len(selected) == 0 {
-		return nil, fmt.Errorf("no model for use case %q", useCase)
+	for i := range models {
+		if models[i].Type == ModelTypeEmbedding && models[i].IsDefault {
+			return &models[i], nil
+		}
 	}
-	return &selected[0], nil
+	for i := range models {
+		if models[i].Type == ModelTypeEmbedding {
+			return &models[i], nil
+		}
+	}
+	return nil, fmt.Errorf("no embedding model configured")
+}
+
+// ListAllModels returns every persisted model entry with its Type intact.
+// The admin UI uses this to render a single table that includes both LLM and
+// embedding models. API keys are kept as Vault references so the caller (API
+// layer) can mask them before responding. modelsFromDB is used (not models())
+// to avoid decrypting every key just to list them.
+func (p *Provider) ListAllModels(ctx context.Context) []ModelEntry {
+	all := p.modelsFromDB()
+	out := make([]ModelEntry, 0, len(all))
+	for _, m := range all {
+		if m.Type == "" {
+			m.Type = ModelTypeLLM
+		}
+		if m.BaseURL == "" {
+			if legacy := p.legacyCfgValue("api_url"); legacy != "" {
+				m.BaseURL = legacy
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // ListLLMModels returns the Type==llm model entries (paginated in memory).
 // Returns (models, total, error) where total is the full LLM count. page
 // starts at 1; pageSize is clamped to [1, 100].
+//
+// Uses modelsFromDB so API keys stay as Vault paths in the returned slice
+// (the caller masks them at the API layer). Calling p.models() here would
+// decrypt to plaintext and leak keys through the list endpoint.
 func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if page < 1 {
 		page = 1
@@ -345,7 +560,7 @@ func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]Mod
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	all := p.models()
+	all := p.modelsFromDB()
 	var llmModels []ModelEntry
 	for _, m := range all {
 		if m.Type == ModelTypeLLM {
@@ -378,12 +593,30 @@ func ConfigHash(m ModelEntry) string {
 
 // AddModel appends a single model entry, generating a UUID ID when empty,
 // then persists the full list. Maintains the IsDefault invariant.
+//
+// When entry.APIKey is plaintext (e.g. from the admin POST body) and the
+// Provider has a Vault client configured, the plaintext is stored in Vault
+// at a per-model path and the entry's APIKey field is replaced with the
+// Vault reference path. When vault is unavailable, the plaintext is kept
+// as-is and persisted to MongoDB (legacy plaintext path) so users on a
+// dev/test setup without Vault are not blocked.
 func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, error) {
 	if p.repo == nil {
 		return entry, fmt.Errorf("config repository not available")
 	}
 	if entry.ID == "" {
 		entry.ID = "model_" + newUUID()
+	}
+	// Encrypt plaintext API key into a Vault reference.
+	if entry.APIKey != "" && !looksLikeVaultPath(entry.APIKey) {
+		if p.vault == nil {
+			return entry, fmt.Errorf("vault client is required to store API keys; ensure VAULT_ADDR/VAULT_TOKEN are configured")
+		}
+		path := ModelAPIKeyVaultPath(entry.ID)
+		if err := p.vault.Store(ctx, path, entry.APIKey); err != nil {
+			return entry, fmt.Errorf("vault store api_key for %q: %w", entry.ID, err)
+		}
+		entry.APIKey = path
 	}
 	models := p.models()
 	for _, m := range models {
@@ -398,6 +631,73 @@ func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, 
 	return entry, nil
 }
 
+// DecryptModelAPIKey retrieves the plaintext API key for a model from Vault.
+// The model MUST have its API key stored in Vault (a data-agent/... path).
+// Plaintext keys in MongoDB are NOT supported — models must be saved via
+// AddModel/UpdateModel which encrypt the key to Vault on write.
+func (p *Provider) DecryptModelAPIKey(ctx context.Context, modelID string) (string, error) {
+	if p.vault == nil {
+		return "", fmt.Errorf("vault client not available")
+	}
+	rawModels := p.modelsFromDB()
+	for _, m := range rawModels {
+		if m.ID != modelID {
+			continue
+		}
+		if m.APIKey == "" {
+			return "", fmt.Errorf("model %q has no API key", modelID)
+		}
+		if !looksLikeVaultPath(m.APIKey) {
+			return "", fmt.Errorf("model %q has a legacy plaintext API key — re-save the model to encrypt it to Vault", modelID)
+		}
+		return p.vault.Retrieve(ctx, m.APIKey)
+	}
+	return "", fmt.Errorf("model %q not found", modelID)
+}
+
+// UpdateModel updates an existing model entry by ID. API key handling:
+//   - Empty → keep existing Vault path.
+//   - "data-agent/..." (Vault path) → keep as-is.
+//   - Any other string → treat as new plaintext key, encrypt to Vault, replace.
+func (p *Provider) UpdateModel(ctx context.Context, id string, entry ModelEntry) (ModelEntry, error) {
+	if p.repo == nil {
+		return entry, fmt.Errorf("config repository not available")
+	}
+	models := p.modelsFromDB()
+	if models == nil {
+		models = p.models()
+	}
+	found := false
+	for i := range models {
+		if models[i].ID == id {
+			entry.ID = id
+			if entry.APIKey == "" || looksLikeVaultPath(entry.APIKey) {
+				entry.APIKey = models[i].APIKey // keep existing
+			} else {
+				// New plaintext key → store in Vault.
+				if p.vault == nil {
+					return entry, fmt.Errorf("vault client is required to store API keys; ensure VAULT_ADDR/VAULT_TOKEN are configured")
+				}
+				path := ModelAPIKeyVaultPath(id)
+				if err := p.vault.Store(ctx, path, entry.APIKey); err != nil {
+					return entry, fmt.Errorf("vault store api_key for %q: %w", id, err)
+				}
+				entry.APIKey = path
+			}
+			models[i] = entry
+			found = true
+			break
+		}
+	}
+	if !found {
+		return entry, fmt.Errorf("model %q not found", id)
+	}
+	if err := p.SetModels(ctx, models); err != nil {
+		return entry, err
+	}
+	return entry, nil
+}
+
 // DeleteModel removes the model with the given ID from the list. Idempotent:
 // deleting a non-existent ID is a no-op (returns nil).
 func (p *Provider) DeleteModel(ctx context.Context, id string) error {
@@ -405,53 +705,78 @@ func (p *Provider) DeleteModel(ctx context.Context, id string) error {
 		return fmt.Errorf("config repository not available")
 	}
 	models := p.models()
+	var removedUseCases []string
+	var removedGlobalDefault bool
 	kept := make([]ModelEntry, 0, len(models))
-	removed := false
-	hadDefault := false
 	for _, m := range models {
 		if m.ID == id {
-			removed = true
-			if m.IsDefault {
-				hadDefault = true
-			}
+			removedGlobalDefault = m.IsDefault
+			removedUseCases = append(removedUseCases, m.IsDefaultFor...)
 			continue
 		}
 		kept = append(kept, m)
 	}
-	if !removed {
+	if len(kept) == len(models) {
 		return nil // idempotent delete
 	}
-	// If we removed the default LLM, promote the first remaining LLM.
-	if hadDefault {
+	// Promote defaults as needed.
+	if removedGlobalDefault {
 		ensureSingleDefault(kept)
 	}
+	ensurePerUseCaseDefaults(kept, removedUseCases)
 	return p.SetModels(ctx, kept)
 }
 
-// SetDefaultModel marks the model with the given ID as the sole default LLM,
-// clearing IsDefault on every other LLM entry. Returns an error when the ID
-// is not found or is not an LLM model.
-func (p *Provider) SetDefaultModel(ctx context.Context, id string) error {
+// SetDefaultModel marks the model with :id as default for the given use cases.
+// When useCases is empty or contains "chat", it sets the legacy is_default flag
+// for backward compat. For specific use cases, it sets is_default_for.
+// Clearing defaults on other models is done per-use-case.
+// Embedding models reuse the same IsDefault field but ignore use_cases.
+func (p *Provider) SetDefaultModel(ctx context.Context, id string, useCases []string) error {
 	if p.repo == nil {
 		return fmt.Errorf("config repository not available")
 	}
 	models := p.models()
 	found := false
 	for i := range models {
-		if models[i].Type != ModelTypeLLM {
+		if models[i].ID == id {
+			if models[i].Type == ModelTypeEmbedding {
+				// Embedding entries don't carry per-use-case defaults.
+				models[i].IsDefault = true
+			} else {
+				if len(useCases) == 0 || containsStr(useCases, "chat") {
+					models[i].IsDefault = true
+				}
+				for _, uc := range useCases {
+					if !isDefaultForUseCase(models[i], uc) {
+						models[i].IsDefaultFor = append(models[i].IsDefaultFor, uc)
+					}
+				}
+			}
+			found = true
 			continue
 		}
-		if models[i].ID == id {
-			models[i].IsDefault = true
-			found = true
-		} else {
+		if models[i].Type == ModelTypeEmbedding {
+			// Embedding defaults are mutually exclusive.
+			if models[i].IsDefault {
+				models[i].IsDefault = false
+			}
+			continue
+		}
+		if len(useCases) == 0 || containsStr(useCases, "chat") {
 			models[i].IsDefault = false
 		}
+		models[i].IsDefaultFor = removeStrAll(models[i].IsDefaultFor, useCases)
 	}
 	if !found {
-		return fmt.Errorf("LLM model %q not found", id)
+		return fmt.Errorf("model %q not found", id)
 	}
 	return p.SetModels(ctx, models)
+}
+
+// SetDefaultModelPlain marks a model as the default for chat (legacy compat).
+func (p *Provider) setDefaultModelPlain(ctx context.Context, id string) error {
+	return p.SetDefaultModel(ctx, id, []string{"chat"})
 }
 
 // newUUID generates a UUID v4 string. Isolated so tests can stub it.
@@ -550,26 +875,30 @@ func validateModelIDs(entries []ModelEntry) error {
 
 // ensureSingleDefault guarantees at most one LLM model is marked IsDefault.
 // When no LLM model is default, the first LLM model is auto-marked.
+// Embedding models follow the same rule per-type so the admin can flip
+// between multiple embedding candidates while keeping exactly one active.
 func ensureSingleDefault(entries []ModelEntry) {
-	firstLLM := -1
-	defaultLLM := -1
-	for i, m := range entries {
-		if m.Type != ModelTypeLLM {
-			continue
-		}
-		if firstLLM < 0 {
-			firstLLM = i
-		}
-		if m.IsDefault {
-			if defaultLLM >= 0 {
-				entries[i].IsDefault = false // collapse extras
-			} else {
-				defaultLLM = i
+	for _, modelType := range []ModelType{ModelTypeLLM, ModelTypeEmbedding} {
+		first := -1
+		def := -1
+		for i, m := range entries {
+			if m.Type != modelType {
+				continue
+			}
+			if first < 0 {
+				first = i
+			}
+			if m.IsDefault {
+				if def >= 0 {
+					entries[i].IsDefault = false
+				} else {
+					def = i
+				}
 			}
 		}
-	}
-	if defaultLLM < 0 && firstLLM >= 0 {
-		entries[firstLLM].IsDefault = true
+		if def < 0 && first >= 0 {
+			entries[first].IsDefault = true
+		}
 	}
 }
 
@@ -684,4 +1013,54 @@ func trimSpace(s string) string {
 		j--
 	}
 	return s[i : j+1]
+}
+
+// containsStr reports whether s is in the list.
+func containsStr(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// removeStrAll removes all occurrences of given strings from the list.
+func removeStrAll(list, toRemove []string) []string {
+	if len(toRemove) == 0 {
+		return list
+	}
+	removeSet := make(map[string]bool, len(toRemove))
+	for _, s := range toRemove {
+		removeSet[s] = true
+	}
+	var out []string
+	for _, v := range list {
+		if !removeSet[v] {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// ensurePerUseCaseDefaults promotes first LLM as default for orphaned use cases.
+func ensurePerUseCaseDefaults(entries []ModelEntry, orphanedUseCases []string) {
+	if len(orphanedUseCases) == 0 {
+		return
+	}
+	firstLLM := -1
+	for i, m := range entries {
+		if m.Type == ModelTypeLLM && firstLLM < 0 {
+			firstLLM = i
+			break
+		}
+	}
+	if firstLLM < 0 {
+		return
+	}
+	for _, uc := range orphanedUseCases {
+		if !isDefaultForUseCase(entries[firstLLM], uc) {
+			entries[firstLLM].IsDefaultFor = append(entries[firstLLM].IsDefaultFor, uc)
+		}
+	}
 }

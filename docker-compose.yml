@@ -60,7 +60,7 @@ services:
       start_period: 10s
 
   vault:
-    image: vault:1.18
+    image: hashicorp/vault:1.18
     ports:
       - "8200:8200"
     environment:
@@ -69,10 +69,7 @@ services:
     cap_add:
       - IPC_LOCK
     healthcheck:
-      test: ["CMD", "vault", "status"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      test: ["CMD", "sh", "-c", "VAULT_ADDR=http://127.0.0.1:8200 vault status"]
 
   mockllm:
     build:
@@ -112,6 +109,9 @@ services:
       - LLM_BASE_URL=http://mockllm:8082/v1
       - LLM_API_KEY=test-key
       - LLM_MODEL=mock-gpt-4o
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=dev-root-token
+      - VAULT_MOUNT_PATH=secret
     depends_on:
       mongodb:
         condition: service_healthy
@@ -137,12 +137,23 @@ services:
       context: frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://data-agent:8080/api/v1
+        NEXT_PUBLIC_API_URL: /api/v1
     ports:
       - "3000:3000"
     depends_on:
       data-agent:
         condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - data-agent
+    restart: unless-stopped
 
 volumes:
   mongodb-data:

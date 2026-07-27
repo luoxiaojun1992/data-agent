@@ -1,19 +1,29 @@
 package handler
 
 import (
+	"context"
+	"iter"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	"google.golang.org/adk/session"
 )
 
 type SessionHandler struct {
-	mgr chat.SessionService
+	mgr         chat.SessionService
+	adkSessions session.Service
+	appName     string
 }
 
-func NewSessionHandler(mgr chat.SessionService) *SessionHandler {
-	return &SessionHandler{mgr: mgr}
+func NewSessionHandler(mgr chat.SessionService, adkSessions ...session.Service) *SessionHandler {
+	var service session.Service
+	if len(adkSessions) > 0 {
+		service = adkSessions[0]
+	}
+	return &SessionHandler{mgr: mgr, adkSessions: service, appName: "data-agent"}
 }
 
 func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
@@ -22,6 +32,7 @@ func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
 	// /deleted must be registered before /:id so the static path wins (UI-181).
 	rg.GET("/deleted", h.ListDeleted)
 	rg.GET("/:id", h.Get)
+	rg.GET("/:id/messages", h.Messages)
 	rg.PUT("/:id", h.Renew)
 	rg.DELETE("/:id", h.Delete)
 	rg.POST("/:id/restore", h.Restore)
@@ -105,3 +116,83 @@ func (h *SessionHandler) ListDeleted(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"sessions": userSessions})
 }
+
+// Messages returns the latest 50 ADK events converted to canonical chat form.
+// Compaction summaries are skipped; everything else (user, agent text, tool calls,
+// tool results) is kept exactly as stored in MongoDB. Consecutive text parts from
+// the same role are merged into a single bubble (streaming tokens).
+func (h *SessionHandler) Messages(c *gin.Context) {
+	if h.adkSessions == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "adk session service not configured"})
+		return
+	}
+	userID := c.GetString("user_id")
+	sessionID := c.Param("id")
+
+	resp, err := h.adkSessions.Get(c.Request.Context(), &session.GetRequest{
+		AppName:   h.appName,
+		UserID:    userID,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	var messages []domainchat.ChatEvent
+
+	// Use never-compacted display events when available; fall back to session
+	// events for sessions created before this feature existed.
+	events := resp.Session.Events()
+	if svc, ok := h.adkSessions.(interface {
+		DisplayEvents(ctx context.Context, appName, userID, sessionID string) ([]*session.Event, error)
+	}); ok {
+		if raw, err := svc.DisplayEvents(c.Request.Context(), h.appName, userID, sessionID); err == nil && len(raw) > 0 {
+			events = &eventSlice{items: raw}
+		}
+	}
+
+	for i := 0; i < events.Len(); i++ {
+		ev := events.At(i)
+		if chat.IsCompactionEvent(ev) || ev.Content == nil {
+			continue
+		}
+		role := ev.Author
+		if role == "" {
+			role = "assistant"
+		}
+		timestamp := ev.Timestamp.UTC().Format(time.RFC3339)
+		for _, event := range chat.ChatEventsFromParts(role, ev.ID, timestamp, ev.Content.Parts) {
+			// Match the live renderer: consecutive text parts by the same
+			// author are one transcript bubble, including streaming chunks.
+			if event.Type == "text" && len(messages) > 0 {
+				last := &messages[len(messages)-1]
+				if last.Type == "text" && last.Role == event.Role {
+					last.Content += event.Content
+					continue
+				}
+			}
+			messages = append(messages, event)
+		}
+	}
+	// Keep only the latest 50.
+	if len(messages) > 50 {
+		messages = messages[len(messages)-50:]
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
+}
+
+// eventSlice adapts a []*session.Event to the session.Events interface.
+type eventSlice struct{ items []*session.Event }
+
+func (s *eventSlice) All() iter.Seq[*session.Event] {
+	return func(yield func(*session.Event) bool) {
+		for _, e := range s.items {
+			if !yield(e) {
+				return
+			}
+		}
+	}
+}
+func (s *eventSlice) Len() int              { return len(s.items) }
+func (s *eventSlice) At(i int) *session.Event { return s.items[i] }

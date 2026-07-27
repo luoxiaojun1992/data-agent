@@ -17,7 +17,15 @@ func newProviderWithModels(t *testing.T, entries []ModelEntry) *Provider {
 	repo := mockrepo.NewSysConfigRepository(t)
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
-	return NewProvider(repo)
+	// legacyCfgValue("api_url") calls Get; return nil so BaseURL stays empty (test has no legacy config).
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
+	// legacyConfig() calls GetAll; return an empty list so fallback chain returns empty.
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	// SetModels calls Upsert; allow it so default-toggle / type-change tests work.
+	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil).Maybe()
+	// EmbeddingConfig reads key "embedding"; tests that don't set it get the default.
+	repo.On("Get", mock.Anything, "model", "embedding").Maybe().Return(nil, nil)
+	return NewProvider(repo, nil)
 }
 
 func TestDefaultModel_IsDefaultPriority(t *testing.T) {
@@ -193,7 +201,7 @@ func TestEnsureSingleDefault_CollapseExtras(t *testing.T) {
 }
 
 func TestBackfillID_EmptyUsesName(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	m := ModelEntry{Name: "Legacy"}
 	p.backfillID(&m)
 	if m.ID != "Legacy" {
@@ -203,7 +211,7 @@ func TestBackfillID_EmptyUsesName(t *testing.T) {
 
 func TestSetModels_DuplicateIDRejected(t *testing.T) {
 	repo := mockrepo.NewSysConfigRepository(t)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	entries := []ModelEntry{
 		{ID: "dup", Name: "A"},
 		{ID: "dup", Name: "B"},
@@ -219,7 +227,8 @@ func TestAddModel_AutoGenID(t *testing.T) {
 	// Empty DB → no existing models.
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: ""}, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
 	entry := ModelEntry{Name: "NewModel", Type: ModelTypeLLM}
 	saved, err := p.AddModel(context.Background(), entry)
@@ -234,7 +243,7 @@ func TestAddModel_AutoGenID(t *testing.T) {
 func TestDeleteModel_Idempotent(t *testing.T) {
 	repo := mockrepo.NewSysConfigRepository(t)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: "[]"}, nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	// Deleting a non-existent ID should not error (idempotent).
 	if err := p.DeleteModel(context.Background(), "nonexistent"); err != nil {
 		t.Errorf("idempotent delete should not error: %v", err)
@@ -245,9 +254,100 @@ func TestSetDefaultModel_NotFound(t *testing.T) {
 	p := newProviderWithModels(t, []ModelEntry{
 		{ID: "m1", Name: "M1", Type: ModelTypeLLM},
 	})
-	err := p.SetDefaultModel(context.Background(), "nonexistent")
+	err := p.SetDefaultModel(context.Background(), "nonexistent", []string{"chat"})
 	if err == nil {
 		t.Error("expected error for nonexistent model")
+	}
+}
+
+func TestSetDefaultEmbedding_ExclusiveDefault(t *testing.T) {
+	repo := mockrepo.NewSysConfigRepository(t)
+	entries := []ModelEntry{
+		{ID: "e1", Name: "E1", Type: ModelTypeEmbedding, IsDefault: true},
+		{ID: "e2", Name: "E2", Type: ModelTypeEmbedding},
+		{ID: "e3", Name: "E3", Type: ModelTypeEmbedding},
+	}
+	raw, _ := json.Marshal(entries)
+	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
+	repo.On("Get", mock.Anything, "model", "embedding").Maybe().Return(nil, nil)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	var stored string
+	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Run(func(args mock.Arguments) {
+		stored = args.Get(3).(string)
+	}).Return(nil)
+	p := NewProvider(repo, nil)
+	if err := p.SetDefaultEmbedding(context.Background(), "e3"); err != nil {
+		t.Fatalf("SetDefaultEmbedding: %v", err)
+	}
+	var updated []ModelEntry
+	if err := json.Unmarshal([]byte(stored), &updated); err != nil {
+		t.Fatalf("decode stored payload: %v", err)
+	}
+	defaults := []string{}
+	for _, m := range updated {
+		if m.IsDefault {
+			defaults = append(defaults, m.ID)
+		}
+	}
+	if len(defaults) != 1 || defaults[0] != "e3" {
+		t.Fatalf("expected only e3 default, got %v", defaults)
+	}
+}
+
+func TestSetDefaultModel_EmbeddingTarget(t *testing.T) {
+	repo := mockrepo.NewSysConfigRepository(t)
+	entries := []ModelEntry{
+		{ID: "e1", Name: "E1", Type: ModelTypeEmbedding, IsDefault: true},
+		{ID: "e2", Name: "E2", Type: ModelTypeEmbedding},
+	}
+	raw, _ := json.Marshal(entries)
+	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
+	repo.On("Get", mock.Anything, "model", "embedding").Maybe().Return(nil, nil)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	var stored string
+	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Run(func(args mock.Arguments) {
+		stored = args.Get(3).(string)
+	}).Return(nil)
+	p := NewProvider(repo, nil)
+	if err := p.SetDefaultModel(context.Background(), "e2", nil); err != nil {
+		t.Fatalf("SetDefaultModel on embedding should succeed: %v", err)
+	}
+	var updated []ModelEntry
+	if err := json.Unmarshal([]byte(stored), &updated); err != nil {
+		t.Fatalf("decode stored payload: %v", err)
+	}
+	for _, m := range updated {
+		if m.ID == "e1" && m.IsDefault {
+			t.Errorf("e1 should no longer be default after switching to e2")
+		}
+		if m.ID == "e2" && !m.IsDefault {
+			t.Errorf("e2 should be default after SetDefaultModel")
+		}
+	}
+}
+
+func TestListAllModels_KeepsEmbeddingRows(t *testing.T) {
+	p := newProviderWithModels(t, []ModelEntry{
+		{ID: "l1", Name: "L1", Type: ModelTypeLLM},
+		{ID: "e1", Name: "E1", Type: ModelTypeEmbedding},
+	})
+	all := p.ListAllModels(context.Background())
+	if len(all) != 2 {
+		t.Fatalf("ListAllModels = %d, want 2: %+v", len(all), all)
+	}
+	var sawLLM, sawEmbedding bool
+	for _, m := range all {
+		if m.Type == ModelTypeLLM {
+			sawLLM = true
+		}
+		if m.Type == ModelTypeEmbedding {
+			sawEmbedding = true
+		}
+	}
+	if !sawLLM || !sawEmbedding {
+		t.Errorf("missing types: LLM=%v EMB=%v", sawLLM, sawEmbedding)
 	}
 }
 
@@ -259,18 +359,20 @@ func TestSetDefaultModel_Success(t *testing.T) {
 	}
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
-	if err := p.SetDefaultModel(context.Background(), "m2"); err != nil {
+	if err := p.SetDefaultModel(context.Background(), "m2", nil); err != nil {
 		t.Fatalf("SetDefaultModel: %v", err)
 	}
 }
 
 func TestGetModelByUseCase(t *testing.T) {
 	p := newProviderWithModels(t, []ModelEntry{
-		{ID: "chat", Name: "Chat", Type: ModelTypeLLM, UseCases: []string{"chat"}},
-		{ID: "enh", Name: "Enh", Type: ModelTypeLLM, UseCases: []string{"enhance"}, TokenMultiplier: 0.5},
+		{ID: "chat", Name: "Chat", Type: ModelTypeLLM, IsDefaultFor: []string{"chat"}},
+		{ID: "enh", Name: "Enh", Type: ModelTypeLLM, IsDefaultFor: []string{"enhance"}},
 	})
 	m, err := p.GetModelByUseCase(context.Background(), UseCaseEnhance)
 	if err != nil {
@@ -315,8 +417,10 @@ func TestDeleteModel_PromoteNewDefault(t *testing.T) {
 	}
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
 	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
 	if err := p.DeleteModel(context.Background(), "m1"); err != nil {
 		t.Fatalf("DeleteModel: %v", err)
@@ -331,7 +435,9 @@ func TestAddModel_DuplicateIDRejected(t *testing.T) {
 	entries := []ModelEntry{{ID: "existing", Name: "E", Type: ModelTypeLLM}}
 	raw, _ := json.Marshal(entries)
 	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
-	p := NewProvider(repo)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	p := NewProvider(repo, nil)
 
 	_, err := p.AddModel(context.Background(), ModelEntry{ID: "existing", Name: "Dup"})
 	if err == nil {
@@ -370,7 +476,7 @@ func TestGetRawModelConfig(t *testing.T) {
 		{Namespace: "model", Key: "embedding", Value: `{"base_url":"http://x","model":"emb"}`},
 	}
 	repo.On("GetAll", mock.Anything, "model").Return(cfgs, nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	raw, err := p.GetRawModelConfig(context.Background())
 	if err != nil {
 		t.Fatalf("GetRawModelConfig: %v", err)
@@ -415,7 +521,7 @@ func TestEmbeddingConfig(t *testing.T) {
 	repo.On("Get", mock.Anything, "model", "embedding").Return(&model.SystemConfig{
 		Value: `{"base_url":"http://emb:8082","model":"text-embed","api_key":"sk-xxx"}`,
 	}, nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	cfg := p.EmbeddingConfig()
 	if cfg.BaseURL != "http://emb:8082" {
 		t.Errorf("BaseURL = %q, want http://emb:8082", cfg.BaseURL)
@@ -426,7 +532,7 @@ func TestEmbeddingConfig(t *testing.T) {
 }
 
 func TestEmbeddingConfig_NilRepo(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	cfg := p.EmbeddingConfig()
 	// With nil repo, falls back to env defaults (likely empty in tests).
 	// Just verify it doesn't panic.
@@ -436,7 +542,7 @@ func TestEmbeddingConfig_NilRepo(t *testing.T) {
 func TestSetEmbedding(t *testing.T) {
 	repo := mockrepo.NewSysConfigRepository(t)
 	repo.On("Upsert", mock.Anything, "model", "embedding", mock.Anything).Return(nil)
-	p := NewProvider(repo)
+	p := NewProvider(repo, nil)
 	err := p.SetEmbedding(context.Background(), EmbeddingEntry{BaseURL: "http://x", Model: "emb"})
 	if err != nil {
 		t.Fatalf("SetEmbedding: %v", err)
@@ -444,7 +550,7 @@ func TestSetEmbedding(t *testing.T) {
 }
 
 func TestSetEmbedding_NilRepo(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	err := p.SetEmbedding(context.Background(), EmbeddingEntry{})
 	if err == nil {
 		t.Error("expected error with nil repo")
@@ -452,7 +558,7 @@ func TestSetEmbedding_NilRepo(t *testing.T) {
 }
 
 func TestSetModels_NilRepo(t *testing.T) {
-	p := NewProvider(nil)
+	p := NewProvider(nil, nil)
 	err := p.SetModels(context.Background(), []ModelEntry{{ID: "x", Name: "X"}})
 	if err == nil {
 		t.Error("expected error with nil repo")

@@ -234,7 +234,24 @@ func (_m *SessionService) SetRecoveryHours(hours int) error {
 	return r0
 }
 
-// NewSessionService creates a new instance of SessionService. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+// SetTitle provides a mock function with given fields: id, title
+func (_m *SessionService) SetTitle(id string, title string) error {
+	ret := _m.Called(id, title)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetTitle")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = rf(id, title)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // The first argument is typically a *testing.T value.
 func NewSessionService(t interface {
 	mock.TestingT

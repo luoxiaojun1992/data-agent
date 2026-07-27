@@ -70,11 +70,13 @@ func Load(path string) (*Config, error) {
 	_ = v.BindEnv("seaweedfs.master", "SEAWEEDFS_MASTER")
 	_ = v.BindEnv("seaweedfs.filer", "SEAWEEDFS_FILER")
 	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
+	_ = v.BindEnv("server.read_timeout", "SERVER_READ_TIMEOUT")
+	_ = v.BindEnv("server.write_timeout", "SERVER_WRITE_TIMEOUT")
 
 	// Set defaults
 	v.SetDefault("server.port", 8080)
-	v.SetDefault("server.read_timeout", "10s")
-	v.SetDefault("server.write_timeout", "1800s") // 30min for SSE + ReAct tool execution
+	v.SetDefault("server.read_timeout", "600s")
+	v.SetDefault("server.write_timeout", "600s") // SSE streaming + ReAct tool execution
 	v.SetDefault("mongo.uri", "mongodb://localhost:27017")
 	v.SetDefault("mongo.database", "data_agent")
 	v.SetDefault("redis.addr", "localhost:6379")
