@@ -476,6 +476,7 @@ func (p *Provider) ListEmbeddingModels(ctx context.Context) ([]ModelEntry, error
 	var out []ModelEntry
 	for _, m := range all {
 		if m.Type == ModelTypeEmbedding {
+			p.applyEnvDefaults(&m)
 			out = append(out, m)
 		}
 	}

@@ -120,6 +120,7 @@ services:
       - MONGO_URI=mongodb://mongodb:27017
       - REDIS_ADDR=redis:6379
       - QDRANT_URL=http://qdrant:6333
+      - EMBEDDING_VECTOR_DIM=768
       - SEAWEEDFS_MASTER=http://seaweedfs:9333
       - SEAWEEDFS_FILER=http://seaweedfs:8080
       - LLM_BASE_URL=http://mockllm:8082/v1
