@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"iter"
 	"net/http"
 	"time"
 
@@ -138,7 +140,18 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 	}
 
 	var messages []domainchat.ChatEvent
+
+	// Use never-compacted display events when available; fall back to session
+	// events for sessions created before this feature existed.
 	events := resp.Session.Events()
+	if svc, ok := h.adkSessions.(interface {
+		DisplayEvents(ctx context.Context, appName, userID, sessionID string) ([]*session.Event, error)
+	}); ok {
+		if raw, err := svc.DisplayEvents(c.Request.Context(), h.appName, userID, sessionID); err == nil && len(raw) > 0 {
+			events = &eventSlice{items: raw}
+		}
+	}
+
 	for i := 0; i < events.Len(); i++ {
 		ev := events.At(i)
 		if chat.IsCompactionEvent(ev) || ev.Content == nil {
@@ -168,3 +181,18 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }
+
+// eventSlice adapts a []*session.Event to the session.Events interface.
+type eventSlice struct{ items []*session.Event }
+
+func (s *eventSlice) All() iter.Seq[*session.Event] {
+	return func(yield func(*session.Event) bool) {
+		for _, e := range s.items {
+			if !yield(e) {
+				return
+			}
+		}
+	}
+}
+func (s *eventSlice) Len() int              { return len(s.items) }
+func (s *eventSlice) At(i int) *session.Event { return s.items[i] }
