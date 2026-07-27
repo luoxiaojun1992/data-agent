@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,9 @@ import (
 
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	chatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
+	"google.golang.org/adk/model"
+	adksession "google.golang.org/adk/session"
+	"google.golang.org/genai"
 )
 
 func newSessionGin(method, path string) (*gin.Context, *httptest.ResponseRecorder) {
@@ -163,9 +167,70 @@ func TestSessionHandler_ListDeleted_Error(t *testing.T) {
 	}
 }
 
-func TestNewSessionHandler(t *testing.T) {
-	h := NewSessionHandler(nil)
-	if h == nil {
-		t.Error("handler should not be nil")
+func TestSessionHandler_MessagesCanonicalTranscript(t *testing.T) {
+	ctx := context.Background()
+	adk := adksession.InMemoryService()
+	created, err := adk.Create(ctx, &adksession.CreateRequest{
+		AppName: "data-agent", UserID: "u1", SessionID: "s1",
+	})
+	if err != nil {
+		t.Fatalf("create ADK session: %v", err)
+	}
+	base := time.Date(2026, 7, 26, 22, 0, 0, 0, time.UTC)
+	appendEvent := func(id, author string, content *genai.Content) {
+		t.Helper()
+		if err := adk.AppendEvent(ctx, created.Session, &adksession.Event{
+			ID: id, Author: author, Timestamp: base,
+			LLMResponse: model.LLMResponse{Content: content},
+		}); err != nil {
+			t.Fatalf("append event %s: %v", id, err)
+		}
+	}
+	appendEvent("user-1", "user", genai.NewContentFromText("查询销售", "user"))
+	appendEvent("assistant-1", "data_agent", genai.NewContentFromText("我来", "model"))
+	appendEvent("assistant-2", "data_agent", genai.NewContentFromText("查询", "model"))
+	appendEvent("tool-call-1", "data_agent", &genai.Content{Role: "model", Parts: []*genai.Part{{
+		FunctionCall: &genai.FunctionCall{Name: "sql_query", Args: map[string]any{"sql": "SELECT 1"}},
+	}}})
+	appendEvent("tool-result-1", "data_agent", &genai.Content{Role: "user", Parts: []*genai.Part{{
+		FunctionResponse: &genai.FunctionResponse{Name: "sql_query", Response: map[string]any{"rows": []any{"row-1"}}},
+	}}})
+	appendEvent("assistant-3", "data_agent", genai.NewContentFromText("完成", "model"))
+	appendEvent("compaction-1", "compaction", genai.NewContentFromText("should not be shown", "model"))
+
+	h := NewSessionHandler(nil, adk)
+	c, w := newSessionGin("GET", "/sessions/s1/messages")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Messages(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Messages []domainchat.ChatEvent `json:"messages"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Messages) != 5 {
+		t.Fatalf("messages = %d, want 5: %+v", len(body.Messages), body.Messages)
+	}
+	if body.Messages[0].Role != "user" || body.Messages[0].Content != "查询销售" {
+		t.Errorf("user message = %+v", body.Messages[0])
+	}
+	if body.Messages[1].Type != "text" || body.Messages[1].Content != "我来查询" {
+		t.Errorf("merged assistant text = %+v", body.Messages[1])
+	}
+	if body.Messages[2].Type != "tool_call" || body.Messages[2].Name != "sql_query" {
+		t.Errorf("tool call = %+v", body.Messages[2])
+	}
+	if body.Messages[3].Type != "tool_result" || body.Messages[3].Result == nil {
+		t.Errorf("tool result = %+v", body.Messages[3])
+	}
+	if body.Messages[4].Content != "完成" {
+		t.Errorf("final text = %+v", body.Messages[4])
+	}
+	if strings.Contains(w.Body.String(), "should not be shown") {
+		t.Error("compaction summary leaked into transcript")
 	}
 }

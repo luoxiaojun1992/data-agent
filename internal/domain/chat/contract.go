@@ -17,6 +17,20 @@ type Message struct {
 	Content string `json:"content"`
 }
 
+// ChatEvent is the canonical wire representation of one persisted or streamed
+// conversation event. The SSE stream and GET /sessions/:id/messages both use
+// this shape so the live transcript and a reloaded session cannot drift.
+type ChatEvent struct {
+	EventID   string         `json:"event_id,omitempty"`
+	Role      string         `json:"role"`
+	Content   string         `json:"content,omitempty"`
+	Type      string         `json:"type"` // text | tool_call | tool_result
+	Name      string         `json:"name,omitempty"`
+	Args      map[string]any `json:"args,omitempty"`
+	Result    any            `json:"result,omitempty"`
+	Timestamp string         `json:"timestamp"`
+}
+
 // ChatRequest is the domain-level chat request DTO. Handlers translate
 // gin/HTTP input into this struct; the chat service consumes it without
 // any web-framework coupling.
@@ -31,8 +45,8 @@ type ChatRequest struct {
 
 // ChatResponse is the domain-level non-streaming chat response DTO.
 type ChatResponse struct {
-	SessionID string       `json:"session_id"`
-	Content   string       `json:"content"`
+	SessionID string         `json:"session_id"`
+	Content   string         `json:"content"`
 	Usage     map[string]int `json:"usage"`
 }
 

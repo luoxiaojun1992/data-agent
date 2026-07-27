@@ -12,11 +12,61 @@ interface Message {
   content: string;
   timestamp: Date;
   type?: 'text' | 'tool_call' | 'tool_result';
+  eventId?: string;
   name?: string;
   args?: Record<string, any>;
-  result?: Record<string, any>;
+  result?: unknown;
   toolCall?: { name: string; input: string; output: string };
   table?: { headers: string[]; rows: string[][] };
+}
+
+type WireChatEvent = {
+  type?: 'text' | 'tool_call' | 'tool_result';
+  role?: string;
+  event_id?: string;
+  content?: string;
+  name?: string;
+  args?: Record<string, any>;
+  result?: unknown;
+  response?: unknown; // backwards compatibility with older servers
+  timestamp?: string;
+  choices?: { delta?: { content?: string } }[];
+};
+
+function normalizeChatMessage(raw: WireChatEvent): Message {
+  const result = raw.result !== undefined ? raw.result : raw.response;
+  return {
+    role: raw.role === 'user' ? 'user' : 'assistant',
+    content: raw.content || '',
+    type: raw.type || 'text',
+    eventId: raw.event_id,
+    name: raw.name,
+    args: raw.args,
+    result,
+    timestamp: new Date(raw.timestamp || Date.now()),
+  };
+}
+
+/** Apply one canonical event exactly as the history endpoint does. */
+function appendChatEvent(messages: Message[], raw: WireChatEvent): Message[] {
+  const message = normalizeChatMessage(raw);
+  if (message.type === 'text' && !message.content) return messages;
+
+  const last = messages[messages.length - 1];
+  if (message.type === 'text' && last && last.type === 'text' && last.role === message.role) {
+    return [...messages.slice(0, -1), { ...last, content: last.content + message.content }];
+  }
+  return [...messages, message];
+}
+
+function formatPayload(value: unknown): string {
+  if (typeof value === 'string') return value;
+  const text = JSON.stringify(value, null, 2);
+  return text === undefined ? String(value) : text;
+}
+
+function hasPayload(value: unknown): boolean {
+  return value !== undefined && value !== null;
 }
 
 /** Parse SQL code blocks, tables, and tool calls from markdown content */
@@ -74,7 +124,7 @@ export default function ChatPage() {
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
-  const streamingRef = useRef<string>('');
+  const pendingEventsRef = useRef<WireChatEvent[]>([]);
   const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -113,25 +163,20 @@ export default function ChatPage() {
     } catch { /* ignore */ }
   };
 
-  const loadSessionMessages = async (id: string) => {
+  const loadSessionMessages = async (id: string, preserveOnError = false) => {
     try {
       const res = await apiFetch(`/sessions/${id}/messages`);
+      if (!res.ok) throw new Error(`Failed to load session messages (${res.status})`);
       const data = await res.json();
-      // ADK event authors can be "user", "data_agent", "system", etc.
-      // Normalize anything non-user to assistant so the chat UI renders it.
-      const msgs: Message[] = (data.messages || []).map((m: any) => ({
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content || '',
-        type: m.type || 'text',
-        name: m.name,
-        args: m.args,
-        result: m.result,
-        timestamp: new Date(m.timestamp || Date.now()),
-      }));
+      // The history endpoint and the SSE stream share the same canonical event
+      // schema. Do not cap or otherwise reshape the uncompressed transcript.
+      const msgs: Message[] = (data.messages || []).map((m: WireChatEvent) => normalizeChatMessage(m));
       setMessages(msgs);
+      return true;
     } catch (err) {
       console.error('Failed to load session messages:', err);
-      setMessages([]);
+      if (!preserveOnError) setMessages([]);
+      return false;
     }
   };
 
@@ -195,31 +240,37 @@ export default function ChatPage() {
 
   const sendMessage = async () => {
     if (!input.trim() || streaming) return;
-    const userMsg: Message = { role: 'user', content: input, timestamp: new Date() };
-    setMessages(prev => [...prev.slice(-199), userMsg]); // cap at 200
+    const userMsg: Message = { role: 'user', content: input, type: 'text', timestamp: new Date() };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setStreaming(true);
+    pendingEventsRef.current = [];
 
     let sid = sessionId;
     if (!sid) sid = await createSession();
     if (!sid) { setStreaming(false); return; }
 
-    const assistantMsg: Message = { role: 'assistant', content: '', timestamp: new Date() };
-    setMessages(prev => [...prev.slice(-199), assistantMsg]);
-
-    streamingRef.current = '';
-    const FLUSH_INTERVAL = 80; // ms — batch updates to avoid excessive renders
+    const FLUSH_INTERVAL = 80; // ms — batch updates without changing event order
+    let streamCompleted = false;
+    let streamErrored = false;
 
     const flushToState = () => {
-      const content = streamingRef.current;
-      setMessages(prev => {
-        const copy = [...prev];
-        const last = copy[copy.length - 1];
-        if (last && last.role === 'assistant') {
-          copy[copy.length - 1] = { ...last, content };
-        }
-        return copy;
-      });
+      const pending = pendingEventsRef.current.splice(0);
+      if (pending.length === 0) return;
+      setMessages(prev => pending.reduce((next, event) => appendChatEvent(next, event), prev));
+    };
+
+    const queueEvent = (event: WireChatEvent) => {
+      if (event.type === 'text' || event.type === 'tool_call' || event.type === 'tool_result') {
+        pendingEventsRef.current.push(event);
+        return;
+      }
+      // Preserve compatibility with OpenAI-style text deltas from older
+      // gateways while still routing them through the canonical message path.
+      const chunk = event.content || event.choices?.[0]?.delta?.content;
+      if (chunk) {
+        pendingEventsRef.current.push({ type: 'text', content: chunk });
+      }
     };
 
     try {
@@ -243,29 +294,45 @@ export default function ChatPage() {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.error) {
-                streamingRef.current = `Error: ${parsed.error}`;
-                continue;
-              }
-              const chunk = parsed.content || parsed.choices?.[0]?.delta?.content || '';
-              if (chunk) streamingRef.current += chunk;
-            } catch { /* skip */ }
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') {
+            streamCompleted = true;
+            continue;
+          }
+          try {
+            const parsed = JSON.parse(data) as WireChatEvent & { error?: string; session_id?: string };
+            if (parsed.session_id) {
+              setSessionId(parsed.session_id);
+              continue;
+            }
+            if (parsed.error) {
+              streamErrored = true;
+              queueEvent({ type: 'text', content: `Error: ${parsed.error}` });
+              continue;
+            }
+            queueEvent(parsed);
+          } catch {
+            // Ignore malformed keep-alive lines; the completed persisted
+            // transcript is reloaded below when the stream finishes.
           }
         }
-        // Batch flush
         if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
         flushTimerRef.current = setTimeout(flushToState, FLUSH_INTERVAL);
       }
     } catch (err: any) {
-      streamingRef.current = err?.message || 'Error: Failed to get response from server.';
+      streamErrored = true;
+      queueEvent({ type: 'text', content: err?.message || 'Error: Failed to get response from server.' });
     } finally {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
-      flushToState(); // final flush
+      flushToState();
+      // The server persists every ADK event before yielding it. Reloading the
+      // canonical history after [DONE] makes the final live transcript byte-
+      // for-byte equivalent to opening the same session later, including all
+      // currently uncompressed text/tool events. When the stream errored we
+      // keep the live transcript (which already contains the error message)
+      // instead of overwriting it with whatever is in MongoDB.
+      if (streamCompleted && !streamErrored) await loadSessionMessages(sid, true);
       setStreaming(false);
     }
   };
@@ -350,25 +417,25 @@ export default function ChatPage() {
                   data-testid={msg.role === 'user' ? `chat-msg-user-${i}` : `chat-msg-ai-${i}`}
                 >
                   {msg.role === 'assistant' && msg.type === 'tool_call' ? (
-                    <div className="text-xs">
+                    <div className="text-xs" data-testid={`chat-live-tool-call-${i}`}>
                       <span className="text-[var(--accent)]">🔧 {msg.name || 'tool'}</span>
                       {msg.args && Object.keys(msg.args).length > 0 && (
                         <details className="mt-1">
                           <summary className="cursor-pointer text-[var(--text-secondary)]">参数</summary>
                           <pre className="mt-1 p-2 rounded text-[10px] bg-black/20 overflow-x-auto max-h-32">
-                            {JSON.stringify(msg.args, null, 2)}
+                            {formatPayload(msg.args)}
                           </pre>
                         </details>
                       )}
                     </div>
                   ) : msg.role === 'assistant' && msg.type === 'tool_result' ? (
-                    <div className="text-xs">
+                    <div className="text-xs" data-testid={`chat-live-tool-result-${i}`}>
                       <span className="text-green-400">✅ {msg.name || 'tool'}</span>
-                      {msg.result && Object.keys(msg.result).length > 0 && (
+                      {hasPayload(msg.result) && (
                         <details className="mt-1">
                           <summary className="cursor-pointer text-[var(--text-secondary)]">结果</summary>
                           <pre className="mt-1 p-2 rounded text-[10px] bg-black/20 overflow-x-auto max-h-32">
-                            {JSON.stringify(msg.result, null, 2)}
+                            {formatPayload(msg.result)}
                           </pre>
                         </details>
                       )}

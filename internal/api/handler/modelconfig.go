@@ -15,8 +15,8 @@ import (
 // plus a paginated LLM-only list for the model selector. Legacy key/value
 // upsert is preserved for backward compatibility.
 type ModelConfigHandler struct {
-	cfgSvc    config.Service
-	provider  *modelcfg.Provider
+	cfgSvc   config.Service
+	provider *modelcfg.Provider
 }
 
 // NewModelConfigHandler creates a new ModelConfigHandler.
@@ -36,12 +36,13 @@ const errProviderNotConfigured = "model provider not configured"
 func RegisterModelConfigRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
 	api.GET(modelRoutePath, h.Get)
 	api.PUT(modelRoutePath, h.Put)
-	api.GET(modelRoutePath+"/list", h.ListLLM)              // LLM-only, paginated (selector source)
-	api.POST(modelRoutePath, h.AddModel)                     // add single model (auto-gen ID)
-	api.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)      // decrypt per-model API key
-	api.PATCH(modelRoutePath+"/:id/default", h.SetDefault)   // set as default
-	api.PATCH(modelRoutePath+"/:id", h.UpdateModel)          // update model fields
-	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)         // delete single model
+	api.GET(modelRoutePath+"/list", h.ListLLM)             // LLM-only, paginated (selector source)
+	api.GET(modelRoutePath+"/embedding", h.ListEmbedding)  // embedding models (admin UI)
+	api.POST(modelRoutePath, h.AddModel)                   // add single model (auto-gen ID)
+	api.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)    // decrypt per-model API key
+	api.PATCH(modelRoutePath+"/:id/default", h.SetDefault) // set as default
+	api.PATCH(modelRoutePath+"/:id", h.UpdateModel)        // update model fields
+	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)       // delete single model
 }
 
 // Get returns the full model configuration. When the page query param is
@@ -152,6 +153,26 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 	})
 }
 
+// ListEmbedding returns the embedding-type model list for the admin UI.
+// GET /models/embedding
+func (h *ModelConfigHandler) ListEmbedding(c *gin.Context) {
+	if h.provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	models, err := h.provider.ListEmbeddingModels(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	for i := range models {
+		if models[i].APIKey != "" {
+			models[i].APIKey = "••••••••••"
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"models": models})
+}
+
 // AddModel adds a single model entry. The backend auto-generates the ID when
 // empty. SPEC-062 §4.1: POST /models.
 func (h *ModelConfigHandler) AddModel(c *gin.Context) {
@@ -188,7 +209,9 @@ func (h *ModelConfigHandler) DeleteModel(c *gin.Context) {
 }
 
 // SetDefault marks the model with :id as default for the given use cases.
-// If no use_cases are specified, defaults to "chat".
+// If no use_cases are specified, the model's own Type decides: LLM models
+// default to the chat use case; embedding models flip the IsDefault flag
+// (only one embedding model can be default at a time).
 // PATCH /models/:id/default
 func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 	if h.provider == nil {
@@ -200,6 +223,24 @@ func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 		UseCases []string `json:"use_cases"`
 	}
 	_ = c.ShouldBindJSON(&req)
+	// Look up the target to decide whether it is an LLM or embedding entry so
+	// the embedding single-default semantics are respected automatically.
+	all := h.provider.ListAllModels(c.Request.Context())
+	var target *modelcfg.ModelEntry
+	for i := range all {
+		if all[i].ID == id {
+			target = &all[i]
+			break
+		}
+	}
+	if target != nil && target.Type == modelcfg.ModelTypeEmbedding {
+		if err := h.provider.SetDefaultEmbedding(c.Request.Context(), id); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "已设为默认 embedding", "id": id})
+		return
+	}
 	if len(req.UseCases) == 0 {
 		req.UseCases = []string{"chat"}
 	}

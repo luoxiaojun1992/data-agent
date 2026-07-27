@@ -45,7 +45,7 @@ const (
 
 // ModelEntry describes one model in the admin config.
 type ModelEntry struct {
-	ID              string    `json:"id"`              // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
+	ID              string    `json:"id"` // unique identifier (UUID or slug); backfilled from Name when empty (legacy compat)
 	Name            string    `json:"name"`
 	BaseURL         string    `json:"base_url"`
 	APIKey          string    `json:"api_key,omitempty"` // On input: plaintext (from frontend). On persisted output: Vault reference path. Resolved to plaintext in memory by Provider.models() before use.
@@ -54,11 +54,11 @@ type ModelEntry struct {
 	Capability      string    `json:"capability"`  // LLM only
 	UseCases        []string  `json:"use_cases"`   // declared capabilities (informational)
 	TokenMultiplier float64   `json:"token_multiplier"`
-	Temperature     float64   `json:"temperature"`  // LLM only
-	MaxTokens       int       `json:"max_tokens"`   // LLM output tokens
-	ContextLen      int       `json:"context_len"`  // LLM input context window
-	IsDefault       bool      `json:"is_default"`      // legacy global default (backward compat); prefer IsDefaultFor
-	IsDefaultFor    []string  `json:"is_default_for"`  // per-use-case default: ["chat","enhance","compaction","task"]; each use case has exactly one default model
+	Temperature     float64   `json:"temperature"`    // LLM only
+	MaxTokens       int       `json:"max_tokens"`     // LLM output tokens
+	ContextLen      int       `json:"context_len"`    // LLM input context window
+	IsDefault       bool      `json:"is_default"`     // legacy global default (backward compat); prefer IsDefaultFor
+	IsDefaultFor    []string  `json:"is_default_for"` // per-use-case default: ["chat","enhance","compaction","task"]; each use case has exactly one default model
 	FallbackOrder   int       `json:"fallback_order"`
 }
 
@@ -385,7 +385,7 @@ type maxTokensLLM struct {
 	maxTokens int32
 }
 
-func (m *maxTokensLLM) Name() string                                         { return m.inner.Name() }
+func (m *maxTokensLLM) Name() string { return m.inner.Name() }
 func (m *maxTokensLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	if req.Config == nil || req.Config.MaxOutputTokens == 0 {
 		cfg := req.Config
@@ -454,6 +454,93 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 		return nil, fmt.Errorf("failed to build LLM for model %q", entry.ID)
 	}
 	return backends[0], nil
+}
+
+// ListEmbeddingModels returns all Type==embedding model entries. The admin UI
+// uses this to render the embedding-model table; API keys stay as Vault
+// references (never decrypted here) and are masked at the API layer.
+func (p *Provider) ListEmbeddingModels(ctx context.Context) ([]ModelEntry, error) {
+	if p.repo == nil {
+		return nil, nil
+	}
+	all := p.modelsFromDB()
+	var out []ModelEntry
+	for _, m := range all {
+		if m.Type == ModelTypeEmbedding {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// SetDefaultEmbedding clears any previous embedding default and marks the
+// supplied ID as the active embedding model. There is exactly one embedding
+// default at any time so system flows (KB indexing, memory embedding) can
+// unambiguously resolve it via GetDefaultEmbeddingModel.
+func (p *Provider) SetDefaultEmbedding(ctx context.Context, id string) error {
+	if p.repo == nil {
+		return fmt.Errorf("config repository not available")
+	}
+	models := p.models()
+	found := false
+	for i := range models {
+		if models[i].Type != ModelTypeEmbedding {
+			continue
+		}
+		if models[i].ID == id {
+			models[i].IsDefault = true
+			found = true
+		} else {
+			models[i].IsDefault = false
+		}
+	}
+	if !found {
+		return fmt.Errorf("embedding model %q not found", id)
+	}
+	return p.SetModels(ctx, models)
+}
+
+// GetDefaultEmbeddingModel resolves the active embedding model entry,
+// preferring an explicit IsDefault flag and falling back to the first
+// embedding model so legacy configurations keep working.
+func (p *Provider) GetDefaultEmbeddingModel(ctx context.Context) (*ModelEntry, error) {
+	models := p.models()
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no embedding model configured")
+	}
+	for i := range models {
+		if models[i].Type == ModelTypeEmbedding && models[i].IsDefault {
+			return &models[i], nil
+		}
+	}
+	for i := range models {
+		if models[i].Type == ModelTypeEmbedding {
+			return &models[i], nil
+		}
+	}
+	return nil, fmt.Errorf("no embedding model configured")
+}
+
+// ListAllModels returns every persisted model entry with its Type intact.
+// The admin UI uses this to render a single table that includes both LLM and
+// embedding models. API keys are kept as Vault references so the caller (API
+// layer) can mask them before responding. modelsFromDB is used (not models())
+// to avoid decrypting every key just to list them.
+func (p *Provider) ListAllModels(ctx context.Context) []ModelEntry {
+	all := p.modelsFromDB()
+	out := make([]ModelEntry, 0, len(all))
+	for _, m := range all {
+		if m.Type == "" {
+			m.Type = ModelTypeLLM
+		}
+		if m.BaseURL == "" {
+			if legacy := p.legacyCfgValue("api_url"); legacy != "" {
+				m.BaseURL = legacy
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // ListLLMModels returns the Type==llm model entries (paginated in memory).
@@ -644,6 +731,7 @@ func (p *Provider) DeleteModel(ctx context.Context, id string) error {
 // When useCases is empty or contains "chat", it sets the legacy is_default flag
 // for backward compat. For specific use cases, it sets is_default_for.
 // Clearing defaults on other models is done per-use-case.
+// Embedding models reuse the same IsDefault field but ignore use_cases.
 func (p *Provider) SetDefaultModel(ctx context.Context, id string, useCases []string) error {
 	if p.repo == nil {
 		return fmt.Errorf("config repository not available")
@@ -651,31 +739,37 @@ func (p *Provider) SetDefaultModel(ctx context.Context, id string, useCases []st
 	models := p.models()
 	found := false
 	for i := range models {
-		if models[i].Type != ModelTypeLLM {
-			continue
-		}
 		if models[i].ID == id {
-			// Set legacy global default if requested or no specific use cases.
-			if len(useCases) == 0 || containsStr(useCases, "chat") {
+			if models[i].Type == ModelTypeEmbedding {
+				// Embedding entries don't carry per-use-case defaults.
 				models[i].IsDefault = true
-			}
-			// Set per-use-case defaults.
-			for _, uc := range useCases {
-				if !isDefaultForUseCase(models[i], uc) {
-					models[i].IsDefaultFor = append(models[i].IsDefaultFor, uc)
+			} else {
+				if len(useCases) == 0 || containsStr(useCases, "chat") {
+					models[i].IsDefault = true
+				}
+				for _, uc := range useCases {
+					if !isDefaultForUseCase(models[i], uc) {
+						models[i].IsDefaultFor = append(models[i].IsDefaultFor, uc)
+					}
 				}
 			}
 			found = true
-		} else {
-			// Clear defaults on other models for these use cases.
-			if len(useCases) == 0 || containsStr(useCases, "chat") {
+			continue
+		}
+		if models[i].Type == ModelTypeEmbedding {
+			// Embedding defaults are mutually exclusive.
+			if models[i].IsDefault {
 				models[i].IsDefault = false
 			}
-			models[i].IsDefaultFor = removeStrAll(models[i].IsDefaultFor, useCases)
+			continue
 		}
+		if len(useCases) == 0 || containsStr(useCases, "chat") {
+			models[i].IsDefault = false
+		}
+		models[i].IsDefaultFor = removeStrAll(models[i].IsDefaultFor, useCases)
 	}
 	if !found {
-		return fmt.Errorf("LLM model %q not found", id)
+		return fmt.Errorf("model %q not found", id)
 	}
 	return p.SetModels(ctx, models)
 }
@@ -781,26 +875,30 @@ func validateModelIDs(entries []ModelEntry) error {
 
 // ensureSingleDefault guarantees at most one LLM model is marked IsDefault.
 // When no LLM model is default, the first LLM model is auto-marked.
+// Embedding models follow the same rule per-type so the admin can flip
+// between multiple embedding candidates while keeping exactly one active.
 func ensureSingleDefault(entries []ModelEntry) {
-	firstLLM := -1
-	defaultLLM := -1
-	for i, m := range entries {
-		if m.Type != ModelTypeLLM {
-			continue
-		}
-		if firstLLM < 0 {
-			firstLLM = i
-		}
-		if m.IsDefault {
-			if defaultLLM >= 0 {
-				entries[i].IsDefault = false // collapse extras
-			} else {
-				defaultLLM = i
+	for _, modelType := range []ModelType{ModelTypeLLM, ModelTypeEmbedding} {
+		first := -1
+		def := -1
+		for i, m := range entries {
+			if m.Type != modelType {
+				continue
+			}
+			if first < 0 {
+				first = i
+			}
+			if m.IsDefault {
+				if def >= 0 {
+					entries[i].IsDefault = false
+				} else {
+					def = i
+				}
 			}
 		}
-	}
-	if defaultLLM < 0 && firstLLM >= 0 {
-		entries[firstLLM].IsDefault = true
+		if def < 0 && first >= 0 {
+			entries[first].IsDefault = true
+		}
 	}
 }
 

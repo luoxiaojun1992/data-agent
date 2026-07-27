@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	"google.golang.org/adk/session"
 )
@@ -16,8 +16,12 @@ type SessionHandler struct {
 	appName     string
 }
 
-func NewSessionHandler(mgr chat.SessionService, adkSessions session.Service) *SessionHandler {
-	return &SessionHandler{mgr: mgr, adkSessions: adkSessions, appName: "data-agent"}
+func NewSessionHandler(mgr chat.SessionService, adkSessions ...session.Service) *SessionHandler {
+	var service session.Service
+	if len(adkSessions) > 0 {
+		service = adkSessions[0]
+	}
+	return &SessionHandler{mgr: mgr, adkSessions: service, appName: "data-agent"}
 }
 
 func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
@@ -111,10 +115,9 @@ func (h *SessionHandler) ListDeleted(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"sessions": userSessions})
 }
 
-// Messages returns the ADK session events as a flat list of {role, content}
-// messages suitable for re-hydrating the frontend chat UI. Events without
-// text content (tool calls, intermediate) are filtered out; compaction
-// summaries are skipped so the user only sees the original conversation.
+// Messages returns every currently uncompressed ADK event in canonical chat
+// event form. Synthetic compaction summaries are intentionally omitted; all
+// remaining text, tool calls, and tool results are kept in chronological order.
 func (h *SessionHandler) Messages(c *gin.Context) {
 	if h.adkSessions == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "adk session service not configured"})
@@ -133,87 +136,30 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	type msg struct {
-		Role      string         `json:"role"`
-		Content   string         `json:"content"`
-		Type      string         `json:"type,omitempty"`
-		Name      string         `json:"name,omitempty"`
-		Args      map[string]any `json:"args,omitempty"`
-		Result    map[string]any `json:"result,omitempty"`
-		Timestamp string         `json:"timestamp"`
-	}
+	var messages []domainchat.ChatEvent
 	events := resp.Session.Events()
-	// Merge consecutive text parts from the same author into a single message.
-	// The ieshan OpenAI client emits text as Partial=true chunks; the ADK
-	// runner's final event has finish_reason but empty content. Without
-	// merging, each streaming chunk would show up as a separate bubble.
-	var messages []msg
 	for i := 0; i < events.Len(); i++ {
 		ev := events.At(i)
-		if ev == nil || ev.LLMResponse.Content == nil {
+		if chat.IsCompactionEvent(ev) || ev.Content == nil {
 			continue
-		}
-		// Skip compaction summaries — they are not part of the original conversation.
-		// Compaction events have either: (1) custommetadata.compaction flag set, OR
-		// (2) author="compaction" (older ADK format with no custommetadata).
-		if ev.Author == "compaction" {
-			continue
-		}
-		if ev.LLMResponse.CustomMetadata != nil {
-			if _, ok := ev.LLMResponse.CustomMetadata["compaction"]; ok {
-				continue
-			}
 		}
 		role := ev.Author
 		if role == "" {
 			role = "assistant"
 		}
-		ts := ev.Timestamp.UTC().Format(time.RFC3339)
-		for _, p := range ev.LLMResponse.Content.Parts {
-			if p == nil {
-				continue
-			}
-			switch {
-			case p.Text != "":
-				// Append or merge with the previous text message from the same author.
-				if n := len(messages); n > 0 && messages[n-1].Role == role && messages[n-1].Type == "text" {
-					messages[n-1].Content += p.Text
-				} else {
-					messages = append(messages, msg{Role: role, Content: p.Text, Type: "text", Timestamp: ts})
+		timestamp := ev.Timestamp.UTC().Format(time.RFC3339)
+		for _, event := range chat.ChatEventsFromParts(role, ev.ID, timestamp, ev.Content.Parts) {
+			// Match the live renderer: consecutive text parts by the same
+			// author are one transcript bubble, including streaming chunks.
+			if event.Type == "text" && len(messages) > 0 {
+				last := &messages[len(messages)-1]
+				if last.Type == "text" && last.Role == event.Role {
+					last.Content += event.Content
+					continue
 				}
-			case p.FunctionCall != nil:
-				messages = append(messages, msg{
-					Role: role, Type: "tool_call",
-					Name: p.FunctionCall.Name, Args: p.FunctionCall.Args,
-					Timestamp: ts,
-				})
-			case p.FunctionResponse != nil:
-				messages = append(messages, msg{
-					Role: role, Type: "tool_result",
-					Name: p.FunctionResponse.Name, Result: asMap(p.FunctionResponse.Response),
-					Timestamp: ts,
-				})
 			}
+			messages = append(messages, event)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
-}
-
-// asMap converts a generic JSON-decoded value into a map. Used for tool
-// response payloads which may be any shape after JSON round-tripping.
-func asMap(v any) map[string]any {
-	if v == nil {
-		return nil
-	}
-	if m, ok := v.(map[string]any); ok {
-		return m
-	}
-	// Re-marshal/unmarshal to normalize any nested map types.
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil
-	}
-	var m map[string]any
-	_ = json.Unmarshal(b, &m)
-	return m
 }

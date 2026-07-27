@@ -21,6 +21,10 @@ func newProviderWithModels(t *testing.T, entries []ModelEntry) *Provider {
 	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
 	// legacyConfig() calls GetAll; return an empty list so fallback chain returns empty.
 	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	// SetModels calls Upsert; allow it so default-toggle / type-change tests work.
+	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Return(nil).Maybe()
+	// EmbeddingConfig reads key "embedding"; tests that don't set it get the default.
+	repo.On("Get", mock.Anything, "model", "embedding").Maybe().Return(nil, nil)
 	return NewProvider(repo, nil)
 }
 
@@ -250,9 +254,100 @@ func TestSetDefaultModel_NotFound(t *testing.T) {
 	p := newProviderWithModels(t, []ModelEntry{
 		{ID: "m1", Name: "M1", Type: ModelTypeLLM},
 	})
-	err := p.SetDefaultModel(context.Background(), "nonexistent", nil)
+	err := p.SetDefaultModel(context.Background(), "nonexistent", []string{"chat"})
 	if err == nil {
 		t.Error("expected error for nonexistent model")
+	}
+}
+
+func TestSetDefaultEmbedding_ExclusiveDefault(t *testing.T) {
+	repo := mockrepo.NewSysConfigRepository(t)
+	entries := []ModelEntry{
+		{ID: "e1", Name: "E1", Type: ModelTypeEmbedding, IsDefault: true},
+		{ID: "e2", Name: "E2", Type: ModelTypeEmbedding},
+		{ID: "e3", Name: "E3", Type: ModelTypeEmbedding},
+	}
+	raw, _ := json.Marshal(entries)
+	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
+	repo.On("Get", mock.Anything, "model", "embedding").Maybe().Return(nil, nil)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	var stored string
+	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Run(func(args mock.Arguments) {
+		stored = args.Get(3).(string)
+	}).Return(nil)
+	p := NewProvider(repo, nil)
+	if err := p.SetDefaultEmbedding(context.Background(), "e3"); err != nil {
+		t.Fatalf("SetDefaultEmbedding: %v", err)
+	}
+	var updated []ModelEntry
+	if err := json.Unmarshal([]byte(stored), &updated); err != nil {
+		t.Fatalf("decode stored payload: %v", err)
+	}
+	defaults := []string{}
+	for _, m := range updated {
+		if m.IsDefault {
+			defaults = append(defaults, m.ID)
+		}
+	}
+	if len(defaults) != 1 || defaults[0] != "e3" {
+		t.Fatalf("expected only e3 default, got %v", defaults)
+	}
+}
+
+func TestSetDefaultModel_EmbeddingTarget(t *testing.T) {
+	repo := mockrepo.NewSysConfigRepository(t)
+	entries := []ModelEntry{
+		{ID: "e1", Name: "E1", Type: ModelTypeEmbedding, IsDefault: true},
+		{ID: "e2", Name: "E2", Type: ModelTypeEmbedding},
+	}
+	raw, _ := json.Marshal(entries)
+	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
+	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
+	repo.On("Get", mock.Anything, "model", "embedding").Maybe().Return(nil, nil)
+	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
+	var stored string
+	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Run(func(args mock.Arguments) {
+		stored = args.Get(3).(string)
+	}).Return(nil)
+	p := NewProvider(repo, nil)
+	if err := p.SetDefaultModel(context.Background(), "e2", nil); err != nil {
+		t.Fatalf("SetDefaultModel on embedding should succeed: %v", err)
+	}
+	var updated []ModelEntry
+	if err := json.Unmarshal([]byte(stored), &updated); err != nil {
+		t.Fatalf("decode stored payload: %v", err)
+	}
+	for _, m := range updated {
+		if m.ID == "e1" && m.IsDefault {
+			t.Errorf("e1 should no longer be default after switching to e2")
+		}
+		if m.ID == "e2" && !m.IsDefault {
+			t.Errorf("e2 should be default after SetDefaultModel")
+		}
+	}
+}
+
+func TestListAllModels_KeepsEmbeddingRows(t *testing.T) {
+	p := newProviderWithModels(t, []ModelEntry{
+		{ID: "l1", Name: "L1", Type: ModelTypeLLM},
+		{ID: "e1", Name: "E1", Type: ModelTypeEmbedding},
+	})
+	all := p.ListAllModels(context.Background())
+	if len(all) != 2 {
+		t.Fatalf("ListAllModels = %d, want 2: %+v", len(all), all)
+	}
+	var sawLLM, sawEmbedding bool
+	for _, m := range all {
+		if m.Type == ModelTypeLLM {
+			sawLLM = true
+		}
+		if m.Type == ModelTypeEmbedding {
+			sawEmbedding = true
+		}
+	}
+	if !sawLLM || !sawEmbedding {
+		t.Errorf("missing types: LLM=%v EMB=%v", sawLLM, sawEmbedding)
 	}
 }
 
