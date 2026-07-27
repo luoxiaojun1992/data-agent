@@ -131,6 +131,16 @@ func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text strin
 	return func(ctx context.Context, text string) ([]float32, error) {
 		cfg := deps.modelCfg.EmbeddingConfig() // reads cache→DB each call, hot-reload
 		if cfg.BaseURL == "" {
+			// Fallback to default embedding model from admin model list.
+			if emb, err := deps.modelCfg.GetDefaultEmbeddingModel(ctx); err == nil && emb != nil && emb.BaseURL != "" {
+				cfg.BaseURL = emb.BaseURL
+				cfg.Model = emb.Name
+				if cfg.APIKey == "" {
+					cfg.APIKey = emb.APIKey
+				}
+			}
+		}
+		if cfg.BaseURL == "" {
 			return nil, nil
 		}
 		mu.Lock()

@@ -121,6 +121,8 @@ services:
       - REDIS_ADDR=redis:6379
       - QDRANT_URL=http://qdrant:6333
       - EMBEDDING_VECTOR_DIM=768
+      - EMBEDDING_BASE_URL=http://ollama:11434/v1
+      - EMBEDDING_MODEL=nomic-embed-text
       - SEAWEEDFS_MASTER=http://seaweedfs:9333
       - SEAWEEDFS_FILER=http://seaweedfs:8080
       - LLM_BASE_URL=http://mockllm:8082/v1
