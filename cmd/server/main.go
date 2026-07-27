@@ -151,7 +151,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	deps.auditLogger = middleware.NewAuditLogger(mongoinfra.NewAuditRepository(mongoClient.DB()))
 
 	deps.swClient = seaweedfs.NewClient(cfg.SeaweedFS.Master, cfg.SeaweedFS.Filer)
-	deps.qdrantClient = qdrantinfra.NewClient(getEnvOrDefault("QDRANT_URL", "qdrant:6334"))
+	deps.qdrantClient = qdrantinfra.NewClient(getEnvOrDefault("QDRANT_URL", "http://qdrant:6334"))
 
 	initAuthService(&deps, mongoClient, logger)
 	initVault(&deps, logger)
