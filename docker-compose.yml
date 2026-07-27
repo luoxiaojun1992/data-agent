@@ -136,7 +136,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: http://data-agent:8080/api/v1
     ports:
-      - "3000:3000"
+      - "80:3000"
     depends_on:
       data-agent:
         condition: service_healthy
