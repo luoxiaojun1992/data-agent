@@ -623,12 +623,16 @@ export default function ModelsPage() {
                     { value: 'embedding', label: 'Embedding' },
                   ] as const).map((opt) => {
                     const active = editForm.type === opt.value;
+                    // Type is locked once a model is created — disabling the
+                    // inactive tab prevents accidental type-change corruption.
+                    const locked = editingId !== null && !active;
                     return (
                       <button
                         key={opt.value}
                         type="button"
                         data-testid={`model-edit-type-${opt.value}`}
-                        onClick={() => setEditForm({ ...editForm, type: opt.value })}
+                        disabled={locked}
+                        onClick={() => !locked && setEditForm({ ...editForm, type: opt.value })}
                         style={{
                           flex: 1,
                           padding: '6px 12px',
@@ -638,7 +642,8 @@ export default function ModelsPage() {
                           borderColor: active ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
                           background: active ? 'var(--accent)' : 'transparent',
                           color: active ? '#fff' : 'var(--text-primary)',
-                          cursor: 'pointer',
+                          cursor: locked ? 'not-allowed' : 'pointer',
+                          opacity: locked ? 0.4 : 1,
                         }}
                       >
                         {opt.label}
