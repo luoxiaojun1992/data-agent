@@ -72,6 +72,7 @@ func (s *Service) Create(ctx context.Context, req *session.CreateRequest) (*sess
 		UserID:    req.UserID,
 		State:     map[string]any{},
 		Events:    []*session.Event{},
+		RawEvents: []*session.Event{},
 		UpdatedAt: time.Now(),
 	}
 	for k, v := range req.State {
@@ -171,8 +172,8 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 
 	update := bson.M{
 		"$push": bson.M{
-			"events":        event,
-			"display_events": event,
+			"events":     event,
+			"raw_events": event,
 		},
 		"$set":  bson.M{"updated_at": time.Now()},
 	}
@@ -297,7 +298,7 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 		bson.M{"$set": bson.M{
 			"events":     newEvents,
 			"updated_at": time.Now(),
-			// display_events is NOT touched — it accumulates forever.
+			// raw_events is NOT touched — it accumulates forever.
 		}},
 	)
 	if err != nil {
