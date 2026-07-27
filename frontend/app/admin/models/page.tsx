@@ -533,7 +533,21 @@ export default function ModelsPage() {
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         {m.is_default ? (
-                          <span style={{ color: '#10b981', fontSize: '11px' }}>✓ 默认</span>
+                          embeddingList.filter(o => o.id !== rowId).length > 0 ? (
+                            <select
+                              data-testid={`embedding-list-switch-${i}`}
+                              defaultValue=""
+                              onChange={e => { if (e.target.value) setDefaultModel(e.target.value); e.target.value = ''; }}
+                              style={{ background: 'transparent', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '4px', padding: '2px 6px', color: '#10b981', fontSize: '11px', cursor: 'pointer' }}
+                            >
+                              <option value="" style={{ color: '#000' }}>✓ 默认 · 切换</option>
+                              {embeddingList.filter(o => o.id !== rowId).map(o => (
+                                <option key={o.id} value={o.id!} style={{ color: '#000' }}>{o.name || o.id}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span style={{ color: '#10b981', fontSize: '11px' }}>✓ 默认</span>
+                          )
                         ) : (
                           <button
                           data-testid={`embedding-list-set-default-${i}`}

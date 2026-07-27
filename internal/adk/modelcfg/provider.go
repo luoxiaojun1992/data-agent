@@ -746,7 +746,9 @@ func (p *Provider) SetDefaultModel(ctx context.Context, id string, useCases []st
 	if p.repo == nil {
 		return fmt.Errorf("config repository not available")
 	}
-	models := p.models()
+	// Use modelsFromDB (not models()) to preserve Vault API key paths.
+	// models() resolves keys to plaintext, which would corrupt storage.
+	models := p.modelsFromDB()
 	found := false
 	for i := range models {
 		if models[i].ID == id {
@@ -757,11 +759,16 @@ func (p *Provider) SetDefaultModel(ctx context.Context, id string, useCases []st
 				if len(useCases) == 0 || containsStr(useCases, "chat") {
 					models[i].IsDefault = true
 				}
+				// Replace (not append) so chips can be deselected.
+				seen := map[string]bool{}
+				newFor := make([]string, 0, len(useCases))
 				for _, uc := range useCases {
-					if !isDefaultForUseCase(models[i], uc) {
-						models[i].IsDefaultFor = append(models[i].IsDefaultFor, uc)
+					if !seen[uc] {
+						seen[uc] = true
+						newFor = append(newFor, uc)
 					}
 				}
+				models[i].IsDefaultFor = newFor
 			}
 			found = true
 			continue
