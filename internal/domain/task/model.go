@@ -19,12 +19,19 @@ const (
 	StatusCancelled Status = "cancelled"
 )
 
+// Task types.
+const (
+	TaskTypeAgentExec     = "agent_exec"
+	TaskTypeScheduledExec = "scheduled_exec"
+	TaskTypeKBIndex       = "kb_index"
+)
+
 // Task represents an async agent task (MongoDB).
 type Task struct {
 	ID          string                 `json:"task_id"`
 	SessionID   string                 `json:"session_id"`
 	UserID      string                 `json:"user_id"`
-	Type        string                 `json:"type"` // "agent_exec", "scheduled_exec"
+	Type        string                 `json:"type"` // "agent_exec", "scheduled_exec", "kb_index"
 	ModelID     string                 `json:"model_id"` // bound model ID (ModelEntry.ID); worker uses this to select a Runtime
 	Status      Status                 `json:"status"`
 	SkillChain  []string               `json:"skill_chain"`

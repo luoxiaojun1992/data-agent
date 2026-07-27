@@ -2,20 +2,28 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 )
 
 // KnowledgeHandler provides HTTP handlers for knowledge base operations.
 type KnowledgeHandler struct {
-	svc knowledge.KnowledgeService
+	svc     knowledge.KnowledgeService
+	taskSvc task.TaskService // optional: nil when task queue is unavailable
 }
 
 // NewKnowledgeHandler creates a knowledge base handler.
 func NewKnowledgeHandler(svc knowledge.KnowledgeService) *KnowledgeHandler {
 	return &KnowledgeHandler{svc: svc}
+}
+
+// SetTaskService injects the task service for async KB indexing. Optional.
+func (h *KnowledgeHandler) SetTaskService(ts task.TaskService) {
+	h.taskSvc = ts
 }
 
 // UploadDoc creates a new knowledge document with optional file upload to GridFS.
@@ -49,6 +57,18 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Enqueue async indexing via task queue (best-effort).
+	if h.taskSvc != nil && gridFSFileID != "" {
+		params := map[string]interface{}{
+			"doc_id":         doc.ID,
+			"gridfs_file_id": gridFSFileID,
+		}
+		if _, err := h.taskSvc.CreateTask("", userID.(string), task.TaskTypeKBIndex, nil, params, ""); err != nil {
+			log.Printf("[kb] failed to enqueue index task for doc=%s: %v", doc.ID, err)
+		}
+	}
+
 	c.JSON(http.StatusCreated, doc)
 }
 

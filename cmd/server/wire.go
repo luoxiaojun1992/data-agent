@@ -278,6 +278,12 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 
 	deps.taskService = task_svc.NewService(mongoinfra.NewTaskRepository(mongoClient.DB()), queue.QueueRepository(taskStream))
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService)
+
+	// Wire task service into KB handler for async indexing.
+	if deps.kbHandler != nil {
+		deps.kbHandler.SetTaskService(deps.taskService)
+	}
+
 	// Re-wire the orchestrator now that the task service exists.
 	if deps.orchestrator != nil {
 		deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService, deps.modelCfg)
@@ -308,6 +314,16 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 		deps.cbRegistry,  // circuit breaker around Runtime.Run
 	)
 	workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, executor, deps.taskService)
+
+	// Wire KB index executor: handles kb_index tasks as handler-driven pipeline
+	// (not agent-controlled). Uses the configured LLM for semantic chunking and
+	// embedding for vectorization (kbService already wired with WithVectorIndex).
+	if deps.kbService != nil && deps.modelCfg != nil {
+		kbExec := agentlogic.NewKBIndexExecutor(deps.kbService, deps.modelCfg)
+		workerPool.SetKBExecutor(kbExec)
+		logger.Info("KB index executor wired to worker pool")
+	}
+
 	go func() {
 		workerPool.Start(context.Background())
 	}()

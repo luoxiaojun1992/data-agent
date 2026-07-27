@@ -1,12 +1,15 @@
 package mongo
 
 import (
+	"bytes"
 	"context"
+	"io"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -110,6 +113,35 @@ func (r *KBRepository) SearchChunks(ctx context.Context, query string, topK int)
 		return nil, err
 	}
 	return results, nil
+}
+
+// UploadFile stores file content in MongoDB GridFS under the given file ID.
+func (r *KBRepository) UploadFile(ctx context.Context, fileID string, reader io.Reader) error {
+	bucket, err := gridfs.NewBucket(r.db)
+	if err != nil {
+		return err
+	}
+	stream, err := bucket.OpenUploadStream(fileID)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+	_, err = io.Copy(stream, reader)
+	return err
+}
+
+// DownloadFile retrieves file content from MongoDB GridFS by file ID.
+func (r *KBRepository) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	bucket, err := gridfs.NewBucket(r.db)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	_, err = bucket.DownloadToStreamByName(fileID, &buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 var _ repository.KBRepository = (*KBRepository)(nil)

@@ -133,14 +133,46 @@ func (s *Service) textSearch(query string, topK int) []knowledge.SearchResult {
 	return results
 }
 
-// UploadFile uploads a file (backward compat: returns gridFSFileID, error).
+// UploadFile uploads a file to GridFS and returns the gridFSFileID.
 func (s *Service) UploadFile(fileName, contentType string, reader io.Reader) (string, error) {
-	gridFSID := "fs_" + uuid.New().String()
-	doc, err := s.CreateDoc("", "", fileName, contentType, 0, gridFSID)
-	if err != nil {
-		return "", err
+	gridFSID := "kbdoc_" + genShortID()
+	if err := s.kb.UploadFile(context.Background(), gridFSID, reader); err != nil {
+		return "", fmt.Errorf("gridfs upload: %w", err)
 	}
-	return doc.ID, nil
+	return gridFSID, nil
+}
+
+// IndexDocument performs the full indexing pipeline on a knowledge document:
+// GridFS download → LLM semantic chunking → Embedding → Qdrant + MongoDB write.
+// llmChunkFn is called to split the text into semantic chunks (handler-driven).
+func (s *Service) IndexDocument(ctx context.Context, docID string, llmChunkFn func(text string) ([]string, error)) error {
+	doc, err := s.kb.GetDoc(ctx, docID)
+	if err != nil {
+		return fmt.Errorf("get doc %s: %w", docID, err)
+	}
+
+	// 1. Download file from GridFS
+	data, err := s.kb.DownloadFile(ctx, doc.GridFSFileID)
+	if err != nil {
+		return fmt.Errorf("download file %s: %w", doc.GridFSFileID, err)
+	}
+
+	// 2. LLM semantic chunking (handler-driven, not agent-controlled)
+	chunks, err := llmChunkFn(string(data))
+	if err != nil {
+		return fmt.Errorf("llm chunk: %w", err)
+	}
+	if len(chunks) == 0 {
+		return fmt.Errorf("no chunks produced for doc %s", docID)
+	}
+
+	// 3. Embedding + vector store + MongoDB chunks
+	if err := s.AddChunks(docID, chunks); err != nil {
+		return fmt.Errorf("add chunks: %w", err)
+	}
+
+	// 4. Update status to ready
+	return s.kb.UpdateDocStatus(ctx, docID, knowledge.StatusReady, len(chunks))
 }
 
 type SearchResponse struct {

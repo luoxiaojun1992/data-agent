@@ -30,9 +30,11 @@ type Pool struct {
 	workers  int
 	executor TaskExecutor
 	taskSvc  task.TaskService // SPEC-063: load the full task from DB
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	stopping bool
+	// kbExecutor handles kb_index tasks (optional — nil when kb not configured).
+	kbExecutor TaskExecutor
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	stopping   bool
 }
 
 // TaskExecutor defines the interface for executing tasks.
@@ -51,6 +53,11 @@ func NewPool(stream Queue, redisClient *redis.Client, numWorkers int, executor T
 		executor: executor,
 		taskSvc:  taskSvc,
 	}
+}
+
+// SetKBExecutor sets the KB index executor for "kb_index" task type routing.
+func (p *Pool) SetKBExecutor(executor TaskExecutor) {
+	p.kbExecutor = executor
 }
 
 // Start begins consuming tasks.
@@ -137,8 +144,14 @@ func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
 		return
 	}
 
+	// Route by task type: kb_index tasks go to the KB executor.
+	exec := p.executor
+	if t.Type == task.TaskTypeKBIndex && p.kbExecutor != nil {
+		exec = p.kbExecutor
+	}
+
 	start := time.Now()
-	execErr := p.executor.Execute(ctx, t) // executor owns all DB write-back (status/result/error)
+	execErr := exec.Execute(ctx, t) // executor owns all DB write-back (status/result/error)
 
 	// Retry / DLQ policy. The executor has already persisted the failure
 	// status + error; this block only decides whether to dead-letter the

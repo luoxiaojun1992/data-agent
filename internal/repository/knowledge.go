@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"io"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 )
@@ -19,6 +20,10 @@ type KBRepository interface {
 	AddChunks(ctx context.Context, chunks []*knowledge.Chunk) error
 	DeleteChunks(ctx context.Context, docID string) (int64, error)
 	SearchChunks(ctx context.Context, query string, topK int) ([]*knowledge.SearchResult, error)
+
+	// GridFS operations.
+	UploadFile(ctx context.Context, fileID string, reader io.Reader) error
+	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
 }
 
 //go:generate mockery --name VectorRepository --output ./mocks --outpkg mocks
