@@ -159,13 +159,14 @@ export default function ChatPage() {
   const newSession = () => { setMessages([]); setSessionId(null); setInput(''); setSelectedModel(''); };
 
   const fetchSessions = useCallback(async () => {
+    if (!auth.token) return;
     try {
       const res = await apiFetch(`/sessions?page=${sessionsPage}&page_size=${PAGE_SIZE}`);
       const data = await res.json();
       setSessions(data.sessions || []);
       setSessionsTotal(data.total || 0);
     } catch { /* ignore */ }
-  }, [sessionsPage]);
+  }, [sessionsPage, auth.token]);
 
   useEffect(() => {
     if (showSessions) fetchSessions();
