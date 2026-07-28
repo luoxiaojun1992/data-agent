@@ -4,6 +4,13 @@ import React, { useState, useEffect } from 'react';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: '等待中',
+  running: '运行中',
+  completed: '已完成',
+  failed: '失败',
+};
+
 interface AgentTask {
   task_id: string;
   title?: string;
@@ -115,7 +122,7 @@ export default function AgentPage() {
               className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                 filter === f ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border-glass)] text-[var(--text-secondary)]'
               }`}
-              data-testid={`agent-filter-${f}`}>{f === 'all' ? '全部' : {pending:'等待中',running:'运行中',completed:'已完成',failed:'失败'}[f as string]}</button>
+              data-testid={`agent-filter-${f}`}>{f === 'all' ? '全部' : STATUS_LABELS[f]}</button>
           ))}
         </div>
 

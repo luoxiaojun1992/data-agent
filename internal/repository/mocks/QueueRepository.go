@@ -18,23 +18,23 @@ type QueueRepository struct {
 }
 
 // Dequeue provides a mock function with given fields: ctx, timeout
-func (_m *QueueRepository) Dequeue(ctx context.Context, timeout time.Duration) (*task.Task, error) {
+func (_m *QueueRepository) Dequeue(ctx context.Context, timeout time.Duration) (*task.TaskRun, error) {
 	ret := _m.Called(ctx, timeout)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Dequeue")
 	}
 
-	var r0 *task.Task
+	var r0 *task.TaskRun
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, time.Duration) (*task.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, time.Duration) (*task.TaskRun, error)); ok {
 		return rf(ctx, timeout)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, time.Duration) *task.Task); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, time.Duration) *task.TaskRun); ok {
 		r0 = rf(ctx, timeout)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*task.Task)
+			r0 = ret.Get(0).(*task.TaskRun)
 		}
 	}
 
@@ -47,17 +47,17 @@ func (_m *QueueRepository) Dequeue(ctx context.Context, timeout time.Duration) (
 	return r0, r1
 }
 
-// Enqueue provides a mock function with given fields: ctx, t
-func (_m *QueueRepository) Enqueue(ctx context.Context, t *task.Task) error {
-	ret := _m.Called(ctx, t)
+// Enqueue provides a mock function with given fields: ctx, r
+func (_m *QueueRepository) Enqueue(ctx context.Context, r *task.TaskRun) error {
+	ret := _m.Called(ctx, r)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Enqueue")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *task.Task) error); ok {
-		r0 = rf(ctx, t)
+	if rf, ok := ret.Get(0).(func(context.Context, *task.TaskRun) error); ok {
+		r0 = rf(ctx, r)
 	} else {
 		r0 = ret.Error(0)
 	}
