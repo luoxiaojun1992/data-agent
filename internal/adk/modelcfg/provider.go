@@ -465,12 +465,21 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 	return backends[0], nil
 }
 
-// ListEmbeddingModels returns all Type==embedding model entries. The admin UI
+// ListEmbeddingModels returns paginated Type==embedding model entries. The admin UI
 // uses this to render the embedding-model table; API keys stay as Vault
 // references (never decrypted here) and are masked at the API layer.
-func (p *Provider) ListEmbeddingModels(ctx context.Context) ([]ModelEntry, error) {
+func (p *Provider) ListEmbeddingModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if p.repo == nil {
-		return nil, nil
+		return nil, 0, nil
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
 	}
 	all := p.modelsFromDB()
 	var out []ModelEntry
@@ -480,7 +489,16 @@ func (p *Provider) ListEmbeddingModels(ctx context.Context) ([]ModelEntry, error
 			out = append(out, m)
 		}
 	}
-	return out, nil
+	total := len(out)
+	offset := (page - 1) * pageSize
+	if offset >= total {
+		return nil, total, nil
+	}
+	end := offset + pageSize
+	if end > total {
+		end = total
+	}
+	return out[offset:end], total, nil
 }
 
 // SetDefaultEmbedding clears any previous embedding default and marks the

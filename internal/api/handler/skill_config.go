@@ -28,12 +28,13 @@ func RegisterSkillConfigRoutes(rg *gin.RouterGroup, h *SkillConfigHandler) {
 // List returns all skill configs (predefined defaults merged with saved overrides).
 // GET /admin/skills
 func (h *SkillConfigHandler) List(c *gin.Context) {
-	configs, err := h.svc.List(c.Request.Context())
+	page, pageSize := parsePage(c)
+	configs, total, err := h.svc.List(c.Request.Context(), page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"skills": configs})
+	c.JSON(http.StatusOK, gin.H{"skills": configs, "total": total, "page": page, "page_size": pageSize})
 }
 
 // Get returns a single skill config by name.

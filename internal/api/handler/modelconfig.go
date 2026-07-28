@@ -153,14 +153,16 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 	})
 }
 
-// ListEmbedding returns the embedding-type model list for the admin UI.
+// ListEmbedding returns the embedding-type model list with pagination.
 // GET /models/embedding
 func (h *ModelConfigHandler) ListEmbedding(c *gin.Context) {
 	if h.provider == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
-	models, err := h.provider.ListEmbeddingModels(c.Request.Context())
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	models, total, err := h.provider.ListEmbeddingModels(c.Request.Context(), page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -170,7 +172,12 @@ func (h *ModelConfigHandler) ListEmbedding(c *gin.Context) {
 			models[i].APIKey = "••••••••••"
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"models": models})
+	c.JSON(http.StatusOK, gin.H{
+		"models":    models,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 // AddModel adds a single model entry. The backend auto-generates the ID when

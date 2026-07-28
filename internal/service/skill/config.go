@@ -61,11 +61,17 @@ func predefinedSkills() []skill.SkillConfig {
 	}
 }
 
-// List returns all skill configs, merging predefined defaults with saved overrides.
-func (s *ConfigService) List(ctx context.Context) ([]skill.SkillConfig, error) {
+// List returns paginated skill configs, merging predefined defaults with saved overrides.
+func (s *ConfigService) List(ctx context.Context, page, pageSize int) ([]skill.SkillConfig, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
 	saved, err := s.repo.List(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	savedMap := make(map[string]*skill.SkillConfig)
 	for i := range saved {
@@ -81,7 +87,16 @@ func (s *ConfigService) List(ctx context.Context) ([]skill.SkillConfig, error) {
 		}
 		result = append(result, sk)
 	}
-	return result, nil
+	total := len(result)
+	offset := (page - 1) * pageSize
+	if offset >= total {
+		return nil, total, nil
+	}
+	end := offset + pageSize
+	if end > total {
+		end = total
+	}
+	return result[offset:end], total, nil
 }
 
 // Get returns a single skill config by name.
