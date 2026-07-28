@@ -61,6 +61,11 @@ export default function ModelsPage() {
   // List + UI state
   const [llmList, setLLMList] = useState<ModelEntry[]>([]);
   const [embeddingList, setEmbeddingList] = useState<ModelEntry[]>([]);
+  const [llmTotal, setLLMTotal] = useState(0);
+  const [llmPage, setLLMPage] = useState(1);
+  const [embeddingTotal, setEmbeddingTotal] = useState(0);
+  const [embeddingPage, setEmbeddingPage] = useState(1);
+  const PAGE = 10;
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -87,27 +92,31 @@ export default function ModelsPage() {
 
   const fetchLLMList = useCallback(async () => {
     try {
-      const res = await apiFetch('/models/list?page=1&page_size=100');
+      const size = search ? 100 : PAGE;
+      const res = await apiFetch(`/models/list?page=${llmPage}&page_size=${size}`);
       if (res.ok) {
         const data = await res.json();
         setLLMList(data.models || []);
+        setLLMTotal(data.total || 0);
       }
     } catch (err) {
       console.error('fetchLLMList:', err);
     }
-  }, [apiFetch]);
+  }, [apiFetch, llmPage, search]);
 
   const fetchEmbeddingList = useCallback(async () => {
     try {
-      const res = await apiFetch('/models/embedding');
+      const size = search ? 100 : PAGE;
+      const res = await apiFetch(`/models/embedding?page=${embeddingPage}&page_size=${size}`);
       if (res.ok) {
         const data = await res.json();
         setEmbeddingList(data.models || []);
+        setEmbeddingTotal(data.total || 0);
       }
     } catch (err) {
       console.error('fetchEmbeddingList:', err);
     }
-  }, [apiFetch]);
+  }, [apiFetch, embeddingPage, search]);
 
   const fetchHermesConfig = useCallback(async () => {
     try {
@@ -489,6 +498,16 @@ export default function ModelsPage() {
           </div>
         </div>
 
+        {!search && llmTotal > PAGE && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
+            <button onClick={() => setLLMPage(p => Math.max(1, p - 1))} disabled={llmPage === 1}
+              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>上一页</button>
+            <span style={{ padding: '4px 8px', fontSize: '12px', color: '#7A7A7A' }}>{llmPage} / {Math.ceil(llmTotal / PAGE)}（共 {llmTotal} 条）</span>
+            <button onClick={() => setLLMPage(p => Math.min(Math.ceil(llmTotal / PAGE), p + 1))} disabled={llmPage >= Math.ceil(llmTotal / PAGE)}
+              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>下一页</button>
+          </div>
+        )}
+
         {/* Embedding Model List */}
         <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 mt-6">Embedding 模型</h3>
         <div className="glass mb-6" style={{ padding: 0 }} data-testid="embedding-list-card">
@@ -575,6 +594,16 @@ export default function ModelsPage() {
             </table>
           </div>
         </div>
+
+        {!search && embeddingTotal > PAGE && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
+            <button onClick={() => setEmbeddingPage(p => Math.max(1, p - 1))} disabled={embeddingPage === 1}
+              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>上一页</button>
+            <span style={{ padding: '4px 8px', fontSize: '12px', color: '#7A7A7A' }}>{embeddingPage} / {Math.ceil(embeddingTotal / PAGE)}（共 {embeddingTotal} 条）</span>
+            <button onClick={() => setEmbeddingPage(p => Math.min(Math.ceil(embeddingTotal / PAGE), p + 1))} disabled={embeddingPage >= Math.ceil(embeddingTotal / PAGE)}
+              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>下一页</button>
+          </div>
+        )}
 
         {/* Hermes 独立配置卡片 */}
         <div className="glass" style={{ padding: '24px', marginTop: '20px' }} data-testid="hermes-config-card">

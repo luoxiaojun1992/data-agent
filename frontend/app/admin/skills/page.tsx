@@ -15,6 +15,9 @@ interface SkillItem {
 export default function SkillsAdminPage() {
   const { apiFetch } = useAuth();
   const [skills, setSkills] = useState<SkillItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const PAGE = 10;
   const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editEnabled, setEditEnabled] = useState(false);
@@ -30,16 +33,17 @@ export default function SkillsAdminPage() {
 
   const fetchSkills = useCallback(async () => {
     try {
-      const res = await apiFetch('/admin/skills');
+      const res = await apiFetch(`/admin/skills?page=${page}&page_size=${PAGE}`);
       if (res.ok) {
         const data = await res.json();
         setSkills(data.skills || []);
+        setTotal(data.total || 0);
       }
     } catch (e) {
       console.error('fetchSkills:', e);
     }
     setLoading(false);
-  }, [apiFetch]);
+  }, [apiFetch, page]);
 
   useEffect(() => { fetchSkills(); }, [fetchSkills]);
 
@@ -189,6 +193,16 @@ export default function SkillsAdminPage() {
             </table>
           </div>
         </div>
+
+        {total > PAGE && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>上一页</button>
+            <span style={{ padding: '4px 8px', fontSize: '12px', color: '#7A7A7A' }}>{page} / {Math.ceil(total / PAGE)}（共 {total} 条）</span>
+            <button onClick={() => setPage(p => Math.min(Math.ceil(total / PAGE), p + 1))} disabled={page >= Math.ceil(total / PAGE)}
+              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>下一页</button>
+          </div>
+        )}
 
         {/* Edit Modal */}
         {editingName && (
