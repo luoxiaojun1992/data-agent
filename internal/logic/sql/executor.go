@@ -59,6 +59,16 @@ func Execute(config ExecConfig, query string, params []any) (ExecResult, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), config.QueryTimeout)
 	defer cancel()
 
+	// Ping to verify connectivity + DNS before running the actual query.
+	t0 := time.Now()
+	if err := db.PingContext(ctx); err != nil {
+		return ExecResult{
+			Status:     "error",
+			Query:      query,
+			DurationMs: time.Since(t0).Milliseconds(),
+		}, fmt.Errorf("sql_executor: mysql ping: %w", err)
+	}
+
 	start := time.Now()
 	rows, err := db.QueryContext(ctx, query, params...)
 	duration := time.Since(start).Milliseconds()
