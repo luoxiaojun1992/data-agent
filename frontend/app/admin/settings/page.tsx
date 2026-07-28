@@ -18,8 +18,6 @@ const BUILTIN_CONFIGS: Omit<ConfigItem, 'value' | 'source'>[] = [
   { key: 'EMBEDDING_BASE_URL', description: 'Embedding 模型 API 地址' },
   { key: 'EMBEDDING_MODEL', description: 'Embedding 模型名' },
   { key: 'EMBEDDING_VECTOR_DIM', description: 'Embedding 向量维度' },
-  { key: 'LLM_BASE_URL', description: 'LLM API 地址' },
-  { key: 'LLM_MODEL', description: 'LLM 模型名' },
   { key: 'INVITE_HMAC_SECRET', description: '邀请 HMAC 签名密钥' },
   { key: 'VAULT_ADDR', description: 'HashiCorp Vault 地址' },
   { key: 'JWT_SECRET', description: 'JWT 签名密钥' },
