@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/model"
@@ -21,9 +22,12 @@ import (
 // was built from. When the fingerprint changes (admin edited the model
 // config), the next GetOrCreate call rebuilds the Runtime.
 type cachedRuntime struct {
-	rt   *Runtime
-	hash string // sha256 of the model config at build time
+	rt         *Runtime
+	hash       string    // sha256 of the model config at build time
+	lastAccess time.Time // updated on each GetOrCreate hit
 }
+
+const runtimeTTL = 30 * time.Minute
 
 // ModelProvider abstracts the model-config reads the Registry needs. The
 // concrete *modelcfg.Provider satisfies it; tests inject a mock to drive
@@ -87,6 +91,7 @@ func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, e
 	// Fast path: read lock, reuse if fingerprint matches.
 	r.mu.RLock()
 	if cached, ok := r.sessions[entry.ID]; ok && cached.hash == hash {
+		cached.lastAccess = time.Now()
 		rt := cached.rt
 		r.mu.RUnlock()
 		return rt, nil
@@ -97,13 +102,14 @@ func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, e
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.sessions[entry.ID]; ok && cached.hash == hash {
+		cached.lastAccess = time.Now()
 		return cached.rt, nil
 	}
 	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction)
 	if err != nil {
 		return nil, err
 	}
-	r.sessions[entry.ID] = &cachedRuntime{rt: rt, hash: hash}
+	r.sessions[entry.ID] = &cachedRuntime{rt: rt, hash: hash, lastAccess: time.Now()}
 	return rt, nil
 }
 
@@ -121,6 +127,7 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 
 	r.mu.RLock()
 	if cached, ok := r.sys[useCase]; ok && cached.hash == hash {
+		cached.lastAccess = time.Now()
 		rt := cached.rt
 		r.mu.RUnlock()
 		return rt, nil
@@ -130,13 +137,14 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.sys[useCase]; ok && cached.hash == hash {
+		cached.lastAccess = time.Now()
 		return cached.rt, nil
 	}
 	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction)
 	if err != nil {
 		return nil, err
 	}
-	r.sys[useCase] = &cachedRuntime{rt: rt, hash: hash}
+	r.sys[useCase] = &cachedRuntime{rt: rt, hash: hash, lastAccess: time.Now()}
 	return rt, nil
 }
 
@@ -165,4 +173,39 @@ func (r *Registry) buildRuntime(ctx context.Context, modelID, instruction string
 // AppName returns the shared app name used by every Runtime in this registry.
 func (r *Registry) AppName() string {
 	return r.cfg.AppName
+}
+
+// StartCleanup runs a background goroutine that periodically evicts stale
+// Runtime entries (lastAccess > runtimeTTL). Returns a stop function.
+func (r *Registry) StartCleanup() func() {
+	ticker := time.NewTicker(5 * time.Minute)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				r.evictStale()
+			case <-done:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+	return func() { close(done) }
+}
+
+func (r *Registry) evictStale() {
+	now := time.Now()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, cr := range r.sessions {
+		if now.Sub(cr.lastAccess) > runtimeTTL {
+			delete(r.sessions, id)
+		}
+	}
+	for uc, cr := range r.sys {
+		if now.Sub(cr.lastAccess) > runtimeTTL {
+			delete(r.sys, uc)
+		}
+	}
 }

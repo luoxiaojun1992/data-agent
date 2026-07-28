@@ -71,8 +71,11 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 	deps.authHandler = handler.NewAuthHandler(authService)
 }
 
-func initADKModel(deps *serverDependencies) {
-	deps.modelCfg = modelcfg.NewProvider(deps.sysConfigCacheRepo, deps.vaultClient)
+func initADKModel(deps *serverDependencies, mongoClient *mongoinfra.Client) {
+	// Model config uses a plain MongoDB repo — no Redis cache.
+	// System config (sysConfigCacheRepo) is separately cached for admin settings.
+	rawRepo := mongoinfra.NewSystemConfigRepository(mongoClient.DB())
+	deps.modelCfg = modelcfg.NewProvider(rawRepo, deps.vaultClient)
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {
@@ -212,6 +215,9 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		Auditor:        deps.secAuditor,
 		AppName:        appName,
 	})
+
+	// Evict stale Runtime entries (not accessed in 30 min) to prevent memory leaks.
+	go deps.registry.StartCleanup()
 
 	deps.chatService = chat.NewService(deps.registry, deps.modelCfg, deps.adkSessions, deps.sessionManager, deps.cbRegistry).
 		WithMemoryWrite(func(ctx context.Context, sess adksessionIF.Session) {
