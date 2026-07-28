@@ -25,7 +25,7 @@ export default function InvitesPage() {
 }
 
 function InvitesContent() {
-  const { apiFetch } = useAuth();
+  const { auth, apiFetch } = useAuth();
 
   const [invites, setInvites] = useState<InviteItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -43,9 +43,10 @@ function InvitesContent() {
   const [createError, setCreateError] = useState('');
 
   const loadInvites = async () => {
+    if (!auth.token) return;
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/v1/admin/invites?page=${page}&size=20`);
+      const res = await apiFetch(`/admin/invites?page=${page}&size=20`);
       if (res.ok) {
         const data = await res.json();
         setInvites(data.invites || []);
@@ -74,7 +75,7 @@ function InvitesContent() {
     setCreating(true);
     setCreateError('');
     try {
-      const res = await apiFetch('/api/v1/admin/invites', {
+      const res = await apiFetch('/admin/invites', {
         method: 'POST',
         body: JSON.stringify({ email: email.trim() || undefined, role, expire_hours: expireHours }),
       });
@@ -96,7 +97,7 @@ function InvitesContent() {
 
   const handleRevoke = async (inviteID: string) => {
     try {
-      await apiFetch(`/api/v1/admin/invites/${inviteID}`, { method: 'DELETE' });
+      await apiFetch(`/admin/invites/${inviteID}`, { method: 'DELETE' });
       loadInvites();
     } catch (e: any) {
       console.error(e);

@@ -14,6 +14,7 @@ interface Notif {
 
 export default function NotificationBell() {
   const { apiFetch } = useAuth();
+  const { auth, apiFetch } = useAuth();
   const [unread, setUnread] = useState(0);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [open, setOpen] = useState(false);
@@ -22,6 +23,7 @@ export default function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchCount = useCallback(async () => {
+    if (!auth.token) return;
     try {
       const res = await apiFetch('/notifications/unread-count');
       if (res.ok) {
@@ -29,7 +31,7 @@ export default function NotificationBell() {
         setUnread(d.count || 0);
       }
     } catch { /* */ }
-  }, [apiFetch]);
+  }, [apiFetch, auth.token]);
 
   const fetchList = useCallback(async () => {
     try {
