@@ -55,19 +55,24 @@ type RegistryConfig struct {
 	AppName        string
 }
 
-// Registry maintains two caches of Runtime instances:
+// Registry maintains three caches of Runtime instances:
 //   - sessions: keyed by model ID (ModelEntry.ID) — per-model Runtime shared
 //     by all sessions bound to that model (lazy create + fingerprint hot-reload).
 //   - sys: keyed by UseCase — system-level Runtime for enhance/compaction/
 //     memoryx scenarios that don't follow the user's session-bound model.
+//   - taskInst: keyed by (modelID + instructionSuffix) — task-mode runtimes
+//     that carry a caller-supplied instruction override (e.g. the
+//     save_task_result reminder). Kept separate so task instructions don't
+//     pollute the default chat Runtime pool.
 //
-// Both paths lazily create Runtime instances on first use and rebuild them
+// All paths lazily create Runtime instances on first use and rebuild them
 // when the underlying model config fingerprint changes (no Pub/Sub needed).
 type Registry struct {
 	cfg      RegistryConfig
 	mu       sync.RWMutex
-	sessions map[string]*cachedRuntime // key = ModelEntry.ID
+	sessions map[string]*cachedRuntime       // key = ModelEntry.ID
 	sys      map[modelcfg.UseCase]*cachedRuntime
+	taskInst map[string]*cachedRuntime       // key = entry.ID + "|" + instructionSuffix
 }
 
 // NewRegistry creates an empty Runtime registry. Runtimes are created lazily
@@ -77,6 +82,7 @@ func NewRegistry(cfg RegistryConfig) *Registry {
 		cfg:      cfg,
 		sessions: make(map[string]*cachedRuntime),
 		sys:      make(map[modelcfg.UseCase]*cachedRuntime),
+		taskInst: make(map[string]*cachedRuntime),
 	}
 }
 
@@ -85,6 +91,10 @@ func NewRegistry(cfg RegistryConfig) *Registry {
 // The Runtime is lazily created on first use and rebuilt when the model
 // config changes (fingerprint mismatch), giving hot-reload without Pub/Sub.
 // Concurrent calls for the same modelID create the Runtime exactly once.
+//
+// Stored in the sessions cache. Use GetOrCreateWithInstruction to inject a
+// per-call instruction override (task-mode runs) — that path stores in the
+// separate taskInst cache so the default chat pool isn't polluted.
 func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, error) {
 	entry, err := r.cfg.Provider.GetModelByID(ctx, modelID)
 	if err != nil {
@@ -116,6 +126,64 @@ func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, e
 	cr := &cachedRuntime{rt: rt, hash: hash}
 	cr.touch()
 	r.sessions[entry.ID] = cr
+	return rt, nil
+}
+
+// GetOrCreateWithInstruction returns the session-level Runtime for the given
+// model ID with a caller-supplied instruction override. The override is
+// appended to the model's configured instruction (or used as-is when the
+// model has none). The (modelID, instructionSuffix) pair is the cache key, so
+// different task prompts get distinct Runtime instances and don't pollute
+// the default pool.
+//
+// Used by AgentExecutor to inject task-specific instructions (e.g. the
+// save_task_result reminder for async/scheduled task runs) without forcing
+// every chat session to inherit that suffix.
+//
+// Empty instructionSuffix behaves identically to GetOrCreate.
+func (r *Registry) GetOrCreateWithInstruction(ctx context.Context, modelID, instructionSuffix string) (*Runtime, error) {
+	entry, err := r.cfg.Provider.GetModelByID(ctx, modelID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve model %q: %w", modelID, err)
+	}
+	hash := modelcfg.ConfigHash(*entry)
+
+	var instruction string
+	if instructionSuffix != "" {
+		if entry.Instruction == "" {
+			instruction = instructionSuffix
+		} else {
+			instruction = entry.Instruction + "\n\n" + instructionSuffix
+		}
+	} else {
+		instruction = entry.Instruction
+	}
+	instKey := entry.ID + "|" + instructionSuffix
+
+	// Fast path: read lock, reuse if fingerprint matches.
+	r.mu.RLock()
+	if cached, ok := r.taskInst[instKey]; ok && cached.hash == hash {
+		cached.touch()
+		rt := cached.rt
+		r.mu.RUnlock()
+		return rt, nil
+	}
+	r.mu.RUnlock()
+
+	// Slow path: create/rebuild under write lock with double-check.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.taskInst[instKey]; ok && cached.hash == hash {
+		cached.touch()
+		return cached.rt, nil
+	}
+	rt, err := r.buildRuntime(ctx, entry.ID, instruction)
+	if err != nil {
+		return nil, err
+	}
+	cr := &cachedRuntime{rt: rt, hash: hash}
+	cr.touch()
+	r.taskInst[instKey] = cr
 	return rt, nil
 }
 
@@ -213,6 +281,11 @@ func (r *Registry) evictStale() {
 	for uc, cr := range r.sys {
 		if cr.stale() {
 			delete(r.sys, uc)
+		}
+	}
+	for key, cr := range r.taskInst {
+		if cr.stale() {
+			delete(r.taskInst, key)
 		}
 	}
 }

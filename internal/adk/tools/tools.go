@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
@@ -31,6 +32,9 @@ type Deps struct {
 	MemoryWriter MemoryWriter
 	// AppName scopes memory searches.
 	AppName string
+	// Tasks backs the save_task_result tool (task-mode runs only).
+	// If nil, save_task_result returns an explanatory error.
+	Tasks domaintask.TaskService
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -268,6 +272,71 @@ func memoryEntryText(m memory.Entry) string {
 	return text.String()
 }
 
+// ---- save_task_result ----
+
+// SaveTaskResultArgs are the arguments for the save_task_result tool.
+type SaveTaskResultArgs struct {
+	// Content is the task's final result text the user will see. Required
+	// and must be non-empty after trimming whitespace.
+	Content string `json:"content" jsonschema:"Task result content; must be non-empty"`
+	// Status is the result status: success (default) or failed. Failed still
+	// persists the content as the user-visible result but lets the orchestrator
+	// mark the task as failed.
+	Status string `json:"status,omitempty" jsonschema:"Result status: 'success' (default) or 'failed'"`
+}
+
+// SaveTaskResultResult is the save_task_result tool output.
+type SaveTaskResultResult struct {
+	TaskID  string `json:"task_id"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+func saveTaskResult(deps *Deps) functiontool.Func[SaveTaskResultArgs, SaveTaskResultResult] {
+	return func(tc agent.ToolContext, args SaveTaskResultArgs) (SaveTaskResultResult, error) {
+		if deps.Tasks == nil {
+			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: task service not configured")
+		}
+		// task_id is injected from session state, not from the LLM — the
+		// model must not be able to save results for an arbitrary task.
+		taskID := stateString(tc, "task_id")
+		if taskID == "" {
+			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: not running in a task context (no task_id in session state)")
+		}
+		if strings.TrimSpace(args.Content) == "" {
+			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: content is required and must be non-empty")
+		}
+		status := strings.ToLower(strings.TrimSpace(args.Status))
+		if status == "" {
+			status = "success"
+		}
+		if status != "success" && status != "failed" {
+			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: invalid status %q (allowed: success, failed)", args.Status)
+		}
+		result := map[string]interface{}{
+			"content": args.Content,
+			"status":  status,
+		}
+		if status == "failed" {
+			// Persist the failure flag at the task level too (sets status=failed
+			// atomically) so the dashboard surfaces the error path. Content is
+			// preserved on the result field for user inspection.
+			if err := deps.Tasks.UpdateError(taskID, args.Content); err != nil {
+				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update error: %w", err)
+			}
+		} else {
+			if err := deps.Tasks.UpdateTaskResult(taskID, result); err != nil {
+				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update result: %w", err)
+			}
+		}
+		return SaveTaskResultResult{
+			TaskID:  taskID,
+			Status:  status,
+			Message: "task result saved",
+		}, nil
+	}
+}
+
 // ---- registry ----
 
 // toolSpec describes one tool to register.
@@ -314,6 +383,15 @@ func specs(deps *Deps) []toolSpec {
 			description: "Searches the knowledge base with full-text and semantic search capabilities",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{Name: "knowledge_search", Description: "Searches the knowledge base with full-text and semantic search capabilities"}, knowledgeSearch(deps))
+			},
+		})
+	}
+	if deps.Tasks != nil {
+		out = append(out, toolSpec{
+			name:        "save_task_result",
+			description: "Persists the final result of an async/scheduled task. The task_id is read from the session state (not supplied by the LLM). The content argument is required and must be non-empty; the task is marked completed on success or failed if status=\"failed\" is set. Without this call the task has no result and the system retries once.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "save_task_result", Description: "Persists the final result of an async/scheduled task. The task_id is read from the session state (not supplied by the LLM). The content argument is required and must be non-empty; the task is marked completed on success or failed if status=\"failed\" is set. Without this call the task has no result and the system retries once."}, saveTaskResult(deps))
 			},
 		})
 	}

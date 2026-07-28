@@ -24,7 +24,7 @@ export default function AgentPage() {
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<string>('all');
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
-  const [newTask, setNewTask] = useState({ title: '', description: '', skills: 'sql_executor', async: false, cron: '', cronEnabled: false });
+  const [newTask, setNewTask] = useState({ title: '', description: '', async: false, cron: '', cronEnabled: false });
   const [selectedArtifacts, setSelectedArtifacts] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadTasks(); }, []);
@@ -50,7 +50,6 @@ export default function AgentPage() {
         body: JSON.stringify({
           title: newTask.title,
           description: newTask.description,
-          skills: newTask.skills.split(',').map(s => s.trim()).filter(Boolean),
           async: newTask.async,
           cron_expr: newTask.cronEnabled ? newTask.cron : undefined,
         }),
@@ -58,7 +57,7 @@ export default function AgentPage() {
       if (res.ok) {
         await loadTasks();
         setShowModal(false);
-        setNewTask({ title: '', description: '', skills: 'sql_executor', async: false, cron: '', cronEnabled: false });
+        setNewTask({ title: '', description: '', async: false, cron: '', cronEnabled: false });
       }
     } catch (e) { console.error('[agent] loadTasks failed:', e); }
   };
@@ -107,16 +106,6 @@ export default function AgentPage() {
           <button onClick={() => setShowModal(true)}
             className="px-4 py-2 bg-[var(--accent)] text-white rounded-xl text-sm font-medium hover:opacity-90"
             data-testid="agent-create-task-btn">+ 新建任务</button>
-        </div>
-
-        {/* Skills bar */}
-        <div className="glass p-4 mb-4">
-          <p className="text-xs font-semibold text-[var(--text-primary)] mb-2">可用技能</p>
-          <div className="flex flex-wrap gap-2">
-            {['sql_executor', 'stats_engine', 'knowledge_search', 'save_report'].map(s => (
-              <span key={s} className="px-3 py-1 text-xs rounded-full bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-secondary)]">⚡ {s}</span>
-            ))}
-          </div>
         </div>
 
         {/* Filters */}
@@ -191,7 +180,7 @@ export default function AgentPage() {
                       )}
                       {task.status === 'failed' && (
                         <button onClick={async () => {
-                          await apiFetch('/tasks', { method: 'POST', body: JSON.stringify({ title: task.title, skills: ['sql_executor'] }) });
+                          await apiFetch('/tasks', { method: 'POST', body: JSON.stringify({ title: task.title }) });
                           await loadTasks();
                         }}
                           className="px-3 py-1 text-xs rounded-lg border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/10"
@@ -288,12 +277,7 @@ export default function AgentPage() {
                   data-testid="agent-task-desc-input" rows={2} placeholder="描述分析目标..." />
               </div>
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">技能（逗号分隔）</label>
-                <input type="text" value={newTask.skills} onChange={e => setNewTask(p => ({ ...p, skills: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                  data-testid="agent-task-skills-input" />
-              </div>
-              <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
                 <input type="checkbox" checked={newTask.async} onChange={e => setNewTask(p => ({ ...p, async: e.target.checked }))}
                   data-testid="agent-task-async-toggle" className="rounded" />
                 异步执行

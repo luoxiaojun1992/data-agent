@@ -43,6 +43,30 @@ func (m *Manager) Create(userID, sessionType, modelID string) (*domainchat.Sessi
 	return s, nil
 }
 
+// CreateTaskSession creates a session flagged as an autonomous task run.
+// It shares the chat-session infrastructure (ADK session service, registry
+// runtime resolution) but the IsTask flag tells downstream consumers this
+// is not a real-time user conversation.
+func (m *Manager) CreateTaskSession(userID, modelID string) (*domainchat.Session, error) {
+	now := time.Now()
+	s := &domainchat.Session{
+		ID:        "sess_" + uuid.New().String(),
+		UserID:    userID,
+		Type:      "task",
+		ModelID:   modelID,
+		IsTask:    true,
+		Status:    "active",
+		CreatedAt: now,
+		UpdatedAt: now,
+		ExpiresAt: now.Add(m.ttl),
+	}
+	rec := sessionToRecord(s)
+	if err := m.repo.Create(context.Background(), rec); err != nil {
+		return nil, fmt.Errorf("create task session: %w", err)
+	}
+	return s, nil
+}
+
 func (m *Manager) Get(id string) (*domainchat.Session, error) {
 	rec, err := m.repo.Get(context.Background(), id)
 	if err != nil {
@@ -125,6 +149,7 @@ func sessionToRecord(s *domainchat.Session) repository.SessionRecord {
 		UserID:    s.UserID,
 		Title:     s.Title,
 		ModelID:   s.ModelID,
+		IsTask:    s.IsTask,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
 		ExpiresAt: s.ExpiresAt,
@@ -139,6 +164,7 @@ func recordToSession(r *repository.SessionRecord) *domainchat.Session {
 		Type:      "chat",
 		Title:     r.Title,
 		ModelID:   r.ModelID,
+		IsTask:    r.IsTask,
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 		ExpiresAt: r.ExpiresAt,

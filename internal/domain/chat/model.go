@@ -12,6 +12,10 @@ type Session struct {
 	Title         string     `json:"title"`    // first user prompt snippet (auto-populated on first message)
 	ModelID       string     `json:"model_id"` // bound model ID (ModelEntry.ID); empty = use default at create time
 	Status        string     `json:"status"`
+	// IsTask marks sessions created by the async/scheduled task executor.
+	// They share ADK chat-session infrastructure but represent autonomous
+	// analysis runs rather than real-time user conversations.
+	IsTask        bool       `json:"is_task,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	ExpiresAt     time.Time  `json:"expires_at"`

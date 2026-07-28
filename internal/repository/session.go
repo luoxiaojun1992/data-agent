@@ -28,6 +28,10 @@ type SessionRecord struct {
 	UserID      string     `bson:"user_id"`
 	Title       string     `bson:"title"`
 	ModelID     string     `bson:"model_id"`
+	// IsTask marks sessions created by the async/scheduled task executor.
+	// These ride the same ADK chat-session infrastructure but represent an
+	// autonomous analysis run rather than a real-time user conversation.
+	IsTask      bool       `bson:"is_task,omitempty"`
 	CreatedAt   time.Time  `bson:"created_at"`
 	UpdatedAt   time.Time  `bson:"updated_at"`
 	ExpiresAt   time.Time  `bson:"expires_at"`

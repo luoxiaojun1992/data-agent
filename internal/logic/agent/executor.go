@@ -68,6 +68,21 @@ func NewAgentExecutor(
 // Execute runs a single async/scheduled agent task to completion (or failure).
 // Returns the execution error so the worker pool can apply its retry/DLQ
 // policy; the executor has already persisted the failure status + error by then.
+//
+// Task-result flow (see RFC §16 / spec task-result-retry):
+//  1. Mark running, create ADK session with task_id in state.
+//  2. First LLM run (no retry hint). If the model called save_task_result,
+//     UpdateTaskResult already set status=completed — the executor just
+//     notifies the user and returns.
+//  3. If the LLM finished without saving, send a follow-up prompt on the
+//     SAME session that asks the model to call save_task_result with its
+//     final answer. This preserves the conversation context the model
+//     needs to produce a coherent result.
+//  4. After the retry, if save_task_result was called → completed. If still
+//     missing OR the retry itself errored, mark the task failed with the
+//     cause (content of the LLM's last message, or the underlying error).
+//  5. Cancellation is respected: a task cancelled mid-run keeps its
+//     cancelled status (no overwrite with completed/failed).
 func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 	// 0. Respect cancellation: a task cancelled before the worker picked it up
 	//    (e.g. user cancelled a still-queued task) is skipped entirely.
@@ -75,15 +90,13 @@ func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 		return nil
 	}
 
-	// 1. Mark running (RFC §16 step 2).
+	// 1. Mark running.
 	_ = e.tasks.UpdateStatus(t.ID, domaintask.StatusRunning)
 
-	// 2. Create ADK session with identity injected into state (mirrors
-	//    chat.Service.prepareRun). Create is idempotent (upsert), so re-runs
-	//    on the same session are safe. When t.SessionID is empty (tasks created
-	//    via POST /tasks without a session binding), the ADK service
-	//    auto-generates a session ID — we capture it from the response and use
-	//    it for the run so Run can find the session it just created.
+	// 2. Create ADK session with identity + task_id injected into state.
+	//    Create is idempotent (upsert), so re-runs on the same session are safe.
+	//    When t.SessionID is empty, the ADK service auto-generates a session
+	//    ID — we capture it from the response and use it for the run.
 	state := buildExecutorState(t)
 	resp, cerr := e.adkSessions.Create(ctx, &session.CreateRequest{
 		AppName:   e.registry.AppName(),
@@ -100,40 +113,73 @@ func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 	if resp != nil && resp.Session.ID() != "" {
 		runSessionID = resp.Session.ID()
 	}
-	// Keep the state's session_id consistent with the actual ADK session.
 	state["session_id"] = runSessionID
 
-	// 3. Resolve the per-model Runtime (SPEC-062). Empty ModelID falls back
-	//    to the default model inside the Registry.
-	rt, rErr := e.registry.GetOrCreate(ctx, t.ModelID)
+	// 3. Resolve the task-mode Runtime. Empty ModelID falls back to default.
+	//    The task instruction suffix forces the LLM to call save_task_result
+	//    before considering its turn done.
+	rt, rErr := e.registry.GetOrCreateWithInstruction(ctx, t.ModelID, adkruntime.TaskInstructionSuffix)
 	if rErr != nil {
 		err := fmt.Errorf("resolve runtime: %w", rErr)
 		e.failTask(t, err)
 		return err
 	}
 
-	// 4. Derive the user message from Task.Params and run the agent turn under
-	//    a circuit breaker (same breaker key as chat so a model outage trips
-	//    both paths consistently).
+	// 4. First LLM run.
 	message := deriveUserMessage(t)
 	runCfg := adkruntime.RunConfig{StateDelta: state}
+	var firstContent string
+	firstErr := e.runProtected(ctx, rt, t, runSessionID, message, runCfg, &firstContent)
 
-	var content string
-	execErr := e.runProtected(ctx, rt, t, runSessionID, message, runCfg, &content)
-
-	// 5. Write back result/error + notify — unless the task was cancelled
-	//    during execution (the user may cancel a long-running task). A cancelled
-	//    task must keep its cancelled status; we don't overwrite it with
-	//    completed/failed.
+	// 5. Respect cancellation (user might have cancelled during the run).
 	if e.wasCancelled(t.ID) {
-		return execErr
+		return firstErr
 	}
-	if execErr != nil {
-		e.failTask(t, execErr)
-		return execErr
+
+	// 6. Was save_task_result called during the first run? Check by re-reading
+	//    the task from DB — UpdateTaskResult sets status=completed atomically.
+	latest, lErr := e.tasks.GetTask(t.ID)
+	if lErr == nil && latest != nil && latest.Status == domaintask.StatusCompleted {
+		e.notify(t, "任务完成", fmt.Sprintf("任务 %q 已完成", t.ID))
+		return nil
 	}
-	e.completeTask(t, content)
-	return nil
+
+	// 7. The LLM didn't call save_task_result (or errored before getting to it).
+	//    If the first run produced an error, surface it; otherwise retry with
+	//    the same session and a reminder prompt so the model can produce the
+	//    final result while keeping its prior context.
+	if firstErr != nil {
+		e.failTask(t, fmt.Errorf("llm runtime error (no save_task_result): %w", firstErr))
+		return firstErr
+	}
+
+	retryPrompt := "Your previous turn finished without calling save_task_result. " +
+		"Please call the save_task_result tool NOW with the final answer (or a summary) as the content argument. " +
+		"Without that call the task will be marked failed."
+
+	var retryContent string
+	retryErr := e.runProtected(ctx, rt, t, runSessionID, retryPrompt, runCfg, &retryContent)
+	if e.wasCancelled(t.ID) {
+		return retryErr
+	}
+	if retryErr == nil {
+		// Re-check whether the retry managed to call save_task_result.
+		latest, lErr = e.tasks.GetTask(t.ID)
+		if lErr == nil && latest != nil && latest.Status == domaintask.StatusCompleted {
+			e.notify(t, "任务完成", fmt.Sprintf("任务 %q 已完成", t.ID))
+			return nil
+		}
+	}
+	// Both attempts failed to call save_task_result — record the failure.
+	failReason := "save_task_result was not called after the LLM turn (one retry attempted)"
+	if retryErr != nil {
+		failReason = "save_task_result was not called; retry turn also failed: " + retryErr.Error()
+	} else if strings.TrimSpace(retryContent) != "" {
+		failReason = "save_task_result was not called; last LLM response: " + truncateForError(retryContent)
+	}
+	failErr := fmt.Errorf("%s", failReason)
+	e.failTask(t, failErr)
+	return failErr
 }
 
 // runProtected invokes Runtime.RunAndCollect inside the "agent" circuit
@@ -151,17 +197,6 @@ func (e *AgentExecutor) runProtected(ctx context.Context, rt *adkruntime.Runtime
 		return run()
 	}
 	return e.cbReg.GetOrCreate("agent").Call(run)
-}
-
-// completeTask persists the success result and marks the task completed, then
-// notifies the user. UpdateTaskResult already sets status=completed atomically
-// at the repository level; the explicit UpdateStatus(completed) makes the state
-// transition visible at the service layer (and verifiable in tests).
-func (e *AgentExecutor) completeTask(t *domaintask.Task, content string) {
-	result := map[string]interface{}{"content": content, "status": "success"}
-	_ = e.tasks.UpdateTaskResult(t.ID, result)
-	_ = e.tasks.UpdateStatus(t.ID, domaintask.StatusCompleted)
-	e.notify(t, "任务完成", fmt.Sprintf("任务 %q 已完成", t.ID))
 }
 
 // failTask persists the failure error (UpdateError sets error + status=failed
@@ -222,4 +257,14 @@ func deriveUserMessage(t *domaintask.Task) string {
 		return v
 	}
 	return ""
+}
+
+// truncateForError clamps text used in failure error messages so the DB
+// error field doesn't blow up on long LLM outputs.
+func truncateForError(s string) string {
+	const max = 500
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }

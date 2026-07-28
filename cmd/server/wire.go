@@ -201,6 +201,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		Memory:       deps.memoryService,
 		MemoryWriter: deps.memoryKit,
 		AppName:      appName,
+		Tasks:        deps.taskService,
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -401,6 +402,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 			Memory:       deps.memoryService,
 			MemoryWriter: deps.memoryKit,
 			AppName:      appName,
+			Tasks:        deps.taskService,
 		})
 		if err != nil {
 			return []string{}

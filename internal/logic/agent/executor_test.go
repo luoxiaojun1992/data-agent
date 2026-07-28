@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -51,13 +52,19 @@ func (f *fakeLLM) GenerateContent(_ context.Context, _ *model.LLMRequest, _ bool
 // gomonkey to return a real Runtime (built with a fakeLLM), mirroring
 // chat_test.go's approach so async execution uses the same code path.
 type testExecutor struct {
-	exec      *AgentExecutor
-	registry  *adkruntime.Registry
-	rt        *adkruntime.Runtime
-	tasks     *domaintaskmocks.TaskService
-	notif     *notificationmocks.NotificationService
-	patches   *gomonkey.Patches
-	adkSess   adksession.Service
+	exec       *AgentExecutor
+	registry   *adkruntime.Registry
+	rt         *adkruntime.Runtime
+	tasks      *domaintaskmocks.TaskService
+	notif      *notificationmocks.NotificationService
+	patches    *gomonkey.Patches
+	adkSess    adksession.Service
+	// completed controls the default GetTask mock. When false (default),
+	// GetTask returns a non-cancelled running task — exercising the
+	// "no save_task_result" retry/failure path. When flipped to true via
+	// setTaskCompleted, subsequent GetTask calls return a completed task
+	// (the LLM-driven tool is simulated to have fired).
+	completed   atomic.Bool
 }
 
 func newTestExecutor(t *testing.T, llm model.LLM) *testExecutor {
@@ -80,25 +87,43 @@ func newTestExecutor(t *testing.T, llm model.LLM) *testExecutor {
 
 	patches := gomonkey.NewPatches()
 	t.Cleanup(patches.Reset)
-	// Patch GetOrCreate to return the test Runtime (avoids needing a real
-	// Provider/model config for unit tests) — same pattern as chat_test.go.
+	// Patch GetOrCreate / GetOrCreateWithInstruction to return the test Runtime
+	// (avoids needing a real Provider/model config for unit tests) — same
+	// pattern as chat_test.go.
 	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
 		return rt, nil
 	})
-	// Optional GetTask for the post-execution wasCancelled re-check (returns a
-	// non-cancelled task so completeTask/failTask proceeds). .Maybe() keeps it
-	// optional so tests that short-circuit before the re-check don't need it.
-	tasks.On("GetTask", mock.Anything).Return(&domaintask.Task{ID: "task_1", Status: domaintask.StatusRunning}, nil).Maybe()
-
-	return &testExecutor{exec: exec, registry: registry, rt: rt, tasks: tasks, notif: notif, patches: patches, adkSess: adkSess}
+	patches.ApplyMethodFunc(registry, "GetOrCreateWithInstruction", func(ctx context.Context, modelID string, suffix string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
+	// GetTask is consulted twice during Execute: wasCancelled() and the
+	// post-run "did save_task_result get called?" check. Default both
+	// return a non-cancelled task that has NOT been completed (so the
+	// retry path is exercised). Tests that want success use
+	// setTaskCompleted to flip the result for subsequent GetTask calls.
+	te := &testExecutor{exec: exec, registry: registry, rt: rt, tasks: tasks, notif: notif, patches: patches, adkSess: adkSess}
+	tasks.On("GetTask", mock.Anything).Return(func(id string) *domaintask.Task {
+		if te.completed.Load() {
+			return &domaintask.Task{ID: "task_1", Status: domaintask.StatusCompleted}
+		}
+		return &domaintask.Task{ID: "task_1", Status: domaintask.StatusRunning}
+	}, nil).Maybe()
+	return te
 }
 
-// patchGetOrCreateError makes Registry.GetOrCreate return an error (runtime
-// resolution failure). Useful for the resolve-runtime failure path.
+// patchGetOrCreateError makes Registry.GetOrCreateWithInstruction return an
+// error (runtime resolution failure). Useful for the resolve-runtime failure
+// path.
 func (te *testExecutor) patchGetOrCreateError(err error) {
-	te.patches.ApplyMethodFunc(te.registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
+	te.patches.ApplyMethodFunc(te.registry, "GetOrCreateWithInstruction", func(ctx context.Context, modelID string, suffix string) (*adkruntime.Runtime, error) {
 		return nil, err
 	})
+}
+
+// setTaskCompleted flips the default GetTask mock to return a completed task
+// for all subsequent calls, simulating the LLM having called save_task_result.
+func (te *testExecutor) setTaskCompleted() {
+	te.completed.Store(true)
 }
 
 // patchADKCreateError makes the ADK session Create fail.
@@ -121,48 +146,31 @@ func sampleTask() *domaintask.Task {
 
 // ── Execute: success ──
 
+// In the new save_task_result flow, success means: the LLM called the
+// save_task_result tool during its turn. The fakeLLM doesn't call tools, so
+// we simulate that by mocking GetTask to return Status=completed after the
+// run. The executor reads the task to confirm the result was persisted and
+// notifies the user without calling completeTask itself.
 func TestExecute_Success(t *testing.T) {
 	te := newTestExecutor(t, &fakeLLM{text: "营收增长了 12%"})
 	tk := sampleTask()
+	te.setTaskCompleted() // simulate save_task_result having been called
 
-	// The executor calls: UpdateStatus(running) → (run) → UpdateTaskResult →
-	// UpdateStatus(completed) → notif.Send. TaskService methods are best-effort
-	// (errors ignored) so returning nil is fine; we assert they were CALLED.
 	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusRunning).Return(nil)
-	te.tasks.On("UpdateTaskResult", "task_1", mock.Anything).Return(nil)
-	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusCompleted).Return(nil)
 	te.notif.On("Send", mock.Anything, mock.Anything, "task", []string{"u1"}).Return(nil, nil)
 
 	err := te.exec.Execute(context.Background(), tk)
 	require.NoError(t, err)
 
 	te.tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusRunning)
-	te.tasks.AssertCalled(t, "UpdateTaskResult", "task_1", mock.Anything)
-	te.tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
 	te.notif.AssertCalled(t, "Send", mock.Anything, mock.Anything, "task", []string{"u1"})
 
-	// §9.5: UpdateStatus(running) must precede UpdateStatus(completed).
-	runningIdx, completedIdx := -1, -1
-	for i, c := range te.tasks.Calls {
-		if c.Method == "UpdateStatus" && len(c.Arguments) > 1 && c.Arguments[1] == domaintask.StatusRunning {
-			runningIdx = i
-		}
-		if c.Method == "UpdateStatus" && len(c.Arguments) > 1 && c.Arguments[1] == domaintask.StatusCompleted {
-			completedIdx = i
-		}
-	}
-	assert.GreaterOrEqual(t, runningIdx, 0, "UpdateStatus(running) should be called")
-	assert.GreaterOrEqual(t, completedIdx, 0, "UpdateStatus(completed) should be called")
-	assert.Less(t, runningIdx, completedIdx, "UpdateStatus(running) must precede UpdateStatus(completed)")
-
-	// Verify the result carries the LLM output.
-	for _, c := range te.tasks.Calls {
-		if c.Method == "UpdateTaskResult" {
-			res := c.Arguments.Get(1).(map[string]interface{})
-			assert.Equal(t, "营收增长了 12%", res["content"])
-			assert.Equal(t, "success", res["status"])
-		}
-	}
+	// In the save_task_result flow, the executor does NOT call
+	// UpdateTaskResult / UpdateStatus(completed) itself — the LLM-driven tool
+	// does. Asserting their absence prevents regressions where the executor
+	// re-introduces a parallel completion path.
+	te.tasks.AssertNotCalled(t, "UpdateTaskResult", mock.Anything, mock.Anything)
+	te.tasks.AssertNotCalled(t, "UpdateError", mock.Anything, mock.Anything)
 }
 
 // ── Execute: runtime error → failure path ──
@@ -234,17 +242,15 @@ func TestExecute_SystemUserSkipsNotification(t *testing.T) {
 	te := newTestExecutor(t, &fakeLLM{text: "scheduled result"})
 	tk := sampleTask()
 	tk.UserID = "system" // scheduled task
+	te.setTaskCompleted()
 
 	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusRunning).Return(nil)
-	te.tasks.On("UpdateTaskResult", "task_1", mock.Anything).Return(nil)
-	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusCompleted).Return(nil)
 
 	err := te.exec.Execute(context.Background(), tk)
 	require.NoError(t, err)
 
 	// System user must not receive a notification.
 	te.notif.AssertNotCalled(t, "Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-	te.tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
 }
 
 // ── Execute: nil notifier does not panic (defensive) ──
@@ -265,10 +271,13 @@ func TestExecute_NilNotifier(t *testing.T) {
 	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
 		return rt, nil
 	})
+	patches.ApplyMethodFunc(registry, "GetOrCreateWithInstruction", func(ctx context.Context, modelID string, suffix string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
 
 	tasks.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
-	tasks.On("UpdateTaskResult", mock.Anything, mock.Anything).Return(nil)
-	// wasCancelled re-check (returns a non-cancelled task so completeTask runs).
+	tasks.On("UpdateError", mock.Anything, mock.Anything).Return(nil)
+	// wasCancelled re-check (returns a non-cancelled task).
 	tasks.On("GetTask", mock.Anything).Return(&domaintask.Task{Status: domaintask.StatusRunning}, nil)
 
 	require.NotPanics(t, func() {
@@ -285,15 +294,13 @@ func TestExecute_EmptySessionID(t *testing.T) {
 	te := newTestExecutor(t, &fakeLLM{text: "async result"})
 	tk := sampleTask()
 	tk.SessionID = "" // task created via POST /tasks without a session binding
+	te.setTaskCompleted()
 
 	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusRunning).Return(nil)
-	te.tasks.On("UpdateTaskResult", "task_1", mock.Anything).Return(nil)
-	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusCompleted).Return(nil)
 	te.notif.On("Send", mock.Anything, mock.Anything, "task", []string{"u1"}).Return(nil, nil)
 
 	err := te.exec.Execute(context.Background(), tk)
 	require.NoError(t, err, "empty SessionID should not fail — executor creates an ADK session")
-	te.tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
 }
 
 // ── Execute: nil circuit breaker runs unprotected (defensive) ──
@@ -314,16 +321,20 @@ func TestExecute_NilCircuitBreaker(t *testing.T) {
 	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
 		return rt, nil
 	})
+	patches.ApplyMethodFunc(registry, "GetOrCreateWithInstruction", func(ctx context.Context, modelID string, suffix string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
 
 	tasks.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
-	tasks.On("UpdateTaskResult", mock.Anything, mock.Anything).Return(nil)
-	// wasCancelled re-check (returns a non-cancelled task so completeTask runs).
+	tasks.On("UpdateError", mock.Anything, mock.Anything).Return(nil)
 	tasks.On("GetTask", mock.Anything).Return(&domaintask.Task{Status: domaintask.StatusRunning}, nil)
 	notif.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
+	// fakeLLM doesn't call save_task_result — the executor retries and
+	// eventually fails the task. With nil circuit breaker the run is
+	// unprotected (defensive code path). Expect no panic, run completes.
 	err = exec.Execute(context.Background(), sampleTask())
-	require.NoError(t, err)
-	tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
+	require.Error(t, err)
 }
 
 // ── Execute: cancellation handling (SPEC-063) ──
@@ -366,11 +377,14 @@ func TestExecute_CancelledDuringExecution(t *testing.T) {
 	patches.ApplyMethodFunc(registry, "GetOrCreate", func(ctx context.Context, modelID string) (*adkruntime.Runtime, error) {
 		return rt, nil
 	})
+	patches.ApplyMethodFunc(registry, "GetOrCreateWithInstruction", func(ctx context.Context, modelID string, suffix string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
 
 	tk := sampleTask()
 	tasks.On("UpdateStatus", "task_1", domaintask.StatusRunning).Return(nil)
 	// wasCancelled re-check returns a CANCELLED task → executor must skip
-	// completeTask (not overwrite cancelled with completed).
+	// save_task_result logic and not overwrite cancelled with completed/failed.
 	tasks.On("GetTask", "task_1").Return(&domaintask.Task{ID: "task_1", Status: domaintask.StatusCancelled}, nil)
 
 	err = exec.Execute(context.Background(), tk)
@@ -437,9 +451,9 @@ func TestBuildExecutorState(t *testing.T) {
 func TestExecute_NotificationSendError(t *testing.T) {
 	te := newTestExecutor(t, &fakeLLM{text: "ok"})
 	tk := sampleTask()
+	te.setTaskCompleted() // simulate save_task_result fired
 
 	te.tasks.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
-	te.tasks.On("UpdateTaskResult", mock.Anything, mock.Anything).Return(nil)
 	// notif.Send fails — the executor must log and continue (not panic).
 	te.notif.On("Send", mock.Anything, mock.Anything, "task", []string{"u1"}).
 		Return(nil, fmt.Errorf("notif service down"))
@@ -451,19 +465,10 @@ func TestExecute_NotificationSendError(t *testing.T) {
 	te.notif.AssertNumberOfCalls(t, "Send", 1)
 }
 
-func TestCompleteTask_PersistsResultAndNotifies(t *testing.T) {
-	te := newTestExecutor(t, &fakeLLM{text: "ok"})
-	tk := sampleTask()
-	te.tasks.On("UpdateTaskResult", "task_1", mock.Anything).Return(nil)
-	te.tasks.On("UpdateStatus", "task_1", domaintask.StatusCompleted).Return(nil)
-	te.notif.On("Send", mock.Anything, mock.Anything, "task", mock.Anything).Return(nil, nil)
-
-	te.exec.completeTask(tk, "final answer")
-	te.tasks.AssertCalled(t, "UpdateTaskResult", "task_1", mock.Anything)
-	te.tasks.AssertCalled(t, "UpdateStatus", "task_1", domaintask.StatusCompleted)
-	te.notif.AssertNumberOfCalls(t, "Send", 1)
-}
-
+// TestFailTask_PersistsErrorAndNotifies verifies the failure path
+// (UpdateError + notify). completeTask was removed when the executor was
+// refactored to read save_task_result from the task DB row rather than
+// driving completion itself.
 func TestFailTask_PersistsErrorAndNotifies(t *testing.T) {
 	te := newTestExecutor(t, &fakeLLM{text: "ok"})
 	tk := sampleTask()

@@ -77,6 +77,10 @@ type SessionService interface {
 	// before persistence; the DB always stores a concrete ID). Once bound,
 	// a session's model cannot be changed.
 	Create(userID, sessionType, modelID string) (*Session, error)
+	// CreateTaskSession creates a session flagged as an autonomous task run.
+	// The flag tells downstream consumers (chat UI, stats) this is not a
+	// real-time user conversation.
+	CreateTaskSession(userID, modelID string) (*Session, error)
 	Get(id string) (*Session, error)
 	Renew(id string) error
 	Cleanup() (int64, error)

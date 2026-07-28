@@ -58,6 +58,13 @@ func predefinedSkills() []skill.SkillConfig {
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
+		{
+			Name:        "save_task_result",
+			DisplayName: "任务结果保存",
+			Description: "异步/定时任务结束时强制调用以保存分析结果（task_id 从 session 自动注入）",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
 	}
 }
 

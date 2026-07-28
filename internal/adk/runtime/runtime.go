@@ -52,7 +52,28 @@ type Runtime struct {
 	appName string
 }
 
-// DefaultInstruction is the agent's system prompt.
+// TaskInstructionSuffix is appended to the agent's system prompt when an
+// async/scheduled task invokes the LLM. The suffix forces the model to
+// persist its work via the save_task_result tool — without that call the
+// task has no result, and the executor retries the same session once.
+const TaskInstructionSuffix = `## Task Mode — Mandatory Result Persistence
+
+You are running inside an automated task (async or scheduled). The task
+orchestrator expects you to finish by calling the **save_task_result**
+tool with a non-empty ` + "`content`" + ` argument. Without that call:
+
+- The task has no result and the system retries you (using the same
+  conversation history in this session).
+- A second failure marks the task as failed in the dashboard.
+
+**At the end of your analysis, you MUST call save_task_result with the
+final answer (or a summary) as ` + "`content`" + `. The content is what the
+user will see, so make it complete and self-contained.**
+
+If something goes wrong mid-task (DB error, model limit, missing data,
+etc.) call save_task_result with content describing the failure instead —
+this still marks the task completed and surfaces the issue to the user.`
+
 const DefaultInstruction = `You are a data analysis agent. Help the user analyze data, query knowledge bases, compute statistics, and produce reports.
 Use the available tools when they help answer the question. Answer in the same language the user uses.
 
