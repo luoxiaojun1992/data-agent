@@ -157,34 +157,41 @@ func (_m *KBRepository) GetDoc(ctx context.Context, id string) (*knowledge.Knowl
 	return r0, r1
 }
 
-// ListAllDocs provides a mock function with given fields: ctx
-func (_m *KBRepository) ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeDoc, error) {
-	ret := _m.Called(ctx)
+// ListAllDocs provides a mock function with given fields: ctx, skip, limit
+func (_m *KBRepository) ListAllDocs(ctx context.Context, skip int64, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
+	ret := _m.Called(ctx, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListAllDocs")
 	}
 
 	var r0 []*knowledge.KnowledgeDoc
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) ([]*knowledge.KnowledgeDoc, error)); ok {
-		return rf(ctx)
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) ([]*knowledge.KnowledgeDoc, int64, error)); ok {
+		return rf(ctx, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) []*knowledge.KnowledgeDoc); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) []*knowledge.KnowledgeDoc); ok {
+		r0 = rf(ctx, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*knowledge.KnowledgeDoc)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = rf(ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) int64); ok {
+		r1 = rf(ctx, skip, limit)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(int64)
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(context.Context, int64, int64) error); ok {
+		r2 = rf(ctx, skip, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // ListDocs provides a mock function with given fields: ctx, userID, skip, limit

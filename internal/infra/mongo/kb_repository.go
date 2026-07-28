@@ -61,21 +61,24 @@ func (r *KBRepository) ListDocs(ctx context.Context, userID string, skip, limit 
 	return out, total, nil
 }
 
-func (r *KBRepository) ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeDoc, error) {
-	cursor, err := r.db.Collection("knowledge_docs").Find(ctx, bson.M{})
+func (r *KBRepository) ListAllDocs(ctx context.Context, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
+	filter := bson.M{}
+	total, _ := r.db.Collection("knowledge_docs").CountDocuments(ctx, filter)
+	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetSkip(skip).SetLimit(limit)
+	cursor, err := r.db.Collection("knowledge_docs").Find(ctx, filter, opts)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
 	var docs []bson.M
 	if err := cursor.All(ctx, &docs); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	out := make([]*knowledge.KnowledgeDoc, len(docs))
 	for i, d := range docs {
 		out[i] = docToKnowledgeDoc(d)
 	}
-	return out, nil
+	return out, total, nil
 }
 
 func (r *KBRepository) UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount, progressPercent int) error {

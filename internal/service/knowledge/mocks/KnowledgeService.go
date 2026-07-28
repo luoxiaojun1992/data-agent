@@ -111,64 +111,78 @@ func (_m *KnowledgeService) GetDoc(id string) (*domainknowledge.KnowledgeDoc, er
 	return r0, r1
 }
 
-// ListAllDocs provides a mock function with no fields
-func (_m *KnowledgeService) ListAllDocs() ([]*domainknowledge.KnowledgeDoc, error) {
-	ret := _m.Called()
+// ListAllDocs provides a mock function with given fields: page, pageSize
+func (_m *KnowledgeService) ListAllDocs(page int, pageSize int) ([]*domainknowledge.KnowledgeDoc, int64, error) {
+	ret := _m.Called(page, pageSize)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListAllDocs")
 	}
 
 	var r0 []*domainknowledge.KnowledgeDoc
-	var r1 error
-	if rf, ok := ret.Get(0).(func() ([]*domainknowledge.KnowledgeDoc, error)); ok {
-		return rf()
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(int, int) ([]*domainknowledge.KnowledgeDoc, int64, error)); ok {
+		return rf(page, pageSize)
 	}
-	if rf, ok := ret.Get(0).(func() []*domainknowledge.KnowledgeDoc); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(int, int) []*domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(page, pageSize)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*domainknowledge.KnowledgeDoc)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(int, int) int64); ok {
+		r1 = rf(page, pageSize)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(int64)
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(int, int) error); ok {
+		r2 = rf(page, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
-// ListDocs provides a mock function with given fields: userID
-func (_m *KnowledgeService) ListDocs(userID string) ([]*domainknowledge.KnowledgeDoc, error) {
-	ret := _m.Called(userID)
+// ListDocs provides a mock function with given fields: userID, page, pageSize
+func (_m *KnowledgeService) ListDocs(userID string, page int, pageSize int) ([]*domainknowledge.KnowledgeDoc, int64, error) {
+	ret := _m.Called(userID, page, pageSize)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListDocs")
 	}
 
 	var r0 []*domainknowledge.KnowledgeDoc
-	var r1 error
-	if rf, ok := ret.Get(0).(func(string) ([]*domainknowledge.KnowledgeDoc, error)); ok {
-		return rf(userID)
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(string, int, int) ([]*domainknowledge.KnowledgeDoc, int64, error)); ok {
+		return rf(userID, page, pageSize)
 	}
-	if rf, ok := ret.Get(0).(func(string) []*domainknowledge.KnowledgeDoc); ok {
-		r0 = rf(userID)
+	if rf, ok := ret.Get(0).(func(string, int, int) []*domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(userID, page, pageSize)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*domainknowledge.KnowledgeDoc)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(userID)
+	if rf, ok := ret.Get(1).(func(string, int, int) int64); ok {
+		r1 = rf(userID, page, pageSize)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(int64)
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(string, int, int) error); ok {
+		r2 = rf(userID, page, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // Search provides a mock function with given fields: userID, query, topK, role

@@ -62,14 +62,28 @@ func (s *Service) DeleteDoc(id string) error {
 	return nil
 }
 
-// ListDocs returns docs (backward compat: []docs, error).
-func (s *Service) ListDocs(userID string) ([]*knowledge.KnowledgeDoc, error) {
-	docs, _, err := s.kb.ListDocs(context.Background(), userID, 0, 100)
-	return docs, err
+// ListDocs returns paginated docs for a user.
+func (s *Service) ListDocs(userID string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	skip := int64((page - 1) * pageSize)
+	return s.kb.ListDocs(context.Background(), userID, skip, int64(pageSize))
 }
 
-func (s *Service) ListAllDocs() ([]*knowledge.KnowledgeDoc, error) {
-	return s.kb.ListAllDocs(context.Background())
+// ListAllDocs returns paginated docs globally (admin).
+func (s *Service) ListAllDocs(page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	skip := int64((page - 1) * pageSize)
+	return s.kb.ListAllDocs(context.Background(), skip, int64(pageSize))
 }
 
 func (s *Service) AddChunks(docID string, texts []string) error {

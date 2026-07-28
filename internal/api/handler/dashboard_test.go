@@ -40,7 +40,7 @@ func TestDashboardHandler_Get(t *testing.T) {
 		{ID: "t2", Status: domaintask.StatusPending},
 		{ID: "t3", Status: domaintask.StatusFailed},
 	}, nil)
-	kb.On("ListAllDocs").Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}, {ID: "d2"}}, nil)
+	kb.On("ListAllDocs", 1, 1).Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}, {ID: "d2"}}, int64(2), nil)
 
 	h := NewDashboardHandler(tasks, kb, nil)
 	gin.SetMode(gin.TestMode)

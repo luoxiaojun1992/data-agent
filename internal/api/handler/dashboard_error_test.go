@@ -24,7 +24,7 @@ func TestDashboardHandler_Get_AllServicesError(t *testing.T) {
 	kb := kbmocks.NewKnowledgeService(t)
 
 	tasks.On("ListAllTasks", "u1").Return(([]*domaintask.Task)(nil), errStr("task db down"))
-	kb.On("ListAllDocs").Return(([]*domainknowledge.KnowledgeDoc)(nil), errStr("kb db down"))
+	kb.On("ListAllDocs", 1, 1).Return(([]*domainknowledge.KnowledgeDoc)(nil), int64(0), errStr("kb db down"))
 
 	h := NewDashboardHandler(tasks, kb, nil)
 	gin.SetMode(gin.TestMode)
@@ -64,7 +64,7 @@ func TestRegisterDashboardRoutes(t *testing.T) {
 	tasks := taskmocks.NewTaskService(t)
 	kb := kbmocks.NewKnowledgeService(t)
 	tasks.On("ListAllTasks", "u1").Return([]*domaintask.Task{{ID: "t1", Status: domaintask.StatusCompleted}}, nil)
-	kb.On("ListAllDocs").Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}}, nil)
+	kb.On("ListAllDocs", 1, 1).Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}}, int64(1), nil)
 	h := NewDashboardHandler(tasks, kb, nil)
 	midd := func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() }
 	RegisterDashboardRoutes(r, midd, h)

@@ -198,12 +198,12 @@ func TestDeleteDoc_NotFound(t *testing.T) {
 
 func TestListDocs_Success(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
-	repo.On("ListDocs", mock.Anything, "user1", int64(0), int64(100)).Return([]*knowledge.KnowledgeDoc{
+	repo.On("ListDocs", mock.Anything, "user1", int64(0), int64(20)).Return([]*knowledge.KnowledgeDoc{
 		{ID: "d1", Title: "Doc 1", UserID: "user1"},
 		{ID: "d2", Title: "Doc 2", UserID: "user1"},
 	}, int64(2), nil)
 
-	docs, err := NewService(repo).ListDocs("user1")
+	docs, _, err := NewService(repo).ListDocs("user1", 1, 20)
 	if err != nil {
 		t.Fatalf("ListDocs failed: %v", err)
 	}
@@ -214,9 +214,9 @@ func TestListDocs_Success(t *testing.T) {
 
 func TestListDocs_Empty(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
-	repo.On("ListDocs", mock.Anything, "user1", int64(0), int64(100)).Return([]*knowledge.KnowledgeDoc{}, int64(2), nil)
+	repo.On("ListDocs", mock.Anything, "user1", int64(0), int64(20)).Return([]*knowledge.KnowledgeDoc{}, int64(2), nil)
 
-	docs, err := NewService(repo).ListDocs("user1")
+	docs, _, err := NewService(repo).ListDocs("user1", 1, 20)
 	if err != nil {
 		t.Fatalf("ListDocs failed: %v", err)
 	}
@@ -227,11 +227,11 @@ func TestListDocs_Empty(t *testing.T) {
 
 func TestListAllDocs_Success(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
-	repo.On("ListAllDocs", mock.Anything).Return([]*knowledge.KnowledgeDoc{
+	repo.On("ListAllDocs", mock.Anything, int64(0), int64(20)).Return([]*knowledge.KnowledgeDoc{
 		{ID: "d1"}, {ID: "d2"}, {ID: "d3"},
-	}, nil)
+	}, int64(3), nil)
 
-	docs, err := NewService(repo).ListAllDocs()
+	docs, _, err := NewService(repo).ListAllDocs(1, 20)
 	if err != nil {
 		t.Fatalf("ListAllDocs failed: %v", err)
 	}

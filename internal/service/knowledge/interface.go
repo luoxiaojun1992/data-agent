@@ -13,8 +13,8 @@ type KnowledgeService interface {
 	CreateDoc(userID, title, fileName, fileType string, sizeBytes int64, gridFSFileID string) (*knowledge.KnowledgeDoc, error)
 	GetDoc(id string) (*knowledge.KnowledgeDoc, error)
 	DeleteDoc(id string) error
-	ListDocs(userID string) ([]*knowledge.KnowledgeDoc, error)
-	ListAllDocs() ([]*knowledge.KnowledgeDoc, error)
+	ListDocs(userID string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
+	ListAllDocs(page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
 	AddChunks(docID string, texts []string) error
 	Search(userID, query string, topK int, role string) ([]knowledge.SearchResult, error)
 	UploadFile(fileName, contentType string, reader io.Reader) (string, error)

@@ -491,9 +491,9 @@ func TestDeleteDoc_ChunkDeletionErrorStillReturnsNil(t *testing.T) {
 // TestListDocs_RepoError verifies ListDocs surfaces the repository error.
 func TestListDocs_RepoError(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("ListDocs", mock.Anything, "user1", int64(0), int64(100)).Return(nil, int64(0), errors.New("db connection lost"))
+	kbRepo.On("ListDocs", mock.Anything, "user1", int64(0), int64(20)).Return(nil, int64(0), errors.New("db connection lost"))
 
-	docs, err := NewService(kbRepo).ListDocs("user1")
+	docs, _, err := NewService(kbRepo).ListDocs("user1", 1, 20)
 	if err == nil {
 		t.Fatal("expected error from ListDocs")
 	}
@@ -510,9 +510,9 @@ func TestListDocs_RepoError(t *testing.T) {
 // TestListAllDocs_RepoError verifies ListAllDocs surfaces the repository error.
 func TestListAllDocs_RepoError(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("ListAllDocs", mock.Anything).Return(nil, errors.New("aggregate failed"))
+	kbRepo.On("ListAllDocs", mock.Anything, int64(0), int64(20)).Return(nil, int64(0), errors.New("aggregate failed"))
 
-	docs, err := NewService(kbRepo).ListAllDocs()
+	docs, _, err := NewService(kbRepo).ListAllDocs(1, 20)
 	if err == nil {
 		t.Fatal("expected error from ListAllDocs")
 	}

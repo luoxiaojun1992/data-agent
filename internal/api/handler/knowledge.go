@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
@@ -93,15 +94,16 @@ func (h *KnowledgeHandler) DeleteDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "deleted", "id": docID})
 }
 
-// ListDocs lists all documents for the current user.
+// ListDocs lists documents for the current user with pagination.
 func (h *KnowledgeHandler) ListDocs(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-	docs, err := h.svc.ListDocs(userID.(string))
+	page, pageSize := parsePage(c)
+	docs, total, err := h.svc.ListDocs(userID.(string), page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, docs)
+	c.JSON(http.StatusOK, gin.H{"docs": docs, "total": total, "page": page, "page_size": pageSize})
 }
 
 // Search performs hybrid search on the knowledge base.
@@ -140,12 +142,25 @@ func (h *KnowledgeHandler) AddChunks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "indexed", "doc_id": docID, "chunk_count": len(req.Chunks)})
 }
 
-// ListAllDocs returns all knowledge documents globally (admin view).
+// ListAllDocs returns knowledge documents globally with pagination (admin view).
 func (h *KnowledgeHandler) ListAllDocs(c *gin.Context) {
-	docs, err := h.svc.ListAllDocs()
+	page, pageSize := parsePage(c)
+	docs, total, err := h.svc.ListAllDocs(page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, docs)
+	c.JSON(http.StatusOK, gin.H{"docs": docs, "total": total, "page": page, "page_size": pageSize})
+}
+
+func parsePage(c *gin.Context) (int, int) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	return page, pageSize
 }

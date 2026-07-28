@@ -255,7 +255,7 @@ func TestListDocs_Success(t *testing.T) {
 		{ID: "kbdoc_2", Title: "Doc 2", UserID: "user-1"},
 	}
 
-	svc.On("ListDocs", mock.Anything).Return(docs, nil)
+	svc.On("ListDocs", mock.Anything, mock.Anything, mock.Anything).Return(docs, int64(3), nil)
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
@@ -270,7 +270,7 @@ func TestListDocs_Error(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListDocs", mock.Anything).Return(nil, fmt.Errorf("db error"))
+	svc.On("ListDocs", mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
@@ -285,7 +285,7 @@ func TestListDocs_Empty(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListDocs", mock.Anything).Return([]*knowledge.KnowledgeDoc{}, nil)
+	svc.On("ListDocs", mock.Anything, mock.Anything, mock.Anything).Return([]*knowledge.KnowledgeDoc{}, int64(0), nil)
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
@@ -457,7 +457,7 @@ func TestListAllDocs_Success(t *testing.T) {
 		{ID: "kbdoc_2", Title: "Doc 2", UserID: "user-2"},
 	}
 
-	svc.On("ListAllDocs").Return(docs, nil)
+	svc.On("ListAllDocs", 1, 20).Return(docs, int64(3), nil)
 
 	c, w := newGinContext("GET", "/knowledge/admin/docs", "")
 	h.ListAllDocs(c)
@@ -471,7 +471,7 @@ func TestListAllDocs_Error(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListAllDocs").Return(nil, fmt.Errorf("db error"))
+	svc.On("ListAllDocs", 1, 20).Return(nil, int64(0), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/knowledge/admin/docs", "")
 	h.ListAllDocs(c)
@@ -485,7 +485,7 @@ func TestListAllDocs_Empty(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListAllDocs").Return([]*knowledge.KnowledgeDoc{}, nil)
+	svc.On("ListAllDocs", 1, 20).Return([]*knowledge.KnowledgeDoc{}, int64(0), nil)
 
 	c, w := newGinContext("GET", "/knowledge/admin/docs", "")
 	h.ListAllDocs(c)

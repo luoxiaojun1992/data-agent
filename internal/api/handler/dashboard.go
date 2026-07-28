@@ -55,11 +55,11 @@ func (h *DashboardHandler) Get(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	tasks, _ := h.taskService.ListAllTasks(userID)
-	docs, _ := h.kbService.ListAllDocs()
+	_, total, _ := h.kbService.ListAllDocs(1, 1)
 
 	c.JSON(http.StatusOK, gin.H{
 		"task_stats": aggregateTaskStats(tasks),
-		"kb_docs":    len(docs),
+		"kb_docs":    total,
 	})
 }
 

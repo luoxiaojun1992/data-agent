@@ -15,7 +15,7 @@ type KBRepository interface {
 	GetDoc(ctx context.Context, id string) (*knowledge.KnowledgeDoc, error)
 	DeleteDoc(ctx context.Context, id string) error
 	ListDocs(ctx context.Context, userID string, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
-	ListAllDocs(ctx context.Context) ([]*knowledge.KnowledgeDoc, error)
+	ListAllDocs(ctx context.Context, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
 	UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount, progressPercent int) error
 	AddChunks(ctx context.Context, chunks []*knowledge.Chunk) error
 	DeleteChunks(ctx context.Context, docID string) (int64, error)
