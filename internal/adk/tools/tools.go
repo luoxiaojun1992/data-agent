@@ -11,6 +11,7 @@ import (
 	reportpkg "github.com/luoxiaojun1992/data-agent/internal/logic/report"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
+	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	knowledgepkg "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/memory"
@@ -22,6 +23,8 @@ import (
 type Deps struct {
 	// KBService backs the knowledge_search tool. Required.
 	KBService *knowledgepkg.Service
+	// SkillConfig backs sql_executor config reads.
+	SkillConfig *skillsvc.ConfigService
 	// Memory backs the memory_search and memory_write tools.
 	Memory memory.Service
 	// MemoryWriter is an optional writer for agent-triggered memory_write.
@@ -46,36 +49,35 @@ func stateString(tc agent.ToolContext, key string) string {
 	return s
 }
 
-// ---- sql_validate ----
+// ---- sql_executor ----
 
-// SQLValidateArgs are the arguments for the sql_validate tool.
-type SQLValidateArgs struct {
-	Query  string `json:"query" jsonschema:"SQL SELECT statement to validate"`
+// SQLExecutorArgs are the arguments for the sql_executor tool.
+type SQLExecutorArgs struct {
+	Query  string `json:"query" jsonschema:"SQL SELECT statement to validate and execute"`
 	Params []any  `json:"params,omitempty" jsonschema:"Parameterized query bind values"`
 }
 
-// SQLValidateResult is the outcome of SQL safety validation.
-type SQLValidateResult struct {
-	Status  string `json:"status"`
-	Query   string `json:"query"`
-	Message string `json:"message"`
-	Reason  string `json:"reason,omitempty"`
-}
+// SQLExecutorResult is the outcome of SQL execution.
+type SQLExecutorResult sqlpkg.ExecResult
 
-func sqlValidate(tc agent.ToolContext, args SQLValidateArgs) (SQLValidateResult, error) {
-	if strings.TrimSpace(args.Query) == "" {
-		return SQLValidateResult{}, fmt.Errorf("sql_validate: missing required parameter 'query'")
+func sqlExecutor(deps *Deps) functiontool.Func[SQLExecutorArgs, SQLExecutorResult] {
+	return func(tc agent.ToolContext, args SQLExecutorArgs) (SQLExecutorResult, error) {
+		if strings.TrimSpace(args.Query) == "" {
+			return SQLExecutorResult{}, fmt.Errorf("sql_executor: missing required parameter 'query'")
+		}
+
+		// Read skill config for MySQL connection
+		var execCfg sqlpkg.ExecConfig
+		if deps.SkillConfig != nil {
+			_ = deps.SkillConfig.GetConfig(tc, "sql_executor", &execCfg)
+		}
+		if execCfg.DSN == "" {
+			return SQLExecutorResult{}, fmt.Errorf("sql_executor: MySQL not configured — set DSN in admin skill config")
+		}
+
+		result, err := sqlpkg.Execute(execCfg, args.Query, args.Params)
+		return SQLExecutorResult(result), err
 	}
-	result := sqlpkg.Validate(args.Query, args.Params)
-	if !result.Allowed {
-		return SQLValidateResult{}, fmt.Errorf("sql_validate: query rejected: %s", result.Reason)
-	}
-	return SQLValidateResult{
-		Status:  "validated",
-		Query:   args.Query,
-		Message: "SQL query passed safety validation. Execute against your database.",
-		Reason:  result.Reason,
-	}, nil
 }
 
 // ---- stats_compute ----
@@ -321,10 +323,10 @@ type toolSpec struct {
 func specs(deps *Deps) []toolSpec {
 	out := []toolSpec{
 		{
-			name:        "sql_validate",
-			description: "Validates SQL SELECT queries against safety rules before execution",
+			name:        "sql_executor",
+			description: "Validates and executes safe SQL SELECT queries against the configured MySQL database. Validation blocks DML/DDL statements.",
 			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "sql_validate", Description: "Validates SQL SELECT queries against safety rules before execution"}, sqlValidate)
+				return functiontool.New(functiontool.Config{Name: "sql_executor", Description: "Validates and executes safe SQL SELECT queries against the configured MySQL database. Validation blocks DML/DDL statements."}, sqlExecutor(deps))
 			},
 		},
 		{

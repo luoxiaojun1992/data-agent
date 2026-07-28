@@ -39,6 +39,7 @@ type RouteDeps struct {
 	Dashboard    *DashboardHandler
 	IMBind       *IMBindHandler
 	Stats        *StatsHandler
+	SkillConfig  *SkillConfigHandler
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
 	IMWebhook http.HandlerFunc
@@ -124,6 +125,12 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 			RegisterEnhanceRoute(chatRoutes, deps.Enhance)
 		}
 	}
+	if deps.SkillConfig != nil {
+		skillCfg := router.Group("/api/v1")
+		skillCfg.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
+		RegisterSkillConfigRoutes(skillCfg, deps.SkillConfig)
+	}
+
 	if deps.Agent != nil {
 		agentRoutes := router.Group("/api/v1/agent")
 		agentRoutes.Use(deps.JWTManager.AuthMiddleware())

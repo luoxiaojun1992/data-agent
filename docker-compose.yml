@@ -59,6 +59,25 @@ services:
       retries: 10
       start_period: 10s
 
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=data_agent
+      - MYSQL_USER=agent
+      - MYSQL_PASSWORD=agent123
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
   vault:
     image: hashicorp/vault:1.18
     ports:
@@ -123,6 +142,7 @@ services:
       - EMBEDDING_VECTOR_DIM=768
       - EMBEDDING_BASE_URL=http://ollama:11434/v1
       - EMBEDDING_MODEL=nomic-embed-text
+      - MYSQL_DSN=agent:agent123@tcp(mysql:3306)/data_agent?charset=utf8mb4&parseTime=True
       - SEAWEEDFS_MASTER=http://seaweedfs:9333
       - SEAWEEDFS_FILER=http://seaweedfs:8080
       - LLM_BASE_URL=http://mockllm:8082/v1
@@ -179,3 +199,4 @@ volumes:
   qdrant-data:
   seaweedfs-data:
   ollama-data:
+  mysql-data:

@@ -44,6 +44,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
+	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"go.uber.org/zap"
 
@@ -95,6 +96,8 @@ type serverDependencies struct {
 	// Handlers + services (populated by wire.go init functions).
 	kbService        *knowledge.Service
 	kbHandler        *handler.KnowledgeHandler
+	skillConfigSvc   *skillsvc.ConfigService
+	skillConfigHandler *handler.SkillConfigHandler
 	artifactStorage  *artifact_svc.Storage
 	workspaceMgr     *workspace.Manager
 	artifactHandler  *handler.ArtifactHandler
@@ -158,6 +161,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initADKModel(&deps)
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
+	initSkillConfig(&deps, mongoClient)
 	initServices(&deps, mongoClient, logger)
 	initArtifacts(&deps, mongoClient, cfg)
 	initAuditAndNotifications(&deps, mongoClient)

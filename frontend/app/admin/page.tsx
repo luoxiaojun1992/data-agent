@@ -15,6 +15,7 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[
             { title: '模型配置', desc: '管理 LLM 模型配置与参数', icon: '🤖', href: '/admin/models' },
+            { title: 'Skill 管理', desc: '管理 Agent 技能工具与配置', icon: '🔧', href: '/admin/skills' },
             { title: '用户管理', desc: '用户 CRUD 与角色分配', icon: '👥', href: '/admin/users' },
             { title: '邀请管理', desc: '生成和管理邀请注册链接', icon: '📨', href: '/admin/invites' },
             { title: '审计日志', desc: '查看系统操作审计记录', icon: '📋', href: '/admin/audit' },

@@ -44,6 +44,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/service/role"
+	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/user"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
@@ -190,6 +191,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 
 	toolDeps := &adktools.Deps{
 		KBService:    deps.kbService,
+		SkillConfig:  deps.skillConfigSvc,
 		Memory:       deps.memoryService,
 		MemoryWriter: deps.memoryKit,
 		AppName:      appName,
@@ -225,6 +227,12 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 
 func initEnhance(deps *serverDependencies) {
 	deps.enhanceService = enhancesvc.NewService(deps.modelCfg, deps.llmCache, deps.llmRecorder)
+}
+
+func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
+	skillRepo := mongoinfra.NewSkillConfigRepo(mongoClient.DB())
+	deps.skillConfigSvc = skillsvc.NewConfigService(skillRepo)
+	deps.skillConfigHandler = handler.NewSkillConfigHandler(deps.skillConfigSvc)
 }
 
 func initIM(deps *serverDependencies) {
@@ -380,6 +388,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 	toolLister := handler.ToolListerFunc(func() []string {
 		names, err := adktools.Names(&adktools.Deps{
 			KBService:    deps.kbService,
+			SkillConfig:  deps.skillConfigSvc,
 			Memory:       deps.memoryService,
 			MemoryWriter: deps.memoryKit,
 			AppName:      appName,
@@ -412,6 +421,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Dashboard:     handler.NewDashboardHandler(deps.taskService, deps.kbService, deps.llmRecorder),
 		IMBind:        imBindHandler,
 		Stats:         handler.NewStatsHandler(deps.llmRecorder),
+		SkillConfig:   deps.skillConfigHandler,
 		IMWebhook:     imWebhook,
 		HermesURL:     os.Getenv("HERMES_URL"),
 		AppName:       appName,
