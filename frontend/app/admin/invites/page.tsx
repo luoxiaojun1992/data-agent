@@ -80,15 +80,15 @@ function InvitesContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setCreateError(data.error || '创建邀请失败');
+        setCreateError(data.error || `创建失败 (${res.status})`);
         return;
       }
       setGeneratedURL(data.invite_url);
       setShowForm(false);
       setEmail('');
       loadInvites();
-    } catch {
-      setCreateError('网络错误');
+    } catch (e: any) {
+      setCreateError(`请求失败: ${e?.message || e}`);
     } finally {
       setCreating(false);
     }

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
@@ -60,10 +61,19 @@ func getRolePermissions(role string) []string {
 }
 
 // hasPermission checks if a permission exists in the list.
+// A `_all` suffix grants the corresponding scoped permission too:
+// e.g. `user:manage_all` also satisfies a `user:manage` requirement.
 func hasPermission(permissions []string, target string) bool {
 	for _, p := range permissions {
 		if p == target {
 			return true
+		}
+		// _all suffix implies the base permission.
+		if strings.HasSuffix(p, "_all") {
+			base := strings.TrimSuffix(p, "_all")
+			if base == target {
+				return true
+			}
 		}
 	}
 	return false
