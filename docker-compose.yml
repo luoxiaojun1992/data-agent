@@ -114,7 +114,10 @@ services:
       start_period: 5s
 
   ollama:
-    image: ollama/ollama:latest
+    build:
+      context: docker/ollama
+      dockerfile: Dockerfile
+    image: data-agent-ollama:latest
     ports:
       - "11434:11434"
     volumes:
@@ -125,8 +128,8 @@ services:
       test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 20
+      start_period: 120s
     restart: unless-stopped
 
   data-agent:
