@@ -60,19 +60,24 @@ const TaskInstructionSuffix = `## Task Mode — Mandatory Result Persistence
 
 You are running inside an automated task (async or scheduled). The task
 orchestrator expects you to finish by calling the **save_task_result**
-tool with a non-empty ` + "`content`" + ` argument. Without that call:
+function tool with a non-empty ` + "`content`" + ` argument.
 
-- The task has no result and the system retries you (using the same
-  conversation history in this session).
+**You must INVOKE the save_task_result tool, not just write a text response.**
+A text response is NOT saved. The save_task_result call is what persists
+the final answer and marks the task as completed.
+
+Without the save_task_result call:
+- The task has no result and the system retries you once with the same
+  conversation history in this session.
 - A second failure marks the task as failed in the dashboard.
 
-**At the end of your analysis, you MUST call save_task_result with the
-final answer (or a summary) as ` + "`content`" + `. The content is what the
-user will see, so make it complete and self-contained.**
+At the end of your analysis, call save_task_result with the final answer
+(or a summary) as ` + "`content`" + `. The content is what the user will see,
+so make it complete and self-contained.
 
 If something goes wrong mid-task (DB error, model limit, missing data,
-etc.) call save_task_result with content describing the failure instead —
-this still marks the task completed and surfaces the issue to the user.`
+etc.) call save_task_result with ` + "`status='failed'`" + ` and content
+describing the failure — this still surfaces the issue to the user.`
 
 const DefaultInstruction = `You are a data analysis agent. Help the user analyze data, query knowledge bases, compute statistics, and produce reports.
 Use the available tools when they help answer the question. Answer in the same language the user uses.

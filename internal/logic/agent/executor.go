@@ -153,9 +153,10 @@ func (e *AgentExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
 		return firstErr
 	}
 
-	retryPrompt := "Your previous turn finished without calling save_task_result. " +
-		"Please call the save_task_result tool NOW with the final answer (or a summary) as the content argument. " +
-		"Without that call the task will be marked failed."
+	retryPrompt := "Your previous turn finished without calling the save_task_result function tool. " +
+		"The system has NO saved result for this task and will mark it FAILED if you do not call the tool. " +
+		"Call save_task_result NOW with the final answer (or a summary) as the `content` argument. " +
+		"Do NOT just write a text response — you must invoke the tool."
 
 	var retryContent string
 	retryErr := e.runProtected(ctx, rt, t, runSessionID, retryPrompt, runCfg, &retryContent)
