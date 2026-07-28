@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	reportpkg "github.com/luoxiaojun1992/data-agent/internal/logic/report"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
@@ -174,48 +173,6 @@ func knowledgeSearch(deps *Deps) functiontool.Func[KnowledgeSearchArgs, Knowledg
 	}
 }
 
-// ---- save_report ----
-
-// SaveReportArgs are the arguments for the save_report tool.
-type SaveReportArgs struct {
-	Title    string `json:"title" jsonschema:"Report title"`
-	Content  string `json:"content" jsonschema:"Report content in markdown format"`
-	Validate *bool  `json:"validate,omitempty" jsonschema:"Whether to validate mandatory sections (default true)"`
-}
-
-// SaveReportResult is the save_report tool output.
-type SaveReportResult struct {
-	Title            string   `json:"title"`
-	Status           string   `json:"status"`
-	Valid            bool     `json:"valid,omitempty"`
-	DetectedSections []string `json:"detected_sections,omitempty"`
-	MissingSections  []string `json:"missing_sections,omitempty"`
-	Feedback         string   `json:"feedback,omitempty"`
-}
-
-func saveReport(tc agent.ToolContext, args SaveReportArgs) (SaveReportResult, error) {
-	if strings.TrimSpace(args.Title) == "" {
-		return SaveReportResult{}, fmt.Errorf("save_report: missing required parameter 'title'")
-	}
-	if strings.TrimSpace(args.Content) == "" {
-		return SaveReportResult{}, fmt.Errorf("save_report: missing required parameter 'content'")
-	}
-
-	result := SaveReportResult{Title: args.Title, Status: "saved"}
-	shouldValidate := args.Validate == nil || *args.Validate
-	if shouldValidate {
-		validation := reportpkg.Validate(args.Content)
-		result.Valid = validation.Valid
-		result.DetectedSections = validation.DetectedSections
-		if !validation.Valid {
-			result.MissingSections = validation.MissingSections
-			result.Feedback = validation.Feedback
-			result.Status = "validation_failed"
-		}
-	}
-	return result, nil
-}
-
 // ---- memory_search ----
 
 // MemorySearchArgs are the arguments for the memory_search tool.
@@ -334,13 +291,6 @@ func specs(deps *Deps) []toolSpec {
 			description: "Performs statistical analysis: descriptive stats, linear regression, time series decomposition",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{Name: "stats_compute", Description: "Performs statistical analysis: descriptive stats, linear regression, time series decomposition"}, statsCompute)
-			},
-		},
-		{
-			name:        "save_report",
-			description: "Validates and saves analysis reports, ensuring mandatory sections are present",
-			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "save_report", Description: "Validates and saves analysis reports, ensuring mandatory sections are present"}, saveReport)
 			},
 		},
 		{

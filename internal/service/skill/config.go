@@ -38,13 +38,6 @@ func predefinedSkills() []skill.SkillConfig {
 			ConfigJSON:  "{}",
 		},
 		{
-			Name:        "save_report",
-			DisplayName: "报告保存",
-			Description: "校验并保存 Markdown 格式的分析报告",
-			Enabled:     true,
-			ConfigJSON:  "{}",
-		},
-		{
 			Name:        "knowledge_search",
 			DisplayName: "知识库搜索",
 			Description: "结合全文索引和语义向量的混合搜索",

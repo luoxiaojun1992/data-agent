@@ -72,9 +72,7 @@ When the user asks for data analysis or statistics:
    - Use "linear_regression" for relationships between two variables.
    - Use "time_series" for trend decomposition.
 
-4. **Save analysis reports with save_report** — After completing the analysis, produce a well-structured Markdown report with sections: 摘要, 数据来源, 分析方法, 关键指标, 结论.
-
-5. **Search knowledge base with knowledge_search** — When the user references terms or concepts you need background on.
+4. **Search knowledge base with knowledge_search** — When the user references terms or concepts you need background on.
 
 ## Important Rules
 
