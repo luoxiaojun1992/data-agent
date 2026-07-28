@@ -35,15 +35,21 @@ func (r *SkillConfigRepo) List(ctx context.Context) ([]skill.SkillConfig, error)
 	var out []skill.SkillConfig
 	for cur.Next(ctx) {
 		var doc struct {
-			Key   string `bson:"key"`
-			Value string `bson:"value"`
+			Key         string `bson:"key"`
+			Value       string `bson:"value"`
+			DisplayName string `bson:"display_name"`
+			Description string `bson:"description"`
+			Enabled     bool   `bson:"enabled"`
 		}
 		if err := cur.Decode(&doc); err != nil {
 			return nil, fmt.Errorf("skill config list decode: %w", err)
 		}
 		out = append(out, skill.SkillConfig{
-			Name:       doc.Key,
-			ConfigJSON: doc.Value,
+			Name:        doc.Key,
+			DisplayName: doc.DisplayName,
+			Description: doc.Description,
+			Enabled:     doc.Enabled,
+			ConfigJSON:  doc.Value,
 		})
 	}
 	return out, nil
@@ -51,8 +57,11 @@ func (r *SkillConfigRepo) List(ctx context.Context) ([]skill.SkillConfig, error)
 
 func (r *SkillConfigRepo) Get(ctx context.Context, name string) (*skill.SkillConfig, error) {
 	var doc struct {
-		Key   string `bson:"key"`
-		Value string `bson:"value"`
+		Key         string `bson:"key"`
+		Value       string `bson:"value"`
+		DisplayName string `bson:"display_name"`
+		Description string `bson:"description"`
+		Enabled     bool   `bson:"enabled"`
 	}
 	err := r.db.Collection("system_config").FindOne(ctx, bson.M{"ns": skillConfigNS, "key": name}).Decode(&doc)
 	if err == mongo.ErrNoDocuments {
@@ -61,7 +70,13 @@ func (r *SkillConfigRepo) Get(ctx context.Context, name string) (*skill.SkillCon
 	if err != nil {
 		return nil, fmt.Errorf("skill config get: %w", err)
 	}
-	return &skill.SkillConfig{Name: doc.Key, ConfigJSON: doc.Value}, nil
+	return &skill.SkillConfig{
+		Name:        doc.Key,
+		DisplayName: doc.DisplayName,
+		Description: doc.Description,
+		Enabled:     doc.Enabled,
+		ConfigJSON:  doc.Value,
+	}, nil
 }
 
 func (r *SkillConfigRepo) Upsert(ctx context.Context, cfg skill.SkillConfig) error {
