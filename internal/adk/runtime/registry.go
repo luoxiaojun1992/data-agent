@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/adk/memory"
@@ -23,11 +24,14 @@ import (
 // config), the next GetOrCreate call rebuilds the Runtime.
 type cachedRuntime struct {
 	rt         *Runtime
-	hash       string    // sha256 of the model config at build time
-	lastAccess time.Time // updated on each GetOrCreate hit
+	hash       string       // sha256 of the model config at build time
+	lastAccess atomic.Int64 // unix nano, updated on every GetOrCreate hit
 }
 
 const runtimeTTL = 30 * time.Minute
+
+func (cr *cachedRuntime) touch()           { cr.lastAccess.Store(time.Now().UnixNano()) }
+func (cr *cachedRuntime) stale() bool       { return time.Since(time.Unix(0, cr.lastAccess.Load())) > runtimeTTL }
 
 // ModelProvider abstracts the model-config reads the Registry needs. The
 // concrete *modelcfg.Provider satisfies it; tests inject a mock to drive
@@ -91,7 +95,7 @@ func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, e
 	// Fast path: read lock, reuse if fingerprint matches.
 	r.mu.RLock()
 	if cached, ok := r.sessions[entry.ID]; ok && cached.hash == hash {
-		cached.lastAccess = time.Now()
+		cached.touch()
 		rt := cached.rt
 		r.mu.RUnlock()
 		return rt, nil
@@ -102,14 +106,16 @@ func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, e
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.sessions[entry.ID]; ok && cached.hash == hash {
-		cached.lastAccess = time.Now()
+		cached.touch()
 		return cached.rt, nil
 	}
 	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction)
 	if err != nil {
 		return nil, err
 	}
-	r.sessions[entry.ID] = &cachedRuntime{rt: rt, hash: hash, lastAccess: time.Now()}
+	cr := &cachedRuntime{rt: rt, hash: hash}
+	cr.touch()
+	r.sessions[entry.ID] = cr
 	return rt, nil
 }
 
@@ -127,7 +133,7 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 
 	r.mu.RLock()
 	if cached, ok := r.sys[useCase]; ok && cached.hash == hash {
-		cached.lastAccess = time.Now()
+		cached.touch()
 		rt := cached.rt
 		r.mu.RUnlock()
 		return rt, nil
@@ -137,14 +143,16 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.sys[useCase]; ok && cached.hash == hash {
-		cached.lastAccess = time.Now()
+		cached.touch()
 		return cached.rt, nil
 	}
 	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction)
 	if err != nil {
 		return nil, err
 	}
-	r.sys[useCase] = &cachedRuntime{rt: rt, hash: hash, lastAccess: time.Now()}
+	cr := &cachedRuntime{rt: rt, hash: hash}
+	cr.touch()
+	r.sys[useCase] = cr
 	return rt, nil
 }
 
@@ -195,16 +203,15 @@ func (r *Registry) StartCleanup() func() {
 }
 
 func (r *Registry) evictStale() {
-	now := time.Now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for id, cr := range r.sessions {
-		if now.Sub(cr.lastAccess) > runtimeTTL {
+		if cr.stale() {
 			delete(r.sessions, id)
 		}
 	}
 	for uc, cr := range r.sys {
-		if now.Sub(cr.lastAccess) > runtimeTTL {
+		if cr.stale() {
 			delete(r.sys, uc)
 		}
 	}
