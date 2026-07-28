@@ -1,14 +1,19 @@
 package logic
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
 // InviteTokenPayload holds the data encoded in an invite token.
@@ -106,11 +111,64 @@ func LoadInviteHMACSecret() ([]byte, error) {
 	return nil, fmt.Errorf("INVITE_HMAC_SECRET not set")
 }
 
-// GetInviteBaseURL reads the invite base URL from env var or returns the default.
-// Priority: INVITE_BASE_URL env var > default "http://localhost:3000"
+// GetInviteBaseURL resolves the public-facing base URL used for invite links.
+// Priority: 1) system_config store (admin UI override) → 2) INVITE_BASE_URL env →
+// 3) default http://localhost:3000. The system_config read is cached briefly
+// to avoid hitting MongoDB on every invite creation.
 func GetInviteBaseURL() string {
+	if base := resolveInviteBaseURL(); base != "" {
+		return base
+	}
 	if u := os.Getenv("INVITE_BASE_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
 	return "http://localhost:3000"
+}
+
+// ResolveInviteBaseURL explicitly reads the stored override (no cache).
+func ResolveInviteBaseURL(ctx context.Context) string {
+	if sysConfigRepo != nil {
+		if cfg, err := sysConfigRepo.Get(ctx, "system", "INVITE_BASE_URL"); err == nil && cfg != nil && cfg.Value != "" {
+			return strings.TrimRight(cfg.Value, "/")
+		}
+	}
+	return ""
+}
+
+var (
+	sysConfigRepo repository.SysConfigRepository
+	baseURLCache  string
+	baseURLCacheAt time.Time
+	baseURLCacheMu sync.Mutex
+)
+
+// SetSysConfigRepository is called once at startup to enable admin-overridden
+// invite base URL lookup.
+func SetSysConfigRepository(repo repository.SysConfigRepository) {
+	sysConfigRepo = repo
+}
+
+func resolveInviteBaseURL() string {
+	baseURLCacheMu.Lock()
+	if baseURLCache != "" && time.Since(baseURLCacheAt) < 30*time.Second {
+		v := baseURLCache
+		baseURLCacheMu.Unlock()
+		return v
+	}
+	baseURLCacheMu.Unlock()
+
+	if sysConfigRepo == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	v := ResolveInviteBaseURL(ctx)
+	if v != "" {
+		baseURLCacheMu.Lock()
+		baseURLCache = v
+		baseURLCacheAt = time.Now()
+		baseURLCacheMu.Unlock()
+		log.Printf("[invite] INVITE_BASE_URL overridden by admin: %s", v)
+	}
+	return v
 }

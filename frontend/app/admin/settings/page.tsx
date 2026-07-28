@@ -19,6 +19,7 @@ const BUILTIN_CONFIGS: Omit<ConfigItem, 'value' | 'source'>[] = [
   { key: 'EMBEDDING_MODEL', description: 'Embedding 模型名' },
   { key: 'EMBEDDING_VECTOR_DIM', description: 'Embedding 向量维度' },
   { key: 'INVITE_HMAC_SECRET', description: '邀请 HMAC 签名密钥' },
+  { key: 'INVITE_BASE_URL', description: '邀请链接对外基地址（与内部 host:port 不同时设置，如 http://120.26.179.218）' },
   { key: 'VAULT_ADDR', description: 'HashiCorp Vault 地址' },
   { key: 'JWT_SECRET', description: 'JWT 签名密钥' },
   { key: 'SERVER_READ_TIMEOUT', description: 'HTTP 读超时（秒）' },

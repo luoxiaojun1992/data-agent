@@ -76,6 +76,9 @@ func initADKModel(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	// System config (sysConfigCacheRepo) is separately cached for admin settings.
 	rawRepo := mongoinfra.NewSystemConfigRepository(mongoClient.DB())
 	deps.modelCfg = modelcfg.NewProvider(rawRepo, deps.vaultClient)
+	// Wire the invite base URL resolver so admin overrides (INVITE_BASE_URL)
+	// in /admin/settings take precedence over the env var / default.
+	logic.SetSysConfigRepository(rawRepo)
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {
