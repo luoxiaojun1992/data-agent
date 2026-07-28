@@ -4,23 +4,32 @@
 // the service implementation.
 package task
 
-// TaskService is the domain contract for task management. The service/task
-// package implements this contract; service/task re-exports it as a type
-// alias for backward compatibility with existing handler/test imports.
+// TaskService is the domain contract for task definition management.
+// Task definitions are persistent metadata; execution state lives on TaskRun.
 //
 //go:generate mockery --name TaskService --output ./mocks --outpkg mocks
 type TaskService interface {
-	CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*Task, error)
+	// CreateTask creates a new task definition and a first TaskRun,
+	// enqueuing the run. Returns (taskDef, taskRun, error).
+	CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*Task, *TaskRun, error)
 	GetTask(id string) (*Task, error)
 	CancelTask(id string) error
-	ListTasks(userID string, status string, skip, limit int64) ([]*Task, int64, error)
-	UpdateTaskProgress(id string, p *TaskProgress) error
-	UpdateTaskResult(id string, result map[string]interface{}) error
-	UpdateStatus(id string, status Status) error
-	// UpdateError writes the failure error message and marks the task failed.
-	// Used by the async AgentExecutor (SPEC-063) to persist the failure cause.
-	UpdateError(id string, errMsg string) error
+	ListTasks(userID string, skip, limit int64) ([]*Task, int64, error)
 	ListAllTasks(userID string) ([]*Task, error)
-	RetryTask(id string) (*Task, error)
 	BatchCancelTasks(ids []string) error
+	// CreateRun creates a new TaskRun from the task definition and enqueues it.
+	CreateRun(taskID string) (*TaskRun, error)
+}
+
+// TaskRunService is the domain contract for run-level execution state.
+// Executors and workers use this contract to read/write run status.
+//
+//go:generate mockery --name TaskRunService --output ./mocks --outpkg mocks
+type TaskRunService interface {
+	GetRun(id string) (*TaskRun, error)
+	ListRuns(taskID string, skip, limit int64) ([]*TaskRun, int64, error)
+	UpdateRunStatus(id string, status Status) error
+	UpdateRunResult(id string, result map[string]interface{}) error
+	UpdateRunError(id string, errMsg string) error
+	CancelRun(id string) error
 }

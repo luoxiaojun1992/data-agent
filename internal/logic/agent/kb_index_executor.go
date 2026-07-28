@@ -20,38 +20,33 @@ import (
 	kbsvc "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 )
 
-// KBIndexExecutor implements worker.TaskExecutor for kb_index tasks.
-// It performs the full indexing pipeline:
-//  1. Load doc from KB service
-//  2. Download file from GridFS
-//  3. Call LLM (UseCaseKBChunking) for semantic chunking
-//  4. Call embedding + store vectors via KB service (already wired with WithVectorIndex)
-//  5. Update doc status to "ready"
+// KBIndexExecutor implements worker.TaskExecutor for kb_index runs.
 type KBIndexExecutor struct {
-	kb       *kbsvc.Service     // concrete service (has IndexDocument + addChunks with embed)
-	provider *modelcfg.Provider  // for BuildLLM(UseCaseKBChunking)
+	kb       *kbsvc.Service     // concrete service
+	provider *modelcfg.Provider // for BuildLLM(UseCaseKBChunking)
+	runSvc   domaintask.TaskRunService
 }
 
 // NewKBIndexExecutor creates the KB indexing executor.
-func NewKBIndexExecutor(kb *kbsvc.Service, provider *modelcfg.Provider) *KBIndexExecutor {
-	return &KBIndexExecutor{kb: kb, provider: provider}
+func NewKBIndexExecutor(kb *kbsvc.Service, provider *modelcfg.Provider, runSvc domaintask.TaskRunService) *KBIndexExecutor {
+	return &KBIndexExecutor{kb: kb, provider: provider, runSvc: runSvc}
 }
 
 // Execute runs the KB indexing pipeline. Returns nil on success, error on failure.
-func (e *KBIndexExecutor) Execute(ctx context.Context, t *domaintask.Task) error {
+func (e *KBIndexExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) error {
 	// Respect cancellation.
-	if t.Status == domaintask.StatusCancelled {
+	if run.Status == domaintask.StatusCancelled {
 		return nil
 	}
 
-	docID, _ := t.Params["doc_id"].(string)
+	docID, _ := run.Params["doc_id"].(string)
 	if docID == "" {
-		err := fmt.Errorf("kb_index task %s: missing doc_id in params", t.ID)
-		e.failTask(t, err)
+		err := fmt.Errorf("kb_index run %s: missing doc_id in params", run.ID)
+		e.failRun(run, err)
 		return err
 	}
 
-	log.Printf("[kb-index] starting indexing for doc=%s task=%s", docID, t.ID)
+	log.Printf("[kb-index] starting indexing for doc=%s run=%s", docID, run.ID)
 
 	// Build the chunking function: call LLM to split text semantically.
 	chunkFn := e.buildChunkFn(ctx)
@@ -62,12 +57,12 @@ func (e *KBIndexExecutor) Execute(ctx context.Context, t *domaintask.Task) error
 
 	if err := e.kb.IndexDocument(ctx, docID, chunkFn); err != nil {
 		log.Printf("[kb-index] indexing failed for doc=%s: %v", docID, err)
-		e.failTask(t, err)
+		e.failRun(run, err)
 		return err
 	}
 
 	log.Printf("[kb-index] indexing complete for doc=%s", docID)
-	e.completeTask(t)
+	e.completeRun(run)
 	return nil
 }
 
@@ -175,15 +170,13 @@ func splitParagraphs(text string, targetSize int) []string {
 	return chunks
 }
 
-func (e *KBIndexExecutor) completeTask(t *domaintask.Task) {
-	// The KB indexing task is a system task; we don't set a complex result.
-	// Just mark it completed.
-	_ = e.kb // KB service reference for future result storage if needed.
+func (e *KBIndexExecutor) completeRun(run *domaintask.TaskRun) {
+	_ = e.runSvc.UpdateRunResult(run.ID, map[string]interface{}{"content": "kb_indexing_complete", "status": "success"})
 }
 
-func (e *KBIndexExecutor) failTask(t *domaintask.Task, err error) {
-	// Failure is logged; the worker pool handles DLQ.
-	log.Printf("[kb-index] task %s failed: %v", t.ID, err)
+func (e *KBIndexExecutor) failRun(run *domaintask.TaskRun, err error) {
+	_ = e.runSvc.UpdateRunError(run.ID, err.Error())
+	log.Printf("[kb-index] run %s failed: %v", run.ID, err)
 }
 
 // Ensure KBIndexExecutor satisfies worker.TaskExecutor (duck typing; checked in wire.go).

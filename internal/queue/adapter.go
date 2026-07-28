@@ -18,11 +18,10 @@ func QueueRepository(stream *Stream) repository.QueueRepository {
 	return &streamAdapter{stream: stream}
 }
 
-func (a *streamAdapter) Enqueue(ctx context.Context, t *task.Task) error {
-	return a.stream.Enqueue(ctx, t)
+func (a *streamAdapter) Enqueue(ctx context.Context, r *task.TaskRun) error {
+	return a.stream.Enqueue(ctx, r)
 }
 
-func (a *streamAdapter) Dequeue(ctx context.Context, timeout time.Duration) (*task.Task, error) {
-	// Not used by TaskService; Dequeue semantics differ between QueueRepository and Stream.
+func (a *streamAdapter) Dequeue(ctx context.Context, timeout time.Duration) (*task.TaskRun, error) {
 	return nil, nil
 }

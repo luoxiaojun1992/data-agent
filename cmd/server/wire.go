@@ -325,8 +325,8 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	}
 	deps.taskStream = taskStream
 
-	deps.taskService = task_svc.NewService(mongoinfra.NewTaskRepository(mongoClient.DB()), queue.QueueRepository(taskStream))
-	deps.taskHandler = handler.NewTaskHandler(deps.taskService)
+	deps.taskService = task_svc.NewService(mongoinfra.NewTaskDefRepository(mongoClient.DB()), mongoinfra.NewTaskRunRepository(mongoClient.DB()), queue.QueueRepository(taskStream))
+	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService) // same Service implements both contracts
 
 	// Wire task service into KB handler for async indexing.
 	if deps.kbHandler != nil {
@@ -358,7 +358,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	executor := agentlogic.NewAgentExecutor(
 		deps.registry,    // SPEC-062 per-model Runtime registry
 		deps.adkSessions, // ADK session service (identity injection)
-		deps.taskService, // task load/status/result/error
+		deps.taskService, // run status/result/error (TaskRunService impl)
 		deps.notifSvc,    // completion/failure notification
 		deps.cbRegistry,  // circuit breaker around Runtime.Run
 	)
@@ -368,7 +368,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	// (not agent-controlled). Uses the configured LLM for semantic chunking and
 	// embedding for vectorization (kbService already wired with WithVectorIndex).
 	if deps.kbService != nil && deps.modelCfg != nil {
-		kbExec := agentlogic.NewKBIndexExecutor(deps.kbService, deps.modelCfg)
+		kbExec := agentlogic.NewKBIndexExecutor(deps.kbService, deps.modelCfg, deps.taskService)
 		workerPool.SetKBExecutor(kbExec)
 		logger.Info("KB index executor wired to worker pool")
 	}

@@ -29,29 +29,29 @@ type Pool struct {
 	redis    *redis.Client
 	workers  int
 	executor TaskExecutor
-	taskSvc  task.TaskService // SPEC-063: load the full task from DB
-	// kbExecutor handles kb_index tasks (optional — nil when kb not configured).
+	runSvc   task.TaskRunService // SPEC-063: load the full TaskRun from DB
+	// kbExecutor handles kb_index runs (optional — nil when kb not configured).
 	kbExecutor TaskExecutor
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
 	stopping   bool
 }
 
-// TaskExecutor defines the interface for executing tasks.
+// TaskExecutor defines the interface for executing task runs.
 type TaskExecutor interface {
-	Execute(ctx context.Context, t *task.Task) error
+	Execute(ctx context.Context, run *task.TaskRun) error
 }
 
 // NewPool creates a worker pool. stream is the Redis Stream queue (or a mock in
-// tests); taskSvc loads the authoritative task from MongoDB (SPEC-063); the
+// tests); runSvc loads the authoritative TaskRun from MongoDB (SPEC-063); the
 // executor owns all status/result/error write-back.
-func NewPool(stream Queue, redisClient *redis.Client, numWorkers int, executor TaskExecutor, taskSvc task.TaskService) *Pool {
+func NewPool(stream Queue, redisClient *redis.Client, numWorkers int, executor TaskExecutor, runSvc task.TaskRunService) *Pool {
 	return &Pool{
 		queue:    stream,
 		redis:    redisClient,
 		workers:  numWorkers,
 		executor: executor,
-		taskSvc:  taskSvc,
+		runSvc:   runSvc,
 	}
 }
 
@@ -130,37 +130,30 @@ func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
 		return
 	}
 
-	// SPEC-063: load the full task from DB instead of rebuilding it in memory
-	// from the queue message. The queue message carries only the IDs/params
-	// needed to locate the task; the authoritative state (status, result,
-	// model_id, retry counts) lives in MongoDB and may have changed since
-	// enqueue. Loading fresh also fixes the defect where mid-flight task
-	// edits were ignored.
-	t, err := p.taskSvc.GetTask(qm.TaskID)
-	if err != nil || t == nil {
-		log.Printf("Failed to load task %s: %v", qm.TaskID, err)
-		// Drop unrecoverable messages so the stream doesn't stall.
+	// SPEC-063: load the full TaskRun from DB instead of rebuilding it in
+	// memory from the queue message. The queue message carries only the
+	// IDs/params needed to locate the run; the authoritative state lives
+	// in MongoDB and may have changed since enqueue.
+	run, err := p.runSvc.GetRun(qm.RunID)
+	if err != nil || run == nil {
+		log.Printf("Failed to load run %s: %v", qm.RunID, err)
 		_ = p.queue.Ack(ctx, msg.ID)
 		return
 	}
 
-	// Route by task type: kb_index tasks go to the KB executor.
+	// Route by type: kb_index runs go to the KB executor.
 	exec := p.executor
-	if t.Type == task.TaskTypeKBIndex && p.kbExecutor != nil {
+	if run.Type == task.TaskTypeKBIndex && p.kbExecutor != nil {
 		exec = p.kbExecutor
 	}
 
 	start := time.Now()
-	execErr := exec.Execute(ctx, t) // executor owns all DB write-back (status/result/error)
+	execErr := exec.Execute(ctx, run)
 
-	// Retry / DLQ policy. The executor has already persisted the failure
-	// status + error; this block only decides whether to dead-letter the
-	// stream message after exhausting retries. The in-memory retry counter is
-	// per-delivery (not persisted) — matching the pre-existing behavior.
 	if execErr != nil {
-		log.Printf("[worker] task %s failed after %s: %v", t.ID, time.Since(start), execErr)
-		t.RetryCount++
-		if t.RetryCount >= t.MaxRetries {
+		log.Printf("[worker] run %s (task %s) failed after %s: %v", run.ID, run.TaskID, time.Since(start), execErr)
+		run.RetryCount++
+		if run.RetryCount >= run.MaxRetries {
 			_ = p.queue.MoveToDLQ(ctx, msg.ID, []byte(data.(string)))
 		}
 	}

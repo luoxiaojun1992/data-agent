@@ -32,17 +32,18 @@ func NewStream(client *redis.Client) (*Stream, error) {
 	return &Stream{client: client}, nil
 }
 
-// Enqueue adds a task to the Redis Stream.
-func (s *Stream) Enqueue(ctx context.Context, t *task.Task) error {
+// Enqueue adds a task run to the Redis Stream.
+func (s *Stream) Enqueue(ctx context.Context, run *task.TaskRun) error {
 	msg := task.QueueMessage{
-		TaskID:     t.ID,
-		SessionID:  t.SessionID,
-		UserID:     t.UserID,
-		Type:       t.Type,
-		ModelID:    t.ModelID,
-		SkillChain: t.SkillChain,
-		Params:     t.Params,
-		CreatedAt:  t.CreatedAt.Format(time.RFC3339),
+		RunID:      run.ID,
+		TaskID:     run.TaskID,
+		SessionID:  run.SessionID,
+		UserID:     run.UserID,
+		Type:       run.Type,
+		ModelID:    run.ModelID,
+		SkillChain: run.SkillChain,
+		Params:     run.Params,
+		CreatedAt:  run.CreatedAt.Format(time.RFC3339),
 	}
 
 	data, err := json.Marshal(msg)

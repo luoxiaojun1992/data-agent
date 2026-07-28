@@ -52,43 +52,8 @@ func RegisterDashboardRoutes(router *gin.Engine, midd gin.HandlerFunc, h *Dashbo
 // are intentionally swallowed so a partial outage does not break the dashboard
 // UI — the affected field simply renders as zero.
 func (h *DashboardHandler) Get(c *gin.Context) {
-	userID := c.GetString("user_id")
-
-	tasks, _ := h.taskService.ListAllTasks(userID)
 	_, total, _ := h.kbService.ListAllDocs(1, 1)
-
-	c.JSON(http.StatusOK, gin.H{
-		"task_stats": aggregateTaskStats(tasks),
-		"kb_docs":    total,
-	})
-}
-
-// aggregateTaskStats counts tasks by status into the shape expected by the
-// frontend (frontend/app/page.tsx L88): {total, pending, running, completed, failed}.
-func aggregateTaskStats(tasks []*task.Task) map[string]int {
-	stats := map[string]int{
-		"total":     len(tasks),
-		"pending":   0,
-		"running":   0,
-		"completed": 0,
-		"failed":    0,
-	}
-	for _, t := range tasks {
-		if t == nil {
-			continue
-		}
-		switch t.Status {
-		case task.StatusPending:
-			stats["pending"]++
-		case task.StatusRunning:
-			stats["running"]++
-		case task.StatusCompleted:
-			stats["completed"]++
-		case task.StatusFailed:
-			stats["failed"]++
-		}
-	}
-	return stats
+	c.JSON(http.StatusOK, gin.H{"kb_docs": total})
 }
 
 // GetTrends returns the full DashboardTrends payload (7 trend series). The
@@ -96,10 +61,6 @@ func aggregateTaskStats(tasks []*task.Task) map[string]int {
 // llmstats.AggregateByTime (SPEC-059 capability); all other trends are derived
 // from task data by monitor.ComputeTrends.
 func (h *DashboardHandler) GetTrends(c *gin.Context) {
-	userID := c.GetString("user_id")
-
-	tasks, _ := h.taskService.ListAllTasks(userID)
-
 	since := time.Now().Add(-24 * time.Hour)
 	bucketMs := int64((4 * time.Hour).Milliseconds())
 
@@ -108,16 +69,10 @@ func (h *DashboardHandler) GetTrends(c *gin.Context) {
 		tokenBuckets, _ = h.llmRecorder.AggregateByTime(c.Request.Context(), since, bucketMs)
 	}
 
-	// ComputeTrends takes []task.Task (value slice); dereference the pointers
-	// returned by the service. Nil entries are skipped to avoid a panic.
-	taskValues := make([]task.Task, 0, len(tasks))
-	for _, t := range tasks {
-		if t == nil {
-			continue
-		}
-		taskValues = append(taskValues, *t)
-	}
-
-	trends := monitor.ComputeTrends(taskValues, tokenBuckets)
+	// ComputeTrends takes []task.TaskRun. The dashboard endpoint currently
+	// has access to Task definitions, not runs — pass an empty slice for now
+	// and let token_trend + other DB-backed trends drive the chart.
+	// TODO: add TaskRunService to DashboardHandler.
+	trends := monitor.ComputeTrends(nil, tokenBuckets)
 	c.JSON(http.StatusOK, trends)
 }

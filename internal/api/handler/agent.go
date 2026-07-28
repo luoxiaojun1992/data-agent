@@ -78,11 +78,11 @@ func (h *AgentHandler) GetAgentTask(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"task_id":    t.ID,
-		"session_id": t.SessionID,
 		"user_id":    t.UserID,
-		"status":     string(t.Status),
+		"title":      t.Title,
+		"type":       t.Type,
 		"created_at": t.CreatedAt,
-		"result":     t.Result,
+		"last_run_at": t.LastRunAt,
 	})
 }
 

@@ -9,111 +9,108 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
-// Service handles task lifecycle operations.
+// Service manages task definitions and runs.
 type Service struct {
 	repo      repository.TaskRepository
+	runRepo   repository.TaskRunRepository
 	queueRepo repository.QueueRepository
 }
 
-// NewService creates a task service.
-func NewService(repo repository.TaskRepository, queueRepo repository.QueueRepository) *Service {
-	return &Service{repo: repo, queueRepo: queueRepo}
+// NewService creates a task service. queueRepo may be nil in test setups.
+func NewService(repo repository.TaskRepository, runRepo repository.TaskRunRepository, queueRepo repository.QueueRepository) *Service {
+	return &Service{repo: repo, runRepo: runRepo, queueRepo: queueRepo}
 }
 
-// CreateTask creates a new task, persists it and enqueues it.
-func (s *Service) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*task.Task, error) {
-	t := task.NewTask(sessionID, userID, taskType, skillChain, params, modelID)
-	t.Status = task.StatusQueued
-	if err := s.repo.Create(context.Background(), t); err != nil {
-		return nil, fmt.Errorf("insert task: %w", err)
+// CreateTask creates a task definition + its first TaskRun, persists both,
+// and enqueues the run.
+func (s *Service) CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*task.Task, *task.TaskRun, error) {
+	ctx := context.Background()
+	t := task.NewTask(userID, taskType, skillChain, params, modelID)
+	if err := s.repo.Create(ctx, t); err != nil {
+		return nil, nil, fmt.Errorf("insert task def: %w", err)
 	}
+	run := task.NewTaskRun(t)
+	run.Status = task.StatusQueued
+	if err := s.runRepo.Create(ctx, run); err != nil {
+		return nil, nil, fmt.Errorf("insert task run: %w", err)
+	}
+	now := time.Now()
+	t.LastRunAt = &now
+	_ = s.repo.UpdateLastRun(ctx, t.ID, now)
+
 	if s.queueRepo != nil {
-		if err := s.queueRepo.Enqueue(context.Background(), t); err != nil {
-			return t, nil // best-effort
-		}
+		_ = s.queueRepo.Enqueue(ctx, run)
 	}
-	return t, nil
+	return t, run, nil
 }
 
-// GetTask retrieves a task by ID.
+// CreateRun creates a new run from the task definition and enqueues it.
+func (s *Service) CreateRun(taskID string) (*task.TaskRun, error) {
+	ctx := context.Background()
+	t, err := s.repo.Get(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("task %s not found", taskID)
+	}
+	run := task.NewTaskRun(t)
+	run.Status = task.StatusQueued
+	if err := s.runRepo.Create(ctx, run); err != nil {
+		return nil, fmt.Errorf("insert run: %w", err)
+	}
+	now := time.Now()
+	t.LastRunAt = &now
+	_ = s.repo.UpdateLastRun(ctx, t.ID, now)
+
+	if s.queueRepo != nil {
+		_ = s.queueRepo.Enqueue(ctx, run)
+	}
+	return run, nil
+}
+
 func (s *Service) GetTask(id string) (*task.Task, error) {
 	return s.repo.Get(context.Background(), id)
 }
 
-// CancelTask cancels a running/queued task.
 func (s *Service) CancelTask(id string) error {
-	t, err := s.repo.Get(context.Background(), id)
-	if err != nil {
-		return fmt.Errorf("task %s not found", id)
-	}
-	switch t.Status {
-	case task.StatusCancelled, task.StatusCompleted, task.StatusFailed:
-		return fmt.Errorf("task %s is %s, cannot cancel", id, t.Status)
-	}
 	return s.repo.Cancel(context.Background(), id)
 }
 
-// ListTasks lists tasks for a user with optional status filter.
-func (s *Service) ListTasks(userID string, status string, skip, limit int64) ([]*task.Task, int64, error) {
-	return s.repo.List(context.Background(), userID, status, skip, limit)
+func (s *Service) ListTasks(userID string, skip, limit int64) ([]*task.Task, int64, error) {
+	return s.repo.List(context.Background(), userID, skip, limit)
 }
 
-// UpdateTaskProgress updates task progress.
-func (s *Service) UpdateTaskProgress(id string, p *task.TaskProgress) error {
-	return s.repo.UpdateProgress(context.Background(), id, p)
-}
-
-// UpdateTaskResult marks a task as completed with a result.
-func (s *Service) UpdateTaskResult(id string, result map[string]interface{}) error {
-	return s.repo.UpdateResult(context.Background(), id, result)
-}
-
-// UpdateError persists the failure error and marks the task failed. Used by
-// the async AgentExecutor (SPEC-063).
-func (s *Service) UpdateError(id string, errMsg string) error {
-	return s.repo.UpdateError(context.Background(), id, errMsg)
-}
-
-// UpdateStatus updates the task status field only.
-func (s *Service) UpdateStatus(id string, status task.Status) error {
-	t, err := s.repo.Get(context.Background(), id)
-	if err != nil {
-		return err
-	}
-	t.Status = status
-	t.UpdatedAt = time.Now()
-	return s.repo.Retry(context.Background(), id, t)
-}
-
-// ListAllTasks returns all tasks for a user.
 func (s *Service) ListAllTasks(userID string) ([]*task.Task, error) {
 	return s.repo.ListAll(context.Background(), userID)
 }
 
-// RetryTask resets a failed task for retry.
-func (s *Service) RetryTask(id string) (*task.Task, error) {
-	t, err := s.repo.Get(context.Background(), id)
-	if err != nil {
-		return nil, fmt.Errorf("task %s not found", id)
-	}
-	if t.Status != task.StatusFailed {
-		return nil, fmt.Errorf("only failed tasks can be retried")
-	}
-	t.Status = task.StatusQueued
-	t.RetryCount++
-	t.UpdatedAt = time.Now()
-	if err := s.repo.Retry(context.Background(), id, t); err != nil {
-		return nil, err
-	}
-	return t, nil
-}
-
-// BatchCancelTasks cancels multiple tasks.
 func (s *Service) BatchCancelTasks(ids []string) error {
 	for _, id := range ids {
-		if err := s.CancelTask(id); err != nil {
-			_ = err // best-effort
-		}
+		_ = s.repo.Cancel(context.Background(), id)
 	}
 	return nil
+}
+
+// ---- Run-level methods used by executors ----
+
+func (s *Service) GetRun(id string) (*task.TaskRun, error) {
+	return s.runRepo.Get(context.Background(), id)
+}
+
+func (s *Service) ListRuns(taskID string, skip, limit int64) ([]*task.TaskRun, int64, error) {
+	return s.runRepo.List(context.Background(), taskID, skip, limit)
+}
+
+func (s *Service) UpdateRunStatus(id string, status task.Status) error {
+	return s.runRepo.UpdateStatus(context.Background(), id, status)
+}
+
+func (s *Service) UpdateRunResult(id string, result map[string]interface{}) error {
+	return s.runRepo.UpdateResult(context.Background(), id, result)
+}
+
+func (s *Service) UpdateRunError(id string, errMsg string) error {
+	return s.runRepo.UpdateError(context.Background(), id, errMsg)
+}
+
+func (s *Service) CancelRun(id string) error {
+	return s.runRepo.Cancel(context.Background(), id)
 }

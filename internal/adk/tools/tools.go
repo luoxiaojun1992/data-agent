@@ -34,7 +34,7 @@ type Deps struct {
 	AppName string
 	// Tasks backs the save_task_result tool (task-mode runs only).
 	// If nil, save_task_result returns an explanatory error.
-	Tasks domaintask.TaskService
+	Tasks domaintask.TaskRunService
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -318,15 +318,12 @@ func saveTaskResult(deps *Deps) functiontool.Func[SaveTaskResultArgs, SaveTaskRe
 			"status":  status,
 		}
 		if status == "failed" {
-			// Persist the failure flag at the task level too (sets status=failed
-			// atomically) so the dashboard surfaces the error path. Content is
-			// preserved on the result field for user inspection.
-			if err := deps.Tasks.UpdateError(taskID, args.Content); err != nil {
-				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update error: %w", err)
+			if err := deps.Tasks.UpdateRunError(taskID, args.Content); err != nil {
+				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update run error: %w", err)
 			}
 		} else {
-			if err := deps.Tasks.UpdateTaskResult(taskID, result); err != nil {
-				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update result: %w", err)
+			if err := deps.Tasks.UpdateRunResult(taskID, result); err != nil {
+				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update run result: %w", err)
 			}
 		}
 		return SaveTaskResultResult{

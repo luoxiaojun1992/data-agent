@@ -420,63 +420,20 @@ func taskProgressToDoc(p task.TaskProgress) bson.M {
 	}
 }
 
+// Keep old task converters as minimal stubs for backward compat.
+func taskToDoc(t *task.Task) bson.M {
+	return bson.M{"_id": t.ID}
+}
+func docToTask(d bson.M) *task.Task {
+	return &task.Task{ID: getStr(d, "_id"), UserID: getStr(d, "user_id")}
+}
+
 func docToTaskProgress(d bson.M) task.TaskProgress {
 	return task.TaskProgress{
 		CurrentStep: getInt(d, "current_step"),
 		TotalSteps:  getInt(d, "total_steps"),
 		Message:     getStr(d, "message"),
 		Percent:     getInt(d, "percent"),
-	}
-}
-
-func taskToDoc(t *task.Task) bson.M {
-	doc := bson.M{
-		"_id":          t.ID,
-		"session_id":   t.SessionID,
-		"user_id":      t.UserID,
-		"type":         t.Type,
-		"model_id":     t.ModelID,
-		"status":       t.Status,
-		"skill_chain":  t.SkillChain,
-		"params":       t.Params,
-		"progress":     taskProgressToDoc(t.Progress),
-		"retry_count":  t.RetryCount,
-		"max_retries":  t.MaxRetries,
-		"created_at":   t.CreatedAt,
-		"updated_at":   t.UpdatedAt,
-		"duration_ms":  t.DurationMs,
-	}
-	if t.Result != nil {
-		doc["result"] = t.Result
-	}
-	if t.Error != "" {
-		doc["error"] = t.Error
-	}
-	if t.CompletedAt != nil {
-		doc["completed_at"] = *t.CompletedAt
-	}
-	return doc
-}
-
-func docToTask(d bson.M) *task.Task {
-	return &task.Task{
-		ID:          getStr(d, "_id"),
-		SessionID:   getStr(d, "session_id"),
-		UserID:      getStr(d, "user_id"),
-		Type:        getStr(d, "type"),
-		ModelID:     getStr(d, "model_id"),
-		Status:      task.Status(getStr(d, "status")),
-		SkillChain:  getStrSlice(d, "skill_chain"),
-		Params:      getMap(d, "params"),
-		Result:      getMap(d, "result"),
-		Error:       getStr(d, "error"),
-		Progress:    docToTaskProgress(getSubDoc(d, "progress")),
-		RetryCount:  getInt(d, "retry_count"),
-		MaxRetries:  getInt(d, "max_retries"),
-		CreatedAt:   getTime(d, "created_at"),
-		UpdatedAt:   getTime(d, "updated_at"),
-		CompletedAt: getTimePtr(d, "completed_at"),
-		DurationMs:  getInt64(d, "duration_ms"),
 	}
 }
 
@@ -629,5 +586,98 @@ func docToAPIReview(d bson.M) *apireview.APIReview {
 		ReviewedAt:   getTimePtr(d, "reviewed_at"),
 		CreatedAt:    getTime(d, "created_at"),
 		UpdatedAt:    getTime(d, "updated_at"),
+	}
+}
+
+// ── TaskDef (definition) ─────────────────────────────────────────────
+
+func taskDefToDoc(t *task.Task) bson.M {
+	return bson.M{
+		"_id":         t.ID,
+		"user_id":     t.UserID,
+		"title":       t.Title,
+		"description": t.Description,
+		"type":        t.Type,
+		"model_id":    t.ModelID,
+		"skill_chain": t.SkillChain,
+		"params":      t.Params,
+		"cron_expr":   t.CronExpr,
+		"last_run_at": t.LastRunAt,
+		"created_at":  t.CreatedAt,
+		"updated_at":  t.UpdatedAt,
+	}
+}
+
+func docToTaskDef(d bson.M) *task.Task {
+	return &task.Task{
+		ID:          getStr(d, "_id"),
+		UserID:      getStr(d, "user_id"),
+		Title:       getStr(d, "title"),
+		Description: getStr(d, "description"),
+		Type:        getStr(d, "type"),
+		ModelID:     getStr(d, "model_id"),
+		SkillChain:  getStrSlice(d, "skill_chain"),
+		Params:      getSubDoc(d, "params"),
+		CronExpr:    getStr(d, "cron_expr"),
+		LastRunAt:   getTimePtr(d, "last_run_at"),
+		CreatedAt:   getTime(d, "created_at"),
+		UpdatedAt:   getTime(d, "updated_at"),
+	}
+}
+
+// ── TaskRun ───────────────────────────────────────────────────────────
+
+func taskRunToDoc(tr *task.TaskRun) bson.M {
+	doc := bson.M{
+		"_id":         tr.ID,
+		"task_id":     tr.TaskID,
+		"user_id":     tr.UserID,
+		"type":        tr.Type,
+		"model_id":    tr.ModelID,
+		"session_id":  tr.SessionID,
+		"status":      tr.Status,
+		"skill_chain": tr.SkillChain,
+		"params":      tr.Params,
+		"progress":    taskProgressToDoc(tr.Progress),
+		"retry_count": tr.RetryCount,
+		"max_retries": tr.MaxRetries,
+		"duration_ms": tr.DurationMs,
+		"created_at":  tr.CreatedAt,
+		"updated_at":  tr.UpdatedAt,
+	}
+	if tr.Result != nil {
+		doc["result"] = tr.Result
+	}
+	if tr.Error != "" {
+		doc["error"] = tr.Error
+	}
+	if tr.StartedAt != nil {
+		doc["started_at"] = *tr.StartedAt
+	}
+	if tr.CompletedAt != nil {
+		doc["completed_at"] = *tr.CompletedAt
+	}
+	return doc
+}
+
+func docToTaskRun(d bson.M) *task.TaskRun {
+	return &task.TaskRun{
+		ID:          getStr(d, "_id"),
+		TaskID:      getStr(d, "task_id"),
+		UserID:      getStr(d, "user_id"),
+		Type:        getStr(d, "type"),
+		ModelID:     getStr(d, "model_id"),
+		SessionID:   getStr(d, "session_id"),
+		Status:      task.Status(getStr(d, "status")),
+		SkillChain:  getStrSlice(d, "skill_chain"),
+		Params:      getSubDoc(d, "params"),
+		Progress:    docToTaskProgress(getSubDoc(d, "progress")),
+		RetryCount:  getInt(d, "retry_count"),
+		MaxRetries:  getInt(d, "max_retries"),
+		StartedAt:   getTimePtr(d, "started_at"),
+		CompletedAt: getTimePtr(d, "completed_at"),
+		DurationMs:  int64(getInt(d, "duration_ms")),
+		CreatedAt:   getTime(d, "created_at"),
+		UpdatedAt:   getTime(d, "updated_at"),
 	}
 }
