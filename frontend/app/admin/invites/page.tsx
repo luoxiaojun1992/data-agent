@@ -43,7 +43,10 @@ function InvitesContent() {
   const [createError, setCreateError] = useState('');
 
   const loadInvites = async () => {
-    if (!auth.token) return;
+    if (!auth.token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await apiFetch(`/admin/invites?page=${page}&size=20`);
