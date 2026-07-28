@@ -267,7 +267,7 @@ export default function KnowledgePage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {total > 0 && (
           <div data-testid="kb-pagination" style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '24px' }}>
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
               style={pageBtnStyle}>上一页</button>
