@@ -16,7 +16,7 @@ const BUILTIN_CONFIGS: Omit<ConfigItem, 'value' | 'source'>[] = [
   { key: 'REDIS_ADDR', description: 'Redis 地址 (host:port)' },
   { key: 'QDRANT_URL', description: 'Qdrant HTTP URL' },
   { key: 'INVITE_HMAC_SECRET', description: '邀请 HMAC 签名密钥' },
-  { key: 'INVITE_BASE_URL', description: '邀请链接对外基地址（与内部 host:port 不同时设置，如 http://120.26.179.218）' },
+  { key: 'INVITE_BASE_URL', description: '邀请链接对外基地址（与内部 host:port 不同时设置）' },
   { key: 'VAULT_ADDR', description: 'HashiCorp Vault 地址' },
   { key: 'JWT_SECRET', description: 'JWT 签名密钥' },
   { key: 'SERVER_READ_TIMEOUT', description: 'HTTP 读超时（秒）' },
