@@ -87,7 +87,9 @@ export function useAuth() {
     if (auth.token) {
       headers['Authorization'] = `Bearer ${auth.token}`;
     }
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    // Strip leading /api/v1 from path to avoid double-prefix (API_BASE already includes it).
+    const normalized = path.startsWith('/api/v1') ? path.slice(7) : path;
+    const res = await fetch(`${API_BASE}${normalized}`, { ...options, headers });
     if (res.status === 401 && auth.token) {
       logout();
       throw new Error('Session expired');
