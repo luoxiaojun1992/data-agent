@@ -154,6 +154,7 @@ services:
       - VAULT_ADDR=http://vault:8200
       - VAULT_TOKEN=dev-root-token
       - VAULT_MOUNT_PATH=secret
+      - INVITE_HMAC_SECRET=dev-invite-secret-key
     depends_on:
       mongodb:
         condition: service_healthy
