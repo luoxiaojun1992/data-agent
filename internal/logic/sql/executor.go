@@ -1,10 +1,12 @@
 package sql
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"time"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -28,8 +30,7 @@ type ExecResult struct {
 }
 
 // Execute validates a SQL statement against safety rules, then executes it
-// against the configured MySQL database. Validation happens first — unsafe
-// queries are rejected before any database interaction.
+// against the configured MySQL database using GORM.
 func Execute(config ExecConfig, query string, params []any) (ExecResult, error) {
 	// 1. Validate
 	vr := Validate(query, params)
@@ -49,73 +50,66 @@ func Execute(config ExecConfig, query string, params []any) (ExecResult, error) 
 		config.QueryTimeout = 30 * time.Second
 	}
 
-	// 3. Connect & execute
-	db, err := sql.Open("mysql", config.DSN)
+	// 3. Open GORM connection
+	db, err := gorm.Open(mysql.New(mysql.Config{
+		DSN:                       config.DSN,
+		DefaultStringSize:         256,
+		SkipInitializeWithVersion: false,
+	}), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("sql_executor: connect: %w", err)
 	}
-	defer db.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), config.QueryTimeout)
-	defer cancel()
-
-	// Ping to verify connectivity + DNS before running the actual query.
-	t0 := time.Now()
-	if err := db.PingContext(ctx); err != nil {
-		return ExecResult{
-			Status:     "error",
-			Query:      query,
-			DurationMs: time.Since(t0).Milliseconds(),
-		}, fmt.Errorf("sql_executor: mysql ping: %w", err)
+	sqlDB, err := db.DB()
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("sql_executor: get db: %w", err)
 	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetConnMaxLifetime(config.QueryTimeout)
+	defer sqlDB.Close()
 
 	start := time.Now()
-	rows, err := db.QueryContext(ctx, query, params...)
-	duration := time.Since(start).Milliseconds()
-	if err != nil {
+
+	// 4. Execute with raw SQL
+	var results []map[string]interface{}
+	tx := db.Raw(query, params...)
+	if config.MaxRows > 0 {
+		tx = tx.Limit(config.MaxRows)
+	}
+	if err := tx.Scan(&results).Error; err != nil {
 		return ExecResult{
 			Status:     "error",
 			Query:      query,
-			DurationMs: duration,
+			DurationMs: time.Since(start).Milliseconds(),
 		}, fmt.Errorf("sql_executor: query error: %w", err)
 	}
-	defer rows.Close()
 
-	cols, err := rows.Columns()
-	if err != nil {
-		return ExecResult{}, fmt.Errorf("sql_executor: columns: %w", err)
+	// 5. Extract columns from first row
+	var cols []string
+	if len(results) > 0 {
+		for k := range results[0] {
+			cols = append(cols, k)
+		}
 	}
 
-	var resultRows [][]any
-	count := 0
-	for rows.Next() {
-		if count >= config.MaxRows {
-			break
+	// 6. Convert to 2D any slice
+	rows := make([][]any, len(results))
+	for i, r := range results {
+		row := make([]any, len(cols))
+		for j, c := range cols {
+			row[j] = r[c]
 		}
-		vals := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if err := rows.Scan(ptrs...); err != nil {
-			return ExecResult{}, fmt.Errorf("sql_executor: scan row %d: %w", count, err)
-		}
-		// Convert byte slices to strings for JSON readability
-		for i, v := range vals {
-			if b, ok := v.([]byte); ok {
-				vals[i] = string(b)
-			}
-		}
-		resultRows = append(resultRows, vals)
-		count++
+		rows[i] = row
 	}
 
 	return ExecResult{
 		Status:     "ok",
 		Query:      query,
 		Columns:    cols,
-		Rows:       resultRows,
-		RowCount:   count,
-		DurationMs: duration,
+		Rows:       rows,
+		RowCount:   len(rows),
+		DurationMs: time.Since(start).Milliseconds(),
 	}, nil
 }
