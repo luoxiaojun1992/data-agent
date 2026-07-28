@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '@/lib/api';
 
@@ -42,11 +42,8 @@ function InvitesContent() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
-  const loadInvites = async () => {
-    if (!auth.token) {
-      setLoading(false);
-      return;
-    }
+  const loadInvites = useCallback(async () => {
+    if (!auth.token) return;
     setLoading(true);
     try {
       const res = await apiFetch(`/admin/invites?page=${page}&size=20`);
@@ -67,11 +64,11 @@ function InvitesContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiFetch, page]);
 
   useEffect(() => {
-    loadInvites();
-  }, [page]);
+    if (auth.hydrated) loadInvites();
+  }, [auth.hydrated, loadInvites]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
