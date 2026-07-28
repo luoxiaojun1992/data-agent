@@ -150,6 +150,43 @@ func (_m *SessionService) ListByUser(userID string) ([]*chat.Session, error) {
 	return r0, r1
 }
 
+// ListByUserPaged provides a mock function with given fields: userID, page, pageSize
+func (_m *SessionService) ListByUserPaged(userID string, page int, pageSize int) ([]*chat.Session, int64, error) {
+	ret := _m.Called(userID, page, pageSize)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListByUserPaged")
+	}
+
+	var r0 []*chat.Session
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(string, int, int) ([]*chat.Session, int64, error)); ok {
+		return rf(userID, page, pageSize)
+	}
+	if rf, ok := ret.Get(0).(func(string, int, int) []*chat.Session); ok {
+		r0 = rf(userID, page, pageSize)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*chat.Session)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(string, int, int) int64); ok {
+		r1 = rf(userID, page, pageSize)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(string, int, int) error); ok {
+		r2 = rf(userID, page, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
 // ListDeleted provides a mock function with given fields: before, limit
 func (_m *SessionService) ListDeleted(before time.Time, limit int64) ([]*chat.Session, error) {
 	ret := _m.Called(before, limit)
@@ -252,6 +289,7 @@ func (_m *SessionService) SetTitle(id string, title string) error {
 	return r0
 }
 
+// NewSessionService creates a new instance of SessionService. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewSessionService(t interface {
 	mock.TestingT

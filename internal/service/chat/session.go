@@ -71,6 +71,26 @@ func (m *Manager) ListByUser(userID string) ([]*domainchat.Session, error) {
 	return sessions, nil
 }
 
+// ListByUserPaged returns paginated sessions sorted by created_at DESC.
+func (m *Manager) ListByUserPaged(userID string, page, pageSize int) ([]*domainchat.Session, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	skip := int64((page - 1) * pageSize)
+	recs, total, err := m.repo.ListByUserPaged(context.Background(), userID, skip, int64(pageSize))
+	if err != nil {
+		return nil, 0, err
+	}
+	sessions := make([]*domainchat.Session, len(recs))
+	for i, r := range recs {
+		sessions[i] = recordToSession(r)
+	}
+	return sessions, total, nil
+}
+
 func (m *Manager) Delete(id string) error {
 	return m.repo.Delete(context.Background(), id)
 }

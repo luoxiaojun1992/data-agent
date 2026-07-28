@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 import ModelSelector from '../components/ModelSelector';
@@ -121,6 +121,9 @@ export default function ChatPage() {
   const [newPromptText, setNewPromptText] = useState('');
   const [enhancing, setEnhancing] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionsTotal, setSessionsTotal] = useState(0);
+  const [sessionsPage, setSessionsPage] = useState(1);
+  const PAGE_SIZE = 15;
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
@@ -155,13 +158,18 @@ export default function ChatPage() {
 
   const newSession = () => { setMessages([]); setSessionId(null); setInput(''); setSelectedModel(''); };
 
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     try {
-      const res = await apiFetch('/sessions');
+      const res = await apiFetch(`/sessions?page=${sessionsPage}&page_size=${PAGE_SIZE}`);
       const data = await res.json();
       setSessions(data.sessions || []);
+      setSessionsTotal(data.total || 0);
     } catch { /* ignore */ }
-  };
+  }, [sessionsPage]);
+
+  useEffect(() => {
+    if (showSessions) fetchSessions();
+  }, [showSessions, sessionsPage]);
 
   const loadSessionMessages = async (id: string, preserveOnError = false) => {
     try {
@@ -508,7 +516,7 @@ export default function ChatPage() {
                 value={sessionSearch} onChange={e => setSessionSearch(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none mb-2"
                 data-testid="session-search" />
-            <div className="max-h-48 overflow-y-auto" data-testid="session-list">
+            <div data-testid="session-list">
               {/* Recovery banner for deleted sessions */}
               {deletedSessions.length > 0 && (
                 <div data-testid="session-recovery-banner"
@@ -541,6 +549,19 @@ export default function ChatPage() {
                   </button>
                 ))}
               </div>
+
+              {/* Pagination */}
+              {sessionsTotal > PAGE_SIZE && (
+                <div className="flex items-center justify-between mt-2 text-xs" data-testid="session-pagination">
+                  <button onClick={() => setSessionsPage(p => Math.max(1, p - 1))} disabled={sessionsPage === 1}
+                    className="px-2 py-1 rounded border border-[var(--border-glass)] disabled:opacity-40 text-[var(--text-secondary)]">上一页</button>
+                  <span className="text-[var(--text-secondary)]">
+                    {sessionsPage} / {Math.ceil(sessionsTotal / PAGE_SIZE)}（共 {sessionsTotal} 条）
+                  </span>
+                  <button onClick={() => setSessionsPage(p => Math.min(Math.ceil(sessionsTotal / PAGE_SIZE), p + 1))} disabled={sessionsPage >= Math.ceil(sessionsTotal / PAGE_SIZE)}
+                    className="px-2 py-1 rounded border border-[var(--border-glass)] disabled:opacity-40 text-[var(--text-secondary)]">下一页</button>
+                </div>
+              )}
             </div>
           </div>
         )}

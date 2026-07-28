@@ -53,6 +53,26 @@ func (r *SessionRepository) ListByUser(ctx context.Context, userID string) ([]*r
 	return sessions, nil
 }
 
+// ListByUserPaged returns paginated sessions sorted by updated_at DESC.
+func (r *SessionRepository) ListByUserPaged(ctx context.Context, userID string, skip, limit int64) ([]*repository.SessionRecord, int64, error) {
+	filter := bson.M{"user_id": userID, "deleted_at": bson.M{"$exists": false}}
+	total, _ := r.coll.CountDocuments(ctx, filter)
+	opts := options.Find().
+		SetSort(bson.D{{Key: "updated_at", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+	cursor, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+	var sessions []*repository.SessionRecord
+	if err := cursor.All(ctx, &sessions); err != nil {
+		return nil, 0, err
+	}
+	return sessions, total, nil
+}
+
 func (r *SessionRepository) Cleanup(ctx context.Context, before time.Time) (int64, error) {
 	res, err := r.coll.DeleteMany(ctx, bson.M{"expires_at": bson.M{"$lt": before}})
 	if err != nil {

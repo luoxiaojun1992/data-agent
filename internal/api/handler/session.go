@@ -4,6 +4,7 @@ import (
 	"context"
 	"iter"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -40,8 +41,25 @@ func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
 
 func (h *SessionHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
-	sessions, _ := h.mgr.ListByUser(userID)
-	c.JSON(http.StatusOK, gin.H{"sessions": sessions})
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "15"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 15
+	}
+	sessions, total, err := h.mgr.ListByUserPaged(userID, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"sessions":  sessions,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 func (h *SessionHandler) Create(c *gin.Context) {

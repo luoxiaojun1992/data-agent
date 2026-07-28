@@ -29,7 +29,7 @@ func newSessionGin(method, path string) (*gin.Context, *httptest.ResponseRecorde
 
 func TestSessionHandler_List(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("ListByUser", "u1").Return([]*domainchat.Session{{ID: "s1"}}, nil)
+	mgr.On("ListByUserPaged", "u1", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("GET", "/sessions")
 	c.Set("user_id", "u1")

@@ -81,6 +81,7 @@ type SessionService interface {
 	Renew(id string) error
 	Cleanup() (int64, error)
 	ListByUser(userID string) ([]*Session, error)
+	ListByUserPaged(userID string, page, pageSize int) ([]*Session, int64, error)
 	Delete(id string) error
 	Restore(id string) error
 	ListDeleted(before time.Time, limit int64) ([]*Session, error)
