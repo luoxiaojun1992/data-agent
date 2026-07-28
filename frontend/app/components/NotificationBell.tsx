@@ -13,7 +13,6 @@ interface Notif {
 }
 
 export default function NotificationBell() {
-  const { apiFetch } = useAuth();
   const { auth, apiFetch } = useAuth();
   const [unread, setUnread] = useState(0);
   const [notifs, setNotifs] = useState<Notif[]>([]);
