@@ -127,7 +127,7 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	}
 	if deps.SkillConfig != nil {
 		skillCfg := router.Group("/api/v1")
-		skillCfg.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
+		skillCfg.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(model.PermModelConfig))
 		RegisterSkillConfigRoutes(skillCfg, deps.SkillConfig)
 	}
 
