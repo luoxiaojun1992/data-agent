@@ -23,6 +23,7 @@ const PAGE_SIZE = 10;
 export default function KnowledgePage() {
   const { auth, apiFetch } = useAuth();
   const [docs, setDocs] = useState<Doc[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [tagFilter, setTagFilter] = useState('');
@@ -42,13 +43,14 @@ export default function KnowledgePage() {
 
   const fetchDocs = useCallback(async () => {
     try {
-      const res = await apiFetch('/knowledge/docs');
+      const res = await apiFetch(`/knowledge/docs?page=${page}&page_size=${PAGE_SIZE}`);
       if (res.ok) {
         const data = await res.json();
-        setDocs(Array.isArray(data) ? data : []);
+        setDocs(data.docs || []);
+        setTotal(data.total || 0);
       }
     } catch { /* ignore */ }
-  }, [apiFetch]);
+  }, [apiFetch, page]);
 
   useEffect(() => {
     if (auth.hydrated) fetchDocs();
@@ -64,8 +66,8 @@ export default function KnowledgePage() {
     })
     .filter((d) => (tagFilter ? (d.tags || []).includes(tagFilter) : true));
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil((search || tagFilter ? filtered.length : total) / PAGE_SIZE));
+  const paged = (search || tagFilter) ? filtered : docs;
 
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
@@ -270,7 +272,7 @@ export default function KnowledgePage() {
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
               style={pageBtnStyle}>上一页</button>
             <span style={{ padding: '8px 12px', fontSize: '13px', color: '#7A7A7A' }}>
-              {page} / {totalPages}（共 {filtered.length} 条）
+              {page} / {totalPages}（共 {search || tagFilter ? filtered.length : total} 条）
             </span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
               style={pageBtnStyle}>下一页</button>
