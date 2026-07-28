@@ -44,15 +44,22 @@ function InvitesContent() {
 
   const loadInvites = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await apiFetch(`/api/v1/admin/invites?page=${page}&size=20`);
-      const data = await res.json();
-      setInvites(data.invites || []);
-      setTotal(data.total || 0);
+      if (res.ok) {
+        const data = await res.json();
+        setInvites(data.invites || []);
+        setTotal(data.total || 0);
+        setError('');
+      } else {
+        setInvites([]);
+        setTotal(0);
+        setError('');
+      }
     } catch (e: any) {
-      setError('加载邀请列表失败');
-      console.error(e);
+      setInvites([]);
+      setTotal(0);
+      setError('');
     } finally {
       setLoading(false);
     }
@@ -271,6 +278,18 @@ function InvitesContent() {
               </tbody>
             </table>
           </div>
+
+          {total > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>上一页</button>
+              <span style={{ padding: '8px 12px', fontSize: '13px', color: '#7A7A7A' }}>
+                {page} / {Math.max(1, Math.ceil(total / 20))}（共 {total} 条）
+              </span>
+              <button onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(total / 20)), p + 1))} disabled={page >= Math.max(1, Math.ceil(total / 20))}
+                style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>下一页</button>
+            </div>
+          )}
 
           {/* Pagination */}
           {total > 20 && (
