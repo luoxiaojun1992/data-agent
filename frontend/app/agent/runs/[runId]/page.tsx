@@ -205,26 +205,6 @@ export default function RunDetailPage() {
           </div>
         </div>
 
-        {/* Result */}
-        {run.result && (
-          <div className="glass p-4 mb-6" data-testid="run-result">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📊 执行结果</h3>
-            <pre className="text-sm text-[var(--text-primary)] bg-black/30 rounded-lg p-4 max-h-96 overflow-y-auto whitespace-pre-wrap">
-              {run.result.content || JSON.stringify(run.result, null, 2)}
-            </pre>
-          </div>
-        )}
-
-        {/* Error */}
-        {run.error && (
-          <div className="glass p-4 mb-6 border border-red-400/30" data-testid="run-error">
-            <h3 className="text-sm font-semibold text-red-400 mb-3">⚠ 错误信息</h3>
-            <pre className="text-sm text-red-300 bg-black/30 rounded-lg p-4 max-h-64 overflow-y-auto whitespace-pre-wrap">
-              {run.error}
-            </pre>
-          </div>
-        )}
-
         {/* 任务详情 — from the linked Task definition (with params fallback) */}
         {(() => {
           const title = task?.title || run.params?.title;
@@ -248,6 +228,26 @@ export default function RunDetailPage() {
             </div>
           );
         })()}
+
+        {/* Result */}
+        {run.result && (
+          <div className="glass p-4 mb-6" data-testid="run-result">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📊 执行结果</h3>
+            <pre className="text-sm text-[var(--text-primary)] bg-black/30 rounded-lg p-4 max-h-96 overflow-y-auto whitespace-pre-wrap">
+              {run.result.content || JSON.stringify(run.result, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        {/* Error */}
+        {run.error && (
+          <div className="glass p-4 mb-6 border border-red-400/30" data-testid="run-error">
+            <h3 className="text-sm font-semibold text-red-400 mb-3">⚠ 错误信息</h3>
+            <pre className="text-sm text-red-300 bg-black/30 rounded-lg p-4 max-h-64 overflow-y-auto whitespace-pre-wrap">
+              {run.error}
+            </pre>
+          </div>
+        )}
 
         {/* Chat history from session */}
         {chatLoading ? (
