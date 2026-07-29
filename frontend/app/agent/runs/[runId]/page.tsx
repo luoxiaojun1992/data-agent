@@ -105,25 +105,32 @@ export default function RunDetailPage() {
     return `${(ms / 3600000).toFixed(1)}h`;
   };
 
-  // Normalize chat messages: filter out events with no real content and
-  // collapse the LLM's author tag (often "data_agent") to "assistant".
+  // Normalize chat messages: render text, tool_call, and tool_result events
+  // from the flat ADK session event format.
+  //
+  // Event types:
+  //   { type: "text", role: "user"|"data_agent", content: "..." }
+  //   { type: "tool_call", name: "knowledge_search", args: { ... } }
+  //   { type: "tool_result", name: "knowledge_search", result: { ... } }
   const normalizeChatMessages = (raw: any[]): { role: string; text: string }[] => {
     const out: { role: string; text: string }[] = [];
     for (const ev of raw) {
-      const role = ev.role || ev.author || '';
-      let text = '';
-      if (typeof ev.content === 'string') {
-        text = ev.content;
-      } else if (ev.content?.parts) {
-        text = ev.content.parts.filter((p: any) => typeof p === 'string' || p?.text).map((p: any) => typeof p === 'string' ? p : p.text).join('\n');
-      } else if (ev.content?.text) {
-        text = ev.content.text;
+      if (ev.type === 'text') {
+        const text = (ev.content || '').trim();
+        if (!text) continue;
+        const role = ev.role === 'user' ? 'user' : 'assistant';
+        out.push({ role, text });
+      } else if (ev.type === 'tool_call') {
+        out.push({
+          role: 'tool_call',
+          text: `🔧 ${ev.name}\n${JSON.stringify(ev.args, null, 2)}`,
+        });
+      } else if (ev.type === 'tool_result') {
+        out.push({
+          role: 'tool_result',
+          text: `📋 ${ev.name}\n${JSON.stringify(ev.result, null, 2)}`,
+        });
       }
-      text = (text || '').trim();
-      if (!text) continue;
-      // Collapse ADK's app-name author to "assistant".
-      const displayRole = role === 'user' ? 'user' : 'assistant';
-      out.push({ role: displayRole, text });
     }
     return out;
   };
@@ -259,23 +266,39 @@ export default function RunDetailPage() {
             <div className="glass p-4" data-testid="run-chat">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">💬 执行会话 ({msgs.length} 条消息)</h3>
               <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {msgs.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                        msg.role === 'user'
-                          ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30'
-                          : 'bg-[var(--glass-bg)] border border-[var(--border-glass)]'
-                      }`}>
-                      <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
-                        {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
-                      </p>
-                      <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">
-                        {msg.text}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                {msgs.map((msg, i) => {
+                    if (msg.role === 'tool_call' || msg.role === 'tool_result') {
+                      return (
+                        <div key={i} className="flex justify-start">
+                          <div className="max-w-[90%] rounded-lg px-3 py-2 bg-[var(--glass-bg)] border border-amber-400/20">
+                            <p className="text-[10px] text-amber-400 mb-1 font-mono">
+                              {msg.role === 'tool_call' ? '🔧 Tool Call' : '📋 Tool Result'} · {msg.text.split('\n')[0]}
+                            </p>
+                            <pre className="text-xs text-[var(--text-secondary)] max-h-48 overflow-y-auto whitespace-pre-wrap font-mono">
+                              {msg.text.includes('\n') ? msg.text.substring(msg.text.indexOf('\n') + 1) : ''}
+                            </pre>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                            msg.role === 'user'
+                              ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30'
+                              : 'bg-[var(--glass-bg)] border border-[var(--border-glass)]'
+                          }`}>
+                          <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
+                            {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                          </p>
+                          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">
+                            {msg.text}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           );
