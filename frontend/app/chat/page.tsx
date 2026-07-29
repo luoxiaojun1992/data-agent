@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
+import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
@@ -718,7 +719,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
             </div>
           );
         }
-        return <div key={i} className="whitespace-pre-wrap leading-relaxed">{block.text}</div>;
+        return <Markdown key={i}>{block.text}</Markdown>;
       })}
     </div>
   );

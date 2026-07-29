@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppLayout from '../../../providers';
 import { useAuth } from '@/lib/api';
+import Markdown from '../../../components/Markdown';
 
 interface TaskRun {
   run_id: string;
@@ -240,9 +241,9 @@ export default function RunDetailPage() {
         {run.result && (
           <div className="glass p-4 mb-6" data-testid="run-result">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📊 执行结果</h3>
-            <pre className="text-sm text-[var(--text-primary)] bg-black/30 rounded-lg p-4 max-h-96 overflow-y-auto whitespace-pre-wrap">
-              {run.result.content || JSON.stringify(run.result, null, 2)}
-            </pre>
+            <div className="bg-black/30 rounded-lg p-4 max-h-96 overflow-y-auto" data-testid="run-result-content">
+              <Markdown>{run.result.content || JSON.stringify(run.result, null, 2)}</Markdown>
+            </div>
           </div>
         )}
 
@@ -292,9 +293,7 @@ export default function RunDetailPage() {
                           <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
                             {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
                           </p>
-                          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">
-                            {msg.text}
-                          </p>
+                          <Markdown>{msg.text}</Markdown>
                         </div>
                       </div>
                     );
