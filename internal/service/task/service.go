@@ -100,8 +100,8 @@ func (s *Service) GetRun(id string) (*task.TaskRun, error) {
 	return s.runRepo.Get(context.Background(), id)
 }
 
-func (s *Service) ListRuns(taskID string, skip, limit int64) ([]*task.TaskRun, int64, error) {
-	return s.runRepo.List(context.Background(), taskID, skip, limit)
+func (s *Service) ListRuns(taskID string, status string, skip, limit int64) ([]*task.TaskRun, int64, error) {
+	return s.runRepo.List(context.Background(), taskID, status, skip, limit)
 }
 
 func (s *Service) UpdateRunStatus(id string, status task.Status) error {

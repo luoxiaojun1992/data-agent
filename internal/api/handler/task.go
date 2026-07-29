@@ -148,10 +148,11 @@ func (h *TaskHandler) BatchCancelTasks(c *gin.Context) {
 // GET /api/v1/tasks/:task_id/runs
 func (h *TaskHandler) ListRuns(c *gin.Context) {
 	taskID := c.Param("task_id")
+	status := c.Query("status")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	skip := int64((page - 1) * pageSize)
-	runs, total, err := h.runSvc.ListRuns(taskID, skip, int64(pageSize))
+	runs, total, err := h.runSvc.ListRuns(taskID, status, skip, int64(pageSize))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

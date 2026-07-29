@@ -81,9 +81,9 @@ func (_m *TaskRunRepository) Get(ctx context.Context, id string) (*task.TaskRun,
 	return r0, r1
 }
 
-// List provides a mock function with given fields: ctx, taskID, skip, limit
-func (_m *TaskRunRepository) List(ctx context.Context, taskID string, skip int64, limit int64) ([]*task.TaskRun, int64, error) {
-	ret := _m.Called(ctx, taskID, skip, limit)
+// List provides a mock function with given fields: ctx, taskID, status, skip, limit
+func (_m *TaskRunRepository) List(ctx context.Context, taskID string, status string, skip int64, limit int64) ([]*task.TaskRun, int64, error) {
+	ret := _m.Called(ctx, taskID, status, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for List")
@@ -92,25 +92,25 @@ func (_m *TaskRunRepository) List(ctx context.Context, taskID string, skip int64
 	var r0 []*task.TaskRun
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) ([]*task.TaskRun, int64, error)); ok {
-		return rf(ctx, taskID, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int64) ([]*task.TaskRun, int64, error)); ok {
+		return rf(ctx, taskID, status, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) []*task.TaskRun); ok {
-		r0 = rf(ctx, taskID, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int64) []*task.TaskRun); ok {
+		r0 = rf(ctx, taskID, status, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*task.TaskRun)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int64) int64); ok {
-		r1 = rf(ctx, taskID, skip, limit)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int64, int64) int64); ok {
+		r1 = rf(ctx, taskID, status, skip, limit)
 	} else {
 		r1 = ret.Get(1).(int64)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, string, int64, int64) error); ok {
-		r2 = rf(ctx, taskID, skip, limit)
+	if rf, ok := ret.Get(2).(func(context.Context, string, string, int64, int64) error); ok {
+		r2 = rf(ctx, taskID, status, skip, limit)
 	} else {
 		r2 = ret.Error(2)
 	}

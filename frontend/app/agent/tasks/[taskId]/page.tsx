@@ -49,23 +49,38 @@ export default function TaskRunsPage() {
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!taskId) return;
-    loadData();
-  }, [taskId]);
+    setPage(1); // reset on task switch / filter change
+    loadData(1, statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, statusFilter]);
 
-  const loadData = async () => {
+  useEffect(() => {
+    if (!taskId) return;
+    loadData(page, statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  const loadData = async (p: number, status: string) => {
     setLoading(true);
     try {
+      const params = new URLSearchParams({ page: String(p), page_size: String(pageSize) });
+      if (status !== 'all') params.set('status', status);
       const [taskRes, runsRes] = await Promise.all([
         apiFetch(`/tasks/${taskId}`),
-        apiFetch(`/tasks/${taskId}/runs?page_size=50`),
+        apiFetch(`/tasks/${taskId}/runs?${params.toString()}`),
       ]);
       if (taskRes.ok) setTask(await taskRes.json());
       if (runsRes.ok) {
         const data = await runsRes.json();
         setRuns(data.runs || []);
+        setTotal(typeof data.total === 'number' ? data.total : (data.runs || []).length);
       }
     } catch (e) {
       console.error('[runs-list] load failed:', e);
@@ -79,7 +94,7 @@ export default function TaskRunsPage() {
     try {
       const res = await apiFetch(`/tasks/${taskId}/run`, { method: 'POST' });
       if (res.ok) {
-        await loadData();
+        await loadData(page, statusFilter);
       }
     } catch (e) {
       console.error('[runs-list] trigger failed:', e);
@@ -130,6 +145,21 @@ export default function TaskRunsPage() {
           </button>
         </div>
 
+        {/* Status filter */}
+        <div className="flex gap-2 mb-4" data-testid="runs-status-filter">
+          {['all', 'pending', 'running', 'completed', 'failed', 'cancelled'].map(f => (
+            <button key={f} onClick={() => setStatusFilter(f)}
+              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                statusFilter === f
+                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                  : 'border-[var(--border-glass)] text-[var(--text-secondary)]'
+              }`}
+              data-testid={`runs-filter-${f}`}>
+              {f === 'all' ? '全部' : STATUS_LABELS[f]?.label || f}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="text-center py-12 text-[var(--text-secondary)]">加载中...</div>
         ) : runs.length === 0 ? (
@@ -178,6 +208,21 @@ export default function TaskRunsPage() {
                 </div>
               </button>
             ))}
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between mt-4" data-testid="runs-pagination">
+            <span className="text-xs text-[var(--text-secondary)]">
+              共 {total} 个 run · 第 {page} / {Math.max(1, Math.ceil(total / pageSize))} 页
+            </span>
+            <div className="flex gap-2">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30"
+                data-testid="runs-page-prev">← 上一页</button>
+              <button onClick={() => setPage(p => p + 1)} disabled={page * pageSize >= total}
+                className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30"
+                data-testid="runs-page-next">下一页 →</button>
+            </div>
           </div>
         )}
       </div>

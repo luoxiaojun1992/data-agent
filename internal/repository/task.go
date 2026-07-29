@@ -25,7 +25,7 @@ type TaskRepository interface {
 type TaskRunRepository interface {
 	Create(ctx context.Context, r *task.TaskRun) error
 	Get(ctx context.Context, id string) (*task.TaskRun, error)
-	List(ctx context.Context, taskID string, skip, limit int64) ([]*task.TaskRun, int64, error)
+	List(ctx context.Context, taskID string, status string, skip, limit int64) ([]*task.TaskRun, int64, error)
 	UpdateStatus(ctx context.Context, id string, status task.Status) error
 	UpdateResult(ctx context.Context, id string, result map[string]interface{}) error
 	UpdateError(ctx context.Context, id string, errMsg string) error

@@ -5,13 +5,6 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 
-const FILTER_LABELS: Record<string, string> = {
-  pending: '等待中',
-  running: '运行中',
-  completed: '已完成',
-  failed: '失败',
-};
-
 interface AgentTask {
   task_id: string;
   title?: string;
@@ -31,20 +24,21 @@ export default function AgentPage() {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [filter, setFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [newTask, setNewTask] = useState({ title: '', description: '', async: false, cron: '', cronEnabled: false });
 
-  useEffect(() => { loadTasks(); }, []);
+  useEffect(() => { loadTasks(page); }, [page]);
 
-  const loadTasks = async () => {
+  const loadTasks = async (p: number) => {
+    setLoading(true);
     try {
-      const res = await apiFetch('/tasks');
+      const res = await apiFetch(`/tasks?page=${p}&page_size=${pageSize}`);
       const data = await res.json();
-      const rawTasks = Array.isArray(data) ? data : (data.tasks || []);
-      setTasks(rawTasks.map((t: AgentTask) => ({
-        ...t,
-        title: t.title || t.type || '',
-      })));
+      const rawTasks: AgentTask[] = Array.isArray(data) ? data : (data.tasks || []);
+      setTasks(rawTasks.map((t: AgentTask) => ({ ...t, title: t.title || t.type || '' })));
+      setTotal(typeof data.total === 'number' ? data.total : rawTasks.length);
     } catch (e) { console.error('[agent] loadTasks failed:', e); }
     finally { setLoading(false); }
   };
@@ -62,7 +56,7 @@ export default function AgentPage() {
         }),
       });
       if (res.ok) {
-        await loadTasks();
+        await loadTasks(page);
         setShowModal(false);
         setNewTask({ title: '', description: '', async: false, cron: '', cronEnabled: false });
       }
@@ -71,7 +65,7 @@ export default function AgentPage() {
 
   const cancelTask = async (taskId: string) => {
     await apiFetch(`/tasks/${taskId}/cancel`, { method: 'PUT' });
-    await loadTasks();
+    await loadTasks(page);
   };
 
   const openTask = (taskId: string) => {
@@ -90,7 +84,7 @@ export default function AgentPage() {
     return <span className={`text-xs px-2.5 py-1 rounded-full ${m.cls}`} data-testid={`task-status-${s}`}>{m.label}</span>;
   };
 
-  const filtered = filter === 'all' ? tasks : tasks.filter(t => t.status === filter);
+  const filtered = tasks; // pagination already server-side
 
   return (
     <AppLayout>
@@ -106,17 +100,6 @@ export default function AgentPage() {
             data-testid="agent-create-task-btn">+ 新建任务</button>
         </div>
 
-
-        {/* Filters */}
-        <div className="flex gap-2 mb-4" data-testid="agent-task-filters">
-          {['all', 'pending', 'running', 'completed', 'failed'].map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                filter === f ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border-glass)] text-[var(--text-secondary)]'
-              }`}
-              data-testid={`agent-filter-${f}`}>{f === 'all' ? '全部' : FILTER_LABELS[f]}</button>
-          ))}
-        </div>
 
         {/* Task list */}
         {loading ? (
@@ -153,11 +136,19 @@ export default function AgentPage() {
             ))}
 
             {/* Pagination */}
-            {filtered.length >= 10 && (
-              <div className="flex justify-center gap-2 mt-4" data-testid="agent-task-pagination">
-                <span className="text-xs text-[var(--text-secondary)]">第 1 页</span>
-              </div>
-            )}
+        <div className="flex items-center justify-between mt-4" data-testid="agent-task-pagination">
+          <span className="text-xs text-[var(--text-secondary)]">
+            共 {total} 个任务 · 第 {page} / {Math.max(1, Math.ceil(total / pageSize))} 页
+          </span>
+          <div className="flex gap-2">
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+              className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30"
+              data-testid="agent-page-prev">← 上一页</button>
+            <button onClick={() => setPage(p => p + 1)} disabled={page * pageSize >= total}
+              className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30"
+              data-testid="agent-page-next">下一页 →</button>
+          </div>
+        </div>
           </div>
         )}
       </div>

@@ -105,8 +105,11 @@ func (r *TaskRunRepository) Get(ctx context.Context, id string) (*task.TaskRun, 
 	return docToTaskRun(d), nil
 }
 
-func (r *TaskRunRepository) List(ctx context.Context, taskID string, skip, limit int64) ([]*task.TaskRun, int64, error) {
+func (r *TaskRunRepository) List(ctx context.Context, taskID string, status string, skip, limit int64) ([]*task.TaskRun, int64, error) {
 	filter := bson.M{"task_id": taskID}
+	if status != "" {
+		filter["status"] = status
+	}
 	total, err := r.coll.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err

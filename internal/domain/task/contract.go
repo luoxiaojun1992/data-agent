@@ -27,7 +27,7 @@ type TaskService interface {
 //go:generate mockery --name TaskRunService --output ./mocks --outpkg mocks
 type TaskRunService interface {
 	GetRun(id string) (*TaskRun, error)
-	ListRuns(taskID string, skip, limit int64) ([]*TaskRun, int64, error)
+	ListRuns(taskID string, status string, skip, limit int64) ([]*TaskRun, int64, error)
 	UpdateRunStatus(id string, status Status) error
 	UpdateRunResult(id string, result map[string]interface{}) error
 	UpdateRunError(id string, errMsg string) error
