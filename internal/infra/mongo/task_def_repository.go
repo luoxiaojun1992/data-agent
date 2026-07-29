@@ -33,7 +33,11 @@ func (r *TaskDefRepository) Get(ctx context.Context, id string) (*task.Task, err
 }
 
 func (r *TaskDefRepository) UpdateLastRun(ctx context.Context, id string, runAt time.Time) error {
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"last_run_at": runAt}})
+	// Atomic single op: bump run_count + set last_run_at + updated_at.
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{
+		"$inc": bson.M{"run_count": int64(1)},
+		"$set": bson.M{"last_run_at": runAt, "updated_at": runAt},
+	})
 	return err
 }
 

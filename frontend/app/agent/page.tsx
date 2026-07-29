@@ -11,6 +11,8 @@ interface AgentTask {
   type?: string;
   status: string; // pending | running | completed | failed | cancelled
   progress?: number;
+  run_count?: number;       // atomic counter, updated on each run creation
+  last_run_at?: string;     // updated atomically on each run creation
   created_at: string;
   updated_at?: string;
   cron_expr?: string;
@@ -120,7 +122,16 @@ export default function AgentPage() {
                   data-testid={`agent-task-title-${idx}`}>
                   <div>
                     <p className="text-sm font-medium text-[var(--text-primary)]">{task.title || task.type || task.task_id?.slice(0, 12)}</p>
-                    <p className="text-xs text-[var(--text-secondary)] mt-1">{new Date(task.created_at).toLocaleString()}</p>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-secondary)]">
+                      <span data-testid={`agent-task-run-count-${idx}`}>
+                        🔁 {(task.run_count ?? 0)} 次运行
+                      </span>
+                      {task.last_run_at && (
+                        <span data-testid={`agent-task-last-run-${idx}`}>
+                          · 上次: {new Date(task.last_run_at).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {statusPill(task.status)}

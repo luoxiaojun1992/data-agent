@@ -40,7 +40,8 @@ type Task struct {
 	SkillChain  []string               `json:"skill_chain"`
 	Params      map[string]interface{} `json:"params"`
 	CronExpr    string                 `json:"cron_expr,omitempty"`
-	LastRunAt   *time.Time             `json:"last_run_at,omitempty"`
+	RunCount    int64                  `json:"run_count"`            // incremented atomically per run creation
+	LastRunAt   *time.Time             `json:"last_run_at,omitempty"` // updated on each new run creation
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
 }

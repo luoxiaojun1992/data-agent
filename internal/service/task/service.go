@@ -3,7 +3,6 @@ package task
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
@@ -27,7 +26,7 @@ func (s *Service) SetQueueRepo(qr repository.QueueRepository) {
 }
 
 // CreateTask creates a task definition + its first TaskRun, persists both,
-// and enqueues the run.
+// and enqueues the run. Initializes run_count=1 and last_run_at=now.
 func (s *Service) CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*task.Task, *task.TaskRun, error) {
 	ctx := context.Background()
 	t := task.NewTask(userID, taskType, skillChain, params, modelID)
@@ -39,9 +38,12 @@ func (s *Service) CreateTask(userID, taskType string, skillChain []string, param
 	if err := s.runRepo.Create(ctx, run); err != nil {
 		return nil, nil, fmt.Errorf("insert task run: %w", err)
 	}
-	now := time.Now()
-	t.LastRunAt = &now
-	_ = s.repo.UpdateLastRun(ctx, t.ID, now)
+	// Initialize run_count=1 and last_run_at — UpdateLastRun does both atomically.
+	if err := s.repo.UpdateLastRun(ctx, t.ID, run.CreatedAt); err != nil {
+		_ = err // non-fatal — UI can still re-fetch
+	}
+	t.RunCount = 1
+	t.LastRunAt = &run.CreatedAt
 
 	if s.queueRepo != nil {
 		_ = s.queueRepo.Enqueue(ctx, run)
@@ -49,7 +51,8 @@ func (s *Service) CreateTask(userID, taskType string, skillChain []string, param
 	return t, run, nil
 }
 
-// CreateRun creates a new run from the task definition and enqueues it.
+// CreateRun creates a new run from the task definition, enqueues it, and
+// atomically bumps run_count + last_run_at on the parent task.
 func (s *Service) CreateRun(taskID string) (*task.TaskRun, error) {
 	ctx := context.Background()
 	t, err := s.repo.Get(ctx, taskID)
@@ -61,9 +64,9 @@ func (s *Service) CreateRun(taskID string) (*task.TaskRun, error) {
 	if err := s.runRepo.Create(ctx, run); err != nil {
 		return nil, fmt.Errorf("insert run: %w", err)
 	}
-	now := time.Now()
-	t.LastRunAt = &now
-	_ = s.repo.UpdateLastRun(ctx, t.ID, now)
+	if err := s.repo.UpdateLastRun(ctx, t.ID, run.CreatedAt); err != nil {
+		_ = err // non-fatal
+	}
 
 	if s.queueRepo != nil {
 		_ = s.queueRepo.Enqueue(ctx, run)
