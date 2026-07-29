@@ -169,7 +169,8 @@ export default function TaskRunsPage() {
             <p className="text-sm text-[var(--text-secondary)]">点击「▶ 手动运行」触发一次执行</p>
           </div>
         ) : (
-          <div className="space-y-3" data-testid="runs-list">
+          <>
+            <div className="space-y-3" data-testid="runs-list">
             {runs.map((run, idx) => (
               <button key={run.run_id} onClick={() => openRun(run.run_id)}
                 className="glass w-full text-left p-4 hover:bg-white/5 transition-colors"
@@ -224,6 +225,7 @@ export default function TaskRunsPage() {
                 data-testid="runs-page-next">下一页 →</button>
             </div>
           </div>
+          </>
         )}
       </div>
     </AppLayout>
