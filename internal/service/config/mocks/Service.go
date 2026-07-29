@@ -62,6 +62,24 @@ func (_m *Service) GetAll(ctx context.Context, namespace string) ([]model.System
 	return r0, r1
 }
 
+// SeedBuiltins provides a mock function with given fields: ctx
+func (_m *Service) SeedBuiltins(ctx context.Context) error {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SeedBuiltins")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Upsert provides a mock function with given fields: ctx, namespace, key, value
 func (_m *Service) Upsert(ctx context.Context, namespace string, key string, value string) error {
 	ret := _m.Called(ctx, namespace, key, value)

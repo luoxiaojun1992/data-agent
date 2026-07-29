@@ -13,4 +13,5 @@ type Service interface {
 	GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error)
 	Upsert(ctx context.Context, namespace, key, value string) error
 	Delete(ctx context.Context, namespace, key string) error
+	SeedBuiltins(ctx context.Context) error
 }
