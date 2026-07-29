@@ -225,24 +225,29 @@ export default function RunDetailPage() {
           </div>
         )}
 
-        {/* 任务详情 — from the linked Task definition */}
-        {task && (task.title || task.description) && (
-          <div className="glass p-4 mb-6" data-testid="run-task-detail">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📝 任务详情</h3>
-            {task.title && (
-              <div className="mb-2">
-                <p className="text-xs text-[var(--text-secondary)]">标题</p>
-                <p className="text-sm text-[var(--text-primary)] mt-0.5">{task.title}</p>
-              </div>
-            )}
-            {task.description && (
-              <div>
-                <p className="text-xs text-[var(--text-secondary)]">描述</p>
-                <p className="text-sm text-[var(--text-primary)] mt-0.5 whitespace-pre-wrap">{task.description}</p>
-              </div>
-            )}
-          </div>
-        )}
+        {/* 任务详情 — from the linked Task definition (with params fallback) */}
+        {(() => {
+          const title = task?.title || run.params?.title;
+          const description = task?.description || run.params?.description;
+          if (!title && !description) return null;
+          return (
+            <div className="glass p-4 mb-6" data-testid="run-task-detail">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📝 任务详情</h3>
+              {title && (
+                <div className="mb-2">
+                  <p className="text-xs text-[var(--text-secondary)]">标题</p>
+                  <p className="text-sm text-[var(--text-primary)] mt-0.5">{title}</p>
+                </div>
+              )}
+              {description && (
+                <div>
+                  <p className="text-xs text-[var(--text-secondary)]">描述</p>
+                  <p className="text-sm text-[var(--text-primary)] mt-0.5 whitespace-pre-wrap">{description}</p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Chat history from session */}
         {chatLoading ? (
