@@ -10,14 +10,16 @@ type taskServiceAdapter struct {
 }
 
 // NewTaskCreatorFromService creates a TaskCreator backed by a task_svc.Service.
+// The adapter calls svc.CreateRun(taskID) — each schedule trigger creates a
+// new TaskRun from the persistent Task definition.
 func NewTaskCreatorFromService(svc *task_svc.Service) TaskCreator {
 	return &taskServiceAdapter{svc: svc}
 }
 
-func (a *taskServiceAdapter) CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (string, error) {
-	_, run, err := a.svc.CreateTask(userID, taskType, skillChain, params, modelID)
+func (a *taskServiceAdapter) CreateRun(taskID string) (string, error) {
+	run, err := a.svc.CreateRun(taskID)
 	if err != nil {
 		return "", err
 	}
-	return run.TaskID, nil
+	return run.ID, nil
 }

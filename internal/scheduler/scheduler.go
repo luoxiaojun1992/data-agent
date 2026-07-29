@@ -11,24 +11,27 @@ import (
 	"time"
 )
 
-// Schedule represents a recurring job configuration.
+// Schedule represents a recurring job configuration linked to a persistent
+// Task definition. When triggered, the scheduler creates a new TaskRun for
+// the bound TaskID and enqueues it — it does NOT create a new Task each time.
 type Schedule struct {
 	ID         string                 `json:"id" bson:"_id"`
+	TaskID     string                 `json:"task_id" bson:"task_id"` // links to persistent Task definition
 	Name       string                 `json:"name" bson:"name"`
-	CronExpr   string                 `json:"cron_expr" bson:"cron_expr"` // simplified: "every_5m", "every_1h", "daily_09:00"
-	Interval   time.Duration          `json:"-" bson:"interval_sec"`      // parsed interval in seconds
+	CronExpr   string                 `json:"cron_expr" bson:"cron_expr"`
+	Interval   time.Duration          `json:"-" bson:"interval_sec"`
 	Enabled    bool                   `json:"enabled" bson:"enabled"`
-	SkillChain []string               `json:"skill_chain" bson:"skill_chain"`
-	Params     map[string]interface{} `json:"params" bson:"params"`
-	ModelID    string                 `json:"model_id" bson:"model_id"` // bound model for scheduled runs
+	SkillChain []string               `json:"-" bson:"-"` // informational; stored on Task now
+	Params     map[string]interface{} `json:"-" bson:"-"` // informational; stored on Task now
+	ModelID    string                 `json:"-" bson:"-"`
 	LastRun    *time.Time             `json:"last_run" bson:"last_run"`
 	NextRun    time.Time              `json:"next_run" bson:"next_run"`
 	CreatedAt  time.Time              `json:"created_at" bson:"created_at"`
 }
 
-// TaskCreator is the interface Scheduler uses to create AgentTasks.
+// TaskCreator creates a new TaskRun (execution instance) for a task definition.
 type TaskCreator interface {
-	CreateTask(sessionID, userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (taskID string, err error)
+	CreateRun(taskID string) (runID string, err error)
 }
 
 // Scheduler manages recurring task schedules.
@@ -143,15 +146,15 @@ func (s *Scheduler) runDueJobs(ctx context.Context) {
 	}
 }
 
-// executeJob runs a single scheduled job.
+// executeJob creates a new TaskRun for the schedule's bound Task definition
+// and enqueues it. The schedule links to a persistent Task via TaskID.
 func (s *Scheduler) executeJob(ctx context.Context, sch *Schedule) {
 	now := time.Now()
-	log.Printf("Scheduler: executing %q", sch.Name)
+	log.Printf("Scheduler: executing %q (task_id=%s)", sch.Name, sch.TaskID)
 
-	sessionID := fmt.Sprintf("sched_%s_%d", sch.ID, now.Unix())
-	_, err := s.creator.CreateTask(sessionID, "system", "scheduled", sch.SkillChain, sch.Params, sch.ModelID)
+	_, err := s.creator.CreateRun(sch.TaskID)
 	if err != nil {
-		log.Printf("Scheduler: failed to create task for %q: %v", sch.Name, err)
+		log.Printf("Scheduler: failed to create run for %q (task_id=%s): %v", sch.Name, sch.TaskID, err)
 		return
 	}
 
