@@ -307,7 +307,7 @@ export default function KnowledgePage() {
 }
 
 const statusLabel = (s: string, progress: number) => {
-  const m: Record<string, string> = { ready: '已索引 ✓', indexing: '索引中', uploaded: '已上传', failed: '索引失败', pending: '等待索引' };
+  const m: Record<string, string> = { ready: '已索引', indexing: '索引中', uploaded: '已上传', failed: '索引失败', pending: '等待索引' };
   const base = m[s] || s;
   if (s === 'indexing') return `${base} ${progress}%`;
   return base;
