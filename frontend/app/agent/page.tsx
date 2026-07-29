@@ -29,7 +29,7 @@ export default function AgentPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
-  const [newTask, setNewTask] = useState({ title: '', description: '', async: false, cron: '', cronEnabled: false });
+  const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false });
 
   useEffect(() => { loadTasks(page); }, [page]);
 
@@ -47,20 +47,21 @@ export default function AgentPage() {
 
   const createTask = async () => {
     if (!newTask.title.trim()) return;
+    // If cron is enabled, a schedule must be chosen.
+    if (newTask.cronEnabled && !newTask.cron) return;
     try {
       const res = await apiFetch('/tasks', {
         method: 'POST',
         body: JSON.stringify({
           title: newTask.title,
           description: newTask.description,
-          async: newTask.async,
           cron_expr: newTask.cronEnabled ? newTask.cron : undefined,
         }),
       });
       if (res.ok) {
         await loadTasks(page);
         setShowModal(false);
-        setNewTask({ title: '', description: '', async: false, cron: '', cronEnabled: false });
+        setNewTask({ title: '', description: '', cron: '', cronEnabled: false });
       }
     } catch (e) { console.error('[agent] loadTasks failed:', e); }
   };
@@ -187,11 +188,6 @@ export default function AgentPage() {
                   data-testid="agent-task-desc-input" rows={2} placeholder="描述分析目标..." />
               </div>
               <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
-                <input type="checkbox" checked={newTask.async} onChange={e => setNewTask(p => ({ ...p, async: e.target.checked }))}
-                  data-testid="agent-task-async-toggle" className="rounded" />
-                异步执行
-              </label>
-              <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
                 <input type="checkbox" checked={newTask.cronEnabled} onChange={e => setNewTask(p => ({ ...p, cronEnabled: e.target.checked }))}
                   data-testid="agent-task-cron-toggle" className="rounded" />
                 设为定时任务
@@ -214,7 +210,7 @@ export default function AgentPage() {
                   className="flex-1 px-4 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">取消</button>
                 <button onClick={createTask}
                   className="flex-1 px-4 py-2 text-sm rounded-xl bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40"
-                  data-testid="agent-task-create-btn" disabled={!newTask.title.trim()}>创建任务</button>
+                  data-testid="agent-task-create-btn" disabled={!newTask.title.trim() || (newTask.cronEnabled && !newTask.cron)}>创建任务</button>
               </div>
             </div>
           </div>
