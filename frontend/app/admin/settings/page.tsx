@@ -19,6 +19,7 @@ const BUILTIN_CONFIGS: Omit<ConfigItem, 'value' | 'source'>[] = [
   { key: 'INVITE_BASE_URL', description: '邀请链接对外基地址（与内部 host:port 不同时设置）' },
   { key: 'VAULT_ADDR', description: 'HashiCorp Vault 地址' },
   { key: 'JWT_SECRET', description: 'JWT 签名密钥' },
+  { key: 'SESSION_TIMEOUT', description: '登录 Session 超时（小时），默认 24h' },
   { key: 'SERVER_READ_TIMEOUT', description: 'HTTP 读超时（秒）' },
   { key: 'SERVER_WRITE_TIMEOUT', description: 'HTTP 写超时（秒）' },
 ];
