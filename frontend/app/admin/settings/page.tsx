@@ -143,8 +143,8 @@ export default function SettingsPage() {
             <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '220px' }}>Key</th>
-                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Value</th>
+                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '320px' }}>配置项</th>
+                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>自定义值</th>
                   <th style={{ textAlign: 'center', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '90px' }}>来源</th>
                   <th style={{ textAlign: 'right', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '80px' }}>操作</th>
                 </tr>
@@ -155,9 +155,8 @@ export default function SettingsPage() {
                   return (
                     <tr key={c.key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`settings-row-${c.key}`}>
                       <td style={{ padding: '12px' }}>
-                        <code style={{ fontSize: '12px', color: 'var(--accent)' }}>{c.key}</code>
                         {c.description && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{c.description}</div>
+                          <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{c.description}</div>
                         )}
                       </td>
                       <td style={{ padding: '12px', color: 'var(--text-primary)', maxWidth: '500px' }}>
