@@ -290,7 +290,7 @@ const statusLabel = (s: string, progress: number) => {
   return base;
 };
 const statusIcon = (s: string) => {
-  const m: Record<string, string> = { ready: '✅', indexing: '🔄', uploaded: '📤', failed: '❌' };
+  const m: Record<string, string> = { ready: '', indexing: '🔄', uploaded: '📤', failed: '❌' };
   return m[s] || '';
 };
 const statusBg = (s: string) => {
