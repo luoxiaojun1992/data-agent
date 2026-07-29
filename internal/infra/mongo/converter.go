@@ -679,5 +679,7 @@ func docToTaskRun(d bson.M) *task.TaskRun {
 		DurationMs:  int64(getInt(d, "duration_ms")),
 		CreatedAt:   getTime(d, "created_at"),
 		UpdatedAt:   getTime(d, "updated_at"),
+		Result:      getSubDoc(d, "result"),
+		Error:       getStr(d, "error"),
 	}
 }
