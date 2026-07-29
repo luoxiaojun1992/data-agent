@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppLayout from '../../../providers';
 import { useAuth } from '@/lib/api';
-import Markdown from '../../../components/Markdown';
+import Markdown from '../../../../components/Markdown';
 
 interface TaskRun {
   run_id: string;

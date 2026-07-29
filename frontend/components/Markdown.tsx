@@ -56,9 +56,7 @@ export default function Markdown({ children, className }: MarkdownProps) {
   if (!children) return null;
   return (
     <div className={className}>
-      <ReactMarkdown components={components}>
-        {children}
-      </ReactMarkdown>
+      <ReactMarkdown components={components}>{String(children)}</ReactMarkdown>
     </div>
   );
 }

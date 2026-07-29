@@ -719,7 +719,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
             </div>
           );
         }
-        return <Markdown key={i}>{block.text}</Markdown>;
+        return <Markdown key={i}>{String(block.text)}</Markdown>;
       })}
     </div>
   );
