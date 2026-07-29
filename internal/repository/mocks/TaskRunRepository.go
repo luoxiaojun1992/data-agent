@@ -154,6 +154,24 @@ func (_m *TaskRunRepository) UpdateResult(ctx context.Context, id string, result
 	return r0
 }
 
+// UpdateSessionID provides a mock function with given fields: ctx, id, sessionID
+func (_m *TaskRunRepository) UpdateSessionID(ctx context.Context, id string, sessionID string) error {
+	ret := _m.Called(ctx, id, sessionID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSessionID")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, id, sessionID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // UpdateStatus provides a mock function with given fields: ctx, id, status
 func (_m *TaskRunRepository) UpdateStatus(ctx context.Context, id string, status task.Status) error {
 	ret := _m.Called(ctx, id, status)

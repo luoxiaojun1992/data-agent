@@ -133,6 +133,24 @@ func (_m *TaskRunService) UpdateRunResult(id string, result map[string]interface
 	return r0
 }
 
+// UpdateRunSessionID provides a mock function with given fields: id, sessionID
+func (_m *TaskRunService) UpdateRunSessionID(id string, sessionID string) error {
+	ret := _m.Called(id, sessionID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateRunSessionID")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = rf(id, sessionID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // UpdateRunStatus provides a mock function with given fields: id, status
 func (_m *TaskRunService) UpdateRunStatus(id string, status task.Status) error {
 	ret := _m.Called(id, status)

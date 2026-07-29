@@ -116,6 +116,10 @@ func (s *Service) UpdateRunError(id string, errMsg string) error {
 	return s.runRepo.UpdateError(context.Background(), id, errMsg)
 }
 
+func (s *Service) UpdateRunSessionID(id string, sessionID string) error {
+	return s.runRepo.UpdateSessionID(context.Background(), id, sessionID)
+}
+
 func (s *Service) CancelRun(id string) error {
 	return s.runRepo.Cancel(context.Background(), id)
 }

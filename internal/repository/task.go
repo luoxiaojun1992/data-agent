@@ -29,6 +29,7 @@ type TaskRunRepository interface {
 	UpdateStatus(ctx context.Context, id string, status task.Status) error
 	UpdateResult(ctx context.Context, id string, result map[string]interface{}) error
 	UpdateError(ctx context.Context, id string, errMsg string) error
+	UpdateSessionID(ctx context.Context, id, sessionID string) error
 	Cancel(ctx context.Context, id string) error
 }
 

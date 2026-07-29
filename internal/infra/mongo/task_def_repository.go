@@ -145,6 +145,11 @@ func (r *TaskRunRepository) UpdateError(ctx context.Context, id string, errMsg s
 	return err
 }
 
+func (r *TaskRunRepository) UpdateSessionID(ctx context.Context, id, sessionID string) error {
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"session_id": sessionID}})
+	return err
+}
+
 func (r *TaskRunRepository) Cancel(ctx context.Context, id string) error {
 	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"status": task.StatusCancelled}})
 	return err

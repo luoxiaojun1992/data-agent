@@ -93,6 +93,8 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	_ = e.runs.UpdateRunStatus(run.ID, domaintask.StatusRunning)
 
 	// 2. Create ADK session with identity + task_id + run_id injected.
+	//    Session is owned by run.UserID (the task creator), so it appears
+	//    in their chat session list and respects their permissions.
 	state := buildRunState(run)
 	resp, cerr := e.adkSessions.Create(ctx, &session.CreateRequest{
 		AppName:   e.registry.AppName(),
@@ -110,6 +112,13 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 		runSessionID = resp.Session.ID()
 	}
 	state["session_id"] = runSessionID
+
+	// Write the session_id back to the TaskRun so the run → session link
+	// is visible in the API and UI.
+	if runSessionID != run.SessionID {
+		run.SessionID = runSessionID
+		e.writeSessionID(run.ID, runSessionID)
+	}
 
 	// 3. Resolve the task-mode Runtime.
 	rt, rErr := e.registry.GetOrCreateWithInstruction(ctx, run.ModelID, adkruntime.TaskInstructionSuffix)
@@ -200,6 +209,12 @@ func (e *AgentExecutor) notifyRun(run *domaintask.TaskRun, title, body string) {
 	if _, err := e.notif.Send(title, body, "task", []string{run.UserID}); err != nil {
 		log.Printf("[executor] notification send failed for user %s (run %s): %v", run.UserID, run.ID, err)
 	}
+}
+
+// writeSessionID persists the ADK-generated session ID back to the TaskRun
+// so the run → session → chat history link is visible.
+func (e *AgentExecutor) writeSessionID(runID, sessionID string) {
+	_ = e.runs.UpdateRunSessionID(runID, sessionID)
 }
 
 // wasRunCancelled re-loads the run and reports whether it was cancelled.

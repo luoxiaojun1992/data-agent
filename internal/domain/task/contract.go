@@ -31,5 +31,6 @@ type TaskRunService interface {
 	UpdateRunStatus(id string, status Status) error
 	UpdateRunResult(id string, result map[string]interface{}) error
 	UpdateRunError(id string, errMsg string) error
+	UpdateRunSessionID(id string, sessionID string) error
 	CancelRun(id string) error
 }
