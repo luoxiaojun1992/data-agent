@@ -18,16 +18,29 @@ function boolLS(key: string): boolean {
 }
 
 export function useAuth() {
-  const [auth, setAuth] = useState<AuthState>({
-    token: null,
-    userId: null,
-    username: null,
-    role: null,
-    needChangePw: false,
-    hydrated: false,
+  // Lazy init — read token from localStorage synchronously so the first
+  // apiFetch call (which runs before useEffect) carries the Bearer header.
+  const [auth, setAuth] = useState<AuthState>(() => {
+    if (typeof window === 'undefined') {
+      return { token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: false };
+    }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return { token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: true };
+    }
+    return {
+      token,
+      userId: localStorage.getItem('userId'),
+      username: localStorage.getItem('username'),
+      role: localStorage.getItem('role'),
+      needChangePw: boolLS('needChangePw'),
+      hydrated: true,
+    };
   });
 
   useEffect(() => {
+    // Re-sync from localStorage when this hook mounts on a fresh page
+    // navigation (token may have been set in a different component tree).
     const token = localStorage.getItem('token');
     const userId = localStorage.getItem('userId');
     const username = localStorage.getItem('username');
