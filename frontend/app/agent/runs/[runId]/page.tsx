@@ -40,6 +40,7 @@ export default function RunDetailPage() {
   const { apiFetch } = useAuth();
 
   const [run, setRun] = useState<TaskRun | null>(null);
+  const [task, setTask] = useState<{ title?: string; description?: string; type?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -56,7 +57,19 @@ export default function RunDetailPage() {
       if (res.ok) {
         const data = await res.json();
         setRun(data);
-        // If session_id is set, fetch the chat history too
+        // Fetch task info for the "任务详情" section.
+        if (data.task_id) {
+          try {
+            const taskRes = await apiFetch(`/tasks/${data.task_id}`);
+            if (taskRes.ok) {
+              const t = await taskRes.json();
+              setTask({ title: t.title, description: t.description, type: t.type });
+            }
+          } catch (e) {
+            console.error('[run-detail] task fetch failed:', e);
+          }
+        }
+        // Fetch chat history.
         if (data.session_id) {
           setChatLoading(true);
           try {
@@ -79,11 +92,40 @@ export default function RunDetailPage() {
     }
   };
 
-  const formatDuration = (ms: number) => {
-    if (!ms) return '—';
+  // Compute duration from completed_at - created_at (more accurate than
+  // duration_ms which may not be set if worker died mid-run).
+  const computeDuration = (): string => {
+    if (!run) return '—';
+    const end = run.completed_at ? new Date(run.completed_at).getTime() : Date.now();
+    const start = new Date(run.created_at).getTime();
+    const ms = end - start;
     if (ms < 1000) return `${ms}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
+    if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+    return `${(ms / 3600000).toFixed(1)}h`;
+  };
+
+  // Normalize chat messages: filter out events with no real content and
+  // collapse the LLM's author tag (often "data_agent") to "assistant".
+  const normalizeChatMessages = (raw: any[]): { role: string; text: string }[] => {
+    const out: { role: string; text: string }[] = [];
+    for (const ev of raw) {
+      const role = ev.role || ev.author || '';
+      let text = '';
+      if (typeof ev.content === 'string') {
+        text = ev.content;
+      } else if (ev.content?.parts) {
+        text = ev.content.parts.filter((p: any) => typeof p === 'string' || p?.text).map((p: any) => typeof p === 'string' ? p : p.text).join('\n');
+      } else if (ev.content?.text) {
+        text = ev.content.text;
+      }
+      text = (text || '').trim();
+      if (!text) continue;
+      // Collapse ADK's app-name author to "assistant".
+      const displayRole = role === 'user' ? 'user' : 'assistant';
+      out.push({ role: displayRole, text });
+    }
+    return out;
   };
 
   const statusPill = (s: string) => {
@@ -133,11 +175,7 @@ export default function RunDetailPage() {
 
         {/* Run metadata */}
         <div className="glass p-4 mb-6" data-testid="run-meta">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-[var(--text-secondary)]">类型</p>
-              <p className="text-[var(--text-primary)] mt-0.5">{run.type || '—'}</p>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
               <p className="text-xs text-[var(--text-secondary)]">创建时间</p>
               <p className="text-[var(--text-primary)] mt-0.5">{new Date(run.created_at).toLocaleString()}</p>
@@ -148,7 +186,7 @@ export default function RunDetailPage() {
             </div>
             <div>
               <p className="text-xs text-[var(--text-secondary)]">耗时</p>
-              <p className="text-[var(--text-primary)] mt-0.5">{formatDuration(run.duration_ms)}</p>
+              <p className="text-[var(--text-primary)] mt-0.5">{computeDuration()}</p>
             </div>
             <div>
               <p className="text-xs text-[var(--text-secondary)]">重试次数</p>
@@ -158,12 +196,6 @@ export default function RunDetailPage() {
               <p className="text-xs text-[var(--text-secondary)]">会话 ID</p>
               <p className="text-[var(--text-primary)] mt-0.5 font-mono text-xs">
                 {run.session_id ? run.session_id.slice(0, 24) : '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[var(--text-secondary)]">进度</p>
-              <p className="text-[var(--text-primary)] mt-0.5">
-                {run.progress?.percent != null ? `${run.progress.percent}%` : '—'}
               </p>
             </div>
             <div>
@@ -193,36 +225,56 @@ export default function RunDetailPage() {
           </div>
         )}
 
-        {/* Params */}
-        {run.params && Object.keys(run.params).length > 0 && (
-          <div className="glass p-4 mb-6" data-testid="run-params">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">⚙ 参数</h3>
-            <pre className="text-xs text-[var(--text-secondary)] bg-black/30 rounded-lg p-3 max-h-48 overflow-y-auto whitespace-pre-wrap">
-              {JSON.stringify(run.params, null, 2)}
-            </pre>
+        {/* 任务详情 — from the linked Task definition */}
+        {task && (task.title || task.description) && (
+          <div className="glass p-4 mb-6" data-testid="run-task-detail">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📝 任务详情</h3>
+            {task.title && (
+              <div className="mb-2">
+                <p className="text-xs text-[var(--text-secondary)]">标题</p>
+                <p className="text-sm text-[var(--text-primary)] mt-0.5">{task.title}</p>
+              </div>
+            )}
+            {task.description && (
+              <div>
+                <p className="text-xs text-[var(--text-secondary)]">描述</p>
+                <p className="text-sm text-[var(--text-primary)] mt-0.5 whitespace-pre-wrap">{task.description}</p>
+              </div>
+            )}
           </div>
         )}
 
         {/* Chat history from session */}
         {chatLoading ? (
           <div className="text-center py-6 text-[var(--text-secondary)]">加载会话记录...</div>
-        ) : chatMessages.length > 0 && (
-          <div className="glass p-4" data-testid="run-chat">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">💬 执行会话 ({chatMessages.length} 条消息)</h3>
-            <div className="space-y-3 max-h-[600px] overflow-y-auto">
-              {chatMessages.map((msg, i) => (
-                <div key={i} className="border-l-2 border-[var(--border-glass)] pl-3">
-                  <p className="text-xs text-[var(--text-secondary)] mb-1">
-                    {msg.role || (msg.is_user ? 'user' : 'assistant')}
-                  </p>
-                  <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">
-                    {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2)}
-                  </p>
-                </div>
-              ))}
+        ) : (() => {
+          const msgs = normalizeChatMessages(chatMessages);
+          if (msgs.length === 0) return null;
+          return (
+            <div className="glass p-4" data-testid="run-chat">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">💬 执行会话 ({msgs.length} 条消息)</h3>
+              <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                {msgs.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                        msg.role === 'user'
+                          ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/30'
+                          : 'bg-[var(--glass-bg)] border border-[var(--border-glass)]'
+                      }`}>
+                      <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
+                        {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                      </p>
+                      <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">
+                        {msg.text}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </AppLayout>
   );
