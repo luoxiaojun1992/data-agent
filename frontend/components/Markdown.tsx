@@ -2,6 +2,7 @@
 
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const styles: Record<string, React.CSSProperties> = {
   h1: { fontSize: '1.5em', fontWeight: 700, color: 'var(--text-primary)', margin: '0.6em 0 0.3em' },
@@ -56,7 +57,7 @@ export default function Markdown({ children, className }: MarkdownProps) {
   if (!children) return null;
   return (
     <div className={className}>
-      <ReactMarkdown components={components}>{String(children)}</ReactMarkdown>
+      <ReactMarkdown components={components} remarkPlugins={[remarkGfm]}>{String(children)}</ReactMarkdown>
     </div>
   );
 }
