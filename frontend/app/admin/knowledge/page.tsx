@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
-import { useAuth } from '../../../lib/api';
+import { useAuth } from '@/lib/api';
 
 interface Doc {
   id: string;
@@ -23,6 +23,7 @@ const PAGE_SIZE = 10;
 export default function KnowledgePage() {
   const { auth, apiFetch } = useAuth();
   const [docs, setDocs] = useState<Doc[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [tagFilter, setTagFilter] = useState('');
@@ -40,11 +41,9 @@ export default function KnowledgePage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const [total, setTotal] = useState(0);
-
   const fetchDocs = useCallback(async () => {
     try {
-      const res = await apiFetch(`/admin/knowledge/docs?page=${page}&page_size=${PAGE_SIZE}`);
+      const res = await apiFetch(`/knowledge/docs?page=${page}&page_size=${PAGE_SIZE}`);
       if (res.ok) {
         const data = await res.json();
         setDocs(data.docs || []);
@@ -57,16 +56,15 @@ export default function KnowledgePage() {
     if (auth.hydrated) fetchDocs();
   }, [auth.hydrated, fetchDocs]);
 
-  const filtered = search || tagFilter
-    ? docs.filter((d) => {
-        if (search) {
-          const q = search.toLowerCase();
-          if (!(d.title || '').toLowerCase().includes(q) && !(d.file_name || '').toLowerCase().includes(q)) return false;
-        }
-        if (tagFilter && !(d.tags || []).includes(tagFilter)) return false;
-        return true;
-      })
-    : docs;
+  const filtered = docs
+    .filter((d) => {
+      if (search) {
+        const q = search.toLowerCase();
+        return (d.title || '').toLowerCase().includes(q) || (d.file_name || '').toLowerCase().includes(q);
+      }
+      return true;
+    })
+    .filter((d) => (tagFilter ? (d.tags || []).includes(tagFilter) : true));
 
   const totalPages = Math.max(1, Math.ceil((search || tagFilter ? filtered.length : total) / PAGE_SIZE));
   const paged = (search || tagFilter) ? filtered : docs;
@@ -87,11 +85,11 @@ export default function KnowledgePage() {
       formData.append('file_type', file.name.split('.').pop() || 'unknown');
       formData.append('size_bytes', String(file.size));
 
-        try {
-          const res = await apiFetch('/knowledge/docs', {
-            method: 'POST',
-            body: formData,
-          });
+      try {
+        const res = await apiFetch('/knowledge/docs', {
+          method: 'POST',
+          body: formData,
+        });
         if (res.ok) {
           setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
           setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
@@ -127,16 +125,14 @@ export default function KnowledgePage() {
     }
   };
 
-  // Collect all unique tags
   const allTags = Array.from(new Set(docs.flatMap((d) => d.tags || [])));
 
   return (
     <AppLayout>
       <div className="animate-fade-in" data-testid="kb-page-header">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">
-            知识库管理 · LLM 索引
-          </h2>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">知识库</h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">我的知识文档管理</p>
         </div>
 
         {/* Toast */}
@@ -147,24 +143,12 @@ export default function KnowledgePage() {
           }}>{toast.message}</div>
         )}
 
-        {/* Info Banner */}
-        <div data-testid="kb-info-banner" style={{ padding: '12px 16px', marginBottom: '20px',
-          background: 'rgba(59,130,246,0.1)', borderRadius: '10px', color: '#3b82f6', fontSize: '13px',
-        }}>
-          📌 文档上传后由 LLM 自动分析语义段落边界并拆分索引（复用异步 Agent 任务），索引数据与文档 ID 强绑定
-        </div>
-
         {/* Toolbar: Upload + Search */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <button data-testid="kb-upload-btn" onClick={() => setShowUpload(true)}
             style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
               color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
             + 上传文档
-          </button>
-          <button data-testid="kb-batch-upload-btn" onClick={() => setShowUpload(true)}
-            style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.06)',
-              color: '#7A7A7A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
-            📦 批量上传
           </button>
           <input data-testid="kb-search-input" placeholder="搜索文档..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -187,7 +171,6 @@ export default function KnowledgePage() {
                 onClick={() => fileInputRef.current?.click()}>
                 📤 拖拽文件到此处或点击选择
               </div>
-              {/* File list with progress */}
               {selectedFiles.length > 0 && (
                 <div style={{ marginBottom: '16px' }}>
                   {selectedFiles.map((f, i) => (
@@ -220,7 +203,6 @@ export default function KnowledgePage() {
           </div>
         )}
 
-        {/* Hidden file input */}
         <input ref={fileInputRef} type="file" multiple data-testid="kb-upload-file-input"
           accept=".txt,.pdf,.json,.csv,.bin,.png,.jpg"
           style={{ display: 'none' }} onChange={handleFileSelect} />
@@ -245,22 +227,19 @@ export default function KnowledgePage() {
           {paged.map((doc) => (
             <div key={doc.id} data-testid={`kb-doc-card-${doc.id}`} className="glass"
               style={{ padding: '20px 24px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              {/* File Icon */}
               <div style={{ width: '44px', height: '44px', borderRadius: '10px',
                 background: 'rgba(236,72,153,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '20px' }}>
                 📄
               </div>
-              {/* Info */}
               <div style={{ flex: 1 }}>
                 <p data-testid="kb-doc-name" style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
                   {doc.title || doc.file_name || '未命名文档'}
                 </p>
                 <p data-testid="kb-doc-meta" style={{ fontSize: '12px', color: '#7A7A7A' }}>
-                  {(doc.size_bytes / 1024).toFixed(1)} KB · {doc.chunk_count || 0} 分片 · {doc.user_id?.slice(0, 8) || '—'}
+                  {(doc.size_bytes / 1024).toFixed(1)} KB · {doc.chunk_count || 0} 分片
                 </p>
               </div>
-              {/* Status */}
               <div>
                 <span data-testid={`kb-doc-status-${doc.id}`} data-status={doc.status}
                   style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: 500,
@@ -268,13 +247,11 @@ export default function KnowledgePage() {
                   {statusIcon(doc.status)} {statusLabel(doc.status, doc.progress_percent)}
                 </span>
               </div>
-              {/* Tags */}
               <div data-testid="kb-doc-tags" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                 {(doc.tags || []).map((t) => (
                   <span key={t} style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(92,124,250,0.1)', color: '#5c7cfa', fontSize: '11px' }}>{t}</span>
                 ))}
               </div>
-              {/* Delete */}
               <button data-testid={`kb-doc-delete-${doc.id}`} onClick={() => handleDelete(doc.id)}
                 style={{ background: 'transparent', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444',
                   borderRadius: '6px', padding: '4px 10px', fontSize: '12px', cursor: 'pointer' }}>
@@ -284,7 +261,7 @@ export default function KnowledgePage() {
           ))}
           {paged.length === 0 && (
             <div className="glass p-12 text-center">
-              <p className="text-sm text-[var(--text-secondary)]">暂无文档</p>
+              <p className="text-sm text-[var(--text-secondary)]">暂无文档，点击「+ 上传文档」开始</p>
             </div>
           )}
         </div>
