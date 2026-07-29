@@ -283,4 +283,10 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	adminTasks.GET("", h.ListAllTasks)
 	adminTasks.PUT("/:task_id/retry", h.RetryTask)
 	adminTasks.POST("/batch-cancel", h.BatchCancelTasks)
+
+	// Standalone run endpoint — useful for the run-detail page where the
+	// client only has run_id (task_id is in URL state).
+	runRoutes := router.Group("/api/v1/runs")
+	runRoutes.Use(jwt.AuthMiddleware())
+	runRoutes.GET("/:run_id", h.GetRun)
 }

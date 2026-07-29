@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 
@@ -25,14 +26,13 @@ interface AgentTask {
 }
 
 export default function AgentPage() {
+  const router = useRouter();
   const { apiFetch } = useAuth();
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<string>('all');
-  const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({ title: '', description: '', async: false, cron: '', cronEnabled: false });
-  const [selectedArtifacts, setSelectedArtifacts] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadTasks(); }, []);
 
@@ -74,17 +74,8 @@ export default function AgentPage() {
     await loadTasks();
   };
 
-  const toggleExpand = async (taskId: string) => {
-    if (expandedTask === taskId) { setExpandedTask(null); return; }
-    // Fetch detail
-    try {
-      const res = await apiFetch(`/tasks/${taskId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTasks(prev => prev.map(t => t.task_id === taskId ? { ...t, ...data } : t));
-        setExpandedTask(taskId);
-      }
-    } catch (e) { console.error('[agent] loadTasks failed:', e); }
+  const openTask = (taskId: string) => {
+    router.push(`/agent/tasks/${taskId}`);
   };
 
   const statusPill = (s: string) => {
@@ -141,7 +132,7 @@ export default function AgentPage() {
             {filtered.map((task, idx) => (
               <div key={task.task_id} className="glass" data-testid={`agent-task-row-${idx}`}>
                 {/* Row header */}
-                <button onClick={() => toggleExpand(task.task_id)}
+                <button onClick={() => openTask(task.task_id)}
                   className="w-full text-left p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
                   data-testid={`agent-task-title-${idx}`}>
                   <div>
@@ -155,100 +146,9 @@ export default function AgentPage() {
                         <div className="h-full bg-[var(--accent)] rounded-full" style={{ width: `${task.progress}%` }} data-testid={`task-progress-fill-${idx}`} />
                       </div>
                     )}
-                    <span className="text-xs text-[var(--text-secondary)]">{expandedTask === task.task_id ? '▲' : '▼'}</span>
+                    <span className="text-xs text-[var(--text-secondary)]">▶</span>
                   </div>
                 </button>
-
-                {/* Expanded detail */}
-                {expandedTask === task.task_id && (
-                  <div className="px-4 pb-4 border-t border-[var(--border-glass)]" data-testid={`agent-task-detail-${idx}`}>
-                    {/* Steps indicator */}
-                    <div className="flex gap-3 py-3" data-testid={`agent-task-steps-${idx}`}>
-                      {['SQL生成', '数据提取', '回归计算', '生成报告'].map((step, si) => {
-                        const completed = task.status === 'completed' || (task.progress != null && task.progress >= (si + 1) * 25);
-                        const current = task.status === 'running' && task.progress != null && task.progress >= si * 25 && task.progress < (si + 1) * 25;
-                        const color = completed ? '#34D399' : current ? '#B1E2FF' : 'rgba(255,255,255,0.15)';
-                        const text = completed ? '#34D399' : current ? '#B1E2FF' : '#666';
-                        return (
-                          <div key={si} className="flex flex-col items-center gap-1 flex-1" data-testid={`agent-step-${si}`}>
-                            <span className={`w-2.5 h-2.5 rounded-full ${current ? 'animate-pulse' : ''}`}
-                              style={{ backgroundColor: color }} />
-                            <span className="text-[9px] text-center" style={{ color: text }}>{step}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex gap-2 py-3" data-testid={`agent-task-actions-${idx}`}>
-                      {(task.status === 'running' || task.status === 'pending' || task.status === 'queued') && (
-                        <button onClick={() => cancelTask(task.task_id)}
-                          className="px-3 py-1 text-xs rounded-lg border border-red-400/30 text-red-400 hover:bg-red-400/10"
-                          data-testid={`agent-cancel-btn-${idx}`}>取消</button>
-                      )}
-                      {task.status === 'failed' && (
-                        <button onClick={async () => {
-                          await apiFetch('/tasks', { method: 'POST', body: JSON.stringify({ title: task.title }) });
-                          await loadTasks();
-                        }}
-                          className="px-3 py-1 text-xs rounded-lg border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/10"
-                          data-testid={`agent-retry-btn-${idx}`}>重试</button>
-                      )}
-                      {task.status === 'active' && (
-                        <button onClick={async () => { await apiFetch(`/tasks/${task.task_id}/pause`, { method: 'PUT' }); await loadTasks(); }}
-                          className="px-3 py-1 text-xs rounded-lg border border-amber-400/30 text-amber-400 hover:bg-amber-400/10"
-                          data-testid={`agent-pause-btn-${idx}`}>暂停</button>
-                      )}
-                      {task.status === 'paused' && (
-                        <button onClick={async () => { await apiFetch(`/tasks/${task.task_id}/resume`, { method: 'PUT' }); await loadTasks(); }}
-                          className="px-3 py-1 text-xs rounded-lg border border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10"
-                          data-testid={`agent-resume-btn-${idx}`}>恢复</button>
-                      )}
-                    </div>
-                    {/* Logs */}
-                    {task.logs && task.logs.length > 0 && (
-                      <div data-testid={`agent-task-logs-${idx}`}>
-                        <p className="text-xs font-semibold text-[var(--text-secondary)] mb-1">执行日志</p>
-                        <pre className="text-xs text-[var(--text-secondary)] bg-black/20 rounded-lg p-2 max-h-32 overflow-y-auto">{task.logs.join('\n')}</pre>
-                      </div>
-                    )}
-                    {/* Artifacts */}
-                    {task.artifacts && task.artifacts.length > 0 && (
-                      <div className="mt-2" data-testid={`agent-task-artifacts-${idx}`}>
-                        <p className="text-xs font-semibold text-[var(--text-secondary)] mb-1">输出文件</p>
-                        {task.artifacts.map(a => (
-                          <label key={a.id} className="flex items-center justify-between py-1 text-xs cursor-pointer">
-                            <div className="flex items-center gap-2">
-                              <input type="checkbox" className="rounded" data-testid={`artifact-checkbox-${a.id}`}
-                                checked={selectedArtifacts.has(a.id)}
-                                onChange={e => {
-                                  const next = new Set(selectedArtifacts);
-                                  e.target.checked ? next.add(a.id) : next.delete(a.id);
-                                  setSelectedArtifacts(next);
-                                }} />
-                              <span className="text-[var(--text-primary)]">{a.name}</span>
-                            </div>
-                            <button data-testid={`artifact-download-${a.id}`}
-                              className="text-[var(--accent)] hover:underline">下载</button>
-                          </label>
-                        ))}
-                        {selectedArtifacts.size > 1 && (
-                          <button onClick={() => {
-                            window.open(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/tasks/${task.task_id}/artifacts/download`, '_blank');
-                          }}
-                            className="mt-2 px-3 py-1 text-xs rounded-lg bg-[var(--accent)] text-white hover:opacity-90"
-                            data-testid={`batch-download-btn-${idx}`}>
-                            📦 打包下载 ZIP ({selectedArtifacts.size} 个文件)
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {/* Cron info */}
-                    {task.cron_expr && (
-                      <p className="text-xs text-[var(--text-secondary)] mt-2">⏱ 定时: {task.cron_expr}</p>
-                    )}
-                  </div>
-                )}
               </div>
             ))}
 
