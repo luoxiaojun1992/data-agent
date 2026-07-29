@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 
-const STATUS_LABELS: Record<string, string> = {
+const FILTER_LABELS: Record<string, string> = {
   pending: '等待中',
   running: '运行中',
   completed: '已完成',
@@ -115,6 +115,7 @@ export default function AgentPage() {
             data-testid="agent-create-task-btn">+ 新建任务</button>
         </div>
 
+
         {/* Filters */}
         <div className="flex gap-2 mb-4" data-testid="agent-task-filters">
           {['all', 'pending', 'running', 'completed', 'failed'].map(f => (
@@ -122,7 +123,7 @@ export default function AgentPage() {
               className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                 filter === f ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border-glass)] text-[var(--text-secondary)]'
               }`}
-              data-testid={`agent-filter-${f}`}>{f === 'all' ? '全部' : STATUS_LABELS[f]}</button>
+              data-testid={`agent-filter-${f}`}>{f === 'all' ? '全部' : FILTER_LABELS[f]}</button>
           ))}
         </div>
 
@@ -283,8 +284,7 @@ export default function AgentPage() {
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-none"
                   data-testid="agent-task-desc-input" rows={2} placeholder="描述分析目标..." />
               </div>
-              <div>
-                <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
                 <input type="checkbox" checked={newTask.async} onChange={e => setNewTask(p => ({ ...p, async: e.target.checked }))}
                   data-testid="agent-task-async-toggle" className="rounded" />
                 异步执行
