@@ -297,11 +297,11 @@ func saveTaskResult(deps *Deps) functiontool.Func[SaveTaskResultArgs, SaveTaskRe
 		if deps.Tasks == nil {
 			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: task service not configured")
 		}
-		// task_id is injected from session state, not from the LLM — the
-		// model must not be able to save results for an arbitrary task.
-		taskID := stateString(tc, "task_id")
-		if taskID == "" {
-			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: not running in a task context (no task_id in session state)")
+		// run_id is injected from session state, not from the LLM — the
+		// model must not be able to save results for an arbitrary run.
+		runID := stateString(tc, "run_id")
+		if runID == "" {
+			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: not running in a task context (no run_id in session state)")
 		}
 		if strings.TrimSpace(args.Content) == "" {
 			return SaveTaskResultResult{}, fmt.Errorf("save_task_result: content is required and must be non-empty")
@@ -318,16 +318,16 @@ func saveTaskResult(deps *Deps) functiontool.Func[SaveTaskResultArgs, SaveTaskRe
 			"status":  status,
 		}
 		if status == "failed" {
-			if err := deps.Tasks.UpdateRunError(taskID, args.Content); err != nil {
+			if err := deps.Tasks.UpdateRunError(runID, args.Content); err != nil {
 				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update run error: %w", err)
 			}
 		} else {
-			if err := deps.Tasks.UpdateRunResult(taskID, result); err != nil {
+			if err := deps.Tasks.UpdateRunResult(runID, result); err != nil {
 				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update run result: %w", err)
 			}
 		}
 		return SaveTaskResultResult{
-			TaskID:  taskID,
+			TaskID:  runID,
 			Status:  status,
 			Message: "task result saved",
 		}, nil
