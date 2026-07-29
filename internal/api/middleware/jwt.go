@@ -42,8 +42,13 @@ func (m *JWTManager) GetExpiration() time.Duration {
 	return m.expiration
 }
 
-// GenerateToken creates a new JWT token for a user.
+// GenerateToken creates a new JWT token for a user using the default expiration.
 func (m *JWTManager) GenerateToken(userID, username, role string) (string, error) {
+	return m.GenerateTokenWithExpiration(userID, username, role, m.expiration)
+}
+
+// GenerateTokenWithExpiration creates a new JWT token with a custom expiration.
+func (m *JWTManager) GenerateTokenWithExpiration(userID, username, role string, expiration time.Duration) (string, error) {
 	now := time.Now()
 	claims := &JWTClaims{
 		UserID:   userID,
@@ -51,7 +56,7 @@ func (m *JWTManager) GenerateToken(userID, username, role string) (string, error
 		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(m.expiration)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(expiration)),
 			NotBefore: jwt.NewNumericDate(now),
 		},
 	}

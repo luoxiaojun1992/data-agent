@@ -32,6 +32,9 @@ type mockTokenManager struct {
 func (m mockTokenManager) GenerateToken(userID, username, role string) (string, error) {
 	return m.genFn(userID, username, role)
 }
+func (m mockTokenManager) GenerateTokenWithExpiration(userID, username, role string, _ time.Duration) (string, error) {
+	return m.genFn(userID, username, role)
+}
 func (m mockTokenManager) GetExpiration() time.Duration {
 	if m.expFn != nil {
 		return m.expFn()

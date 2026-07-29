@@ -59,6 +59,7 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 		return
 	}
 	authService := authsvc.NewService(deps.userRepo, deps.jwtManager)
+	authService.SetSysConfigCache(deps.sysConfigCacheRepo)
 	inviteRepo := mongoinfra.NewInviteRepository(mongoClient.DB())
 	authService.SetInviteRepo(inviteRepo)
 	hmacSecret, err := logic.LoadInviteHMACSecret()

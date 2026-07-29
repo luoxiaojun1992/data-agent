@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
@@ -10,6 +11,11 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
+
+// ConfigCache is the minimal config read interface needed by auth Service.
+type ConfigCache interface {
+	Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error)
+}
 
 // PasswordHasher abstracts password operations for testability.
 type PasswordHasher interface {
@@ -20,6 +26,7 @@ type PasswordHasher interface {
 // TokenManager abstracts JWT operations for testability.
 type TokenManager interface {
 	GenerateToken(userID, username, role string) (string, error)
+	GenerateTokenWithExpiration(userID, username, role string, expiration time.Duration) (string, error)
 	GetExpiration() time.Duration
 }
 
@@ -43,6 +50,7 @@ type Service struct {
 	hmacSecret     []byte
 	pwd            PasswordHasher
 	inviteVerifier InviteTokenVerifier
+	configCache    ConfigCache // nil = use default expiration
 }
 
 // NewService creates a new auth service.
@@ -55,6 +63,12 @@ func NewService(userRepo repository.UserRepository, jwtManager *middleware.JWTMa
 			return logic.VerifyInviteToken(token, secrets)
 		},
 	}
+}
+
+// SetSysConfigCache sets the config cache used to read runtime overrides
+// such as SESSION_TIMEOUT. Pass nil to fall back to default expiration.
+func (s *Service) SetSysConfigCache(c ConfigCache) {
+	s.configCache = c
 }
 
 // LoginRequest represents a login request.
@@ -103,12 +117,21 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 		return nil, fmt.Errorf("invalid username or password")
 	}
 
-	token, err := s.jwtManager.GenerateToken(user.ID, user.Username, string(user.Role))
+	expiration := s.jwtManager.GetExpiration() // default 24h
+	if s.configCache != nil {
+		if cfg, err := s.configCache.Get(ctx, "system", "SESSION_TIMEOUT"); err == nil && cfg != nil && cfg.Value != "" {
+			if h, err := strconv.ParseInt(cfg.Value, 10, 64); err == nil && h > 0 {
+				expiration = time.Duration(h) * time.Hour
+			}
+		}
+	}
+
+	token, err := s.jwtManager.GenerateTokenWithExpiration(user.ID, user.Username, string(user.Role), expiration)
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
 	}
 
-	expiresIn := int64(s.jwtManager.GetExpiration().Seconds())
+	expiresIn := int64(expiration.Seconds())
 	return &LoginResponse{
 		UserID:       user.ID,
 		Username:     user.Username,
