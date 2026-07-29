@@ -96,6 +96,17 @@ func initVault(deps *serverDependencies, logger *zap.Logger) {
 	}
 }
 
+// initTaskService creates the task service early (before initAgentEngine)
+// so the save_task_result ADK tool has a non-nil TaskRunService dep.
+// The queue repo is injected later by initTaskQueue after Redis connects.
+func initTaskService(deps *serverDependencies, mongoClient *mongoinfra.Client) {
+	deps.taskService = task_svc.NewService(
+		mongoinfra.NewTaskDefRepository(mongoClient.DB()),
+		mongoinfra.NewTaskRunRepository(mongoClient.DB()),
+		nil, // queue wired later by initTaskQueue
+	)
+}
+
 func initAgentEngine(deps *serverDependencies) {
 	deps.secAuditor = security.NewAuditor(nil)
 	deps.cbRegistry = security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
@@ -325,7 +336,10 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	}
 	deps.taskStream = taskStream
 
-	deps.taskService = task_svc.NewService(mongoinfra.NewTaskDefRepository(mongoClient.DB()), mongoinfra.NewTaskRunRepository(mongoClient.DB()), queue.QueueRepository(taskStream))
+	// Wire Redis queue into the already-created task service (created in initTaskService).
+	if deps.taskService != nil {
+		deps.taskService.SetQueueRepo(queue.QueueRepository(taskStream))
+	}
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService) // same Service implements both contracts
 
 	// Wire task service into KB handler for async indexing.

@@ -159,6 +159,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initAuthService(&deps, mongoClient, logger)
 	initVault(&deps, logger)
 	initADKModel(&deps, mongoClient)
+	initTaskService(&deps, mongoClient) // must run before initAgentEngine — tool deps need TaskRunService
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initSkillConfig(&deps, mongoClient)

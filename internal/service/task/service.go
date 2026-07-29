@@ -21,6 +21,11 @@ func NewService(repo repository.TaskRepository, runRepo repository.TaskRunReposi
 	return &Service{repo: repo, runRepo: runRepo, queueRepo: queueRepo}
 }
 
+// SetQueueRepo replaces the queue repository (called after Redis connects).
+func (s *Service) SetQueueRepo(qr repository.QueueRepository) {
+	s.queueRepo = qr
+}
+
 // CreateTask creates a task definition + its first TaskRun, persists both,
 // and enqueues the run.
 func (s *Service) CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*task.Task, *task.TaskRun, error) {
