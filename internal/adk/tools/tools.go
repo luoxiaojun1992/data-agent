@@ -5,6 +5,7 @@ package adktools
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,14 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	artifactdomain "github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	pptxpkg "github.com/luoxiaojun1992/data-agent/internal/logic/pptx"
-	"github.com/luoxiaojun1992/data-agent/internal/repository"
-	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
+	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	knowledgepkg "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	"google.golang.org/adk/agent"
@@ -46,15 +46,8 @@ type Deps struct {
 	Tasks domaintask.TaskRunService
 	// SessionSvc resolves session workspace paths.
 	SessionSvc domainchat.SessionService
-	// ArtifactRepo persists artifact metadata to DB.
-	ArtifactRepo repository.ArtifactRepository
-	// SeaweedFS backs artifact storage (used by save_artifact).
-	SeaweedFS SeaweedUploader
-}
-
-// SeaweedUploader uploads a file to SeaweedFS and returns the storage path.
-type SeaweedUploader interface {
-	Upload(ctx context.Context, filePath string) (string, error)
+	// Artifacts backs the save_artifact tool (create record + upload).
+	Artifacts artifact_svc.StorageService
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -540,33 +533,20 @@ func saveArtifact(deps *Deps) functiontool.Func[SaveArtifactArgs, SaveArtifactRe
 			return SaveArtifactResult{}, fmt.Errorf("save_artifact: %w", err)
 		}
 
-		// Create a zip in the workspace.
-		zipName := "artifact.zip"
-		zipPath := filepath.Join(ws, zipName)
-		if err := zipPathHelper(srcPath, zipPath, info); err != nil {
+		// Zip the file/directory into a temp buffer.
+		var buf bytes.Buffer
+		zipName := filepath.Base(args.Path)
+		if info.IsDir() {
+			zipName += ".zip"
+		}
+		if err := zipToWriter(srcPath, info, &buf); err != nil {
 			return SaveArtifactResult{}, fmt.Errorf("save_artifact: zip: %w", err)
 		}
 
-		// Upload to SeaweedFS.
-		storagePath, err := deps.SeaweedFS.Upload(tc, zipPath)
+		// Upload via artifact module (handles storage + DB record).
+		a, err := deps.Artifacts.Upload(userID, sessionID, "", zipName, "application/zip", &buf, true)
 		if err != nil {
 			return SaveArtifactResult{}, fmt.Errorf("save_artifact: upload: %w", err)
-		}
-
-		// Create artifact record in DB.
-		zipInfo, _ := os.Stat(zipPath)
-		size := int64(0)
-		if zipInfo != nil {
-			size = zipInfo.Size()
-		}
-
-		baseName := filepath.Base(args.Path)
-		if info.IsDir() {
-			baseName += ".zip"
-		}
-		a := artifactdomain.NewArtifact(userID, sessionID, "", baseName, "application/zip", storagePath, size, true)
-		if err := deps.ArtifactRepo.Create(context.Background(), a); err != nil {
-			return SaveArtifactResult{}, fmt.Errorf("save_artifact: create record: %w", err)
 		}
 
 		return SaveArtifactResult{
@@ -577,16 +557,10 @@ func saveArtifact(deps *Deps) functiontool.Func[SaveArtifactArgs, SaveArtifactRe
 	}
 }
 
-// zipPathHelper creates a zip archive at dstPath containing the file or directory at srcPath.
-func zipPathHelper(srcPath, dstPath string, info os.FileInfo) error {
-	dst, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-
-	w := zip.NewWriter(dst)
-	defer w.Close()
+// zipToWriter creates a zip archive in w from srcPath (file or directory).
+func zipToWriter(srcPath string, info os.FileInfo, w io.Writer) error {
+	zw := zip.NewWriter(w)
+	defer zw.Close()
 
 	if info.IsDir() {
 		return filepath.Walk(srcPath, func(path string, fi os.FileInfo, err error) error {
@@ -599,11 +573,11 @@ func zipPathHelper(srcPath, dstPath string, info os.FileInfo) error {
 			}
 			if fi.IsDir() {
 				if rel != "." {
-					_, err = w.Create(rel + "/")
+					_, err = zw.Create(rel + "/")
 				}
 				return err
 			}
-			f, err := w.Create(rel)
+			f, err := zw.Create(rel)
 			if err != nil {
 				return err
 			}
@@ -617,7 +591,7 @@ func zipPathHelper(srcPath, dstPath string, info os.FileInfo) error {
 		})
 	}
 	// Single file.
-	f, err := w.Create(info.Name())
+	f, err := zw.Create(info.Name())
 	if err != nil {
 		return err
 	}
