@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	adksession "github.com/luoxiaojun1992/data-agent/internal/adk/session"
 	adktools "github.com/luoxiaojun1992/data-agent/internal/adk/tools"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
@@ -390,7 +392,8 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 		deps.notifSvc,    // completion/failure notification
 		deps.cbRegistry,  // circuit breaker around Runtime.Run
 	)
-	workerPool := worker.NewPool(taskStream, redisClient.Client(), 4, executor, deps.taskService)
+	poolSize := resolveWorkerPoolSize(deps.sysConfigCacheRepo)
+	workerPool := worker.NewPool(taskStream, redisClient.Client(), poolSize, executor, deps.taskService)
 
 	// Wire KB index executor: handles kb_index tasks as handler-driven pipeline
 	// (not agent-controlled). Uses the configured LLM for semantic chunking and
@@ -519,4 +522,22 @@ func storeEmbeddingCache(ctx context.Context, cache *llmcache.Cache, model, text
 		return
 	}
 	cache.SetEmbedding(ctx, model, text, adkmemory.MarshalCachedEmbedding(vec))
+}
+
+// resolveWorkerPoolSize reads WORKER_POOL_SIZE from the system config cache.
+// Falls back to 10 on any error (default pool size).
+func resolveWorkerPoolSize(cfgRepo *cache.SysConfigCacheRepo) int {
+	ctx := context.Background()
+	cfg, err := cfgRepo.Get(ctx, "system", "WORKER_POOL_SIZE")
+	if err != nil || cfg == nil || cfg.Value == "" {
+		return 10
+	}
+	n, err := strconv.Atoi(cfg.Value)
+	if err != nil || n < 1 {
+		return 10
+	}
+	if n > 100 {
+		n = 100 // cap at 100 to prevent runaway goroutine allocation
+	}
+	return n
 }

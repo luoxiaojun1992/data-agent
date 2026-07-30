@@ -32,6 +32,7 @@ func SystemBuiltins() []BuiltinConfig {
 		{Key: "SESSION_TIMEOUT", Description: "登录 Session 超时（小时）", Default: "24"},
 		{Key: "SERVER_READ_TIMEOUT", Description: "HTTP 读超时（秒）", Default: "600"},
 		{Key: "SERVER_WRITE_TIMEOUT", Description: "HTTP 写超时（秒）", Default: "600"},
+		{Key: "WORKER_POOL_SIZE", Description: "Worker 协程池大小", Default: "10"},
 	}
 }
 
