@@ -18,29 +18,20 @@ function boolLS(key: string): boolean {
 }
 
 export function useAuth() {
-  // Lazy init — read token from localStorage synchronously so the first
-  // apiFetch call (which runs before useEffect) carries the Bearer header.
-  const [auth, setAuth] = useState<AuthState>(() => {
-    if (typeof window === 'undefined') {
-      return { token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: false };
-    }
-    const token = localStorage.getItem('token');
-    if (!token) {
-      return { token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: true };
-    }
-    return {
-      token,
-      userId: localStorage.getItem('userId'),
-      username: localStorage.getItem('username'),
-      role: localStorage.getItem('role'),
-      needChangePw: boolLS('needChangePw'),
-      hydrated: true,
-    };
+  // Always start with the same state on server and client to avoid
+  // hydration mismatches (React #418). The useEffect below loads the
+  // real values from localStorage after mount.
+  const [auth, setAuth] = useState<AuthState>({
+    token: null,
+    userId: null,
+    username: null,
+    role: null,
+    needChangePw: false,
+    hydrated: false,
   });
 
   useEffect(() => {
-    // Re-sync from localStorage when this hook mounts on a fresh page
-    // navigation (token may have been set in a different component tree).
+    // Load token from localStorage on mount (client only).
     const token = localStorage.getItem('token');
     const userId = localStorage.getItem('userId');
     const username = localStorage.getItem('username');
