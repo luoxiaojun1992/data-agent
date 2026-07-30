@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const { auth, apiFetch } = useAuth();
 
   const [items, setItems] = useState<ConfigItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -49,7 +50,7 @@ export default function SettingsPage() {
     }
     setLoading(true);
     try {
-      const pageParam = page > 1 ? `?page=${page}&page_size=${PAGE}` : `?page_size=${PAGE}`;
+      const pageParam = page > 1 ? `?page=${page}&page_size=${PAGE_SIZE}` : `?page_size=${PAGE_SIZE}`;
       const res = await apiFetch(`/sysconfig/system${pageParam}`);
       if (res.ok) {
         const data = await res.json();
@@ -125,8 +126,9 @@ export default function SettingsPage() {
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-  const paged = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Backend handles pagination — items is already the current page.
+  const paged = items;
 
   return (
     <AppLayout>
@@ -215,7 +217,7 @@ export default function SettingsPage() {
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               style={{ padding: '6px 14px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', background: 'transparent', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>上一页</button>
             <span style={{ padding: '8px 12px', fontSize: '13px', color: '#7A7A7A' }}>
-              {page} / {totalPages}（共 {items.length} 条）
+              {page} / {totalPages}（共 {total} 条）
             </span>
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
               style={{ padding: '6px 14px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', background: 'transparent', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>下一页</button>
