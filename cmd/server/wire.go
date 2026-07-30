@@ -426,7 +426,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	go func() {
 		workerPool.Start(context.Background())
 	}()
-	logger.Info("Task queue and worker pool started", zap.Int("workers", 4))
+	logger.Info("Task queue and worker pool started", zap.Int("workers", poolSize))
 }
 
 // buildRouteDeps constructs the handler wiring for route registration. All
@@ -549,14 +549,17 @@ func resolveWorkerPoolSize(cfgRepo *cache.SysConfigCacheRepo) int {
 	ctx := context.Background()
 	cfg, err := cfgRepo.Get(ctx, "system", "WORKER_POOL_SIZE")
 	if err != nil || cfg == nil || cfg.Value == "" {
+		log.Printf("[worker] WORKER_POOL_SIZE not found (err=%v, cfg=%v) — using default 10", err, cfg)
 		return 10
 	}
 	n, err := strconv.Atoi(cfg.Value)
 	if err != nil || n < 1 {
+		log.Printf("[worker] WORKER_POOL_SIZE invalid value %q — using default 10", cfg.Value)
 		return 10
 	}
 	if n > 100 {
-		n = 100 // cap at 100 to prevent runaway goroutine allocation
+		n = 100
 	}
+	log.Printf("[worker] WORKER_POOL_SIZE resolved to %d", n)
 	return n
 }
