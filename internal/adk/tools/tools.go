@@ -17,6 +17,7 @@ import (
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	pptxpkg "github.com/luoxiaojun1992/data-agent/internal/logic/pptx"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
@@ -492,7 +493,7 @@ func pptxGenerator(deps *Deps) functiontool.Func[PPTXGeneratorArgs, PPTXGenerato
 		}
 
 		sessionID := stateString(tc, "session_id")
-		ws := filepath.Join(os.TempDir(), "data-agent-sessions", sessionID)
+		ws := chatsvc.SessionWorkspace(sessionID)
 		fullPath := filepath.Join(ws, fileName)
 
 		if err := pptxpkg.Generate(args.Content, fullPath); err != nil {
@@ -528,7 +529,7 @@ func saveArtifact(deps *Deps) functiontool.Func[SaveArtifactArgs, SaveArtifactRe
 			return SaveArtifactResult{}, fmt.Errorf("save_artifact: session/user context not available")
 		}
 
-		ws := filepath.Join(os.TempDir(), "data-agent-sessions", sessionID)
+		ws := chatsvc.SessionWorkspace(sessionID)
 		srcPath := filepath.Join(ws, filepath.Clean(args.Path))
 		if !strings.HasPrefix(srcPath, ws) {
 			return SaveArtifactResult{}, fmt.Errorf("save_artifact: path traversal denied")

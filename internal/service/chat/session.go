@@ -3,12 +3,34 @@ package chat
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
+
+// workspaceBase is the root directory for session workspaces.
+const workspaceBase = "data-agent-sessions"
+
+// SessionWorkspace returns the isolated temp directory for a session.
+// Exported for use by tools (pptx_generator, save_artifact) that need
+// to resolve session-scoped file paths.
+func SessionWorkspace(sessionID string) string {
+	return filepath.Join(os.TempDir(), workspaceBase, sessionID)
+}
+
+// ensureWorkspace creates the workspace directory if it doesn't exist.
+func ensureWorkspace(sessionID string) error {
+	return os.MkdirAll(SessionWorkspace(sessionID), 0700)
+}
+
+// removeWorkspace deletes the entire session workspace (best-effort).
+func removeWorkspace(sessionID string) {
+	_ = os.RemoveAll(SessionWorkspace(sessionID))
+}
 
 // Manager handles session lifecycle. It implements domain/chat.SessionService.
 type Manager struct {
@@ -37,7 +59,7 @@ func (m *Manager) Create(userID, sessionType, modelID string) (*domainchat.Sessi
 		ExpiresAt: now.Add(m.ttl),
 	}
 	// Create isolated workspace for agent-generated files.
-	if err := s.EnsureWorkspace(); err != nil {
+	if err := ensureWorkspace(s.ID); err != nil {
 		return nil, fmt.Errorf("create workspace: %w", err)
 	}
 	rec := sessionToRecord(s)
@@ -121,9 +143,7 @@ func (m *Manager) ListByUserPaged(userID string, page, pageSize int) ([]*domainc
 
 func (m *Manager) Delete(id string) error {
 	// Clean workspace before deleting from DB.
-	if s, err := m.repo.Get(context.Background(), id); err == nil && s != nil {
-		recordToSession(s).RemoveWorkspace()
-	}
+	removeWorkspace(id)
 	return m.repo.Delete(context.Background(), id)
 }
 

@@ -458,7 +458,6 @@ func TestManager_ListByUser(t *testing.T) {
 
 func TestManager_Delete(t *testing.T) {
 	m, repo := newTestManager(t)
-	repo.On("Get", mock.Anything, "s1").Return((*repository.SessionRecord)(nil), nil)
 	repo.On("Delete", mock.Anything, "s1").Return(nil)
 
 	if err := m.Delete("s1"); err != nil {
