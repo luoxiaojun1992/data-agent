@@ -62,6 +62,43 @@ func (_m *Service) GetAll(ctx context.Context, namespace string) ([]model.System
 	return r0, r1
 }
 
+// List provides a mock function with given fields: ctx, namespace, page, pageSize
+func (_m *Service) List(ctx context.Context, namespace string, page int, pageSize int) ([]model.SystemConfig, int64, error) {
+	ret := _m.Called(ctx, namespace, page, pageSize)
+
+	if len(ret) == 0 {
+		panic("no return value specified for List")
+	}
+
+	var r0 []model.SystemConfig
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, int, int) ([]model.SystemConfig, int64, error)); ok {
+		return rf(ctx, namespace, page, pageSize)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, int, int) []model.SystemConfig); ok {
+		r0 = rf(ctx, namespace, page, pageSize)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.SystemConfig)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, int, int) int64); ok {
+		r1 = rf(ctx, namespace, page, pageSize)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, string, int, int) error); ok {
+		r2 = rf(ctx, namespace, page, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
 // SeedBuiltins provides a mock function with given fields: ctx
 func (_m *Service) SeedBuiltins(ctx context.Context) error {
 	ret := _m.Called(ctx)

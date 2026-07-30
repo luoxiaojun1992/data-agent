@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
@@ -36,12 +37,16 @@ func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler) {
 }
 
 func (h *ConfigHandler) Get(c *gin.Context) {
-	cfgs, err := h.cfgSvc.GetAll(c.Request.Context(), c.Param("namespace"))
+	namespace := c.Param("namespace")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	cfgs, total, err := h.cfgSvc.List(c.Request.Context(), namespace, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"configs": cfgs})
+	c.JSON(http.StatusOK, gin.H{"configs": cfgs, "total": total, "page": page, "page_size": pageSize})
 }
 
 func (h *ConfigHandler) Put(c *gin.Context) {

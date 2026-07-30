@@ -49,7 +49,8 @@ export default function SettingsPage() {
     }
     setLoading(true);
     try {
-      const res = await apiFetch('/sysconfig/system');
+      const pageParam = page > 1 ? `?page=${page}&page_size=${PAGE}` : `?page_size=${PAGE}`;
+      const res = await apiFetch(`/sysconfig/system${pageParam}`);
       if (res.ok) {
         const data = await res.json();
         const stored: ConfigItem[] = (data.configs || []).map((c: any) => ({
@@ -59,15 +60,11 @@ export default function SettingsPage() {
         const merged: ConfigItem[] = BUILTIN_CONFIGS.map(b => ({
           key: b.key,
           description: b.description,
-          value: storedMap.get(b.key) || '(使用默认值)',
+          value: storedMap.get(b.key) || '',
           source: storedMap.has(b.key) ? 'stored' : 'default',
         }));
-        for (const c of stored) {
-          if (!BUILTIN_CONFIGS.find(b => b.key === c.key)) {
-            merged.push({ key: c.key, value: c.value, source: 'stored' });
-          }
-        }
         setItems(merged);
+        setTotal(data.total || merged.length);
       } else {
         setItems([]);
       }

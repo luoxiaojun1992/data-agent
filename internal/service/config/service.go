@@ -53,25 +53,32 @@ func (s *service) GetAll(ctx context.Context, namespace string) ([]model.SystemC
 		return nil, err
 	}
 	if cfgs == nil {
-		cfgs = []model.SystemConfig{}
-	}
-	// Merge built-in defaults for the "system" namespace only.
-	if namespace == "system" {
-		savedMap := make(map[string]bool, len(cfgs))
-		for _, c := range cfgs {
-			savedMap[c.Key] = true
-		}
-		for _, b := range SystemBuiltins() {
-			if !savedMap[b.Key] {
-				cfgs = append(cfgs, model.SystemConfig{
-					Namespace: namespace,
-					Key:       b.Key,
-					Value:     b.Default,
-				})
-			}
-		}
+		return []model.SystemConfig{}, nil
 	}
 	return cfgs, nil
+}
+
+// List returns a paginated page of configs. All built-ins are seeded into DB
+// at startup so no runtime merge is needed — the response is pure DB data.
+func (s *service) List(ctx context.Context, namespace string, page, pageSize int) ([]model.SystemConfig, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	skip := int64((page - 1) * pageSize)
+	limit := int64(pageSize)
+
+	cfgs, err := s.sysConfig.List(ctx, namespace, skip, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.sysConfig.Count(ctx, namespace)
+	if err != nil {
+		return nil, 0, err
+	}
+	return cfgs, total, nil
 }
 
 // SeedBuiltins ensures every built-in config key exists in the database
