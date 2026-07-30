@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -218,7 +219,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		Tasks:        deps.taskService,
 		SessionSvc:   deps.sessionManager,
 		ArtifactRepo: mongoinfra.NewArtifactRepository(mongoClient.DB()),
-		SeaweedFS:    &adktools.SeaweedFSUploader{Client: deps.swClient},
+		SeaweedFS:    seaweedUploader{deps.swClient},
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -545,6 +546,29 @@ func storeEmbeddingCache(ctx context.Context, cache *llmcache.Cache, model, text
 		return
 	}
 	cache.SetEmbedding(ctx, model, text, adkmemory.MarshalCachedEmbedding(vec))
+}
+
+// seaweedUploader adapts seaweedfs.Client to the adktools.SeaweedUploader interface.
+type seaweedUploader struct {
+	client *seaweedfs.Client
+}
+
+func (u seaweedUploader) Upload(ctx context.Context, filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("open: %w", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("stat: %w", err)
+	}
+	storagePath := fmt.Sprintf("artifacts/%d_%s", info.ModTime().UnixNano(), info.Name())
+	if _, err := u.client.Upload(storagePath, file); err != nil {
+		return "", fmt.Errorf("seaweed upload: %w", err)
+	}
+	return storagePath, nil
 }
 
 // resolveWorkerPoolSize reads WORKER_POOL_SIZE from the system config cache.
