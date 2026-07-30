@@ -686,6 +686,10 @@ func (p *Provider) AddModel(ctx context.Context, entry ModelEntry) (ModelEntry, 
 			return entry, fmt.Errorf("model ID %q already exists", entry.ID)
 		}
 	}
+	// Fill missing Instruction with the default for newly created LLM models.
+	if entry.Type == ModelTypeLLM && entry.Instruction == "" {
+		entry.Instruction = DefaultInstruction
+	}
 	models = append(models, entry)
 	if err := p.SetModels(ctx, models); err != nil {
 		return entry, err
