@@ -54,18 +54,15 @@ export default function SettingsPage() {
       const res = await apiFetch(`/sysconfig/system${pageParam}`);
       if (res.ok) {
         const data = await res.json();
+        const descMap = new Map(BUILTIN_CONFIGS.map(b => [b.key, b.description]));
         const stored: ConfigItem[] = (data.configs || []).map((c: any) => ({
-          key: c.key, value: c.value, source: 'stored' as const,
+          key: c.key,
+          description: descMap.get(c.key) || '',
+          value: c.value || '',
+          source: c.value ? 'stored' : 'default',
         }));
-        const storedMap = new Map(stored.map(c => [c.key, c.value]));
-        const merged: ConfigItem[] = BUILTIN_CONFIGS.map(b => ({
-          key: b.key,
-          description: b.description,
-          value: storedMap.get(b.key) || '',
-          source: storedMap.has(b.key) ? 'stored' : 'default',
-        }));
-        setItems(merged);
-        setTotal(data.total || merged.length);
+        setItems(stored);
+        setTotal(data.total || 0);
       } else {
         setItems([]);
       }
