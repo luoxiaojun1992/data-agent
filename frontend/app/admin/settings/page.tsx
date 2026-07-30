@@ -73,7 +73,7 @@ export default function SettingsPage() {
       setItems([]);
     }
     setLoading(false);
-  }, [apiFetch, auth.token]);
+  }, [apiFetch, auth.token, page]);
 
   useEffect(() => {
     if (auth.hydrated) fetchAll();
@@ -81,7 +81,7 @@ export default function SettingsPage() {
 
   const openEdit = (key: string, value: string) => {
     setEditingKey(key);
-    setEditValue(value === '(使用默认值)' ? '' : value);
+    setEditValue(value);
   };
 
   const saveEdit = async () => {
