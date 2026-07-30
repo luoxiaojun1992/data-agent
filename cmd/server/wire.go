@@ -259,6 +259,25 @@ func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.skillConfigHandler = handler.NewSkillConfigHandler(deps.skillConfigSvc)
 }
 
+// initBuiltins seeds all built-in system configs and skill configs into
+// MongoDB at startup. Existing entries (including user-modified values)
+// are never overwritten — only new keys/skills are inserted.
+func initBuiltins(deps *serverDependencies, logger *zap.Logger) {
+	cfgSvc := configsvc.NewService(deps.sysConfigCacheRepo)
+	if err := cfgSvc.SeedBuiltins(context.Background()); err != nil {
+		logger.Warn("Failed to seed built-in system configs", zap.Error(err))
+	} else {
+		logger.Info("Built-in system configs initialized")
+	}
+	if deps.skillConfigSvc != nil {
+		if err := deps.skillConfigSvc.SeedSkills(context.Background()); err != nil {
+			logger.Warn("Failed to seed built-in skill configs", zap.Error(err))
+		} else {
+			logger.Info("Built-in skill configs initialized")
+		}
+	}
+}
+
 func initIM(deps *serverDependencies) {
 	deps.imService = im.NewService(im.Config{
 		AppID:     os.Getenv("FEISHU_APP_ID"),

@@ -163,6 +163,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initSkillConfig(&deps, mongoClient)
+	initBuiltins(&deps, logger) // seed system config + skill defaults before services
 	initServices(&deps, mongoClient, logger)
 	initArtifacts(&deps, mongoClient, cfg)
 	initAuditAndNotifications(&deps, mongoClient)
