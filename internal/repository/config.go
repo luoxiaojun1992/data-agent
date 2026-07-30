@@ -24,6 +24,8 @@ type RoleRepository interface {
 type SysConfigRepository interface {
 	Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error)
 	GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error)
+	List(ctx context.Context, namespace string, skip, limit int64) ([]model.SystemConfig, error)
+	Count(ctx context.Context, namespace string) (int64, error)
 	Upsert(ctx context.Context, namespace, key, value string) error
 	Delete(ctx context.Context, namespace, key string) error
 }

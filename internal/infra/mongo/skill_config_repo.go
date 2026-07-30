@@ -25,8 +25,9 @@ func NewSkillConfigRepo(db *mongo.Database) *SkillConfigRepo {
 
 var _ repository.SkillConfigRepository = (*SkillConfigRepo)(nil)
 
-func (r *SkillConfigRepo) List(ctx context.Context) ([]skill.SkillConfig, error) {
-	cur, err := r.db.Collection("system_config").Find(ctx, bson.M{"ns": skillConfigNS})
+func (r *SkillConfigRepo) List(ctx context.Context, skip, limit int64) ([]skill.SkillConfig, error) {
+	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "key", Value: 1}})
+	cur, err := r.db.Collection("system_config").Find(ctx, bson.M{"ns": skillConfigNS}, opts)
 	if err != nil {
 		return nil, fmt.Errorf("skill config list: %w", err)
 	}
@@ -53,6 +54,15 @@ func (r *SkillConfigRepo) List(ctx context.Context) ([]skill.SkillConfig, error)
 		})
 	}
 	return out, nil
+}
+
+// Count returns the total number of skill config documents.
+func (r *SkillConfigRepo) Count(ctx context.Context) (int64, error) {
+	n, err := r.db.Collection("system_config").CountDocuments(ctx, bson.M{"ns": skillConfigNS})
+	if err != nil {
+		return 0, fmt.Errorf("skill config count: %w", err)
+	}
+	return n, nil
 }
 
 func (r *SkillConfigRepo) Get(ctx context.Context, name string) (*skill.SkillConfig, error) {

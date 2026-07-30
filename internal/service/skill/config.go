@@ -73,7 +73,7 @@ func predefinedSkills() []skill.SkillConfig {
 // If a skill already exists (e.g. user-modified), it is left untouched.
 // Safe to call on every startup.
 func (s *ConfigService) SeedSkills(ctx context.Context) error {
-	saved, err := s.repo.List(ctx)
+	saved, err := s.repo.List(ctx, 0, 0) // 0,0 = no pagination, fetch all
 	if err != nil {
 		return fmt.Errorf("seed: list skills: %w", err)
 	}
@@ -83,7 +83,7 @@ func (s *ConfigService) SeedSkills(ctx context.Context) error {
 	}
 	for _, sk := range predefinedSkills() {
 		if existMap[sk.Name] {
-			continue // already in DB — never overwrite user modifications
+			continue
 		}
 		if err := s.repo.Upsert(ctx, sk); err != nil {
 			log.Printf("[skill] seed %s: %v", sk.Name, err)
@@ -92,7 +92,7 @@ func (s *ConfigService) SeedSkills(ctx context.Context) error {
 	return nil
 }
 
-// List returns paginated skill configs directly from the database.
+// List returns paginated skill configs from the database.
 // Predefined defaults are seeded on startup via SeedSkills.
 func (s *ConfigService) List(ctx context.Context, page, pageSize int) ([]skill.SkillConfig, int, error) {
 	if page < 1 {
@@ -101,20 +101,18 @@ func (s *ConfigService) List(ctx context.Context, page, pageSize int) ([]skill.S
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	saved, err := s.repo.List(ctx)
+	skip := int64((page - 1) * pageSize)
+	limit := int64(pageSize)
+
+	saved, err := s.repo.List(ctx, skip, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	total := len(saved)
-	offset := (page - 1) * pageSize
-	if offset >= total {
-		return nil, total, nil
+	total, err := s.repo.Count(ctx)
+	if err != nil {
+		return nil, 0, err
 	}
-	end := offset + pageSize
-	if end > total {
-		end = total
-	}
-	return saved[offset:end], total, nil
+	return saved, int(total), nil
 }
 
 // Get returns a single skill config directly from the database.

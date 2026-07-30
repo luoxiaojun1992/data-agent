@@ -254,11 +254,6 @@ func initEnhance(deps *serverDependencies) {
 func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	skillRepo := mongoinfra.NewSkillConfigRepo(mongoClient.DB())
 	deps.skillConfigSvc = skillsvc.NewConfigService(skillRepo)
-	// Seed predefined skills so they exist after fresh deployment.
-	// Existing skills (including user-modified) are never overwritten.
-	if err := deps.skillConfigSvc.SeedSkills(context.Background()); err != nil {
-		log.Printf("[skill] seed failed: %v", err)
-	}
 	deps.skillConfigHandler = handler.NewSkillConfigHandler(deps.skillConfigSvc)
 }
 
@@ -416,13 +411,6 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 // HTTP handlers are built here; main.go itself defines no handler funcs.
 func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Logger) *handler.RouteDeps {
 	cfgSvc := configsvc.NewService(deps.sysConfigCacheRepo)
-	// Seed built-in system config keys so they exist after fresh deployment.
-	// User-modified values in the DB are never overwritten.
-	if err := cfgSvc.SeedBuiltins(context.Background()); err != nil {
-		logger.Warn("Failed to seed built-in system configs", zap.Error(err))
-	} else {
-		logger.Info("System config builtins seeded")
-	}
 	roleSvc := role.NewService(deps.roleRepo)
 
 	var imWebhook http.HandlerFunc

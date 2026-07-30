@@ -163,5 +163,16 @@ func (r *SysConfigCacheRepo) Delete(ctx context.Context, namespace, key string) 
 	return nil
 }
 
+// List returns a paginated subset of configs. Paginated queries are not cached
+// (the page offset/limit varies per request); passes through to mongo directly.
+func (r *SysConfigCacheRepo) List(ctx context.Context, namespace string, skip, limit int64) ([]model.SystemConfig, error) {
+	return r.mongo.List(ctx, namespace, skip, limit)
+}
+
+// Count returns the number of configs in a namespace. Not cached.
+func (r *SysConfigCacheRepo) Count(ctx context.Context, namespace string) (int64, error) {
+	return r.mongo.Count(ctx, namespace)
+}
+
 // Compile-time interface conformance check.
 var _ repository.SysConfigRepository = (*SysConfigCacheRepo)(nil)

@@ -53,6 +53,35 @@ func (r *SystemConfigRepository) GetAll(ctx context.Context, namespace string) (
 	return configs, nil
 }
 
+// List returns a page of configs in a namespace.
+func (r *SystemConfigRepository) List(ctx context.Context, namespace string, skip, limit int64) ([]model.SystemConfig, error) {
+	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "key", Value: 1}})
+	cursor, err := r.coll.Find(ctx, bson.M{"namespace": namespace}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("list configs: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("decode configs: %w", err)
+	}
+	configs := make([]model.SystemConfig, len(docs))
+	for i, d := range docs {
+		configs[i] = *docToSystemConfig(d)
+	}
+	return configs, nil
+}
+
+// Count returns the number of configs in a namespace.
+func (r *SystemConfigRepository) Count(ctx context.Context, namespace string) (int64, error) {
+	n, err := r.coll.CountDocuments(ctx, bson.M{"namespace": namespace})
+	if err != nil {
+		return 0, fmt.Errorf("count configs: %w", err)
+	}
+	return n, nil
+}
+
 // Upsert creates or updates a config value.
 func (r *SystemConfigRepository) Upsert(ctx context.Context, namespace, key, value string) error {
 	filter := bson.M{"namespace": namespace, "key": key}

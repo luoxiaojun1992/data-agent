@@ -14,6 +14,34 @@ type SysConfigRepository struct {
 	mock.Mock
 }
 
+// Count provides a mock function with given fields: ctx, namespace
+func (_m *SysConfigRepository) Count(ctx context.Context, namespace string) (int64, error) {
+	ret := _m.Called(ctx, namespace)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Count")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
+		return rf(ctx, namespace)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) int64); ok {
+		r0 = rf(ctx, namespace)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, namespace)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Delete provides a mock function with given fields: ctx, namespace, key
 func (_m *SysConfigRepository) Delete(ctx context.Context, namespace string, key string) error {
 	ret := _m.Called(ctx, namespace, key)
@@ -85,6 +113,36 @@ func (_m *SysConfigRepository) GetAll(ctx context.Context, namespace string) ([]
 
 	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, namespace)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// List provides a mock function with given fields: ctx, namespace, skip, limit
+func (_m *SysConfigRepository) List(ctx context.Context, namespace string, skip int64, limit int64) ([]model.SystemConfig, error) {
+	ret := _m.Called(ctx, namespace, skip, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for List")
+	}
+
+	var r0 []model.SystemConfig
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) ([]model.SystemConfig, error)); ok {
+		return rf(ctx, namespace, skip, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) []model.SystemConfig); ok {
+		r0 = rf(ctx, namespace, skip, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.SystemConfig)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int64) error); ok {
+		r1 = rf(ctx, namespace, skip, limit)
 	} else {
 		r1 = ret.Error(1)
 	}
