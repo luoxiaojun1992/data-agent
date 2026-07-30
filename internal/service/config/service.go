@@ -77,22 +77,20 @@ func (s *service) GetAll(ctx context.Context, namespace string) ([]model.SystemC
 // SeedBuiltins ensures every built-in config key exists in the database
 // without overwriting any user-modified values. Safe to call on every startup.
 func (s *service) SeedBuiltins(ctx context.Context) error {
+	existing, err := s.sysConfig.GetAll(ctx, "system")
+	if err != nil {
+		return fmt.Errorf("seed: list system configs: %w", err)
+	}
+	existMap := make(map[string]bool, len(existing))
+	for _, c := range existing {
+		existMap[c.Key] = true
+	}
 	for _, b := range SystemBuiltins() {
-		existing, err := s.sysConfig.GetAll(ctx, "system")
-		if err != nil {
-			return fmt.Errorf("seed: list system configs: %w", err)
+		if existMap[b.Key] {
+			continue // already exists — never overwrite user-modified values
 		}
-		found := false
-		for _, c := range existing {
-			if c.Key == b.Key {
-				found = true
-				break
-			}
-		}
-		if !found {
-			if err := s.sysConfig.Upsert(ctx, "system", b.Key, b.Default); err != nil {
-				log.Printf("[config] seed %s: %v", b.Key, err)
-			}
+		if err := s.sysConfig.Upsert(ctx, "system", b.Key, b.Default); err != nil {
+			log.Printf("[config] seed %s: %v", b.Key, err)
 		}
 	}
 	return nil

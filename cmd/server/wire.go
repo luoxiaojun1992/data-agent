@@ -254,6 +254,11 @@ func initEnhance(deps *serverDependencies) {
 func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	skillRepo := mongoinfra.NewSkillConfigRepo(mongoClient.DB())
 	deps.skillConfigSvc = skillsvc.NewConfigService(skillRepo)
+	// Seed predefined skills so they exist after fresh deployment.
+	// Existing skills (including user-modified) are never overwritten.
+	if err := deps.skillConfigSvc.SeedSkills(context.Background()); err != nil {
+		log.Printf("[skill] seed failed: %v", err)
+	}
 	deps.skillConfigHandler = handler.NewSkillConfigHandler(deps.skillConfigSvc)
 }
 

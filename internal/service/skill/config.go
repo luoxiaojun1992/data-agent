@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
@@ -68,7 +69,31 @@ func predefinedSkills() []skill.SkillConfig {
 	}
 }
 
-// List returns paginated skill configs, merging predefined defaults with saved overrides.
+// SeedSkills ensures every predefined skill exists in the database.
+// If a skill already exists (e.g. user-modified), it is left untouched.
+// Safe to call on every startup.
+func (s *ConfigService) SeedSkills(ctx context.Context) error {
+	saved, err := s.repo.List(ctx)
+	if err != nil {
+		return fmt.Errorf("seed: list skills: %w", err)
+	}
+	existMap := make(map[string]bool, len(saved))
+	for _, sk := range saved {
+		existMap[sk.Name] = true
+	}
+	for _, sk := range predefinedSkills() {
+		if existMap[sk.Name] {
+			continue // already in DB — never overwrite user modifications
+		}
+		if err := s.repo.Upsert(ctx, sk); err != nil {
+			log.Printf("[skill] seed %s: %v", sk.Name, err)
+		}
+	}
+	return nil
+}
+
+// List returns paginated skill configs directly from the database.
+// Predefined defaults are seeded on startup via SeedSkills.
 func (s *ConfigService) List(ctx context.Context, page, pageSize int) ([]skill.SkillConfig, int, error) {
 	if page < 1 {
 		page = 1
@@ -80,21 +105,7 @@ func (s *ConfigService) List(ctx context.Context, page, pageSize int) ([]skill.S
 	if err != nil {
 		return nil, 0, err
 	}
-	savedMap := make(map[string]*skill.SkillConfig)
-	for i := range saved {
-		savedMap[saved[i].Name] = &saved[i]
-	}
-
-	predefined := predefinedSkills()
-	result := make([]skill.SkillConfig, 0, len(predefined))
-	for _, sk := range predefined {
-		if ov, ok := savedMap[sk.Name]; ok {
-			sk.ConfigJSON = ov.ConfigJSON
-			sk.Enabled = ov.Enabled
-		}
-		result = append(result, sk)
-	}
-	total := len(result)
+	total := len(saved)
 	offset := (page - 1) * pageSize
 	if offset >= total {
 		return nil, total, nil
@@ -103,25 +114,19 @@ func (s *ConfigService) List(ctx context.Context, page, pageSize int) ([]skill.S
 	if end > total {
 		end = total
 	}
-	return result[offset:end], total, nil
+	return saved[offset:end], total, nil
 }
 
-// Get returns a single skill config by name.
+// Get returns a single skill config directly from the database.
 func (s *ConfigService) Get(ctx context.Context, name string) (*skill.SkillConfig, error) {
-	saved, err := s.repo.Get(ctx, name)
+	cfg, err := s.repo.Get(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	for _, sk := range predefinedSkills() {
-		if sk.Name == name {
-			if saved != nil {
-				sk.ConfigJSON = saved.ConfigJSON
-				sk.Enabled = saved.Enabled
-			}
-			return &sk, nil
-		}
+	if cfg == nil {
+		return nil, fmt.Errorf("unknown skill: %s", name)
 	}
-	return nil, fmt.Errorf("unknown skill: %s", name)
+	return cfg, nil
 }
 
 // Upsert validates and saves a skill config.
