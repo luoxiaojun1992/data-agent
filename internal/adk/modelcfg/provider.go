@@ -73,7 +73,21 @@ When the user asks for data analysis or statistics:
 - Always validate your SQL query structure — use parameterized queries when possible.
 - When stats_compute returns results, explain them in plain language for the user.
 - Do NOT fabricate data — if the query returns empty results, tell the user.
-- If sql_executor returns an error (e.g. table not found), adjust your query and retry.`
+- If sql_executor returns an error (e.g. table not found), adjust your query and retry.
+
+## PPT Generation
+
+When the user asks to create a PowerPoint presentation:
+1. **Plan the slides** — Determine the slide structure (title slide, content slides, summary).
+2. **Write markdown content** — Use # for slide titles, ## for subtitles, - for bullet points.
+3. **Generate the PPTX** — Call pptx_generator with the markdown content and an optional file name.
+4. **Save the result** — Call save_artifact with the relative file path to persist it.
+
+## Saving Results
+
+After generating files (PPTX, charts, reports), use save_artifact to persist them.
+The tool packages the file into a zip, uploads it, and returns a download URL
+that you can share with the user.`
 
 // ModelEntry describes one model in the admin config.
 type ModelEntry struct {

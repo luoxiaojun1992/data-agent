@@ -4,11 +4,19 @@
 package adktools
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
+	artifactdomain "github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	pptxpkg "github.com/luoxiaojun1992/data-agent/internal/logic/pptx"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
@@ -35,6 +43,17 @@ type Deps struct {
 	// Tasks backs the save_task_result tool (task-mode runs only).
 	// If nil, save_task_result returns an explanatory error.
 	Tasks domaintask.TaskRunService
+	// SessionSvc resolves session workspace paths.
+	SessionSvc domainchat.SessionService
+	// ArtifactRepo persists artifact metadata to DB.
+	ArtifactRepo repository.ArtifactRepository
+	// SeaweedFS backs artifact storage (used by save_artifact).
+	SeaweedFS SeaweedUploader
+}
+
+// SeaweedUploader uploads a file to SeaweedFS and returns the storage path.
+type SeaweedUploader interface {
+	Upload(ctx context.Context, filePath string) (string, error)
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -392,6 +411,22 @@ func specs(deps *Deps) []toolSpec {
 			},
 		})
 	}
+	if deps.SessionSvc != nil {
+		out = append(out, toolSpec{
+			name:        "pptx_generator",
+			description: "Generates a .pptx PowerPoint file from markdown content and saves it in the session workspace. The content should be well-structured markdown with # slide titles and - bullet points. Returns the relative file path (e.g. output.pptx).",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "pptx_generator", Description: "Generates a .pptx PowerPoint file from markdown content and saves it in the session workspace. The content should be well-structured markdown with # slide titles and - bullet points. Returns the relative file path (e.g. output.pptx)."}, pptxGenerator(deps))
+			},
+		})
+		out = append(out, toolSpec{
+			name:        "save_artifact",
+			description: "Saves a file or directory from the session workspace as a persistent artifact. Packages the file/directory into a zip, uploads it, and creates an artifact record associated with the current session and user. Returns the artifact ID and download URL.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "save_artifact", Description: "Saves a file or directory from the session workspace as a persistent artifact. Packages the file/directory into a zip, uploads it, and creates an artifact record associated with the current session and user. Returns the artifact ID and download URL."}, saveArtifact(deps))
+			},
+		})
+	}
 	return out
 }
 
@@ -428,4 +463,168 @@ func truncateContent(content string, maxLen int) string {
 		return content
 	}
 	return strings.TrimSpace(content[:maxLen]) + "..."
+}
+
+// ---- pptx_generator ----
+
+// PPTXGeneratorArgs are the arguments for the pptx_generator tool.
+type PPTXGeneratorArgs struct {
+	Content  string `json:"content" jsonschema:"Markdown content for the presentation. Use # for slide titles, ## for subtitles, - for bullet points."`
+	FileName string `json:"file_name,omitempty" jsonschema:"Output file name (default: presentation.pptx)"`
+}
+
+// PPTXGeneratorResult is the outcome of pptx generation.
+type PPTXGeneratorResult struct {
+	Path string `json:"path"` // relative path within session workspace
+}
+
+func pptxGenerator(deps *Deps) functiontool.Func[PPTXGeneratorArgs, PPTXGeneratorResult] {
+	return func(tc agent.ToolContext, args PPTXGeneratorArgs) (PPTXGeneratorResult, error) {
+		if strings.TrimSpace(args.Content) == "" {
+			return PPTXGeneratorResult{}, fmt.Errorf("pptx_generator: 'content' must not be empty")
+		}
+		fileName := args.FileName
+		if fileName == "" {
+			fileName = "presentation.pptx"
+		}
+		if !strings.HasSuffix(strings.ToLower(fileName), ".pptx") {
+			fileName += ".pptx"
+		}
+
+		sessionID := stateString(tc, "session_id")
+		ws := filepath.Join(os.TempDir(), "data-agent-sessions", sessionID)
+		fullPath := filepath.Join(ws, fileName)
+
+		if err := pptxpkg.Generate(args.Content, fullPath); err != nil {
+			return PPTXGeneratorResult{}, fmt.Errorf("pptx_generator: %w", err)
+		}
+		return PPTXGeneratorResult{Path: fileName}, nil
+	}
+}
+
+// ---- save_artifact ----
+
+// SaveArtifactArgs are the arguments for the save_artifact tool.
+type SaveArtifactArgs struct {
+	Path string `json:"path" jsonschema:"Relative path to the file or directory within the session workspace"`
+}
+
+// SaveArtifactResult is the outcome of save_artifact.
+type SaveArtifactResult struct {
+	ArtifactID  string `json:"artifact_id"`
+	DownloadURL string `json:"download_url"`
+	Name        string `json:"name"`
+}
+
+func saveArtifact(deps *Deps) functiontool.Func[SaveArtifactArgs, SaveArtifactResult] {
+	return func(tc agent.ToolContext, args SaveArtifactArgs) (SaveArtifactResult, error) {
+		if strings.TrimSpace(args.Path) == "" {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: 'path' must not be empty")
+		}
+
+		userID := stateString(tc, "user_id")
+		sessionID := stateString(tc, "session_id")
+		if userID == "" || sessionID == "" {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: session/user context not available")
+		}
+
+		ws := filepath.Join(os.TempDir(), "data-agent-sessions", sessionID)
+		srcPath := filepath.Join(ws, filepath.Clean(args.Path))
+		if !strings.HasPrefix(srcPath, ws) {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: path traversal denied")
+		}
+
+		info, err := os.Stat(srcPath)
+		if err != nil {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: %w", err)
+		}
+
+		// Create a zip in the workspace.
+		zipName := "artifact.zip"
+		zipPath := filepath.Join(ws, zipName)
+		if err := zipPathHelper(srcPath, zipPath, info); err != nil {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: zip: %w", err)
+		}
+
+		// Upload to SeaweedFS.
+		storagePath, err := deps.SeaweedFS.Upload(tc, zipPath)
+		if err != nil {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: upload: %w", err)
+		}
+
+		// Create artifact record in DB.
+		zipInfo, _ := os.Stat(zipPath)
+		size := int64(0)
+		if zipInfo != nil {
+			size = zipInfo.Size()
+		}
+
+		baseName := filepath.Base(args.Path)
+		if info.IsDir() {
+			baseName += ".zip"
+		}
+		a := artifactdomain.NewArtifact(userID, sessionID, "", baseName, "application/zip", storagePath, size, true)
+		if err := deps.ArtifactRepo.Create(context.Background(), a); err != nil {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: create record: %w", err)
+		}
+
+		return SaveArtifactResult{
+			ArtifactID:  a.ID,
+			DownloadURL: fmt.Sprintf("/api/v1/artifacts/%s/download", a.ID),
+			Name:        a.Name,
+		}, nil
+	}
+}
+
+// zipPathHelper creates a zip archive at dstPath containing the file or directory at srcPath.
+func zipPathHelper(srcPath, dstPath string, info os.FileInfo) error {
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	w := zip.NewWriter(dst)
+	defer w.Close()
+
+	if info.IsDir() {
+		return filepath.Walk(srcPath, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(filepath.Dir(srcPath), path)
+			if err != nil {
+				return err
+			}
+			if fi.IsDir() {
+				if rel != "." {
+					_, err = w.Create(rel + "/")
+				}
+				return err
+			}
+			f, err := w.Create(rel)
+			if err != nil {
+				return err
+			}
+			src, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer src.Close()
+			_, err = io.Copy(f, src)
+			return err
+		})
+	}
+	// Single file.
+	f, err := w.Create(info.Name())
+	if err != nil {
+		return err
+	}
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	_, err = io.Copy(f, src)
+	return err
 }

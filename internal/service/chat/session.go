@@ -36,6 +36,10 @@ func (m *Manager) Create(userID, sessionType, modelID string) (*domainchat.Sessi
 		UpdatedAt: now,
 		ExpiresAt: now.Add(m.ttl),
 	}
+	// Create isolated workspace for agent-generated files.
+	if err := s.EnsureWorkspace(); err != nil {
+		return nil, fmt.Errorf("create workspace: %w", err)
+	}
 	rec := sessionToRecord(s)
 	if err := m.repo.Create(context.Background(), rec); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
@@ -116,6 +120,10 @@ func (m *Manager) ListByUserPaged(userID string, page, pageSize int) ([]*domainc
 }
 
 func (m *Manager) Delete(id string) error {
+	// Clean workspace before deleting from DB.
+	if s, err := m.repo.Get(context.Background(), id); err == nil && s != nil {
+		recordToSession(s).RemoveWorkspace()
+	}
 	return m.repo.Delete(context.Background(), id)
 }
 

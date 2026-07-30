@@ -216,6 +216,9 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		MemoryWriter: deps.memoryKit,
 		AppName:      appName,
 		Tasks:        deps.taskService,
+		SessionSvc:   deps.sessionManager,
+		ArtifactRepo: mongoinfra.NewArtifactRepository(mongoClient.DB()),
+		SeaweedFS:    &adktools.SeaweedFSUploader{Client: deps.swClient},
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -453,6 +456,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 			MemoryWriter: deps.memoryKit,
 			AppName:      appName,
 			Tasks:        deps.taskService,
+			SessionSvc:   deps.sessionManager,
 		})
 		if err != nil {
 			return []string{}

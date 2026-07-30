@@ -1,6 +1,10 @@
 package chat
 
-import "time"
+import (
+	"os"
+	"path/filepath"
+	"time"
+)
 
 // Session represents a user session for Chat or Agent operations.
 // It is a pure domain entity (no SDK coupling); persistence mapping
@@ -21,4 +25,20 @@ type Session struct {
 	ExpiresAt     time.Time  `json:"expires_at"`
 	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
 	RecoveryUntil *time.Time `json:"recovery_until,omitempty"`
+}
+
+// WorkspaceDir returns the isolated temp directory for this session.
+// All agent-generated files (pptx, csv, images, etc.) live here.
+func (s *Session) WorkspaceDir() string {
+	return filepath.Join(os.TempDir(), "data-agent-sessions", s.ID)
+}
+
+// EnsureWorkspace creates the session workspace directory if it doesn't exist.
+func (s *Session) EnsureWorkspace() error {
+	return os.MkdirAll(s.WorkspaceDir(), 0700)
+}
+
+// RemoveWorkspace deletes the entire session workspace (best-effort, never errors).
+func (s *Session) RemoveWorkspace() {
+	_ = os.RemoveAll(s.WorkspaceDir())
 }
