@@ -47,7 +47,7 @@ type Deps struct {
 	// SessionSvc resolves session workspace paths.
 	SessionSvc domainchat.SessionService
 	// Artifacts backs the save_artifact tool (create record + upload).
-	Artifacts artifact_svc.StorageService
+	Artifacts artifact_svc.Service
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
