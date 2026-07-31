@@ -5,14 +5,14 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/luoxiaojun1992/data-agent/internal/service/feishu"
+	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 )
 
 type FeishuConfigHandler struct {
-	svc *feishu.ConfigService
+	svc *feishu_svc.ConfigService
 }
 
-func NewFeishuConfigHandler(svc *feishu.ConfigService) *FeishuConfigHandler {
+func NewFeishuConfigHandler(svc *feishu_svc.ConfigService) *FeishuConfigHandler {
 	return &FeishuConfigHandler{svc: svc}
 }
 
@@ -63,15 +63,23 @@ func (h *FeishuConfigHandler) Get(c *gin.Context) {
 }
 
 // PUT /api/v1/im/feishu/configs/:id
+// Allows updating app_id, app_secret, and enabled. ModelID is immutable after creation.
 func (h *FeishuConfigHandler) Update(c *gin.Context) {
 	var body struct {
-		Enabled *bool `json:"enabled" binding:"required"`
+		AppID     string `json:"app_id,omitempty"`
+		AppSecret string `json:"app_secret,omitempty"`
+		Enabled   *bool  `json:"enabled,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "enabled required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	if err := h.svc.UpdateEnabled(c.Request.Context(), c.Param("id"), *body.Enabled); err != nil {
+	req := feishu_svc.UpdateConfigRequest{
+		AppID:     body.AppID,
+		AppSecret: body.AppSecret,
+		Enabled:   body.Enabled,
+	}
+	if err := h.svc.Update(c.Request.Context(), c.Param("id"), req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

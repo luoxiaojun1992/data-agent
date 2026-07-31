@@ -65,13 +65,28 @@ func (s *ConfigService) Get(ctx context.Context, id string) (*feishu.Config, err
 	return s.repo.Get(ctx, id)
 }
 
-// UpdateEnabled toggles the enabled flag.
-func (s *ConfigService) UpdateEnabled(ctx context.Context, id string, enabled bool) error {
+// Update updates mutable fields on an existing config.
+// Allowed fields: app_id, app_secret, enabled. ModelID is immutable after creation.
+type UpdateConfigRequest struct {
+	AppID     string `json:"app_id,omitempty"`
+	AppSecret string `json:"app_secret,omitempty"`
+	Enabled   *bool  `json:"enabled,omitempty"`
+}
+
+func (s *ConfigService) Update(ctx context.Context, id string, req UpdateConfigRequest) error {
 	cfg, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	cfg.Enabled = enabled
+	if req.AppID != "" {
+		cfg.AppID = req.AppID
+	}
+	if req.AppSecret != "" {
+		cfg.AppSecret = req.AppSecret
+	}
+	if req.Enabled != nil {
+		cfg.Enabled = *req.Enabled
+	}
 	cfg.UpdatedAt = time.Now()
 	return s.repo.Update(ctx, cfg)
 }
