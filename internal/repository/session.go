@@ -32,6 +32,7 @@ type SessionRecord struct {
 	// These ride the same ADK chat-session infrastructure but represent an
 	// autonomous analysis run rather than a real-time user conversation.
 	IsTask      bool       `bson:"is_task,omitempty"`
+	IsFeishu    bool       `bson:"is_feishu,omitempty"`
 	CreatedAt   time.Time  `bson:"created_at"`
 	UpdatedAt   time.Time  `bson:"updated_at"`
 	ExpiresAt   time.Time  `bson:"expires_at"`

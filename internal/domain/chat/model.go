@@ -16,6 +16,10 @@ type Session struct {
 	// They share ADK chat-session infrastructure but represent autonomous
 	// analysis runs rather than real-time user conversations.
 	IsTask        bool       `json:"is_task,omitempty"`
+	// IsFeishu marks sessions created for Feishu (Lark) IM bot integrations.
+	// These sessions are bound to a specific FeishuConfig and receive messages
+	// from the Feishu websocket connector.
+	IsFeishu      bool       `json:"is_feishu,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	ExpiresAt     time.Time  `json:"expires_at"`

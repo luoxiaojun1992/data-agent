@@ -81,6 +81,8 @@ type SessionService interface {
 	// The flag tells downstream consumers (chat UI, stats) this is not a
 	// real-time user conversation.
 	CreateTaskSession(userID, modelID string) (*Session, error)
+	// CreateFeishuSession creates a session flagged for Feishu IM bot integration.
+	CreateFeishuSession(userID, modelID string) (*Session, error)
 	Get(id string) (*Session, error)
 	Renew(id string) error
 	Cleanup() (int64, error)

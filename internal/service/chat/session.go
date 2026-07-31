@@ -93,6 +93,27 @@ func (m *Manager) CreateTaskSession(userID, modelID string) (*domainchat.Session
 	return s, nil
 }
 
+// CreateFeishuSession creates a session flagged for Feishu IM bot integration.
+func (m *Manager) CreateFeishuSession(userID, modelID string) (*domainchat.Session, error) {
+	now := time.Now()
+	s := &domainchat.Session{
+		ID:        "sess_" + uuid.New().String(),
+		UserID:    userID,
+		Type:      "chat",
+		ModelID:   modelID,
+		IsFeishu:  true,
+		Status:    "active",
+		CreatedAt: now,
+		UpdatedAt: now,
+		ExpiresAt: now.Add(m.ttl),
+	}
+	rec := sessionToRecord(s)
+	if err := m.repo.Create(context.Background(), rec); err != nil {
+		return nil, fmt.Errorf("create feishu session: %w", err)
+	}
+	return s, nil
+}
+
 func (m *Manager) Get(id string) (*domainchat.Session, error) {
 	rec, err := m.repo.Get(context.Background(), id)
 	if err != nil {
@@ -178,6 +199,7 @@ func sessionToRecord(s *domainchat.Session) repository.SessionRecord {
 		Title:     s.Title,
 		ModelID:   s.ModelID,
 		IsTask:    s.IsTask,
+		IsFeishu:  s.IsFeishu,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
 		ExpiresAt: s.ExpiresAt,
@@ -193,6 +215,7 @@ func recordToSession(r *repository.SessionRecord) *domainchat.Session {
 		Title:     r.Title,
 		ModelID:   r.ModelID,
 		IsTask:    r.IsTask,
+		IsFeishu:  r.IsFeishu,
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 		ExpiresAt: r.ExpiresAt,

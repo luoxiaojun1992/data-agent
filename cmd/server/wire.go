@@ -47,6 +47,7 @@ import (
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/service/role"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
+	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/user"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
@@ -259,6 +260,11 @@ func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	skillRepo := mongoinfra.NewSkillConfigRepo(mongoClient.DB())
 	deps.skillConfigSvc = skillsvc.NewConfigService(skillRepo)
 	deps.skillConfigHandler = handler.NewSkillConfigHandler(deps.skillConfigSvc)
+}
+
+func initFeishuConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
+	deps.feishuCfgRepo = mongoinfra.NewFeishuConfigRepository(mongoClient.DB())
+	deps.feishuCfgService = feishu_svc.NewConfigService(deps.feishuCfgRepo, deps.sessionManager)
 }
 
 // initBuiltins seeds all built-in system configs and skill configs into
@@ -487,6 +493,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		IMBind:        imBindHandler,
 		Stats:         handler.NewStatsHandler(deps.llmRecorder),
 		SkillConfig:   deps.skillConfigHandler,
+		FeishuConfig: handler.NewFeishuConfigHandler(deps.feishuCfgService),
 		IMWebhook:     imWebhook,
 		HermesURL:     os.Getenv("HERMES_URL"),
 		AppName:       appName,

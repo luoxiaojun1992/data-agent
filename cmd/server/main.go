@@ -45,6 +45,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
+	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"go.uber.org/zap"
 
@@ -98,6 +99,8 @@ type serverDependencies struct {
 	kbHandler        *handler.KnowledgeHandler
 	skillConfigSvc   *skillsvc.ConfigService
 	skillConfigHandler *handler.SkillConfigHandler
+	feishuCfgRepo     *mongoinfra.FeishuConfigRepository
+	feishuCfgService  *feishu_svc.ConfigService
 	artifactStorage  *artifact_svc.Storage
 	workspaceMgr     *workspace.Manager
 	artifactHandler  *handler.ArtifactHandler
@@ -165,6 +168,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initSkillConfig(&deps, mongoClient)
 	initBuiltins(&deps, logger) // seed system config + skill defaults before services
 	initServices(&deps, mongoClient, logger)
+	initFeishuConfig(&deps, mongoClient) // needs sessionManager from initServices
 	initArtifacts(&deps, mongoClient, cfg)
 	initAuditAndNotifications(&deps, mongoClient)
 	initTaskQueue(&deps, cfg, mongoClient, logger)

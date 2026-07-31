@@ -40,6 +40,7 @@ type RouteDeps struct {
 	IMBind       *IMBindHandler
 	Stats        *StatsHandler
 	SkillConfig  *SkillConfigHandler
+	FeishuConfig *FeishuConfigHandler
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
 	IMWebhook http.HandlerFunc
@@ -167,6 +168,9 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.Stats != nil {
 		RegisterStatsRoutes(router, deps.JWTManager, deps.Stats)
 	}
+	if deps.FeishuConfig != nil {
+		registerFeishuRoutes(router, deps.JWTManager, deps.FeishuConfig)
+	}
 }
 
 // registerWorkspaceRoutes registers workspace file routes.
@@ -291,4 +295,14 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	runRoutes := router.Group("/api/v1/runs")
 	runRoutes.Use(jwt.AuthMiddleware())
 	runRoutes.GET("/:run_id", h.GetRun)
+}
+
+func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *FeishuConfigHandler) {
+	feishuRoutes := router.Group("/api/v1/im/feishu/configs")
+	feishuRoutes.Use(jwt.AuthMiddleware())
+	feishuRoutes.POST("", h.Create)
+	feishuRoutes.GET("", h.List)
+	feishuRoutes.GET("/:id", h.Get)
+	feishuRoutes.PUT("/:id", h.Update)
+	feishuRoutes.DELETE("/:id", h.Delete)
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/feishu"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
@@ -683,5 +684,37 @@ func docToTaskRun(d bson.M) *task.TaskRun {
 		UpdatedAt:   getTime(d, "updated_at"),
 		Result:      getSubDoc(d, "result"),
 		Error:       getStr(d, "error"),
+	}
+}
+
+// --- Feishu Config converters ---
+
+func feishuCfgToDoc(cfg *feishu.Config) bson.M {
+	return bson.M{
+		"_id":        cfg.ID,
+		"user_id":    cfg.UserID,
+		"name":       cfg.Name,
+		"app_id":     cfg.AppID,
+		"app_secret": cfg.AppSecret,
+		"model_id":   cfg.ModelID,
+		"session_id": cfg.SessionID,
+		"enabled":    cfg.Enabled,
+		"created_at": cfg.CreatedAt,
+		"updated_at": cfg.UpdatedAt,
+	}
+}
+
+func docToFeishuCfg(d bson.M) *feishu.Config {
+	return &feishu.Config{
+		ID:        getStr(d, "_id"),
+		UserID:    getStr(d, "user_id"),
+		Name:      getStr(d, "name"),
+		AppID:     getStr(d, "app_id"),
+		AppSecret: getStr(d, "app_secret"),
+		ModelID:   getStr(d, "model_id"),
+		SessionID: getStr(d, "session_id"),
+		Enabled:   getBool(d, "enabled"),
+		CreatedAt: getTime(d, "created_at"),
+		UpdatedAt: getTime(d, "updated_at"),
 	}
 }
