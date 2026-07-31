@@ -60,8 +60,13 @@ export default function FeishuConfigPage() {
       const res = await apiFetch('/models/list?page=1&page_size=50');
       if (res.ok) {
         const data = await res.json();
-        // /models/list already returns only LLM (Type==llm per SPEC-062)
-        setModels(data.models || []);
+        const allModels: ModelEntry[] = data.models || [];
+        setModels(allModels);
+        // Find the default chat model and pre-select it
+        const defaultChat = allModels.find((m: any) => m.is_default_for && m.is_default_for.includes('chat'));
+        if (defaultChat && !newCfg.model_id) {
+          setNewCfg(p => ({ ...p, model_id: defaultChat.id || '' }));
+        }
       }
     } catch (e) { console.error('[feishu] loadModels failed:', e); }
   }, [apiFetch]);
@@ -231,11 +236,10 @@ export default function FeishuConfigPage() {
                   data-testid="feishu-secret-input" placeholder="••••••••" />
               </div>
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">模型（可选，默认使用 Chat 模型）</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">模型</label>
                 <select value={newCfg.model_id} onChange={e => setNewCfg(p => ({ ...p, model_id: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                   data-testid="feishu-model-select">
-                  <option value="">Chat 默认模型</option>
                   {models.map(m => (
                     <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
                   ))}
@@ -292,7 +296,6 @@ export default function FeishuConfigPage() {
                 <label className="block text-xs text-[var(--text-secondary)] mb-1">模型</label>
                 <select value={editCfg.model_id || ''} disabled
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)]/50 border border-[var(--border-glass)] text-[var(--text-secondary)] cursor-not-allowed">
-                  <option value="">Chat 默认模型</option>
                   {models.map(m => (
                     <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
                   ))}
