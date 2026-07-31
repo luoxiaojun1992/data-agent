@@ -13,7 +13,7 @@ interface SkillItem {
 }
 
 export default function SkillsAdminPage() {
-  const { apiFetch } = useAuth();
+  const { apiFetch, auth } = useAuth();
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -45,7 +45,10 @@ export default function SkillsAdminPage() {
     setLoading(false);
   }, [apiFetch, page]);
 
-  useEffect(() => { fetchSkills(); }, [fetchSkills]);
+  useEffect(() => {
+    if (!auth.hydrated || !auth.token) return;
+    fetchSkills();
+  }, [fetchSkills, auth.hydrated, auth.token]);
 
   const openEdit = (s: SkillItem) => {
     setEditingName(s.name);

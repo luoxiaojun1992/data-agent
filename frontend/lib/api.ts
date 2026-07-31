@@ -88,6 +88,12 @@ export function useAuth() {
     if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
+    // Refuse to send if auth isn't hydrated yet — prevents 401 races where
+    // a useEffect fires before localStorage token is loaded. Callers should
+    // gate their fetch behind `auth.hydrated === true`.
+    if (!auth.hydrated) {
+      throw new Error('auth not hydrated yet');
+    }
     if (auth.token) {
       headers['Authorization'] = `Bearer ${auth.token}`;
     }
