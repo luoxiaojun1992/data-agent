@@ -51,21 +51,22 @@ func (h *FeishuConfigHandler) List(c *gin.Context) {
 }
 
 // GET /api/v1/im/feishu/configs/:id
+// Returns the full config including the real app_secret (not masked).
+// The frontend is responsible for toggling visibility client-side.
 func (h *FeishuConfigHandler) Get(c *gin.Context) {
 	cfg, err := h.svc.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	// Mask AppSecret
-	cfg.AppSecret = "****"
 	c.JSON(http.StatusOK, cfg)
 }
 
 // PUT /api/v1/im/feishu/configs/:id
-// Allows updating app_id, app_secret, and enabled. ModelID is immutable after creation.
+// Allows updating name, app_id, app_secret, and enabled. ModelID is immutable after creation.
 func (h *FeishuConfigHandler) Update(c *gin.Context) {
 	var body struct {
+		Name      string `json:"name,omitempty"`
 		AppID     string `json:"app_id,omitempty"`
 		AppSecret string `json:"app_secret,omitempty"`
 		Enabled   *bool  `json:"enabled,omitempty"`
@@ -75,6 +76,7 @@ func (h *FeishuConfigHandler) Update(c *gin.Context) {
 		return
 	}
 	req := feishu_svc.UpdateConfigRequest{
+		Name:      body.Name,
 		AppID:     body.AppID,
 		AppSecret: body.AppSecret,
 		Enabled:   body.Enabled,

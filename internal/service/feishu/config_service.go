@@ -66,8 +66,9 @@ func (s *ConfigService) Get(ctx context.Context, id string) (*feishu.Config, err
 }
 
 // Update updates mutable fields on an existing config.
-// Allowed fields: app_id, app_secret, enabled. ModelID is immutable after creation.
+// Allowed fields: name, app_id, app_secret, enabled. ModelID is immutable after creation.
 type UpdateConfigRequest struct {
+	Name      string `json:"name,omitempty"`
 	AppID     string `json:"app_id,omitempty"`
 	AppSecret string `json:"app_secret,omitempty"`
 	Enabled   *bool  `json:"enabled,omitempty"`
@@ -77,6 +78,9 @@ func (s *ConfigService) Update(ctx context.Context, id string, req UpdateConfigR
 	cfg, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return err
+	}
+	if req.Name != "" {
+		cfg.Name = req.Name
 	}
 	if req.AppID != "" {
 		cfg.AppID = req.AppID
