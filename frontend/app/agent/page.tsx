@@ -22,7 +22,7 @@ interface AgentTask {
 
 export default function AgentPage() {
   const router = useRouter();
-  const { apiFetch } = useAuth();
+  const { apiFetch, auth } = useAuth();
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -31,7 +31,12 @@ export default function AgentPage() {
   const [total, setTotal] = useState(0);
   const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false });
 
-  useEffect(() => { loadTasks(page); }, [page]);
+  // Wait for auth hydration before loading — otherwise loadTasks fires with
+  // auth.token=null and the request misses the Authorization header.
+  useEffect(() => {
+    if (!auth.hydrated || !auth.token) return;
+    loadTasks(page);
+  }, [page, auth.hydrated, auth.token]);
 
   const loadTasks = async (p: number) => {
     setLoading(true);
