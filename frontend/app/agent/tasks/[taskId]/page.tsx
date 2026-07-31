@@ -43,7 +43,7 @@ export default function TaskRunsPage() {
   const router = useRouter();
   const params = useParams<{ taskId: string }>();
   const taskId = params.taskId;
-  const { apiFetch } = useAuth();
+  const { apiFetch, auth } = useAuth();
 
   const [task, setTask] = useState<TaskDef | null>(null);
   const [runs, setRuns] = useState<TaskRun[]>([]);
@@ -55,17 +55,17 @@ export default function TaskRunsPage() {
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    if (!taskId) return;
+    if (!taskId || !auth.hydrated || !auth.token) return;
     setPage(1); // reset on task switch / filter change
     loadData(1, statusFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId, statusFilter]);
+  }, [taskId, statusFilter, auth.hydrated, auth.token]);
 
   useEffect(() => {
-    if (!taskId) return;
+    if (!taskId || !auth.hydrated || !auth.token) return;
     loadData(page, statusFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, auth.hydrated, auth.token]);
 
   const loadData = async (p: number, status: string) => {
     setLoading(true);

@@ -38,7 +38,7 @@ export default function RunDetailPage() {
   const router = useRouter();
   const params = useParams<{ runId: string }>();
   const runId = params.runId;
-  const { apiFetch } = useAuth();
+  const { apiFetch, auth } = useAuth();
 
   const [run, setRun] = useState<TaskRun | null>(null);
   const [task, setTask] = useState<{ title?: string; description?: string; type?: string } | null>(null);
@@ -47,9 +47,9 @@ export default function RunDetailPage() {
   const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
-    if (!runId) return;
+    if (!runId || !auth.hydrated || !auth.token) return;
     loadData();
-  }, [runId]);
+  }, [runId, auth.hydrated, auth.token]);
 
   const loadData = async () => {
     setLoading(true);
