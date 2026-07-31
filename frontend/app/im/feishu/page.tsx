@@ -60,8 +60,8 @@ export default function FeishuConfigPage() {
       const res = await apiFetch('/models/list?page=1&page_size=50');
       if (res.ok) {
         const data = await res.json();
-        // Only show LLM models (not embedding)
-        setModels((data.models || []).filter((m: any) => m.type === 'llm'));
+        // /models/list already returns only LLM (Type==llm per SPEC-062)
+        setModels(data.models || []);
       }
     } catch (e) { console.error('[feishu] loadModels failed:', e); }
   }, [apiFetch]);
