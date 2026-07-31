@@ -7,6 +7,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type ArtifactRepository struct {
@@ -51,6 +52,29 @@ func (r *ArtifactRepository) ListBySession(ctx context.Context, sessionID string
 		list[i] = docToArtifact(d)
 	}
 	return list, nil
+}
+
+func (r *ArtifactRepository) ListByUser(ctx context.Context, userID string, skip, limit int64) ([]*artifact.Artifact, int64, error) {
+	filter := bson.M{"user_id": userID}
+	total, err := r.coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"created_at": -1})
+	cursor, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, 0, err
+	}
+	list := make([]*artifact.Artifact, len(docs))
+	for i, d := range docs {
+		list[i] = docToArtifact(d)
+	}
+	return list, total, nil
 }
 
 func (r *ArtifactRepository) ListByTask(ctx context.Context, taskID string) ([]*artifact.Artifact, error) {

@@ -224,6 +224,7 @@ func registerArtifactRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *A
 	artifactRoutes.GET("/:id/download", h.Download)
 	artifactRoutes.DELETE("/:id", h.Delete)
 	artifactRoutes.GET("", h.ListSession)
+	artifactRoutes.GET("/user", h.ListUser)
 }
 
 func registerKnowledgeRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *KnowledgeHandler) {

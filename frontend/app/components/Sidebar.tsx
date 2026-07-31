@@ -19,6 +19,7 @@ const navItems = [
   { href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent', roles: ['admin', 'system_admin'] },
   { href: '/hermes', label: 'Hermes 探索', icon: '🔍', testid: 'nav-hermes', roles: ['user', 'admin', 'system_admin'] },
   { href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt', roles: ['user', 'admin', 'system_admin'] },
+  { href: '/artifacts', label: '产出物', icon: '📦', testid: 'nav-artifacts', roles: ['user', 'admin', 'system_admin'] },
   { href: '/admin', label: '管理后台', icon: '🛠', testid: 'nav-admin', roles: ['admin', 'system_admin'] },
 ];
 

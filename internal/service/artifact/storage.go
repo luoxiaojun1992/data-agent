@@ -73,6 +73,18 @@ func (s *Storage) ListBySession(sessionID string) ([]*artifact.Artifact, error) 
 	return s.meta.ListBySession(context.Background(), sessionID)
 }
 
+// ListByUser returns artifacts for a user (paginated).
+func (s *Storage) ListByUser(userID string, page, pageSize int) ([]*artifact.Artifact, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	skip := int64((page - 1) * pageSize)
+	return s.meta.ListByUser(context.Background(), userID, skip, int64(pageSize))
+}
+
 // ListByTask returns artifacts for a task.
 func (s *Storage) ListByTask(taskID string) ([]*artifact.Artifact, error) {
 	return s.meta.ListByTask(context.Background(), taskID)

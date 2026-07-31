@@ -14,5 +14,6 @@ type ArtifactRepository interface {
 	FindByID(ctx context.Context, id string) (*artifact.Artifact, error)
 	Delete(ctx context.Context, id string) error
 	ListBySession(ctx context.Context, sessionID string) ([]*artifact.Artifact, error)
+	ListByUser(ctx context.Context, userID string, skip, limit int64) ([]*artifact.Artifact, int64, error)
 	ListByTask(ctx context.Context, taskID string) ([]*artifact.Artifact, error)
 }

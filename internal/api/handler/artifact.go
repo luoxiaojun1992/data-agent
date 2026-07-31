@@ -3,6 +3,7 @@ package handler
 import (
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
@@ -93,6 +94,20 @@ func (h *ArtifactHandler) ListSession(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, artifacts)
+}
+
+// ListUser returns paginated artifacts for the authenticated user.
+func (h *ArtifactHandler) ListUser(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	list, total, err := h.storage.ListByUser(userID.(string), page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"artifacts": list, "total": total, "page": page, "page_size": pageSize})
 }
 
 // ListWorkspace lists workspace files for a session.

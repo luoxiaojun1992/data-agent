@@ -17,5 +17,6 @@ type Service interface {
 	Delete(id string) error
 	FindByID(id string) (*artifact.Artifact, error)
 	ListBySession(sessionID string) ([]*artifact.Artifact, error)
+	ListByUser(userID string, page, pageSize int) ([]*artifact.Artifact, int64, error)
 	ListByTask(taskID string) ([]*artifact.Artifact, error)
 }
