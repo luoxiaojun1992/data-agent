@@ -84,7 +84,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("redis.db", 0)
 	v.SetDefault("qdrant.addr", "localhost:6334")
 	v.SetDefault("seaweedfs.master", "http://localhost:9333")
-	v.SetDefault("seaweedfs.filer", "http://localhost:8080")
+	v.SetDefault("seaweedfs.filer", "http://localhost:8888")
 	v.SetDefault("jwt.secret", "change-me-in-production")
 	v.SetDefault("jwt.expiration", "24h")
 	v.SetDefault("log.level", "info")

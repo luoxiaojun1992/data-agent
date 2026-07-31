@@ -147,7 +147,7 @@ services:
       - EMBEDDING_MODEL=nomic-embed-text
       - MYSQL_DSN=agent:agent123@tcp(mysql:3306)/data_agent?charset=utf8mb4&parseTime=True
       - SEAWEEDFS_MASTER=http://seaweedfs:9333
-      - SEAWEEDFS_FILER=http://seaweedfs:8080
+      - SEAWEEDFS_FILER=http://seaweedfs:8888
       - LLM_BASE_URL=http://mockllm:8082/v1
       - LLM_API_KEY=test-key
       - LLM_MODEL=mock-gpt-4o
