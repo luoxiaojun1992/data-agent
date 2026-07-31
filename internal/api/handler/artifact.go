@@ -50,7 +50,7 @@ func (h *ArtifactHandler) Upload(c *gin.Context) {
 	c.JSON(http.StatusCreated, art)
 }
 
-// Download handles file download.
+// Download handles file download (legacy — proxies through backend, use DownloadURL for direct access).
 func (h *ArtifactHandler) Download(c *gin.Context) {
 	artifactID := c.Param("id")
 
@@ -68,6 +68,17 @@ func (h *ArtifactHandler) Download(c *gin.Context) {
 	c.Header("Content-Type", art.MimeType)
 	c.Header("Content-Disposition", "attachment; filename=\""+art.Name+"\"")
 	c.Data(http.StatusOK, art.MimeType, data)
+}
+
+// DownloadURL returns a direct download URL for the artifact (SeaweedFS filer).
+func (h *ArtifactHandler) DownloadURL(c *gin.Context) {
+	artifactID := c.Param("id")
+	url, err := h.storage.DownloadURL(artifactID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
 // Delete removes an artifact (idempotent).

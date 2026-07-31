@@ -42,8 +42,16 @@ export default function ArtifactsPage() {
     fetchArtifacts();
   }, [fetchArtifacts, auth.hydrated, auth.token]);
 
-  const downloadArtifact = (id: string, name: string) => {
-    window.open(`/api/v1/artifacts/${id}/download`, '_blank');
+  const downloadArtifact = async (id: string, name: string) => {
+    try {
+      const res = await apiFetch(`/artifacts/${id}/download-url`);
+      if (res.ok) {
+        const { url } = await res.json();
+        window.open(url, '_blank');
+      }
+    } catch (e) {
+      console.error('[artifacts] download-url failed:', e);
+    }
   };
 
   const formatSize = (bytes: number) => {

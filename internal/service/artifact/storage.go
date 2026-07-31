@@ -63,6 +63,17 @@ func (s *Storage) Delete(id string) error {
 	return nil
 }
 
+// DownloadURL returns a public download URL for the artifact.
+// The returned path is relative (e.g. /files/artifacts/uuid/uuid/file.zip) and
+// nginx proxies /files/ → seaweedfs filer for direct download.
+func (s *Storage) DownloadURL(id string) (string, error) {
+	a, err := s.meta.FindByID(context.Background(), id)
+	if err != nil {
+		return "", fmt.Errorf("find artifact: %w", err)
+	}
+	return "/files/" + a.StoragePath, nil
+}
+
 // FindByID returns artifact metadata by ID.
 func (s *Storage) FindByID(id string) (*artifact.Artifact, error) {
 	return s.meta.FindByID(context.Background(), id)

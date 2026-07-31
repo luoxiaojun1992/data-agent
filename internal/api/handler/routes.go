@@ -222,6 +222,7 @@ func registerArtifactRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *A
 	artifactRoutes.Use(jwt.AuthMiddleware())
 	artifactRoutes.POST("/upload", h.Upload)
 	artifactRoutes.GET("/:id/download", h.Download)
+	artifactRoutes.GET("/:id/download-url", h.DownloadURL)
 	artifactRoutes.DELETE("/:id", h.Delete)
 	artifactRoutes.GET("", h.ListSession)
 	artifactRoutes.GET("/user", h.ListUser)

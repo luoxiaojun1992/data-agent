@@ -14,6 +14,7 @@ import (
 type Service interface {
 	Upload(userID, sessionID, taskID, name, mimeType string, reader io.Reader, persistent bool) (*artifact.Artifact, error)
 	Download(id string) ([]byte, error)
+	DownloadURL(id string) (string, error)
 	Delete(id string) error
 	FindByID(id string) (*artifact.Artifact, error)
 	ListBySession(sessionID string) ([]*artifact.Artifact, error)

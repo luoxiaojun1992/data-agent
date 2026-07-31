@@ -115,3 +115,6 @@ type FileInfo struct {
 	Size  int64  `json:"size"`
 	IsDir bool   `json:"is_dir"`
 }
+
+// FilerURL returns the filer base URL (e.g. http://seaweedfs:8888).
+func (c *Client) FilerURL() string { return c.filerURL }
