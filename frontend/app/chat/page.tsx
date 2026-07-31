@@ -508,11 +508,10 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Prompt modal button + Input */}
-          <div className="glass p-4">
-            {/* Session artifact quick-access strip — latest 5 artifacts for current session */}
-            {sessionId && (
-              <div className="mb-3 flex items-center gap-2" data-testid="session-artifacts-strip">
+          {/* Session artifacts — separate glass box above the prompt input */}
+          {sessionId && (
+            <div className="glass p-3 mb-3" data-testid="session-artifacts-box">
+              <div className="flex items-center gap-2">
                 <span className="text-xs text-[var(--text-secondary)] flex-shrink-0">📦</span>
                 <div className="flex-1 flex gap-2 overflow-x-auto">
                   {sessionArtifacts.length === 0 ? (
@@ -539,7 +538,11 @@ export default function ChatPage() {
                   title="查看全部产出物"
                 >→</button>
               </div>
-            )}
+            </div>
+          )}
+
+          {/* Prompt modal button + Input */}
+          <div className="glass p-4">
             <div className="flex items-center gap-2 mb-2">
               <button
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
