@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 
@@ -16,6 +17,20 @@ interface ArtifactItem {
 const PAGE_SIZE = 20;
 
 export default function ArtifactsPage() {
+  // useSearchParams requires a Suspense boundary for static export.
+  return (
+    <AppLayout>
+      <Suspense fallback={<div className="text-center py-12 text-[var(--text-secondary)]">加载中...</div>}>
+        <ArtifactsContent />
+      </Suspense>
+    </AppLayout>
+  );
+}
+
+function ArtifactsContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const filterSessionID = searchParams.get('session_id');
   const { auth, apiFetch } = useAuth();
   const [artifacts, setArtifacts] = useState<ArtifactItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -25,17 +40,26 @@ export default function ArtifactsPage() {
   const fetchArtifacts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/artifacts/user?page=${page}&page_size=${PAGE_SIZE}`);
+      const endpoint = filterSessionID
+        ? `/artifacts?session_id=${encodeURIComponent(filterSessionID)}`
+        : `/artifacts/user?page=${page}&page_size=${PAGE_SIZE}`;
+      const res = await apiFetch(endpoint);
       if (res.ok) {
         const data = await res.json();
-        setArtifacts(data.artifacts || []);
-        setTotal(data.total || 0);
+        if (filterSessionID) {
+          const list = Array.isArray(data) ? data : [];
+          setArtifacts(list);
+          setTotal(list.length);
+        } else {
+          setArtifacts(data.artifacts || []);
+          setTotal(data.total || 0);
+        }
       }
     } catch (e) {
       console.error('[artifacts] fetch failed:', e);
     }
     setLoading(false);
-  }, [apiFetch, page]);
+  }, [apiFetch, page, filterSessionID]);
 
   useEffect(() => {
     if (!auth.hydrated || !auth.token) return;
@@ -63,13 +87,23 @@ export default function ArtifactsPage() {
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
   return (
-    <AppLayout>
-      <div className="animate-fade-in">
-        <div className="mb-6 flex items-center justify-between" data-testid="artifacts-header">
+    <div className="animate-fade-in">
+      <div className="mb-6 flex items-center justify-between" data-testid="artifacts-header">
           <div>
             <h2 className="text-2xl font-bold text-[var(--text-primary)]">产出物</h2>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">AI 生成的文件和报告</p>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">
+              {filterSessionID
+                ? <>筛选 Session: <code className="text-xs">{filterSessionID.slice(0, 16)}...</code></>
+                : 'AI 生成的文件和报告'}
+            </p>
           </div>
+          {filterSessionID && (
+            <button
+              onClick={() => router.push('/artifacts')}
+              className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              data-testid="artifacts-clear-filter"
+            >← 查看全部</button>
+          )}
         </div>
 
         {loading ? (
@@ -78,7 +112,9 @@ export default function ArtifactsPage() {
           <div className="glass p-12 text-center" data-testid="artifacts-empty">
             <span className="text-5xl block mb-4">📦</span>
             <p className="text-lg text-[var(--text-primary)] mb-2">暂无产出物</p>
-            <p className="text-sm text-[var(--text-secondary)]">通过 Agent 任务或对话中的 PPT 生成 / Artifact 保存功能创建</p>
+            <p className="text-sm text-[var(--text-secondary)]">
+              {filterSessionID ? '该会话内没有产出物' : '通过 Agent 任务或对话中的 PPT 生成 / Artifact 保存功能创建'}
+            </p>
           </div>
         ) : (
           <div>
@@ -91,8 +127,12 @@ export default function ArtifactsPage() {
                       <span>{formatSize(a.size_bytes)}</span>
                       <span>·</span>
                       <span>{formatDate(a.created_at)}</span>
-                      <span>·</span>
-                      <span>Session: {a.session_id?.slice(0, 12)}</span>
+                      {!filterSessionID && (
+                        <>
+                          <span>·</span>
+                          <span>Session: {a.session_id?.slice(0, 12)}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <button
@@ -106,7 +146,8 @@ export default function ArtifactsPage() {
               ))}
             </div>
 
-            <div className="flex items-center justify-between mt-4" data-testid="artifacts-pagination">
+            {!filterSessionID && (
+              <div className="flex items-center justify-between mt-4" data-testid="artifacts-pagination">
               <span className="text-xs text-[var(--text-secondary)]">
                 共 {total} 个 · 第 {page} / {Math.max(1, Math.ceil(total / PAGE_SIZE))} 页
               </span>
@@ -119,9 +160,9 @@ export default function ArtifactsPage() {
                   data-testid="artifacts-next">下一页 →</button>
               </div>
             </div>
+            )}
           </div>
         )}
-      </div>
-    </AppLayout>
+    </div>
   );
 }

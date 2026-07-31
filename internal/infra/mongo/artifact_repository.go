@@ -38,7 +38,8 @@ func (r *ArtifactRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *ArtifactRepository) ListBySession(ctx context.Context, sessionID string) ([]*artifact.Artifact, error) {
-	cursor, err := r.coll.Find(ctx, bson.M{"session_id": sessionID})
+	opts := options.Find().SetSort(bson.M{"created_at": -1})
+	cursor, err := r.coll.Find(ctx, bson.M{"session_id": sessionID}, opts)
 	if err != nil {
 		return nil, err
 	}

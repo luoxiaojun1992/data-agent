@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 import Markdown from '../../components/Markdown';
@@ -114,6 +115,8 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionArtifacts, setSessionArtifacts] = useState<Array<{ id: string; name: string; size_bytes: number }>>([]);
+  const router = useRouter();
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [customPrompts, setCustomPrompts] = useState<string[]>(() => {
@@ -157,7 +160,33 @@ export default function ChatPage() {
     }
   };
 
-  const newSession = () => { setMessages([]); setSessionId(null); setInput(''); setSelectedModel(''); };
+  const newSession = () => { setMessages([]); setSessionId(null); setInput(''); setSelectedModel(''); setSessionArtifacts([]); };
+
+  const loadSessionArtifacts = useCallback(async (sid: string) => {
+    if (!auth.token) return;
+    try {
+      const res = await apiFetch(`/artifacts?session_id=${encodeURIComponent(sid)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const list = (Array.isArray(data) ? data : []).slice(0, 5);
+        setSessionArtifacts(list.map((a: any) => ({ id: a.id, name: a.name, size_bytes: a.size_bytes })));
+      }
+    } catch (e) {
+      console.error('[chat] loadSessionArtifacts failed:', e);
+    }
+  }, [apiFetch, auth.token]);
+
+  const downloadArtifact = async (id: string) => {
+    try {
+      const res = await apiFetch(`/artifacts/${id}/download-url`);
+      if (res.ok) {
+        const { url } = await res.json();
+        window.open(url, '_blank');
+      }
+    } catch (e) {
+      console.error('[chat] downloadArtifact failed:', e);
+    }
+  };
 
   const fetchSessions = useCallback(async () => {
     if (!auth.token) return;
@@ -172,6 +201,15 @@ export default function ChatPage() {
   useEffect(() => {
     if (showSessions) fetchSessions();
   }, [showSessions, sessionsPage]);
+
+  // Reload session artifacts whenever the active session changes.
+  useEffect(() => {
+    if (!auth.hydrated || !auth.token || !sessionId) {
+      setSessionArtifacts([]);
+      return;
+    }
+    loadSessionArtifacts(sessionId);
+  }, [sessionId, auth.hydrated, auth.token, loadSessionArtifacts]);
 
   const loadSessionMessages = async (id: string, preserveOnError = false) => {
     try {
@@ -472,6 +510,36 @@ export default function ChatPage() {
 
           {/* Prompt modal button + Input */}
           <div className="glass p-4">
+            {/* Session artifact quick-access strip — latest 5 artifacts for current session */}
+            {sessionId && (
+              <div className="mb-3 flex items-center gap-2" data-testid="session-artifacts-strip">
+                <span className="text-xs text-[var(--text-secondary)] flex-shrink-0">📦</span>
+                <div className="flex-1 flex gap-2 overflow-x-auto">
+                  {sessionArtifacts.length === 0 ? (
+                    <span className="text-xs text-[var(--text-secondary)]">暂无产出物</span>
+                  ) : (
+                    sessionArtifacts.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => downloadArtifact(a.id)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] hover:bg-[var(--glass-hover)] flex-shrink-0 max-w-[200px]"
+                        data-testid={`chat-artifact-chip-${a.id}`}
+                        title={`${a.name} · ${(a.size_bytes / 1024).toFixed(1)} KB`}
+                      >
+                        <span className="truncate">{a.name}</span>
+                        <span className="flex-shrink-0">⬇</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <button
+                  onClick={() => router.push(`/artifacts?session_id=${sessionId}`)}
+                  className="px-2 py-1 text-xs rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex-shrink-0"
+                  data-testid="chat-artifacts-jump"
+                  title="查看全部产出物"
+                >→</button>
+              </div>
+            )}
             <div className="flex items-center gap-2 mb-2">
               <button
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
