@@ -66,6 +66,20 @@ func predefinedSkills() []skill.SkillConfig {
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
+		{
+			Name:        "pptx_generator",
+			DisplayName: "PPTX 生成",
+			Description: "从 markdown 内容生成 .pptx PowerPoint 文件，保存到 session workspace",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "save_artifact",
+			DisplayName: "Artifact 保存",
+			Description: "将 session workspace 中的文件或目录打包为 artifact 持久化存储（zip + SeaweedFS + DB 记录）",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
 	}
 }
 
