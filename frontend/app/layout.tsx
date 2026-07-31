@@ -4,6 +4,9 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'DataAgent — 企业数据分析平台',
   description: '智能数据分析 Agent，Chat + Agent 双模式',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
