@@ -135,7 +135,7 @@ func (h *SessionHandler) ListDeleted(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"sessions": userSessions})
 }
 
-// Messages returns the latest 50 ADK events converted to canonical chat form.
+// Messages returns the latest 100 ADK events converted to canonical chat form.
 // Compaction summaries are skipped; everything else (user, agent text, tool calls,
 // tool results) is kept exactly as stored in MongoDB. Consecutive text parts from
 // the same role are merged into a single bubble (streaming tokens).
@@ -193,9 +193,9 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 			messages = append(messages, event)
 		}
 	}
-	// Keep only the latest 50.
-	if len(messages) > 50 {
-		messages = messages[len(messages)-50:]
+	// Keep only the latest 100.
+	if len(messages) > 100 {
+		messages = messages[len(messages)-100:]
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }

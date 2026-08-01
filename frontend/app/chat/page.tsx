@@ -219,7 +219,7 @@ export default function ChatPage() {
       // The history endpoint and the SSE stream share the same canonical event
       // schema. Do not cap or otherwise reshape the uncompressed transcript.
       const msgs: Message[] = (data.messages || []).map((m: WireChatEvent) => normalizeChatMessage(m));
-      setMessages(msgs.slice(-100)); // only display last 100 messages
+      setMessages(msgs);
       return true;
     } catch (err) {
       console.error('Failed to load session messages:', err);
