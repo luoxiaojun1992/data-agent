@@ -134,10 +134,14 @@ func (s *Service) List(ctx context.Context, req *session.ListRequest) (*session.
 	return resp, cursor.Err()
 }
 
-// DisplayEvents returns the never-compacted display events for a session.
-// Falls back to session events when display_events is empty (legacy sessions).
-func (s *Service) DisplayEvents(ctx context.Context, appName, userID, sessionID string) ([]*session.Event, error) {
-	doc, err := s.find(ctx, appName, userID, sessionID)
+// DisplayEvents returns the latest N never-compacted display events for a
+// session. Falls back to session events when raw_events is empty. The slice
+// happens at the MongoDB level via $slice projection.
+func (s *Service) DisplayEvents(ctx context.Context, appName, userID, sessionID string, limit int) ([]*session.Event, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	doc, err := s.findForDisplay(ctx, appName, userID, sessionID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -332,6 +336,25 @@ func (s *Service) find(ctx context.Context, appName, userID, sessionID string) (
 		"app_name": appName,
 		"user_id":  userID,
 	}).Decode(&doc)
+	if err != nil {
+		return nil, fmt.Errorf("session %q not found: %w", sessionID, err)
+	}
+	return &doc, nil
+}
+
+// findForDisplay returns the session document with raw_events and events
+// sliced to the last N entries at the MongoDB level.
+func (s *Service) findForDisplay(ctx context.Context, appName, userID, sessionID string, limit int) (*sessionDoc, error) {
+	var doc sessionDoc
+	opts := options.FindOne().SetProjection(bson.M{
+		"raw_events": bson.M{"$slice": -limit},
+		"events":     bson.M{"$slice": -limit},
+	})
+	err := s.coll.FindOne(ctx, bson.M{
+		"_id":      sessionID,
+		"app_name": appName,
+		"user_id":  userID,
+	}, opts).Decode(&doc)
 	if err != nil {
 		return nil, fmt.Errorf("session %q not found: %w", sessionID, err)
 	}

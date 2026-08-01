@@ -163,9 +163,9 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 	// events for sessions created before this feature existed.
 	events := resp.Session.Events()
 	if svc, ok := h.adkSessions.(interface {
-		DisplayEvents(ctx context.Context, appName, userID, sessionID string) ([]*session.Event, error)
+		DisplayEvents(ctx context.Context, appName, userID, sessionID string, limit int) ([]*session.Event, error)
 	}); ok {
-		if raw, err := svc.DisplayEvents(c.Request.Context(), h.appName, userID, sessionID); err == nil && len(raw) > 0 {
+		if raw, err := svc.DisplayEvents(c.Request.Context(), h.appName, userID, sessionID, 100); err == nil && len(raw) > 0 {
 			events = &eventSlice{items: raw}
 		}
 	}
@@ -192,10 +192,6 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 			}
 			messages = append(messages, event)
 		}
-	}
-	// Keep only the latest 100.
-	if len(messages) > 100 {
-		messages = messages[len(messages)-100:]
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }
