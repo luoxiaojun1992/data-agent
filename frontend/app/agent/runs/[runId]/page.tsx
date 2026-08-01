@@ -77,7 +77,7 @@ export default function RunDetailPage() {
             const chatRes = await apiFetch(`/sessions/${data.session_id}/messages`);
             if (chatRes.ok) {
               const chatData = await chatRes.json();
-              setChatMessages(chatData.messages || []);
+              setChatMessages((chatData.messages || []).slice(-100)); // only display last 100
             }
           } catch (e) {
             console.error('[run-detail] chat load failed:', e);
