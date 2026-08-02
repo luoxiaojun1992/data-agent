@@ -15,6 +15,7 @@ interface Doc {
   chunk_count: number;
   progress_percent: number;
   tags: string[];
+  is_public: boolean;
   created_at: string;
 }
 
@@ -122,6 +123,19 @@ export default function KnowledgePage() {
       setDocs((prev) => prev.filter((d) => d.id !== id));
     } catch {
       showToast('删除失败', 'error');
+    }
+  };
+
+  const togglePublic = async (id: string, isPublic: boolean) => {
+    try {
+      await apiFetch(`/knowledge/docs/${id}/public`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_public: !isPublic }),
+      });
+      setDocs((prev) => prev.map((d) => d.id === id ? { ...d, is_public: !isPublic } : d));
+      showToast(isPublic ? '已设为私有' : '已设为共享', 'success');
+    } catch {
+      showToast('操作失败', 'error');
     }
   };
 
@@ -246,6 +260,17 @@ export default function KnowledgePage() {
                     background: statusBg(doc.status), color: statusColor(doc.status) }}>
                   {statusIcon(doc.status)} {statusLabel(doc.status, doc.progress_percent)}
                 </span>
+                {/* Share toggle */}
+                <label data-testid={`kb-doc-share-${doc.id}`} title={doc.is_public ? '点击取消共享' : '点击共享'} style={{ cursor: 'pointer', marginLeft: '8px', display: 'inline-flex', alignItems: 'center' }}>
+                  <input type="checkbox" checked={doc.is_public} onChange={() => togglePublic(doc.id, doc.is_public)} style={{ display: 'none' }} />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={doc.is_public ? '#34d399' : '#94a3b8'} strokeWidth="2">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
+                </label>
               </div>
               <div data-testid="kb-doc-tags" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                 {(doc.tags || []).map((t) => (
