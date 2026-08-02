@@ -29,15 +29,25 @@ type sessionDoc struct {
 	UpdatedAt time.Time        `bson:"updated_at"`
 }
 
+// chunkBuffer accumulates streaming text for one invocation before flushing.
+type chunkBuffer struct {
+	invokeID string
+	author   string
+	eventID  string
+	since    time.Time
+	text     strings.Builder
+}
+
 type Service struct {
-	coll *mongo.Collection
+	coll       *mongo.Collection
 	mu         sync.Mutex
 	summarizer Summarizer
 	compact    CompactionConfig
+	buf        map[string]*chunkBuffer
 }
 
 func NewService(db *mongo.Database) *Service {
-	return &Service{coll: db.Collection(CollectionName)}
+	return &Service{coll: db.Collection(CollectionName), buf: make(map[string]*chunkBuffer)}
 }
 
 type Summarizer interface {
@@ -117,9 +127,10 @@ func (s *Service) Delete(ctx context.Context, req *session.DeleteRequest) error 
 	return nil
 }
 
-// AppendEvent appends an event. Streaming text chunks from the same invocation
-// are merged into the last event in both events and raw_events — one LLM
-// response = one DB record in both arrays.
+// AppendEvent appends an event. Streaming text chunks are buffered and flushed
+// as one complete message to raw_events when the invocation changes or a
+// non-text event arrives. This guarantees one LLM response = one DB record,
+// making limit queries and compaction accurate.
 func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *session.Event) error {
 	if event.ID == "" {
 		event.ID = "evt_" + uuid.New().String()
@@ -129,54 +140,19 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 	}
 
 	ms, _ := sess.(*mongoSession)
-	isStreamContinuation := ms != nil &&
+	isTextChunk := isStreamingTextChunk(event)
+	isContinuation := isTextChunk && ms != nil &&
 		len(ms.doc.Events) > 0 &&
 		ms.doc.Events[len(ms.doc.Events)-1].InvocationID == event.InvocationID &&
 		ms.doc.Events[len(ms.doc.Events)-1].Author == event.Author &&
-		isStreamingTextChunk(event) &&
 		isStreamingTextChunk(ms.doc.Events[len(ms.doc.Events)-1])
 
 	update := bson.M{"$set": bson.M{"updated_at": time.Now()}}
-	filter := bson.M{"_id": sess.ID(), "app_name": sess.AppName(), "user_id": sess.UserID()}
-
-	if isStreamContinuation {
-		// Merge text into last events and raw_events elements in-place.
-		last := ms.doc.Events[len(ms.doc.Events)-1]
-		for _, p := range event.Content.Parts {
-			if p.Text != "" {
-				for _, lp := range last.Content.Parts {
-					if lp.Text != "" {
-						lp.Text += p.Text
-						break
-					}
-				}
-			}
-		}
-		last.Timestamp = event.Timestamp
-		update["$set"].(bson.M)["events.$[elem]"] = last
-
-		// Also update raw_events if the previous event is there
-		if len(ms.doc.RawEvents) > 0 &&
-			ms.doc.RawEvents[len(ms.doc.RawEvents)-1].InvocationID == event.InvocationID {
-			lastRaw := ms.doc.RawEvents[len(ms.doc.RawEvents)-1]
-			for _, p := range event.Content.Parts {
-				if p.Text != "" {
-					for _, lp := range lastRaw.Content.Parts {
-						if lp.Text != "" {
-							lp.Text += p.Text
-							break
-						}
-					}
-				}
-			}
-			lastRaw.Timestamp = event.Timestamp
-			update["$set"].(bson.M)["raw_events.$[elem2]"] = lastRaw
-		}
+	if isContinuation {
+		mergedEvent := mergeTextIntoEvent(ms.doc.Events[len(ms.doc.Events)-1], event)
+		update["$set"].(bson.M)["events.$[elem]"] = mergedEvent
 	} else {
 		update["$push"] = bson.M{"events": event}
-		if event.Author == "user" || event.Content == nil || !isStreamingTextChunk(event) {
-			update["$push"].(bson.M)["raw_events"] = event
-		}
 	}
 
 	for k, v := range event.Actions.StateDelta {
@@ -187,17 +163,23 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 	}
 
 	opts := options.Update()
-	if _, ok := update["$set"].(bson.M)["events.$[elem]"]; ok {
-		af := options.ArrayFilters{Filters: []interface{}{
+	if isContinuation {
+		opts.SetArrayFilters(options.ArrayFilters{Filters: []interface{}{
 			bson.M{"elem.id": ms.doc.Events[len(ms.doc.Events)-1].ID},
-		}}
-		if _, ok2 := update["$set"].(bson.M)["raw_events.$[elem2]"]; ok2 && len(ms.doc.RawEvents) > 0 {
-			af.Filters = append(af.Filters, bson.M{"elem2.id": ms.doc.RawEvents[len(ms.doc.RawEvents)-1].ID})
-		}
-		opts.SetArrayFilters(af)
+		}})
 	}
 
-	res, err := s.coll.UpdateOne(ctx, filter, update, opts)
+	// ---- raw_events: user/tool go directly; text chunks are buffered ----
+	if event.Author == "user" || event.Content == nil || !isTextChunk {
+		s.flushBuffer(ctx, sess)
+		update["$push"] = ensurePush(update, "raw_events", event)
+	} else {
+		s.bufferChunk(sess.ID(), event)
+	}
+
+	res, err := s.coll.UpdateOne(ctx,
+		bson.M{"_id": sess.ID(), "app_name": sess.AppName(), "user_id": sess.UserID()},
+		update, opts)
 	if err != nil {
 		return fmt.Errorf("append event: %w", err)
 	}
@@ -205,44 +187,120 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 		return fmt.Errorf("session %q not found", sess.ID())
 	}
 
-	syncSnapshot(sess, event)
+	syncSnapshot(sess, event, isTextChunk)
 
-	// Check compaction only after user input or tool response — natural boundaries.
-	// Streaming chunks are merged into one event so the count grows slowly anyway.
-	if s.summarizer != nil && !isStreamingTextChunk(event) {
+	// Compaction only at natural boundaries; never for compaction events themselves.
+	if s.summarizer != nil && !isTextChunk && event.Author != "compaction" {
 		return s.maybeCompact(ctx, sess)
 	}
 	return nil
 }
 
-func syncSnapshot(sess session.Session, event *session.Event) {
+func ensurePush(update bson.M, key string, event *session.Event) bson.M {
+	if _, ok := update["$push"]; !ok {
+		update["$push"] = bson.M{}
+	}
+	update["$push"].(bson.M)[key] = event
+	return update["$push"].(bson.M)
+}
+
+func (s *Service) bufferChunk(sessionID string, event *session.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.buf[sessionID]
+	if !ok || b.invokeID != event.InvocationID {
+		s.buf[sessionID] = &chunkBuffer{
+			invokeID: event.InvocationID,
+			author:   event.Author,
+			eventID:  event.ID,
+			since:    event.Timestamp,
+		}
+		b = s.buf[sessionID]
+	}
+	for _, p := range event.Content.Parts {
+		if p.Text != "" {
+			b.text.WriteString(p.Text)
+		}
+	}
+}
+
+func (s *Service) flushBuffer(ctx context.Context, sess session.Session) {
+	s.mu.Lock()
+	b, ok := s.buf[sess.ID()]
+	if !ok || b.text.Len() == 0 {
+		s.mu.Unlock()
+		return
+	}
+	delete(s.buf, sess.ID())
+	s.mu.Unlock()
+
+	event := &session.Event{
+		ID:           b.eventID,
+		Timestamp:    b.since,
+		InvocationID: b.invokeID,
+		Author:       b.author,
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role:  "model",
+				Parts: []*genai.Part{{Text: b.text.String()}},
+			},
+		},
+	}
+	_, _ = s.coll.UpdateOne(ctx,
+		bson.M{"_id": sess.ID(), "app_name": sess.AppName(), "user_id": sess.UserID()},
+		bson.M{
+			"$push": bson.M{"raw_events": event},
+			"$set":  bson.M{"updated_at": time.Now()},
+		},
+	)
+}
+
+func mergeTextIntoEvent(prev, next *session.Event) *session.Event {
+	merged := *prev
+	merged.Timestamp = next.Timestamp
+	if prev.Content == nil {
+		merged.Content = next.Content
+		return &merged
+	}
+	var text string
+	for _, p := range prev.Content.Parts {
+		if p != nil {
+			text += p.Text
+		}
+	}
+	for _, p := range next.Content.Parts {
+		if p != nil {
+			text += p.Text
+		}
+	}
+	role := prev.Content.Role
+	if role == "" {
+		role = "model"
+	}
+	merged.Content = &genai.Content{
+		Role:  role,
+		Parts: []*genai.Part{{Text: text}},
+	}
+	return &merged
+}
+
+func syncSnapshot(sess session.Session, event *session.Event, isTextChunk bool) {
 	ms, ok := sess.(*mongoSession)
 	if !ok {
 		return
 	}
-	// If streaming continuation, text was merged in-place above — don't append.
 	last := &session.Event{}
 	if len(ms.doc.Events) > 0 {
 		last = ms.doc.Events[len(ms.doc.Events)-1]
 	}
 	if last.InvocationID == event.InvocationID && last.Author == event.Author &&
 		isStreamingTextChunk(event) && isStreamingTextChunk(last) {
-		// already merged
+		ms.doc.Events[len(ms.doc.Events)-1] = mergeTextIntoEvent(last, event)
 	} else {
 		ms.doc.Events = append(ms.doc.Events, event)
 	}
-	// RawEvents: append non-streaming events
-	if event.Author == "user" || event.Content == nil || !isStreamingTextChunk(event) {
-		lastRaw := &session.Event{}
-		if len(ms.doc.RawEvents) > 0 {
-			lastRaw = ms.doc.RawEvents[len(ms.doc.RawEvents)-1]
-		}
-		if lastRaw.InvocationID == event.InvocationID && lastRaw.Author == event.Author &&
-			isStreamingTextChunk(event) && isStreamingTextChunk(lastRaw) {
-			// merged
-		} else {
-			ms.doc.RawEvents = append(ms.doc.RawEvents, event)
-		}
+	if !isTextChunk {
+		ms.doc.RawEvents = append(ms.doc.RawEvents, event)
 	}
 	for k, v := range event.Actions.StateDelta {
 		if strings.Contains(k, ".") || strings.HasPrefix(k, "$") {
@@ -292,12 +350,12 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 
 	_, err = s.coll.UpdateOne(ctx,
 		bson.M{"_id": sess.ID()},
-		bson.M{"$set": bson.M{
-			"events":     newEvents,
-			"updated_at": time.Now(),
-		},
+		bson.M{
+			"$set": bson.M{
+				"events":     newEvents,
+				"updated_at": time.Now(),
+			},
 			"$push": bson.M{
-				// Compaction events are also display-worthy
 				"raw_events": compactionEvent,
 			},
 		},
@@ -306,7 +364,6 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 		return fmt.Errorf("rewrite compacted events: %w", err)
 	}
 
-	// Update in-memory snapshot so the next LLM call sees compacted context.
 	if ms, ok := sess.(*mongoSession); ok {
 		ms.doc.Events = newEvents
 		ms.doc.RawEvents = append(ms.doc.RawEvents, compactionEvent)
