@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	genai "google.golang.org/genai"
 
@@ -226,11 +227,39 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	fmt.Fprintf(w, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
+	// Buffer streaming text chunks into complete messages before persisting them
+	// to raw_events. One LLM response = one DB record, not one per token.
+	type chunkBuf struct {
+		invokeID string
+		author   string
+		eventID  string
+		since    time.Time
+		parts    []string
+	}
+	var buf *chunkBuf
+	flushBuf := func() {
+		if buf == nil || buf.invokeID == "" {
+			return
+		}
+		event := &session.Event{
+			ID:           buf.eventID,
+			Timestamp:    buf.since,
+			InvocationID: buf.invokeID,
+			Author:       buf.author,
+			LLMResponse: model.LLMResponse{Content: &genai.Content{
+				Parts: []*genai.Part{{Text: strings.Join(buf.parts, "")}},
+			}},
+		}
+		if svc, ok := s.adkSessions.(interface {
+			AppendDisplayEvent(ctx context.Context, appName, userID, sessionID string, event *session.Event) error
+		}); ok {
+			_ = svc.AppendDisplayEvent(ctx, "data-agent", userID, sessionID, event)
+		}
+		buf = nil
+	}
+
 	for evt, rErr := range rt.Run(ctx, userID, sessionID, lastMsg, runCfg) {
 		if rErr != nil {
-			// If the session persistence failed AFTER the LLM stream completed
-			// (client disconnected before MongoDB write), the response text has
-			// already been delivered to the user. Don't surface this as an error.
 			if isSessionPersistenceError(rErr) {
 				log.Printf("[chat] session persistence failed (response already delivered, ignoring): %v (session=%s)", rErr, sessionID)
 				fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -249,7 +278,30 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 			continue
 		}
 		forwardSSEEvent(w, flusher, evt)
+
+		// Buffer text-only chunks for display persistence.
+		if isTextOnlyEvent(evt) {
+			if buf != nil && buf.invokeID != evt.InvocationID {
+				flushBuf()
+			}
+			if buf == nil {
+				buf = &chunkBuf{
+					invokeID: evt.InvocationID,
+					author:   evt.Author,
+					eventID:  evt.ID,
+					since:    evt.Timestamp,
+				}
+			}
+			for _, p := range evt.Content.Parts {
+				if p.Text != "" {
+					buf.parts = append(buf.parts, p.Text)
+				}
+			}
+		} else {
+			flushBuf()
+		}
 	}
+	flushBuf()
 
 	log.Printf("[chat] stream completed normally (session=%s)", sessionID)
 	fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -407,4 +459,22 @@ func truncateTitle(s string, maxRunes int) string {
 		return s
 	}
 	return string(runes[:maxRunes])
+}
+
+// isTextOnlyEvent returns true when the event contains only text parts.
+func isTextOnlyEvent(ev *session.Event) bool {
+	if ev.Content == nil || len(ev.Content.Parts) == 0 {
+		return false
+	}
+	for _, p := range ev.Content.Parts {
+		if p == nil {
+			continue
+		}
+		if p.FunctionCall != nil || p.FunctionResponse != nil ||
+			p.ExecutableCode != nil || p.CodeExecutionResult != nil ||
+			p.InlineData != nil || p.FileData != nil {
+			return false
+		}
+	}
+	return true
 }

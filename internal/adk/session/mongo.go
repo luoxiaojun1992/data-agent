@@ -134,6 +134,26 @@ func (s *Service) List(ctx context.Context, req *session.ListRequest) (*session.
 	return resp, cursor.Err()
 }
 
+// AppendDisplayEvent pushes a complete (stream-merged) event to raw_events.
+// This is called from the application layer after streaming chunks are
+// buffered into one complete message — each LLM response becomes one DB record.
+func (s *Service) AppendDisplayEvent(ctx context.Context, appName, userID, sessionID string, event *session.Event) error {
+	if event.ID == "" {
+		event.ID = "evt_" + uuid.New().String()
+	}
+	if event.Timestamp.IsZero() {
+		event.Timestamp = time.Now()
+	}
+	_, err := s.coll.UpdateOne(ctx,
+		bson.M{"_id": sessionID, "app_name": appName, "user_id": userID},
+		bson.M{
+			"$push": bson.M{"raw_events": event},
+			"$set":  bson.M{"updated_at": time.Now()},
+		},
+	)
+	return err
+}
+
 // DisplayEvents returns the latest N never-compacted display events for a
 // session. Falls back to session events when raw_events is empty. The slice
 // happens at the MongoDB level via $slice projection.
@@ -164,8 +184,10 @@ func (s *Service) Delete(ctx context.Context, req *session.DeleteRequest) error 
 	return nil
 }
 
-// AppendEvent appends an event to the session, merges its state delta,
-// and triggers compaction when configured thresholds are exceeded.
+// AppendEvent appends an event to the session (for LLM context).
+// User-authored events also go to raw_events (they are not stream-merged).
+// Display events for LLM responses are pushed via AppendDisplayEvent after
+// streaming chunks are merged into complete messages.
 func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *session.Event) error {
 	if event.ID == "" {
 		event.ID = "evt_" + uuid.New().String()
@@ -175,16 +197,19 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 	}
 
 	update := bson.M{
-		"$push": bson.M{
-			"events":     event,
-			"raw_events": event,
-		},
+		"$push": bson.M{"events": event},
 		"$set":  bson.M{"updated_at": time.Now()},
+	}
+	// User messages and non-text events (tool calls/responses) go to raw_events
+	// directly — they are always complete, no streaming merge needed.
+	// Text from the LLM is handled by AppendDisplayEvent after buffering.
+	if event.Author == "user" || event.Content == nil || !isTextOnlyForAppend(event) {
+		update["$push"].(bson.M)["raw_events"] = event
 	}
 	setFields := update["$set"].(bson.M)
 	for k, v := range event.Actions.StateDelta {
 		if strings.Contains(k, ".") || strings.HasPrefix(k, "$") {
-			continue // unsafe Mongo key — skip rather than corrupt the document
+			continue
 		}
 		setFields["state."+k] = v
 	}
@@ -342,8 +367,8 @@ func (s *Service) find(ctx context.Context, appName, userID, sessionID string) (
 	return &doc, nil
 }
 
-// findForDisplay returns the session document with raw_events/events
-// sliced to the latest N entries at the MongoDB level.
+// findForDisplay returns the session document with raw_events and events
+// sliced to the last N entries at the MongoDB level.
 func (s *Service) findForDisplay(ctx context.Context, appName, userID, sessionID string, limit int) (*sessionDoc, error) {
 	var doc sessionDoc
 	opts := options.FindOne().SetProjection(bson.M{
@@ -423,3 +448,22 @@ func (e eventsView) All() iter.Seq[*session.Event] {
 func (e eventsView) Len() int { return len(e) }
 
 func (e eventsView) At(i int) *session.Event { return e[i] }
+
+// isTextOnlyForAppend mirrors chat.isTextOnlyEvent — tool calls/responses are
+// not streaming text and should go to raw_events directly.
+func isTextOnlyForAppend(ev *session.Event) bool {
+	if ev.Content == nil {
+		return false
+	}
+	for _, p := range ev.Content.Parts {
+		if p == nil {
+			continue
+		}
+		if p.FunctionCall != nil || p.FunctionResponse != nil ||
+			p.ExecutableCode != nil || p.CodeExecutionResult != nil ||
+			p.InlineData != nil || p.FileData != nil {
+			return false
+		}
+	}
+	return true
+}
