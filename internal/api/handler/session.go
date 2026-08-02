@@ -136,9 +136,7 @@ func (h *SessionHandler) ListDeleted(c *gin.Context) {
 }
 
 // Messages returns the latest 100 ADK events converted to canonical chat form.
-// Compaction summaries are skipped; everything else (user, agent text, tool calls,
-// tool results) is kept exactly as stored in MongoDB. Consecutive text parts from
-// the same role are merged into a single bubble (streaming tokens).
+// Streaming chunks are already merged by AppendEvent — one event = one complete message.
 func (h *SessionHandler) Messages(c *gin.Context) {
 	if h.adkSessions == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "adk session service not configured"})
@@ -181,15 +179,6 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		}
 		timestamp := ev.Timestamp.UTC().Format(time.RFC3339)
 		for _, event := range chat.ChatEventsFromParts(role, ev.ID, timestamp, ev.Content.Parts) {
-			// Match the live renderer: consecutive text parts by the same
-			// author are one transcript bubble, including streaming chunks.
-			if event.Type == "text" && len(messages) > 0 {
-				last := &messages[len(messages)-1]
-				if last.Type == "text" && last.Role == event.Role {
-					last.Content += event.Content
-					continue
-				}
-			}
 			messages = append(messages, event)
 		}
 	}
