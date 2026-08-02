@@ -15,11 +15,18 @@ type KBRepository interface {
 	GetDoc(ctx context.Context, id string) (*knowledge.KnowledgeDoc, error)
 	DeleteDoc(ctx context.Context, id string) error
 	ListDocs(ctx context.Context, userID string, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
+	// ListDocsByVisibility returns docs visible to the user: own docs + public docs for
+	// regular users; all docs for system admins.
+	ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
 	ListAllDocs(ctx context.Context, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
 	UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount, progressPercent int) error
+	SetPublicFlag(ctx context.Context, id string, isPublic bool) error
+	// UpdateChunkVisibility updates the is_public flag on all chunks of a document.
+	UpdateChunkVisibility(ctx context.Context, docID string, isPublic bool) error
 	AddChunks(ctx context.Context, chunks []*knowledge.Chunk) error
 	DeleteChunks(ctx context.Context, docID string) (int64, error)
-	SearchChunks(ctx context.Context, query string, topK int) ([]*knowledge.SearchResult, error)
+	// SearchChunks filters by creator_id + is_public visibility.
+	SearchChunks(ctx context.Context, query string, userID string, isSystemAdmin bool, topK int) ([]*knowledge.SearchResult, error)
 
 	// GridFS operations.
 	UploadFile(ctx context.Context, fileID string, reader io.Reader) error
@@ -32,6 +39,7 @@ type KBRepository interface {
 type VectorRepository interface {
 	Upsert(ctx context.Context, collection string, vectors []VectorPoint) error
 	Search(ctx context.Context, collection string, vector []float32, topK int, filter map[string]interface{}) ([]VectorSearchHit, error)
+	SetPayload(ctx context.Context, collection string, id string, payload map[string]interface{}) error
 	DeleteCollection(ctx context.Context, collection string) error
 }
 

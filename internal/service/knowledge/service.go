@@ -62,7 +62,7 @@ func (s *Service) DeleteDoc(id string) error {
 	return nil
 }
 
-// ListDocs returns paginated docs for a user.
+// ListDocs returns paginated docs for a user (own docs only, backward compat).
 func (s *Service) ListDocs(userID string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error) {
 	if page < 1 {
 		page = 1
@@ -72,6 +72,18 @@ func (s *Service) ListDocs(userID string, page, pageSize int) ([]*knowledge.Know
 	}
 	skip := int64((page - 1) * pageSize)
 	return s.kb.ListDocs(context.Background(), userID, skip, int64(pageSize))
+}
+
+// ListDocsByVisibility returns docs visible to the user based on role.
+func (s *Service) ListDocsByVisibility(userID string, isSystemAdmin bool, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	skip := int64((page - 1) * pageSize)
+	return s.kb.ListDocsByVisibility(context.Background(), userID, isSystemAdmin, skip, int64(pageSize))
 }
 
 // ListAllDocs returns paginated docs globally (admin).
@@ -87,10 +99,23 @@ func (s *Service) ListAllDocs(page, pageSize int) ([]*knowledge.KnowledgeDoc, in
 }
 
 func (s *Service) AddChunks(docID string, texts []string) error {
+	// Look up parent doc to propagate creator_id and is_public to chunks.
+	doc, err := s.kb.GetDoc(context.Background(), docID)
+	if err != nil {
+		return fmt.Errorf("get doc: %w", err)
+	}
 	var chunks []*knowledge.Chunk
 	var vectors []repository.VectorPoint
-	for _, text := range texts {
-		chunk := &knowledge.Chunk{ID: "chunk_" + uuid.New().String(), DocID: docID, Content: text}
+	for idx, text := range texts {
+		chunk := &knowledge.Chunk{
+			ID:        "chunk_" + uuid.New().String(),
+			DocID:     docID,
+			CreatorID: doc.UserID,
+			IsPublic:  doc.IsPublic,
+			Content:   text,
+			ChunkIdx:  idx,
+			CharCount: len([]rune(text)),
+		}
 		chunks = append(chunks, chunk)
 		if s.embed != nil && s.vector != nil {
 			vec, err := s.embed(context.Background(), text)
@@ -102,7 +127,16 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 				log.Printf("[kb] embed returned nil for chunk=%s (check embedding config)", chunk.ID)
 				continue
 			}
-			vectors = append(vectors, repository.VectorPoint{ID: chunk.ID, Vector: vec, Metadata: map[string]interface{}{"doc_id": docID, "content": text}})
+			vectors = append(vectors, repository.VectorPoint{
+				ID:     chunk.ID,
+				Vector: vec,
+				Metadata: map[string]interface{}{
+					"doc_id":     docID,
+					"content":    text,
+					"creator_id": doc.UserID,
+					"is_public":  doc.IsPublic,
+				},
+			})
 		}
 	}
 	if err := s.kb.AddChunks(context.Background(), chunks); err != nil {
@@ -116,17 +150,18 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 	return s.kb.UpdateDocStatus(context.Background(), docID, knowledge.StatusIndexing, len(chunks), 0)
 }
 
-// Search searches the knowledge base using vector + text fallback.
-func (s *Service) Search(userID, query string, topK int, role string) ([]knowledge.SearchResult, error) {
-	results := s.vectorSearch(query, topK)
+// Search searches the knowledge base using vector + text fallback, with
+// permission filtering. System admin sees all; regular users see own docs + public.
+func (s *Service) Search(userID, query string, topK int, isSystemAdmin bool) ([]knowledge.SearchResult, error) {
+	results := s.vectorSearch(query, topK, userID, isSystemAdmin)
 	if len(results) == 0 {
-		results = s.textSearch(query, topK)
+		results = s.textSearch(query, topK, userID, isSystemAdmin)
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Score > results[j].Score })
 	return results, nil
 }
 
-func (s *Service) vectorSearch(query string, topK int) []knowledge.SearchResult {
+func (s *Service) vectorSearch(query string, topK int, userID string, isSystemAdmin bool) []knowledge.SearchResult {
 	if s.embed == nil || s.vector == nil {
 		return nil
 	}
@@ -134,7 +169,21 @@ func (s *Service) vectorSearch(query string, topK int) []knowledge.SearchResult 
 	if err != nil {
 		return nil
 	}
-	hits, err := s.vector.Search(context.Background(), s.vecCol, vec, topK, nil)
+	// Apply permission filter to vector search
+	var filter map[string]interface{}
+	if !isSystemAdmin {
+		filter = map[string]interface{}{
+			"must": []interface{}{
+				map[string]interface{}{
+					"should": []interface{}{
+						map[string]interface{}{"key": "creator_id", "match": map[string]interface{}{"value": userID}},
+						map[string]interface{}{"key": "is_public", "match": map[string]interface{}{"value": true}},
+					},
+				},
+			},
+		}
+	}
+	hits, err := s.vector.Search(context.Background(), s.vecCol, vec, topK, filter)
 	if err != nil {
 		return nil
 	}
@@ -147,8 +196,8 @@ func (s *Service) vectorSearch(query string, topK int) []knowledge.SearchResult 
 	return results
 }
 
-func (s *Service) textSearch(query string, topK int) []knowledge.SearchResult {
-	textResults, err := s.kb.SearchChunks(context.Background(), query, topK)
+func (s *Service) textSearch(query string, topK int, userID string, isSystemAdmin bool) []knowledge.SearchResult {
+	textResults, err := s.kb.SearchChunks(context.Background(), query, userID, isSystemAdmin, topK)
 	if err != nil {
 		return nil
 	}
@@ -287,6 +336,26 @@ type SearchResult struct {
 	Score   float64 `json:"score"`
 }
 
+// SetPublicFlag toggles the is_public flag on a doc, its chunks in MongoDB,
+// and updates all vector payloads in Qdrant.
+func (s *Service) SetPublicFlag(ctx context.Context, docID string, isPublic bool) error {
+	if err := s.kb.SetPublicFlag(ctx, docID, isPublic); err != nil {
+		return fmt.Errorf("set public flag on doc: %w", err)
+	}
+	// Update chunk visibility in MongoDB
+	if err := s.kb.UpdateChunkVisibility(ctx, docID, isPublic); err != nil {
+		log.Printf("[kb] update chunk visibility failed: %v", err)
+	}
+	// Update vector payloads in Qdrant if available
+	if s.vector != nil {
+		if err := s.vector.SetPayload(ctx, s.vecCol, docID, map[string]interface{}{"is_public": isPublic}); err != nil {
+			log.Printf("[kb] update qdrant payload for doc=%s: %v", docID, err)
+		}
+	}
+	return nil
+}
+
+// genShortID generates a short unique identifier.
 func genShortID() string {
 	return fmt.Sprintf("%x", time.Now().UnixNano())[:12]
 }

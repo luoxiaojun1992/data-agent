@@ -27,6 +27,7 @@ type KnowledgeDoc struct {
 	ChunkCount      int       `json:"chunk_count"`
 	ProgressPercent int       `json:"progress_percent"` // 0-100, for indexing progress display
 	GridFSFileID    string    `json:"gridfs_file_id,omitempty"`
+	IsPublic        bool      `json:"is_public"` // shared across all users when true
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
@@ -44,6 +45,8 @@ type DocContent struct {
 type Chunk struct {
 	ID        string    `json:"id"`
 	DocID     string    `json:"doc_id"`
+	CreatorID string    `json:"creator_id"` // owner of the parent doc, used for permission checks
+	IsPublic  bool      `json:"is_public"`  // mirrors parent doc visibility, used for search filter
 	Content   string    `json:"content"`
 	ChunkIdx  int       `json:"chunk_idx"`
 	CharCount int       `json:"char_count"`

@@ -108,8 +108,16 @@ func (r *KBRepository) DeleteChunks(ctx context.Context, docID string) (int64, e
 	return res.DeletedCount, nil
 }
 
-func (r *KBRepository) SearchChunks(ctx context.Context, query string, topK int) ([]*knowledge.SearchResult, error) {
-	cursor, err := r.db.Collection("kb_chunks").Find(ctx, bson.M{"$text": bson.M{"$search": query}}, options.Find().SetLimit(int64(topK)))
+func (r *KBRepository) SearchChunks(ctx context.Context, query string, userID string, isSystemAdmin bool, topK int) ([]*knowledge.SearchResult, error) {
+	filter := bson.M{"$text": bson.M{"$search": query}}
+	if !isSystemAdmin {
+		// Regular user: only visible chunks (own or public)
+		filter["$or"] = []bson.M{
+			{"creator_id": userID},
+			{"is_public": true},
+		}
+	}
+	cursor, err := r.db.Collection("kb_chunks").Find(ctx, filter, options.Find().SetLimit(int64(topK)))
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +156,54 @@ func (r *KBRepository) DownloadFile(ctx context.Context, fileID string) ([]byte,
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// SetPublicFlag toggles the is_public flag on a knowledge document.
+func (r *KBRepository) SetPublicFlag(ctx context.Context, id string, isPublic bool) error {
+	_, err := r.db.Collection("knowledge_docs").UpdateOne(ctx,
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{"is_public": isPublic, "updated_at": time.Now()}})
+	return err
+}
+
+// UpdateChunkVisibility updates the is_public flag on all chunks of a document.
+func (r *KBRepository) UpdateChunkVisibility(ctx context.Context, docID string, isPublic bool) error {
+	_, err := r.db.Collection("kb_chunks").UpdateMany(ctx,
+		bson.M{"doc_id": docID},
+		bson.M{"$set": bson.M{"is_public": isPublic}})
+	return err
+}
+
+// ListDocsByVisibility returns docs visible to the current user.
+// System admin: all docs. Regular user: own docs + public docs.
+func (r *KBRepository) ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
+	var filter bson.M
+	if isSystemAdmin {
+		filter = bson.M{}
+	} else {
+		filter = bson.M{
+			"$or": []bson.M{
+				{"user_id": userID},
+				{"is_public": true},
+			},
+		}
+	}
+	total, _ := r.db.Collection("knowledge_docs").CountDocuments(ctx, filter)
+	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetSkip(skip).SetLimit(limit)
+	cursor, err := r.db.Collection("knowledge_docs").Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, 0, err
+	}
+	out := make([]*knowledge.KnowledgeDoc, len(docs))
+	for i, d := range docs {
+		out[i] = docToKnowledgeDoc(d)
+	}
+	return out, total, nil
 }
 
 var _ repository.KBRepository = (*KBRepository)(nil)

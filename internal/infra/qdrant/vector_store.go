@@ -80,4 +80,14 @@ func (v *VectorStore) DeleteCollection(ctx context.Context, collection string) e
 	return nil
 }
 
+// SetPayload updates the payload on all points matching a doc_id filter.
+func (v *VectorStore) SetPayload(ctx context.Context, collection string, docID string, payload map[string]interface{}) error {
+	filter := map[string]any{
+		"must": []map[string]any{
+			{"key": "doc_id", "match": map[string]any{"value": docID}},
+		},
+	}
+	return v.client.SetPayload(collection, payload, filter)
+}
+
 var _ repository.VectorRepository = (*VectorStore)(nil)

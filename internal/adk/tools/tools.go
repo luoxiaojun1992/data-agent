@@ -167,12 +167,14 @@ func knowledgeSearch(deps *Deps) functiontool.Func[KnowledgeSearchArgs, Knowledg
 			topK = 50
 		}
 
-		// Identity comes from session state — never from LLM-supplied params.
+		// Identity and permission flags come from session state — never from LLM params.
+		// Force-bound: user_id, role, is_system_admin determine visibility filter.
 		userID := stateString(tc, "user_id")
 		role := stateString(tc, "role")
 		kbID := stateString(tc, "kb_id")
+		isSystemAdmin := role == "system_admin"
 
-		results, err := deps.KBService.Search(userID, args.Query, topK, role)
+		results, err := deps.KBService.Search(userID, args.Query, topK, isSystemAdmin)
 		if err != nil {
 			return KnowledgeSearchResult{}, fmt.Errorf("knowledge_search: search failed: %w", err)
 		}

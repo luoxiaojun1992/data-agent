@@ -488,6 +488,7 @@ func knowledgeDocToDoc(k *knowledge.KnowledgeDoc) bson.M {
 		"status":           k.Status,
 		"chunk_count":      k.ChunkCount,
 		"progress_percent": k.ProgressPercent,
+		"is_public":        k.IsPublic,
 		"created_at":       k.CreatedAt,
 		"updated_at":       k.UpdatedAt,
 	}
@@ -509,6 +510,7 @@ func docToKnowledgeDoc(d bson.M) *knowledge.KnowledgeDoc {
 		ChunkCount:      getInt(d, "chunk_count"),
 		ProgressPercent: getInt(d, "progress_percent"),
 		GridFSFileID:    getStr(d, "gridfs_file_id"),
+		IsPublic:        getBool(d, "is_public"),
 		CreatedAt:       getTime(d, "created_at"),
 		UpdatedAt:       getTime(d, "updated_at"),
 	}
@@ -520,6 +522,8 @@ func chunkToDoc(c *knowledge.Chunk) bson.M {
 	doc := bson.M{
 		"_id":        c.ID,
 		"doc_id":     c.DocID,
+		"creator_id": c.CreatorID,
+		"is_public":  c.IsPublic,
 		"content":    c.Content,
 		"chunk_idx":  c.ChunkIdx,
 		"char_count": c.CharCount,
@@ -535,6 +539,8 @@ func docToChunk(d bson.M) *knowledge.Chunk {
 	return &knowledge.Chunk{
 		ID:        getStr(d, "_id"),
 		DocID:     getStr(d, "doc_id"),
+		CreatorID: getStr(d, "creator_id"),
+		IsPublic:  getBool(d, "is_public"),
 		Content:   getStr(d, "content"),
 		ChunkIdx:  getInt(d, "chunk_idx"),
 		CharCount: getInt(d, "char_count"),

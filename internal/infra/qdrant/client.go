@@ -156,3 +156,34 @@ func (c *Client) Search(collection string, vector []float32, topK int) ([]Search
 	}
 	return result.Result, nil
 }
+
+// SetPayload updates payload fields on points matching the given filter.
+func (c *Client) SetPayload(collection string, payload map[string]any, filter map[string]any) error {
+	bodyPayload := map[string]any{
+		"payload": payload,
+		"filter":  filter,
+	}
+	body, err := json.Marshal(bodyPayload)
+	if err != nil {
+		return fmt.Errorf("marshal set payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/collections/%s/points/payload?wait=true", c.addr, collection)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create set payload request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("set payload: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("qdrant set payload %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}

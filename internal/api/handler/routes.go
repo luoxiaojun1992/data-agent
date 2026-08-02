@@ -238,6 +238,7 @@ func registerKnowledgeRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *
 	kbRoutes.POST("/docs", h.UploadDoc)
 	kbRoutes.GET("/docs", h.ListDocs)
 	kbRoutes.GET("/docs/:id", h.GetDoc)
+	kbRoutes.PUT("/docs/:id/public", h.SetPublicFlag)
 	kbRoutes.DELETE("/docs/:id", h.DeleteDoc)
 	kbRoutes.POST("/docs/:id/chunks", h.AddChunks)
 	kbRoutes.GET("/search", h.Search)

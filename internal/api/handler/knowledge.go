@@ -94,11 +94,14 @@ func (h *KnowledgeHandler) DeleteDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "deleted", "id": docID})
 }
 
-// ListDocs lists documents for the current user with pagination.
+// ListDocs lists documents visible to the current user.
+// System admin: all docs. Regular user: own docs + public docs.
 func (h *KnowledgeHandler) ListDocs(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
 	page, pageSize := parsePage(c)
-	docs, total, err := h.svc.ListDocs(userID.(string), page, pageSize)
+	isSystemAdmin := role == "system_admin"
+	docs, total, err := h.svc.ListDocsByVisibility(userID.(string), isSystemAdmin, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -106,7 +109,7 @@ func (h *KnowledgeHandler) ListDocs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"docs": docs, "total": total, "page": page, "page_size": pageSize})
 }
 
-// Search performs hybrid search on the knowledge base.
+// Search performs hybrid search on the knowledge base with permission filtering.
 func (h *KnowledgeHandler) Search(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
@@ -115,8 +118,9 @@ func (h *KnowledgeHandler) Search(c *gin.Context) {
 	}
 	userID, _ := c.Get("user_id")
 	role, _ := c.Get("role")
+	isSystemAdmin := role == "system_admin"
 
-	results, err := h.svc.Search(userID.(string), query, 5, role.(string))
+	results, err := h.svc.Search(userID.(string), query, 5, isSystemAdmin)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -151,6 +155,23 @@ func (h *KnowledgeHandler) ListAllDocs(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"docs": docs, "total": total, "page": page, "page_size": pageSize})
+}
+
+// SetPublicFlag toggles the is_public flag on a knowledge document.
+func (h *KnowledgeHandler) SetPublicFlag(c *gin.Context) {
+	docID := c.Param("id")
+	var req struct {
+		IsPublic bool `json:"is_public"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.svc.SetPublicFlag(c.Request.Context(), docID, req.IsPublic); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "updated", "is_public": req.IsPublic})
 }
 
 func parsePage(c *gin.Context) (int, int) {
