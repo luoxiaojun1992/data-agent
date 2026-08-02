@@ -207,7 +207,9 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 
 	syncSnapshot(sess, event)
 
-	if s.summarizer != nil {
+	// Check compaction only after user input or tool response — natural boundaries.
+	// Streaming chunks are merged into one event so the count grows slowly anyway.
+	if s.summarizer != nil && !isStreamingTextChunk(event) {
 		return s.maybeCompact(ctx, sess)
 	}
 	return nil
@@ -293,10 +295,21 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 		bson.M{"$set": bson.M{
 			"events":     newEvents,
 			"updated_at": time.Now(),
-		}},
+		},
+			"$push": bson.M{
+				// Compaction events are also display-worthy
+				"raw_events": compactionEvent,
+			},
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("rewrite compacted events: %w", err)
+	}
+
+	// Update in-memory snapshot so the next LLM call sees compacted context.
+	if ms, ok := sess.(*mongoSession); ok {
+		ms.doc.Events = newEvents
+		ms.doc.RawEvents = append(ms.doc.RawEvents, compactionEvent)
 	}
 	return nil
 }
