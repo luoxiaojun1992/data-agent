@@ -342,21 +342,50 @@ func (s *Service) find(ctx context.Context, appName, userID, sessionID string) (
 	return &doc, nil
 }
 
-// findForDisplay returns the session document with raw_events and events
-// sliced to the last N entries at the MongoDB level.
+// findForDisplay returns the session document with raw_events/events trimmed
+// at the DB level: ALL user-authored events + last `limit` non-user events.
+// This ensures the user's questions are never lost by a streaming-heavy session.
 func (s *Service) findForDisplay(ctx context.Context, appName, userID, sessionID string, limit int) (*sessionDoc, error) {
-	var doc sessionDoc
-	opts := options.FindOne().SetProjection(bson.M{
-		"raw_events": bson.M{"$slice": -limit},
-		"events":     bson.M{"$slice": -limit},
-	})
-	err := s.coll.FindOne(ctx, bson.M{
-		"_id":      sessionID,
-		"app_name": appName,
-		"user_id":  userID,
-	}, opts).Decode(&doc)
+	userFilter := bson.M{"$eq": []interface{}{"$$this.author", "user"}}
+	nonUserFilter := bson.M{"$ne": []interface{}{"$$this.author", "user"}}
+
+	// trimEventField builds the aggregation expression for one array field.
+	trimEventField := func(field string) bson.M {
+		return bson.M{"$concatArrays": []interface{}{
+			bson.M{"$filter": bson.M{"input": "$" + field, "as": "this", "cond": userFilter}},
+			bson.M{"$slice": []interface{}{
+				bson.M{"$filter": bson.M{"input": "$" + field, "as": "this", "cond": nonUserFilter}},
+				-limit,
+			}},
+		}}
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"_id":      sessionID,
+			"app_name": appName,
+			"user_id":  userID,
+		}}},
+		{{Key: "$project", Value: bson.M{
+			"state":      1,
+			"updated_at": 1,
+			"raw_events": trimEventField("raw_events"),
+			"events":     trimEventField("events"),
+		}}},
+	}
+
+	cur, err := s.coll.Aggregate(ctx, pipeline)
 	if err != nil {
-		return nil, fmt.Errorf("session %q not found: %w", sessionID, err)
+		return nil, fmt.Errorf("aggregate session %q: %w", sessionID, err)
+	}
+	defer cur.Close(ctx)
+
+	if !cur.Next(ctx) {
+		return nil, fmt.Errorf("session %q not found", sessionID)
+	}
+	var doc sessionDoc
+	if err := cur.Decode(&doc); err != nil {
+		return nil, fmt.Errorf("decode session %q: %w", sessionID, err)
 	}
 	return &doc, nil
 }
