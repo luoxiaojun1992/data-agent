@@ -23,10 +23,14 @@ func NewRBACRepository(db *mongo.Database) *RBACRepository {
 
 // ── Roles ────────────────────────────────────────────────────────────
 
-func (r *RBACRepository) ListRoles(ctx context.Context, skip, limit int64) ([]model.RBACRole, int64, error) {
+func (r *RBACRepository) ListRoles(ctx context.Context, skip, limit int64, parentID string) ([]model.RBACRole, int64, error) {
 	coll := r.db.Collection("rbac_roles")
-	total, _ := coll.CountDocuments(ctx, bson.M{})
-	cur, err := coll.Find(ctx, bson.M{}, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1}))
+	filter := bson.M{}
+	if parentID != "" {
+		filter = bson.M{"parent_id": parentID}
+	}
+	total, _ := coll.CountDocuments(ctx, filter)
+	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1}))
 	if err != nil {
 		return nil, 0, err
 	}

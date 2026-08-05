@@ -22,7 +22,8 @@ func NewRBACHandler(svc *rbac.Service) *RBACHandler {
 func (h *RBACHandler) ListRoles(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	roles, total, err := h.svc.ListRoles(c.Request.Context(), page, pageSize)
+	parentID := c.Query("parent_id")
+	roles, total, err := h.svc.ListRoles(c.Request.Context(), page, pageSize, parentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

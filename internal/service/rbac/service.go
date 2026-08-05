@@ -59,9 +59,9 @@ func (s *Service) GetUserPermissionKeys(ctx context.Context, userID string) ([]s
 
 // ── Role CRUD ────────────────────────────────────────────────────────
 
-func (s *Service) ListRoles(ctx context.Context, page, pageSize int) ([]model.RBACRole, int64, error) {
+func (s *Service) ListRoles(ctx context.Context, page, pageSize int, parentID string) ([]model.RBACRole, int64, error) {
 	skip := int64((page - 1) * pageSize)
-	return s.repo.ListRoles(ctx, skip, int64(pageSize))
+	return s.repo.ListRoles(ctx, skip, int64(pageSize), parentID)
 }
 
 func (s *Service) GetRole(ctx context.Context, id string) (*model.RBACRole, error) {
