@@ -67,7 +67,7 @@ export default function RBACPage() {
       setPerms(data.permissions || []);
       setPermTotal(data.total || 0);
     } catch { showToast('加载权限失败', 'error'); }
-  }, [apiFetch, [apiFetch, permPage, showToast], auth.hydrated]);
+  }, [apiFetch, permPage, showToast, auth.hydrated]);
 
   useEffect(() => {
     if (!auth.hydrated) return;
