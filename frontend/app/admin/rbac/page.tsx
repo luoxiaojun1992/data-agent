@@ -127,9 +127,9 @@ export default function RBACPage() {
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Key</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>名称</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>模块</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Key</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>类型</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>操作</th>
                 </tr>
@@ -137,10 +137,9 @@ export default function RBACPage() {
               <tbody>
                 {perms.map(p => (
                   <tr key={p.id} data-testid={`rbac-perm-${p.id}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <td style={{ padding: '10px 12px', fontSize: 13 }}>
-                      <code style={{ fontSize: 12 }}>{p.key}</code></td>
                     <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.name}</td>
                     <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.module}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 13 }}><code style={{ fontSize: 12 }}>{p.key}</code></td>
                     <td style={{ padding: '10px 12px', fontSize: 13 }}>
                       <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11,
                         background: p.type === 'builtin' ? '#fbbf24' : '#34d399', color: '#000' }}>{p.type}</span></td>
