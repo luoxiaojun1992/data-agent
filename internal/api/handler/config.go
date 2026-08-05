@@ -8,27 +8,23 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"github.com/luoxiaojun1992/data-agent/internal/service/config"
-	"github.com/luoxiaojun1992/data-agent/internal/service/role"
 )
 
-// ConfigHandler handles system configuration, password, and role management endpoints.
+// ConfigHandler handles system configuration and password management endpoints.
 type ConfigHandler struct {
 	cfgSvc   config.Service
-	roleSvc  role.Service
 	userRepo repository.UserRepository
 }
 
 // NewConfigHandler creates a new ConfigHandler.
-func NewConfigHandler(cfgSvc config.Service, roleSvc role.Service, userRepo repository.UserRepository) *ConfigHandler {
-	return &ConfigHandler{cfgSvc: cfgSvc, roleSvc: roleSvc, userRepo: userRepo}
+func NewConfigHandler(cfgSvc config.Service, userRepo repository.UserRepository) *ConfigHandler {
+	return &ConfigHandler{cfgSvc: cfgSvc, userRepo: userRepo}
 }
 
 // sysConfigRoutePath is the route path for system configuration endpoints.
-// Defined as a constant to avoid literal duplication (SonarQube critical).
 const sysConfigRoutePath = "/sysconfig/:namespace"
 
 // RegisterSysConfigRoutes registers system configuration routes.
-// Role routes are registered separately via RegisterRoleRoutes.
 func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler) {
 	admin.GET(sysConfigRoutePath, h.Get)
 	admin.PUT(sysConfigRoutePath, h.Put)
@@ -65,9 +61,8 @@ func (h *ConfigHandler) Put(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已保存"})
 }
 
-// Delete removes a config entry by namespace and key (SPEC-061).
-// Request body: {"key":"<key>"}. Idempotent — returns 200 even if the
-// entry does not exist (project convention: delete never 404s).
+// Delete removes a config entry by namespace and key. Idempotent — returns 200
+// even if the entry does not exist.
 func (h *ConfigHandler) Delete(c *gin.Context) {
 	var req struct {
 		Key string `json:"key"`
@@ -84,9 +79,7 @@ func (h *ConfigHandler) Delete(c *gin.Context) {
 }
 
 func validatePasswordComplexity(pw string) bool {
-	hasUpper := false
-	hasLower := false
-	hasDigit := false
+	hasUpper, hasLower, hasDigit := false, false, false
 	for _, c := range pw {
 		switch {
 		case c >= 'A' && c <= 'Z':
@@ -140,54 +133,4 @@ func (h *ConfigHandler) ChangePassword(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
-}
-
-func (h *ConfigHandler) ListRoles(c *gin.Context) {
-	roles, err := h.roleSvc.List(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"roles": roles})
-}
-
-func (h *ConfigHandler) CreateRole(c *gin.Context) {
-	var req struct {
-		Name        string   `json:"name"`
-		DisplayName string   `json:"display_name"`
-		Permissions []string `json:"permissions"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	r, err := h.roleSvc.Create(c.Request.Context(), req.Name, req.DisplayName, req.Permissions)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusCreated, gin.H{"role": r})
-}
-
-func (h *ConfigHandler) UpdateRole(c *gin.Context) {
-	var req struct {
-		Permissions []string `json:"permissions"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if err := h.roleSvc.Update(c.Request.Context(), c.Param("id"), req.Permissions); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
-}
-
-func (h *ConfigHandler) DeleteRole(c *gin.Context) {
-	if err := h.roleSvc.Delete(c.Request.Context(), c.Param("id")); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }

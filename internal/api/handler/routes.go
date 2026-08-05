@@ -23,7 +23,6 @@ type RouteDeps struct {
 
 	Auth         *AuthHandler
 	User         *UserHandler
-	Role         *RoleHandler
 	ModelConfig  *ModelConfigHandler
 	SysConfig    *ConfigHandler
 	Memory       *MemoryHandler
@@ -107,9 +106,6 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 func registerProtectedAPIRoutes(api *gin.RouterGroup, deps *RouteDeps) {
 	if deps.User != nil {
 		RegisterUserRoutes(api, deps.User)
-	}
-	if deps.Role != nil {
-		RegisterRoleRoutes(api, deps.Role)
 	}
 	if deps.ModelConfig != nil {
 		RegisterModelConfigRoutes(api, deps.ModelConfig)

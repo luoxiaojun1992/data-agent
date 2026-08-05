@@ -9,7 +9,6 @@ import (
 var (
 	_ repository.UserRepository         = (*UserRepository)(nil)
 	_ repository.InviteRepository       = (*InviteRepository)(nil)
-	_ repository.RoleRepository         = (*RoleRepository)(nil)
 	_ repository.SysConfigRepository    = (*SystemConfigRepository)(nil)
 	_ repository.AuditRepository        = (*AuditRepository)(nil)
 	_ repository.NotificationRepository = (*NotificationRepository)(nil)

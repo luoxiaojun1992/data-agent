@@ -45,7 +45,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
-	"github.com/luoxiaojun1992/data-agent/internal/service/role"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
@@ -442,7 +441,6 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 // HTTP handlers are built here; main.go itself defines no handler funcs.
 func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Logger) *handler.RouteDeps {
 	cfgSvc := configsvc.NewService(deps.sysConfigCacheRepo)
-	roleSvc := role.NewService(deps.roleRepo)
 	rbacRepo := mongoinfra.NewRBACRepository(deps.mongoClient.DB())
 	rbacSvc := rbacsvc.NewService(rbacRepo)
 
@@ -478,11 +476,9 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		AuditLogger:   deps.auditLogger,
 		Auth:          deps.authHandler,
 		User:          handler.NewUserHandler(user.NewService(deps.userRepo, user.NewBcryptHasher())),
-		Role:          handler.NewRoleHandler(roleSvc),
 		RBAC:          handler.NewRBACHandler(rbacSvc),
 		RBACService:   rbacSvc,
 		ModelConfig:   handler.NewModelConfigHandler(cfgSvc, deps.modelCfg),
-		SysConfig:     handler.NewConfigHandler(cfgSvc, roleSvc, deps.userRepo),
 		Memory:        handler.NewMemoryHandler(deps.memoryService, appName),
 		Chat:          handler.NewChatHandler(deps.chatService),
 		Enhance:       handler.NewEnhanceHandler(deps.enhanceService),

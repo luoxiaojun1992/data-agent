@@ -70,7 +70,6 @@ func main() {
 type serverDependencies struct {
 	mongoClient      *mongoinfra.Client
 	userRepo         *mongoinfra.UserRepository
-	roleRepo           *mongoinfra.RoleRepository
 	sysConfigCacheRepo *cache.SysConfigCacheRepo
 	vaultClient      *vaultinfra.Client
 	authHandler      *handler.AuthHandler
@@ -148,7 +147,6 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 		if err := ensureSystemAdmin(ctx, deps.userRepo, logger); err != nil {
 			logger.Warn("Failed to ensure system admin", zap.Error(err))
 		}
-		deps.roleRepo = mongoinfra.NewRoleRepository(mongoClient.DB())
 		// SPEC-061: Wrap mongo SysConfigRepository with a Cache-Aside decorator.
 		// Cache is nil until Redis connects in initTaskQueue; until then all
 		// reads/writes pass through to mongo (degrade mode).
