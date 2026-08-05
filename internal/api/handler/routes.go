@@ -107,14 +107,8 @@ func registerProtectedAPIRoutes(api *gin.RouterGroup, deps *RouteDeps) {
 	if deps.User != nil {
 		RegisterUserRoutes(api, deps.User)
 	}
-	if deps.ModelConfig != nil {
-		RegisterModelConfigRoutes(api, deps.ModelConfig)
-	}
 	if deps.Memory != nil {
 		RegisterMemoryRoute(api, deps.Memory, deps.RBACService)
-	}
-	if deps.SysConfig != nil {
-		RegisterSysConfigRoutes(api, deps.SysConfig, deps.RBACService)
 	}
 }
 
@@ -130,11 +124,7 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 			RegisterEnhanceRoute(chatRoutes, deps.Enhance)
 		}
 	}
-	if deps.SkillConfig != nil {
-		skillCfg := router.Group("/api/v1")
-		skillCfg.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermModelEdit))
-		RegisterSkillConfigRoutes(skillCfg, deps.SkillConfig)
-	}
+	// SkillConfig moved to admin group above
 
 	if deps.Agent != nil {
 		agentRoutes := router.Group("/api/v1/agent")
