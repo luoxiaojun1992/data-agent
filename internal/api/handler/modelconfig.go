@@ -42,6 +42,7 @@ func RegisterModelPublicRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
 // RegisterModelAdminRoutes registers model config management routes.
 // Mounted under /api/v1/admin. Requires PermModelEdit (system_admin only).
 func RegisterModelAdminRoutes(admin *gin.RouterGroup, h *ModelConfigHandler) {
+	admin.GET(modelRoutePath+"/embedding", h.ListEmbedding) // embedding models
 	admin.GET(modelRoutePath, h.Get)
 	admin.PUT(modelRoutePath, h.Put)
 	admin.POST(modelRoutePath, h.AddModel)
