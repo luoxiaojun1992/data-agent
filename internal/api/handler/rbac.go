@@ -137,7 +137,7 @@ func (h *RBACHandler) DeletePermission(c *gin.Context) {
 func (h *RBACHandler) ListRolePermissions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	perms, total, err := h.svc.ListRolePermissions(c.Request.Context(), c.Param("roleId"), page, pageSize)
+	perms, total, err := h.svc.ListRolePermissions(c.Request.Context(), c.Param("id"), page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -155,7 +155,7 @@ func (h *RBACHandler) AddRolePermission(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.svc.AddRolePermission(c.Request.Context(), c.Param("roleId"), req.PermissionID); err != nil {
+	if err := h.svc.AddRolePermission(c.Request.Context(), c.Param("id"), req.PermissionID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -163,7 +163,7 @@ func (h *RBACHandler) AddRolePermission(c *gin.Context) {
 }
 
 func (h *RBACHandler) RemoveRolePermission(c *gin.Context) {
-	if err := h.svc.RemoveRolePermission(c.Request.Context(), c.Param("roleId"), c.Param("permId")); err != nil {
+	if err := h.svc.RemoveRolePermission(c.Request.Context(), c.Param("id"), c.Param("permId")); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -228,7 +228,7 @@ func (h *RBACHandler) AddUserRole(c *gin.Context) {
 }
 
 func (h *RBACHandler) RemoveUserRole(c *gin.Context) {
-	if err := h.svc.RemoveUserRole(c.Request.Context(), c.Param("userId"), c.Param("roleId")); err != nil {
+	if err := h.svc.RemoveUserRole(c.Request.Context(), c.Param("userId"), c.Param("id")); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

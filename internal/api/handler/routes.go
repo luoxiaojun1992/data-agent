@@ -332,9 +332,9 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	rbac.DELETE("/permissions/:id", h.DeletePermission)
 
 	// Role-permission associations
-	rbac.GET("/roles/:roleId/permissions", h.ListRolePermissions)
-	rbac.POST("/roles/:roleId/permissions", h.AddRolePermission)
-	rbac.DELETE("/roles/:roleId/permissions/:permId", h.RemoveRolePermission)
+	rbac.GET("/roles/:id/permissions", h.ListRolePermissions)
+	rbac.POST("/roles/:id/permissions", h.AddRolePermission)
+	rbac.DELETE("/roles/:id/permissions/:permId", h.RemoveRolePermission)
 
 	// Effective permissions
 	rbac.GET("/roles/:id/effective-permissions", h.EffectivePermissions)
@@ -345,5 +345,5 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	admin.Use(jwt.AuthMiddleware())
 	admin.GET("/users/:userId/rbac-roles", h.ListUserRoles)
 	admin.POST("/users/:userId/rbac-roles", h.AddUserRole)
-	admin.DELETE("/users/:userId/rbac-roles/:roleId", h.RemoveUserRole)
+	admin.DELETE("/users/:userId/rbac-roles/:id", h.RemoveUserRole)
 }
