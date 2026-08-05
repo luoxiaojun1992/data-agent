@@ -526,13 +526,6 @@ export default function UsersPage() {
                 >
                   <option value="user">普通用户</option>
                   <option value="admin">管理员</option>
-                  <option
-                    value="system_admin"
-                    data-testid="user-add-role-system-admin-disabled"
-                    disabled
-                  >
-                    系统管理员（已存在）
-                  </option>
                 </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
