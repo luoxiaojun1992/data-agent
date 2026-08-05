@@ -35,6 +35,7 @@ export default function RolePermissionsPage() {
   }, []);
 
   const fetchRole = useCallback(async () => {
+    if (!auth.hydrated) return;
     try {
       const data = await (await apiFetch(`/rbac/roles/${id}`)).json()
       setRoleName(data.role?.display_name || '');
@@ -43,6 +44,7 @@ export default function RolePermissionsPage() {
   }, [apiFetch, id]);
 
   const fetchPerms = useCallback(async () => {
+    if (!auth.hydrated) return;
     try {
       const data = await (await apiFetch(`/rbac/roles/${id}/permissions?page=${page}&page_size=${PAGE_SIZE}`)).json()
       setPerms(data.permissions || []);
@@ -51,6 +53,7 @@ export default function RolePermissionsPage() {
   }, [apiFetch, id, page, showToast]);
 
   const fetchAllPerms = useCallback(async () => {
+    if (!auth.hydrated) return;
     try {
       const data = await (await apiFetch('/rbac/permissions?page=1&page_size=200')).json()
       setAllPerms(data.permissions || []);

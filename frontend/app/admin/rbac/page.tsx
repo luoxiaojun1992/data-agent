@@ -49,23 +49,26 @@ export default function RBACPage() {
   }, []);
 
   const fetchRoles = useCallback(async () => {
+    if (!auth.hydrated) return;
     try {
       const data = await (await apiFetch(`/rbac/roles?page=${rolePage}&page_size=${PAGE_SIZE}`)).json()
       setRoles(data.roles || []);
       setRoleTotal(data.total || 0);
     } catch { showToast('加载角色失败', 'error'); }
-  }, [apiFetch, rolePage, showToast]);
+  }, [apiFetch, [apiFetch, rolePage, showToast], auth.hydrated]);
 
   const fetchPerms = useCallback(async () => {
+    if (!auth.hydrated) return;
     try {
       const data = await (await apiFetch(`/rbac/permissions?page=${permPage}&page_size=${PAGE_SIZE}`)).json()
       setPerms(data.permissions || []);
       setPermTotal(data.total || 0);
     } catch { showToast('加载权限失败', 'error'); }
-  }, [apiFetch, permPage, showToast]);
+  }, [apiFetch, [apiFetch, permPage, showToast], auth.hydrated]);
 
   useEffect(() => {
-    if (tab === 'roles') fetchRoles();
+    if (!auth.hydrated) return;
+    if (tab === "roles") fetchRoles();
     else fetchPerms();
   }, [tab, fetchRoles, fetchPerms]);
 

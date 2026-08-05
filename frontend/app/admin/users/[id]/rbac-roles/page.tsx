@@ -34,6 +34,7 @@ export default function UserRBACRolesPage() {
   }, []);
 
   const fetchRoles = useCallback(async () => {
+    if (!auth.hydrated) return;
     try {
       const data = await (await apiFetch(`/admin/users/${id}/rbac-roles?page=${page}&page_size=${PAGE_SIZE}`)).json()
       setRoles(data.roles || []);
@@ -42,6 +43,7 @@ export default function UserRBACRolesPage() {
   }, [apiFetch, id, page, showToast]);
 
   const fetchAllRoles = useCallback(async () => {
+    if (!auth.hydrated) return;
     try {
       const data = await (await apiFetch('/rbac/roles?page=1&page_size=200')).json()
       setAllRoles(data.roles || []);
