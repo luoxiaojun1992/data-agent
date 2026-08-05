@@ -193,9 +193,6 @@ export default function RBACPage() {
               ))}
             </tbody>
           </table>
-        )}
-
-            </table>
           </div>
 
         {tab === 'permissions' && <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onPage={setPermPage} />}
