@@ -8,6 +8,7 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // MemoryHandler exposes the long-term memory search endpoint.
@@ -23,8 +24,8 @@ func NewMemoryHandler(memSvc memory.Service, appName string) *MemoryHandler {
 
 // RegisterMemoryRoute registers GET /memory/search on the given authenticated
 // router group (requires PermUserManage).
-func RegisterMemoryRoute(rg *gin.RouterGroup, h *MemoryHandler) {
-	rg.GET("/memory/search", middleware.RequirePermission(model.PermUserManage), h.Search)
+func RegisterMemoryRoute(rg *gin.RouterGroup, h *MemoryHandler, rbacSvc *rbacsvc.Service) {
+	rg.GET("/memory/search", middleware.RequirePermission(rbacSvc, model.PermUserManage), h.Search)
 }
 
 // Search queries the long-term memory store for the given user.

@@ -9,6 +9,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // StatsHandler exposes LLM token usage statistics. SPEC-059 introduces the
@@ -24,12 +25,12 @@ func NewStatsHandler(rec *llmstats.Recorder) *StatsHandler {
 }
 
 // RegisterStatsRoutes mounts /api/v1/stats behind auth + admin guard.
-func RegisterStatsRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *StatsHandler) {
+func RegisterStatsRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *StatsHandler, rbacSvc *rbacsvc.Service) {
 	if h == nil {
 		return
 	}
 	stats := router.Group("/api/v1/stats")
-	stats.Use(jwt.AuthMiddleware(), middleware.RequirePermission(model.PermUserManage))
+	stats.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermUserManage))
 	stats.GET("/llm", h.GetLLMStats)
 }
 

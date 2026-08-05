@@ -480,6 +480,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		User:          handler.NewUserHandler(user.NewService(deps.userRepo, user.NewBcryptHasher())),
 		Role:          handler.NewRoleHandler(roleSvc),
 		RBAC:          handler.NewRBACHandler(rbacSvc),
+		RBACService:   rbacSvc,
 		ModelConfig:   handler.NewModelConfigHandler(cfgSvc, deps.modelCfg),
 		SysConfig:     handler.NewConfigHandler(cfgSvc, roleSvc, deps.userRepo),
 		Memory:        handler.NewMemoryHandler(deps.memoryService, appName),
