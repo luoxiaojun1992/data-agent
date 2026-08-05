@@ -214,13 +214,18 @@ func registerAuthProtected(api *gin.RouterGroup, authHandler *AuthHandler) {
 }
 
 func registerAdminRoutes(admin *gin.RouterGroup, authHandler *AuthHandler, sysConfig *ConfigHandler, rbacSvc *rbacsvc.Service) {
-	if authHandler == nil {
+	if authHandler == nil && sysConfig == nil {
 		return
 	}
 	admin.POST("/invites", middleware.RequirePermission(rbacSvc, model.PermInviteCreate), authHandler.CreateInvite)
 	admin.GET("/invites", middleware.RequirePermission(rbacSvc, model.PermInviteView), authHandler.ListInvites)
 	admin.DELETE("/invites/:id", middleware.RequirePermission(rbacSvc, model.PermInviteCreate), authHandler.RevokeInvite)
 	admin.PUT("/invites/hmac-secret", middleware.RequirePermission(rbacSvc, model.PermSystemEdit), authHandler.UpdateHMACSecret)
+
+	// System configuration (system_admin only)
+	if sysConfig != nil {
+		RegisterSysConfigRoutes(admin, sysConfig, rbacSvc)
+	}
 }
 
 func registerArtifactRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *ArtifactHandler) {
