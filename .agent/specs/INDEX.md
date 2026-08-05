@@ -77,7 +77,7 @@
 | SPEC-061 | 配置统一缓存到 Redis 并支持热更新（Cache-Aside + 消除预加载） | **P15** | [spec-061-config-redis-cache-hotreload.md](spec-061-config-redis-cache-hotreload.md) | ✅ 已实现 |
 | SPEC-062 | 多模型配置与 Session 绑定模型（per-model Runtime 注册表 + 模型选择器） | **P15** | [spec-062-multi-model-session-binding.md](spec-062-multi-model-session-binding.md) | ✅ 已实现 |
 | SPEC-063 | 异步/定时 Agent 任务执行器实现（RFC worker→AgentExecutor→Runtime.Run） | **P15** | [spec-063-async-scheduled-agent-executor.md](spec-063-async-scheduled-agent-executor.md) | 📐 设计中 |
-| SPEC-065 | RBAC 角色权限管理系统（角色层级、权限管控、用户-角色关联、侧边栏权限化） | **P20** | [spec-065-rbac-implementation.md](spec-065-rbac-implementation.md) | 📐 设计中 |
+| SPEC-064 | RBAC 角色权限管理系统（角色层级、权限管控、用户-角色关联、侧边栏权限化） | **P20** | [spec-064-rbac-implementation.md](spec-064-rbac-implementation.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -224,7 +224,7 @@ SPEC-006│               │
                     RFC §16 processTask 映射; 派生user message from Task.Params;
                     依赖 SPEC-062 Registry 按 task.ModelID 选 Runtime)
 
-[P20] SPEC-065 ─── RBAC 角色权限管理系统
+[P20] SPEC-064 ─── RBAC 角色权限管理系统
                    (角色层级 L0→L1→L2，父角色拥有子角色权限;
                     所有 API/UI 走 RBAC permission 检查;
                     用户关联多个 RBAC 角色(≤10)，权限三步 Go 查询;

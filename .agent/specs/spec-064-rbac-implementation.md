@@ -1,6 +1,6 @@
 # RBAC 角色权限管理系统
 
-> **SPEC-065** | Status: 设计中
+> **SPEC-064** | Status: 设计中
 
 ## 1. 目标
 
@@ -132,7 +132,7 @@ ID, UserID, RoleID, CreatedAt
 | DELETE | `/api/v1/rbac/roles/:roleId/permissions/:permId` | 删除 |
 | GET | `/api/v1/rbac/roles/:id/effective-permissions` | 递归子角色权限 |
 | GET | `/api/v1/rbac/me/permissions` | 当前用户权限列表(Sidebar 使用) |
-| GET | `/api/v1/rbac/roles/:id/available-parents` | 可选父角色 |
+| GET | `/api/v1/rbac/roles/:id/available-parents` | 可选父角色(层级 ≤ 2, ChildCount < 10) |
 
 ### 用户-角色关联
 | 方法 | 路径 | 说明 |
