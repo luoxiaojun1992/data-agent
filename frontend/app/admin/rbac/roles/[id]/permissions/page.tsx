@@ -103,7 +103,7 @@ export default function RolePermissionsPage() {
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.name}</td>
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.module}</td>
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>
-                    <button data-testid={`rbac-role-perm-remove-${p.id}`} onClick={() => remove(p.id)} style={{ ...btnSm, color: '#ef4444' }}>移除</button>
+                    {p.type !== "builtin" && <button data-testid={`rbac-role-perm-remove-${p.id}`} onClick={() => remove(p.id)} style={{ ...btnSm, color: '#ef4444' }}>移除</button>}
                   </td>
                 </tr>
               ))}

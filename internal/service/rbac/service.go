@@ -209,6 +209,18 @@ func (s *Service) AddRolePermission(ctx context.Context, roleID, permissionID st
 }
 
 func (s *Service) RemoveRolePermission(ctx context.Context, roleID, permissionID string) error {
+	role, err := s.repo.GetRole(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	perm, err := s.repo.GetPermission(ctx, permissionID)
+	if err != nil {
+		return err
+	}
+	// Prevent removing builtin permissions from system_admin or admin roles.
+	if perm != nil && perm.Type == model.RBACPermTypeBuiltin && (role.Type == model.RBACRoleTypeBuiltin || role.Name == "system_admin_role" || role.Name == "admin_role") {
+		return fmt.Errorf("cannot remove builtin permission from builtin role")
+	}
 	return s.repo.RemoveRolePermission(ctx, roleID, permissionID)
 }
 

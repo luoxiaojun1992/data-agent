@@ -361,6 +361,7 @@ export default function UsersPage() {
                         >
                           🛡️
                         </a>
+                        {user.role !== 'system_admin' && (
                         <button
                           data-testid={`user-edit-btn-${user.id}`}
                           onClick={() => openEdit(user)}
@@ -369,6 +370,7 @@ export default function UsersPage() {
                         >
                           ✏️
                         </button>
+                        )}
                         {user.role !== 'system_admin' && (
                           <button
                             data-testid={`user-toggle-btn-${user.id}`}
