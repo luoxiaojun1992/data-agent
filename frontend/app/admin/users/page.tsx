@@ -353,6 +353,14 @@ export default function UsersPage() {
                     </td>
                     <td style={{ ...tdStyle, minWidth: '120px', padding: '4px 8px' }}>
                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                        <a
+                          href={`/admin/users/${user.id}/rbac-roles`}
+                          data-testid={`user-rbac-btn-${user.id}`}
+                          style={{ ...iconBtnStyle, color: '#a855f7', textDecoration: 'none' }}
+                          title="RBAC 角色"
+                        >
+                          🛡️
+                        </a>
                         <button
                           data-testid={`user-edit-btn-${user.id}`}
                           onClick={() => openEdit(user)}

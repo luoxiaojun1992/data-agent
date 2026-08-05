@@ -41,6 +41,8 @@ export default function RBACPage() {
   const [showAddRole, setShowAddRole] = useState(false);
   const [showEditRole, setShowEditRole] = useState(false);
   const [selectedRole, setSelectedRole] = useState<RBACRole | null>(null);
+  const [showSubRoles, setShowSubRoles] = useState(false);
+  const [subRoleParentID, setSubRoleParentID] = useState<string>('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = useCallback((msg: string, type: 'success' | 'error') => {
@@ -118,7 +120,7 @@ export default function RBACPage() {
             <div style={{ marginTop: '16px' }}>
               {roles.map((r) => (
                 <div key={r.id} data-testid={`rbac-role-${r.id}`}
-                  style={cardStyle}>
+                  className="glass glass-hover" style={cardStyle}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <strong>{r.display_name}</strong>
@@ -135,6 +137,10 @@ export default function RBACPage() {
                   </div>
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                     <a href={`/admin/rbac/roles/${r.id}/permissions`} style={{ ...btnSmallStyle, color: '#5c7cfa' }}>管理权限</a>
+                    {r.level < 2 && (
+                      <button data-testid={`rbac-role-sub-${r.id}`} onClick={() => { setSubRoleParentID(r.id); setShowSubRoles(true); }}
+                        style={{ ...btnSmallStyle, color: '#a855f7' }}>子角色 ({r.child_count})</button>
+                    )}
                     {r.type === 'custom' && (
                       <>
                         <button data-testid={`rbac-role-edit-${r.id}`} onClick={() => { setSelectedRole(r); setShowEditRole(true); }}
@@ -148,15 +154,13 @@ export default function RBACPage() {
               ))}
             </div>
 
-            {roleTotal > PAGE_SIZE && (
-              <Pagination page={rolePage} total={roleTotal} pageSize={PAGE_SIZE} onPage={setRolePage} />
-            )}
+            <Pagination page={rolePage} total={roleTotal} pageSize={PAGE_SIZE} onPage={setRolePage} />
           </>
         )}
 
         {/* Permission Tab */}
         {tab === 'permissions' && (
-          <table style={tableStyle}>
+          <table className="glass" style={tableStyle}>
             <thead>
               <tr>
                 <th style={thStyle}>Key</th>
@@ -187,9 +191,7 @@ export default function RBACPage() {
           </table>
         )}
 
-        {permTotal > PAGE_SIZE && tab === 'permissions' && (
-          <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onPage={setPermPage} />
-        )}
+        {tab === 'permissions' && <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onPage={setPermPage} />}
 
         {/* Toast */}
         {toast && (
@@ -201,6 +203,7 @@ export default function RBACPage() {
       </div>
 
       {/* Add Role Modal */}
+      {showSubRoles && <SubRolesModal roles={roles} parentID={subRoleParentID} onClose={() => setShowSubRoles(false)} />}
       {showAddRole && <AddRoleModal apiFetch={apiFetch} roles={roles} onClose={() => setShowAddRole(false)} onSuccess={() => { fetchRoles(); setShowAddRole(false); }} showToast={showToast} />}
       {showEditRole && selectedRole && <EditRoleModal apiFetch={apiFetch} role={selectedRole} roles={roles} onClose={() => { setShowEditRole(false); setSelectedRole(null); }} onSuccess={() => { fetchRoles(); setShowEditRole(false); setSelectedRole(null); }} showToast={showToast} />}
     </AppLayout>
@@ -208,6 +211,44 @@ export default function RBACPage() {
 }
 
 // ── Modal Components ─────────────────────────────────────────────────
+
+
+function SubRolesModal({ roles, parentID, onClose }: { roles: RBACRole[]; parentID: string; onClose: () => void }) {
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
+  const parent = roles.find((r) => r.id === parentID);
+  const subRoles = roles.filter((r) => r.parent_id === parentID);
+  const total = subRoles.length;
+  const visible = subRoles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  return (
+    <div style={modalOverlayStyle} onClick={onClose}>
+      <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginBottom: '12px' }}>{parent?.display_name || 'Role'} — 子角色列表（{total}）</h3>
+        {total === 0 ? (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>暂无子角色</p>
+        ) : (
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>名称</th><th style={thStyle}>层级</th><th style={thStyle}>权限</th><th style={thStyle}>子</th></tr></thead>
+            <tbody>
+              {visible.map((r) => (
+                <tr key={r.id} style={trStyle}>
+                  <td style={tdStyle}>{r.display_name}</td>
+                  <td style={tdStyle}><span style={badgeStyle(r.level)}>L{r.level}</span></td>
+                  <td style={tdStyle}>{r.permission_count}/10</td>
+                  <td style={tdStyle}>{r.child_count}/10</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {total > PAGE_SIZE && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onPage={setPage} />}
+        <div style={{ marginTop: '12px', textAlign: 'right' }}>
+          <button onClick={onClose} style={btnSecondaryStyle}>关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AddRoleModal({ apiFetch, roles, onClose, onSuccess, showToast }: any) {
   const [name, setName] = useState('');
