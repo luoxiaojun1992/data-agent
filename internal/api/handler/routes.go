@@ -165,7 +165,9 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 		registerTaskRoutes(router, deps.JWTManager, deps.Task, deps.RBACService)
 	}
 	if deps.Dashboard != nil {
-		RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard)
+		dashRoutes := router.Group("/api/v1/dashboard")
+	dashRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermDashboardView))
+	RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard)
 	}
 	if deps.Stats != nil {
 		RegisterStatsRoutes(router, deps.JWTManager, deps.Stats, deps.RBACService)
