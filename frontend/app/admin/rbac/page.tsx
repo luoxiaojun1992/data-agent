@@ -201,7 +201,7 @@ function AddRoleModal({ apiFetch, roles, onClose, onSuccess, showToast }: any) {
   const [parentID, setParentID] = useState('');
   const create = async () => {
     try {
-      await apiFetch('/rbac/roles', { method: 'POST', body: JSON.stringify({ name, display_name: displayName, description, parent_id: parentID }) });
+      await apiFetch('/admin/rbac/roles', { method: 'POST', body: JSON.stringify({ name, display_name: displayName, description, parent_id: parentID }) });
       showToast('角色已创建'); onSuccess();
     } catch (e: any) { showToast(e?.message || '创建失败'); }
   };

@@ -57,7 +57,7 @@ export default function FeishuConfigPage() {
 
   const loadModels = useCallback(async () => {
     try {
-      const res = await apiFetch('/models/list?page=1&page_size=50');
+      const res = await apiFetch('/admin/models/list?page=1&page_size=50');
       if (res.ok) {
         const data = await res.json();
         const allModels: ModelEntry[] = data.models || [];

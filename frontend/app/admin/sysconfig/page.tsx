@@ -23,7 +23,7 @@ export default function SysConfigPage() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await apiFetch('/sysconfig');
+      const res = await apiFetch('/admin/sysconfig');
       if (res.ok) {
         const data = await res.json();
         if (data.session_recovery_hours !== undefined) setSessionRecovery(Number(data.session_recovery_hours));
@@ -46,7 +46,7 @@ export default function SysConfigPage() {
 
   const save = async (key: string, value: number | string[]) => {
     try {
-      const res = await apiFetch('/sysconfig', {
+      const res = await apiFetch('/admin/sysconfig', {
         method: 'PUT',
         body: JSON.stringify({ [key]: value }),
       });

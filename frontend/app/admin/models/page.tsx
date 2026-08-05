@@ -120,7 +120,7 @@ export default function ModelsPage() {
 
   const fetchHermesConfig = useCallback(async () => {
     try {
-      const res = await apiFetch('/models');
+      const res = await apiFetch('/admin/models');
       if (res.ok) {
         const data = await res.json();
         const m = data.models || {};
@@ -337,7 +337,7 @@ export default function ModelsPage() {
         is_default_for: editForm.is_default_for || [],
       };
       if (editForm.api_key && editForm.api_key !== MASK) body.api_key = editForm.api_key;
-      const res = await apiFetch('/models', {
+      const res = await apiFetch('/admin/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -360,7 +360,7 @@ export default function ModelsPage() {
         fields.push({ key: 'hermes_api_key', value: hermesApiKey });
       }
       for (const f of fields) {
-        const res = await apiFetch('/models', {
+        const res = await apiFetch('/admin/models', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(f),

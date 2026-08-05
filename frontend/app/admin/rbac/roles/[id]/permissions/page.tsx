@@ -31,7 +31,7 @@ export default function RolePermissionsPage() {
   };
 
   const fetchAll = () => {
-    apiFetch('/rbac/permissions?page=1&page_size=200').then(r => r.json()).then(data => {
+    apiFetch('/admin/rbac/permissions?page=1&page_size=200').then(r => r.json()).then(data => {
       setAllPerms(data.permissions || []);
     });
   };
