@@ -35,7 +35,7 @@ export default function UserRBACRolesPage() {
 
   const fetchRoles = useCallback(async () => {
     try {
-      const data = await apiFetch(`/admin/users/${id}/rbac-roles?page=${page}&page_size=${PAGE_SIZE}`);
+      const data = await (await apiFetch(`/admin/users/${id}/rbac-roles?page=${page}&page_size=${PAGE_SIZE}`)).json()
       setRoles(data.roles || []);
       setTotal(data.total || 0);
     } catch { showToast('加载角色失败', 'error'); }
@@ -43,7 +43,7 @@ export default function UserRBACRolesPage() {
 
   const fetchAllRoles = useCallback(async () => {
     try {
-      const data = await apiFetch('/rbac/roles?page=1&page_size=200');
+      const data = await (await apiFetch('/rbac/roles?page=1&page_size=200')).json()
       setAllRoles(data.roles || []);
     } catch {}
   }, [apiFetch]);

@@ -36,7 +36,7 @@ export default function RolePermissionsPage() {
 
   const fetchRole = useCallback(async () => {
     try {
-      const data = await apiFetch(`/rbac/roles/${id}`);
+      const data = await (await apiFetch(`/rbac/roles/${id}`)).json()
       setRoleName(data.role?.display_name || '');
       setLevel(data.role?.level || 0);
     } catch {}
@@ -44,7 +44,7 @@ export default function RolePermissionsPage() {
 
   const fetchPerms = useCallback(async () => {
     try {
-      const data = await apiFetch(`/rbac/roles/${id}/permissions?page=${page}&page_size=${PAGE_SIZE}`);
+      const data = await (await apiFetch(`/rbac/roles/${id}/permissions?page=${page}&page_size=${PAGE_SIZE}`)).json()
       setPerms(data.permissions || []);
       setTotal(data.total || 0);
     } catch { showToast('加载权限失败', 'error'); }
@@ -52,7 +52,7 @@ export default function RolePermissionsPage() {
 
   const fetchAllPerms = useCallback(async () => {
     try {
-      const data = await apiFetch('/rbac/permissions?page=1&page_size=200');
+      const data = await (await apiFetch('/rbac/permissions?page=1&page_size=200')).json()
       setAllPerms(data.permissions || []);
     } catch {}
   }, [apiFetch]);

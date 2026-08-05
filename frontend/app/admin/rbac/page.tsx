@@ -50,7 +50,7 @@ export default function RBACPage() {
 
   const fetchRoles = useCallback(async () => {
     try {
-      const data = await apiFetch(`/rbac/roles?page=${rolePage}&page_size=${PAGE_SIZE}`);
+      const data = await (await apiFetch(`/rbac/roles?page=${rolePage}&page_size=${PAGE_SIZE}`)).json()
       setRoles(data.roles || []);
       setRoleTotal(data.total || 0);
     } catch { showToast('加载角色失败', 'error'); }
@@ -58,7 +58,7 @@ export default function RBACPage() {
 
   const fetchPerms = useCallback(async () => {
     try {
-      const data = await apiFetch(`/rbac/permissions?page=${permPage}&page_size=${PAGE_SIZE}`);
+      const data = await (await apiFetch(`/rbac/permissions?page=${permPage}&page_size=${PAGE_SIZE}`)).json()
       setPerms(data.permissions || []);
       setPermTotal(data.total || 0);
     } catch { showToast('加载权限失败', 'error'); }
