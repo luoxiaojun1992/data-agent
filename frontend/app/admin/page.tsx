@@ -17,6 +17,7 @@ export default function AdminPage() {
             { title: '模型配置', desc: '管理 LLM 模型配置与参数', icon: '🤖', href: '/admin/models' },
             { title: 'Skill 管理', desc: '管理 Agent 技能工具与配置', icon: '🔧', href: '/admin/skills' },
             { title: '用户管理', desc: '用户 CRUD 与角色分配', icon: '👥', href: '/admin/users' },
+            { title: 'RBAC 管理', desc: '角色与权限配置', icon: '🛡️', href: '/admin/rbac' },
             { title: '邀请管理', desc: '生成和管理邀请注册链接', icon: '📨', href: '/admin/invites' },
             { title: '审计日志', desc: '查看系统操作审计记录', icon: '📋', href: '/admin/audit' },
             { title: '系统设置', desc: '全局配置参数管理', icon: '⚙', href: '/admin/settings' },
