@@ -126,7 +126,7 @@ func registerProtectedAPIRoutes(api *gin.RouterGroup, deps *RouteDeps) {
 func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.Chat != nil {
 		chatRoutes := router.Group("/api/v1/chat")
-		chatRoutes.Use(deps.JWTManager.AuthMiddleware())
+		chatRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermChatView))
 		RegisterChatRoutes(chatRoutes, deps.Chat)
 		if deps.Enhance != nil {
 			RegisterEnhanceRoute(chatRoutes, deps.Enhance)
@@ -136,12 +136,12 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 
 	if deps.Agent != nil {
 		agentRoutes := router.Group("/api/v1/agent")
-		agentRoutes.Use(deps.JWTManager.AuthMiddleware())
+		agentRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermAgentView))
 		RegisterAgentRoutes(agentRoutes, deps.Agent)
 	}
 	if deps.Session != nil {
 		sessionRoutes := router.Group("/api/v1/sessions")
-		sessionRoutes.Use(deps.JWTManager.AuthMiddleware())
+		sessionRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermChatView))
 		RegisterSessionRoutes(sessionRoutes, deps.Session)
 	}
 	if deps.Artifact != nil {
