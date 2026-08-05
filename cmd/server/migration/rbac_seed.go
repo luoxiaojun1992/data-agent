@@ -183,10 +183,6 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		Options: options.Index().SetUnique(true).SetName("rp_role_perm_unique"),
 	})
 
-	// Delete all existing role-permission links before re-inserting.
-	// This ensures idempotent correct seeding without fixup functions.
-	_, _ = rpColl.DeleteMany(ctx, bson.M{})
-
 	if _, err := rpColl.InsertMany(ctx, rolePermDocs); err != nil {
 		log.Printf("[rbac-seed] role-permissions insert error: %v", err)
 		return err
