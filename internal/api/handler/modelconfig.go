@@ -7,6 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
+	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	"github.com/luoxiaojun1992/data-agent/internal/service/config"
 )
 
@@ -34,9 +37,8 @@ const errProviderNotConfigured = "model provider not configured"
 
 // RegisterModelPublicRoutes registers model routes used by regular users
 // (chat model selector). Mounted under /api/v1 (no /admin prefix).
-func RegisterModelPublicRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
-	api.GET(modelRoutePath+"/list", h.ListLLM)            // LLM-only, paginated (chat selector)
-	api.GET(modelRoutePath+"/embedding", h.ListEmbedding) // embedding models (chat selector)
+func RegisterModelPublicRoutes(api *gin.RouterGroup, h *ModelConfigHandler, rbacSvc *rbacsvc.Service) {
+	api.GET(modelRoutePath+"/list", middleware.RequirePermission(rbacSvc, model.PermModelView), h.ListLLM)
 }
 
 // RegisterModelAdminRoutes registers model config management routes.

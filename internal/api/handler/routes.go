@@ -89,7 +89,7 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 
 	// Model public selectors (used by chat for any logged-in user)
 	if deps.ModelConfig != nil {
-		RegisterModelPublicRoutes(api, deps.ModelConfig)
+		RegisterModelPublicRoutes(api, deps.ModelConfig, deps.RBACService)
 	}
 
 	// Admin routes (auth).
