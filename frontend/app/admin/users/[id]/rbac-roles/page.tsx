@@ -74,7 +74,7 @@ export default function UserRBACRolesPage() {
   };
 
   return (
-    <AppLayout username={auth?.username || ''} role={auth?.role || ''} onLogout={() => {}}>
+    <AppLayout>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px' }}>
         <div style={{ marginBottom: '20px' }}>
           <a href="/admin/users" style={{ color: '#5c7cfa', fontSize: '13px' }}>← 返回用户管理</a>

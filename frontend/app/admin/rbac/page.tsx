@@ -88,7 +88,7 @@ export default function RBACPage() {
   };
 
   return (
-    <AppLayout username={auth?.username || ''} role={auth?.role || ''} onLogout={() => {}}>
+    <AppLayout>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '20px' }}>
           RBAC 管理

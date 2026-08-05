@@ -83,7 +83,7 @@ export default function RolePermissionsPage() {
   };
 
   return (
-    <AppLayout username={auth?.username || ''} role={auth?.role || ''} onLogout={() => {}}>
+    <AppLayout>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
         <div style={{ marginBottom: '20px' }}>
           <a href="/admin/rbac" style={{ color: '#5c7cfa', fontSize: '13px' }}>← 返回 RBAC 管理</a>
