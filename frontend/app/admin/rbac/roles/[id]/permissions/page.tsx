@@ -165,8 +165,7 @@ export default function RolePermissionsPage() {
 }
 
 function Pagination({ page, total, pageSize, onPage }: any) {
-  const totalPages = Math.ceil(total / pageSize);
-  if (totalPages <= 1) return null;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginTop: '16px' }}>
       <button disabled={page <= 1} onClick={() => onPage(page - 1)} style={pageBtnStyle}>‹</button>

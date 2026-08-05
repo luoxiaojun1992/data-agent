@@ -15,7 +15,7 @@ interface RBACRole {
   permission_count: number;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 2;
 
 export default function UserRBACRolesPage() {
   const { auth, apiFetch } = useAuth();
@@ -146,8 +146,7 @@ export default function UserRBACRolesPage() {
 }
 
 function Pagination({ page, total, pageSize, onPage }: any) {
-  const totalPages = Math.ceil(total / pageSize);
-  if (totalPages <= 1) return null;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginTop: '16px' }}>
       <button disabled={page <= 1} onClick={() => onPage(page - 1)} style={pageBtnStyle}>‹</button>
