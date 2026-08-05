@@ -117,6 +117,10 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 		return nil, fmt.Errorf("invalid username or password")
 	}
 
+	if user.Status != model.StatusEnabled {
+		return nil, fmt.Errorf("account disabled")
+	}
+
 	expiration := s.jwtManager.GetExpiration() // default 24h
 	if s.configCache != nil {
 		if cfg, err := s.configCache.Get(ctx, "system", "SESSION_TIMEOUT"); err == nil && cfg != nil && cfg.Value != "" {

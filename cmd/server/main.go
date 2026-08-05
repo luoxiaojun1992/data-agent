@@ -274,6 +274,7 @@ func ensureSystemAdmin(ctx context.Context, repo *mongoinfra.UserRepository, log
 		Username:        "admin@admin.com",
 		PasswordHash:    passwordHash,
 		Role:            model.RoleSystemAdmin,
+		Status:          model.StatusEnabled,
 		PasswordChanged: false,
 	}
 	if err := repo.Create(ctx, admin); err != nil {
