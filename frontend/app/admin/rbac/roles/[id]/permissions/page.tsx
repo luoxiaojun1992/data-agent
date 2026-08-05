@@ -7,7 +7,7 @@ import { useAuth } from '../../../../../../lib/api';
 
 interface RBACPermission { id: string; key: string; name: string; module: string; type: string; }
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 export default function RolePermissionsPage() {
   const { auth, apiFetch } = useAuth();

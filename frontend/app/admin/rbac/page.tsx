@@ -13,7 +13,7 @@ interface RBACPermission {
   id: string; key: string; name: string; description: string; module: string; type: string;
 }
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 export default function RBACPage() {
   const { auth, apiFetch } = useAuth();

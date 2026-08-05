@@ -7,7 +7,7 @@ import { useAuth } from '../../../../../lib/api';
 
 interface RBACRole { id: string; name: string; display_name: string; level: number; type: string; }
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 export default function UserRBACRolesPage() {
   const { auth, apiFetch } = useAuth();
