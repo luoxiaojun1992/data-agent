@@ -294,7 +294,7 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	taskRoutes.GET("/:task_id/artifacts/download", h.DownloadArtifacts)
 
 	adminTasks := router.Group("/api/v1/admin/tasks")
-	adminTasks.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermTaskView))
+	adminTasks.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentView))
 	adminTasks.GET("", h.ListAllTasks)
 	adminTasks.PUT("/:task_id/retry", h.RetryTask)
 	adminTasks.POST("/batch-cancel", h.BatchCancelTasks)
