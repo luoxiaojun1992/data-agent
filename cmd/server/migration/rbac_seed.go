@@ -28,6 +28,78 @@ func SeedRBAC(ctx context.Context, db *mongo.Database) error {
 	if err := seedDefaultUserRole(ctx, db); err != nil {
 		return err
 	}
+	// Migrate admin_role out of system-only permissions (idempotent).
+	if err := fixAdminRolePermissionScope(ctx, db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// fixAdminRolePermissionScope enforces the correct perm matrix:
+//   1. system-only perms (model:edit, system:edit, skills:*) → sysAdmin only
+//   2. admin_role perms → mirrored to sysAdmin_role
+//   3. user_role perms → mirrored to admin_role + sysAdmin_role
+// Idempotent — safe to run on every startup.
+func fixAdminRolePermissionScope(ctx context.Context, db *mongo.Database) error {
+	systemOnly := []string{
+		model.PermModelEdit,
+		model.PermSystemEdit,
+		model.PermSkillsView,
+		model.PermSkillsEdit,
+	}
+	adminRoleID := "rbac_role_admin"
+	sysAdminRoleID := "rbac_role_system_admin"
+	userRoleID := "rbac_role_user"
+
+	rpColl := db.Collection("rbac_role_permissions")
+	permColl := db.Collection("rbac_permissions")
+
+	// 1. Move system-only perms from admin to sysAdmin.
+	for _, key := range systemOnly {
+		var perm model.RBACPermission
+		if err := permColl.FindOne(ctx, bson.M{"key": key}).Decode(&perm); err != nil {
+			continue
+		}
+		_, _ = rpColl.DeleteOne(ctx, bson.M{"role_id": adminRoleID, "permission_id": perm.ID})
+		_, _ = rpColl.UpdateOne(
+			ctx,
+			bson.M{"role_id": sysAdminRoleID, "permission_id": perm.ID},
+			bson.M{"$setOnInsert": bson.M{"role_id": sysAdminRoleID, "permission_id": perm.ID}},
+			options.Update().SetUpsert(true),
+		)
+	}
+
+	// 2. Mirror admin's perms to sysAdmin.
+	if cur, err := rpColl.Find(ctx, bson.M{"role_id": adminRoleID}); err == nil {
+		var perms []model.RBACRolePermission
+		if cur.All(ctx, &perms) == nil {
+			for _, rp := range perms {
+				_, _ = rpColl.UpdateOne(
+					ctx,
+					bson.M{"role_id": sysAdminRoleID, "permission_id": rp.PermissionID},
+					bson.M{"$setOnInsert": bson.M{"role_id": sysAdminRoleID, "permission_id": rp.PermissionID}},
+					options.Update().SetUpsert(true),
+				)
+			}
+		}
+	}
+
+	// 3. Mirror user's perms to admin + sysAdmin.
+	if cur, err := rpColl.Find(ctx, bson.M{"role_id": userRoleID}); err == nil {
+		var perms []model.RBACRolePermission
+		if cur.All(ctx, &perms) == nil {
+			for _, rp := range perms {
+				for _, rid := range []string{adminRoleID, sysAdminRoleID} {
+					_, _ = rpColl.UpdateOne(
+						ctx,
+						bson.M{"role_id": rid, "permission_id": rp.PermissionID},
+						bson.M{"$setOnInsert": bson.M{"role_id": rid, "permission_id": rp.PermissionID}},
+						options.Update().SetUpsert(true),
+					)
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -118,41 +190,41 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 
 	perms := []permSeed{
 		// admin_role
-		{perm: RBACPerm("rbac_perm_dashboard_view", model.PermDashboardView, "查看仪表盘", "dashboard"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_chat_delete", model.PermChatDelete, "删除对话", "chat"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_agent_view", model.PermAgentView, "查看 Agent 任务", "agent"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_agent_create", model.PermAgentCreate, "创建 Agent 任务", "agent"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_agent_delete", model.PermAgentDelete, "删除 Agent 任务", "agent"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_kb_delete", model.PermKBDelete, "删除知识库文档", "knowledge"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_artifact_delete", model.PermArtifactDelete, "删除产出物", "artifact"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_im_view", model.PermIMView, "查看 IM 配置", "im"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_user_view", model.PermUserView, "查看用户列表", "user"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_user_create", model.PermUserCreate, "创建用户", "user"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_user_edit", model.PermUserEdit, "编辑用户", "user"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_user_delete", model.PermUserDelete, "删除用户", "user"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_model_view", model.PermModelView, "查看模型配置", "model"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_model_edit", model.PermModelEdit, "编辑模型配置", "model"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_task_view", model.PermTaskView, "查看任务管理", "task"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_task_create", model.PermTaskCreate, "创建任务", "task"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_task_edit", model.PermTaskEdit, "编辑任务", "task"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_task_delete", model.PermTaskDelete, "删除任务", "task"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_system_view", model.PermSystemView, "查看系统配置", "system"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_system_edit", model.PermSystemEdit, "编辑系统配置", "system"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_audit_view", model.PermAuditView, "查看审计日志", "audit"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_invite_view", model.PermInviteView, "查看邀请", "invite"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_invite_create", model.PermInviteCreate, "创建邀请", "invite"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_apireview_view", model.PermAPIReviewView, "查看 API Review", "apireview"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_skills_view", model.PermSkillsView, "查看技能管理", "skills"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_skills_edit", model.PermSkillsEdit, "编辑技能", "skills"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_stats_view", model.PermStatsView, "查看统计分析", "stats"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_memory_search", model.PermMemorySearch, "Memory 检索", "memory"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_dashboard_view", model.PermDashboardView, "查看仪表盘", "dashboard"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_chat_delete", model.PermChatDelete, "删除对话", "chat"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_agent_view", model.PermAgentView, "查看 Agent 任务", "agent"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_agent_create", model.PermAgentCreate, "创建 Agent 任务", "agent"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_agent_delete", model.PermAgentDelete, "删除 Agent 任务", "agent"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_kb_delete", model.PermKBDelete, "删除知识库文档", "knowledge"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_artifact_delete", model.PermArtifactDelete, "删除产出物", "artifact"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_im_view", model.PermIMView, "查看 IM 配置", "im"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_user_view", model.PermUserView, "查看用户列表", "user"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_user_create", model.PermUserCreate, "创建用户", "user"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_user_edit", model.PermUserEdit, "编辑用户", "user"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_user_delete", model.PermUserDelete, "删除用户", "user"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_model_view", model.PermModelView, "查看模型配置", "model"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_model_edit", model.PermModelEdit, "编辑模型配置", "model"), roleIDs: []string{sysAdmin}},
+		{perm: RBACPerm("rbac_perm_task_view", model.PermTaskView, "查看任务管理", "task"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_task_create", model.PermTaskCreate, "创建任务", "task"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_task_edit", model.PermTaskEdit, "编辑任务", "task"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_task_delete", model.PermTaskDelete, "删除任务", "task"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_system_view", model.PermSystemView, "查看系统配置", "system"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_system_edit", model.PermSystemEdit, "编辑系统配置", "system"), roleIDs: []string{sysAdmin}},
+		{perm: RBACPerm("rbac_perm_audit_view", model.PermAuditView, "查看审计日志", "audit"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_invite_view", model.PermInviteView, "查看邀请", "invite"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_invite_create", model.PermInviteCreate, "创建邀请", "invite"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_apireview_view", model.PermAPIReviewView, "查看 API Review", "apireview"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_skills_view", model.PermSkillsView, "查看技能管理", "skills"), roleIDs: []string{sysAdmin}},
+		{perm: RBACPerm("rbac_perm_skills_edit", model.PermSkillsEdit, "编辑技能", "skills"), roleIDs: []string{sysAdmin}},
+		{perm: RBACPerm("rbac_perm_stats_view", model.PermStatsView, "查看统计分析", "stats"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_memory_search", model.PermMemorySearch, "Memory 检索", "memory"), roleIDs: []string{admin, sysAdmin}},
 		// user_role
-		{perm: RBACPerm("rbac_perm_chat_send", model.PermChatSend, "发送消息", "chat"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_chat_view", model.PermChatView, "查看对话历史", "chat"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_kb_view", model.PermKBView, "查看知识库", "knowledge"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_kb_upload", model.PermKBUpload, "上传知识库文档", "knowledge"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_hermes_view", model.PermHermesView, "Hermes 探索", "hermes"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_artifact_view", model.PermArtifactView, "查看产出物", "artifact"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_chat_send", model.PermChatSend, "发送消息", "chat"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_chat_view", model.PermChatView, "查看对话历史", "chat"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_kb_view", model.PermKBView, "查看知识库", "knowledge"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_kb_upload", model.PermKBUpload, "上传知识库文档", "knowledge"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_hermes_view", model.PermHermesView, "Hermes 探索", "hermes"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_artifact_view", model.PermArtifactView, "查看产出物", "artifact"), roleIDs: []string{user, admin, sysAdmin}},
 		// system_admin_role
 		{perm: RBACPerm("rbac_perm_rbac_manage", model.PermRBACManage, "RBAC 管理", "rbac"), roleIDs: []string{sysAdmin}},
 	}
