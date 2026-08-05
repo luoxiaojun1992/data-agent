@@ -55,6 +55,21 @@ ID, UserID, RoleID, CreatedAt
 
 **`users`** — 增加 `rbac_role_count: int` 字段（`$inc` 原子增减，不存在的字段从 0 开始）
 
+### 计数字段联动规则
+
+所有计数字段随关联记录的增删**原子联动**，不依赖定时任务或手动修正：
+
+| 操作 | 计数字段变动 | MongoDB 操作 |
+|------|-------------|-------------|
+| 创建子角色 | 父 role `ChildCount` +1 | `$inc: {child_count: 1}` |
+| 删除子角色 | 父 role `ChildCount` -1 | `$inc: {child_count: -1}` |
+| 添加角色-权限关联 | role `PermissionCount` +1 | `$inc: {permission_count: 1}` |
+| 删除角色-权限关联 | role `PermissionCount` -1 | `$inc: {permission_count: -1}` |
+| 添加用户-角色关联 | user `rbac_role_count` +1 | `$inc: {rbac_role_count: 1}` |
+| 删除用户-角色关联 | user `rbac_role_count` -1 | `$inc: {rbac_role_count: -1}` |
+
+> 关联操作之前已做上限检查（≤10），`$inc` 保证计数原子准确。
+
 ### 删除安全检查（403）
 
 | 操作 | 检查项 | 集合 |
