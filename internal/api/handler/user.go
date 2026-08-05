@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	usersvc "github.com/luoxiaojun1992/data-agent/internal/service/user"
 )
 
