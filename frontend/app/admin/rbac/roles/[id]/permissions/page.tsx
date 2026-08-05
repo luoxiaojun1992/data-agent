@@ -14,7 +14,7 @@ interface RBACPermission {
   type: string;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 2;
 
 export default function RolePermissionsPage() {
   const { auth, apiFetch } = useAuth();
@@ -182,9 +182,9 @@ const btnPrimaryStyle: React.CSSProperties = { padding: '8px 16px', background: 
 const btnSecondaryStyle: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' };
 const btnSmallStyle: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' };
 const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse' as const };
-const thStyle: React.CSSProperties = { padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' };
-const tdStyle: React.CSSProperties = { padding: '10px 12px', borderBottom: '1px solid var(--border)', fontSize: '14px' };
-const trStyle: React.CSSProperties = { borderBottom: '1px solid var(--border-eo)' };
+const thStyle: React.CSSProperties = { textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 };
+const tdStyle: React.CSSProperties = { padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '13px' };
+const trStyle: React.CSSProperties = {};
 const modalOverlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
 const modalContentStyle: React.CSSProperties = { background: 'var(--card-bg)', padding: '24px', borderRadius: '12px', minWidth: '450px' };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' };
