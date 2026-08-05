@@ -42,7 +42,7 @@ export default function RolePermissionsPage() {
       setRoleName(data.role?.display_name || ''); setLevel(data.role?.level || 0);
     });
     fetchPerms();
-  }, [id, page]);
+  }, [id, page, auth.hydrated]);
 
   const available = allPerms.filter(p => !perms.find(pp => pp.id === p.id) &&
     (search === '' || p.key.includes(search) || p.name.includes(search)));
