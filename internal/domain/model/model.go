@@ -34,6 +34,7 @@ type User struct {
 	InviteID        string     `json:"-"`
 	FeishuAppID     string     `json:"feishu_app_id,omitempty"`
 	FeishuAppSecret string     `json:"-"`
+	RBACRoleCount   int        `json:"rbac_role_count" bson:"rbac_role_count"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 }

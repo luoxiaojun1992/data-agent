@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/cmd/server/migration"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/memoryx"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
@@ -139,6 +140,9 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 		logger.Info("MongoDB connected", zap.String("database", cfg.Mongo.Database))
 		if err := mongoinfra.EnsureIndexes(ctx, mongoClient.DB()); err != nil {
 			logger.Warn("Failed to ensure indexes", zap.Error(err))
+		}
+		if err := migration.SeedRBAC(ctx, mongoClient.DB()); err != nil {
+			logger.Warn("Failed to seed RBAC data", zap.Error(err))
 		}
 		deps.userRepo = mongoinfra.NewUserRepository(mongoClient.DB())
 		if err := ensureSystemAdmin(ctx, deps.userRepo, logger); err != nil {

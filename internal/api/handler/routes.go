@@ -41,6 +41,7 @@ type RouteDeps struct {
 	Stats        *StatsHandler
 	SkillConfig  *SkillConfigHandler
 	FeishuConfig *FeishuConfigHandler
+	RBAC         *RBACHandler
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
 	IMWebhook http.HandlerFunc
@@ -92,6 +93,11 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 
 	// Feature routes (each guarded by auth middleware).
 	registerFeatureRoutes(router, deps)
+
+	// RBAC routes
+	if deps.RBAC != nil {
+		registerRBACRoutes(router, deps.JWTManager, deps.RBAC)
+	}
 }
 
 // registerProtectedAPIRoutes registers user/role/model/memory/sysconfig routes
@@ -306,4 +312,38 @@ func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Fei
 	feishuRoutes.GET("/:id", h.Get)
 	feishuRoutes.PUT("/:id", h.Update)
 	feishuRoutes.DELETE("/:id", h.Delete)
+}
+
+func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACHandler) {
+	rbac := router.Group("/api/v1/rbac")
+	rbac.Use(jwt.AuthMiddleware())
+
+	// Roles
+	rbac.GET("/roles", h.ListRoles)
+	rbac.GET("/roles/:id", h.GetRole)
+	rbac.POST("/roles", h.CreateRole)
+	rbac.PUT("/roles/:id", h.UpdateRole)
+	rbac.DELETE("/roles/:id", h.DeleteRole)
+	rbac.GET("/roles/:id/available-parents", h.AvailableParents)
+
+	// Permissions
+	rbac.GET("/permissions", h.ListPermissions)
+	rbac.GET("/permissions/:id", h.GetPermission)
+	rbac.DELETE("/permissions/:id", h.DeletePermission)
+
+	// Role-permission associations
+	rbac.GET("/roles/:roleId/permissions", h.ListRolePermissions)
+	rbac.POST("/roles/:roleId/permissions", h.AddRolePermission)
+	rbac.DELETE("/roles/:roleId/permissions/:permId", h.RemoveRolePermission)
+
+	// Effective permissions
+	rbac.GET("/roles/:id/effective-permissions", h.EffectivePermissions)
+	rbac.GET("/me/permissions", h.MyPermissions)
+
+	// User-role associations (admin)
+	admin := router.Group("/api/v1/admin")
+	admin.Use(jwt.AuthMiddleware())
+	admin.GET("/users/:userId/rbac-roles", h.ListUserRoles)
+	admin.POST("/users/:userId/rbac-roles", h.AddUserRole)
+	admin.DELETE("/users/:userId/rbac-roles/:roleId", h.RemoveUserRole)
 }

@@ -217,6 +217,7 @@ func userToDoc(u *model.User) bson.M {
 		"role":             u.Role,
 		"status":           u.Status,
 		"password_changed": u.PasswordChanged,
+		"rbac_role_count":  u.RBACRoleCount,
 		"created_at":       u.CreatedAt,
 		"updated_at":       u.UpdatedAt,
 	}
@@ -251,6 +252,7 @@ func docToUser(d bson.M) *model.User {
 		InviteID:        getStr(d, "invite_id"),
 		FeishuAppID:     getStr(d, "feishu_app_id"),
 		FeishuAppSecret: getStr(d, "feishu_app_secret"),
+		RBACRoleCount:   getInt(d, "rbac_role_count"),
 		CreatedAt:       getTime(d, "created_at"),
 		UpdatedAt:       getTime(d, "updated_at"),
 	}
