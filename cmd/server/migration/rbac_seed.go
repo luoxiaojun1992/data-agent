@@ -28,78 +28,6 @@ func SeedRBAC(ctx context.Context, db *mongo.Database) error {
 	if err := seedDefaultUserRole(ctx, db); err != nil {
 		return err
 	}
-	// Migrate admin_role out of system-only permissions (idempotent).
-	if err := fixAdminRolePermissionScope(ctx, db); err != nil {
-		return err
-	}
-	return nil
-}
-
-// fixAdminRolePermissionScope enforces the correct perm matrix:
-//   1. system-only perms (model:edit, system:edit, skills:*) → sysAdmin only
-//   2. admin_role perms → mirrored to sysAdmin_role
-//   3. user_role perms → mirrored to admin_role + sysAdmin_role
-// Idempotent — safe to run on every startup.
-func fixAdminRolePermissionScope(ctx context.Context, db *mongo.Database) error {
-	systemOnly := []string{
-		model.PermModelEdit,
-		model.PermSystemEdit,
-		model.PermSkillsView,
-		model.PermSkillsEdit,
-	}
-	adminRoleID := "rbac_role_admin"
-	sysAdminRoleID := "rbac_role_system_admin"
-	userRoleID := "rbac_role_user"
-
-	rpColl := db.Collection("rbac_role_permissions")
-	permColl := db.Collection("rbac_permissions")
-
-	// 1. Move system-only perms from admin to sysAdmin.
-	for _, key := range systemOnly {
-		var perm model.RBACPermission
-		if err := permColl.FindOne(ctx, bson.M{"key": key}).Decode(&perm); err != nil {
-			continue
-		}
-		_, _ = rpColl.DeleteOne(ctx, bson.M{"role_id": adminRoleID, "permission_id": perm.ID})
-		_, _ = rpColl.UpdateOne(
-			ctx,
-			bson.M{"role_id": sysAdminRoleID, "permission_id": perm.ID},
-			bson.M{"$setOnInsert": bson.M{"role_id": sysAdminRoleID, "permission_id": perm.ID}},
-			options.Update().SetUpsert(true),
-		)
-	}
-
-	// 2. Mirror admin's perms to sysAdmin.
-	if cur, err := rpColl.Find(ctx, bson.M{"role_id": adminRoleID}); err == nil {
-		var perms []model.RBACRolePermission
-		if cur.All(ctx, &perms) == nil {
-			for _, rp := range perms {
-				_, _ = rpColl.UpdateOne(
-					ctx,
-					bson.M{"role_id": sysAdminRoleID, "permission_id": rp.PermissionID},
-					bson.M{"$setOnInsert": bson.M{"role_id": sysAdminRoleID, "permission_id": rp.PermissionID}},
-					options.Update().SetUpsert(true),
-				)
-			}
-		}
-	}
-
-	// 3. Mirror user's perms to admin + sysAdmin.
-	if cur, err := rpColl.Find(ctx, bson.M{"role_id": userRoleID}); err == nil {
-		var perms []model.RBACRolePermission
-		if cur.All(ctx, &perms) == nil {
-			for _, rp := range perms {
-				for _, rid := range []string{adminRoleID, sysAdminRoleID} {
-					_, _ = rpColl.UpdateOne(
-						ctx,
-						bson.M{"role_id": rid, "permission_id": rp.PermissionID},
-						bson.M{"$setOnInsert": bson.M{"role_id": rid, "permission_id": rp.PermissionID}},
-						options.Update().SetUpsert(true),
-					)
-				}
-			}
-		}
-	}
 	return nil
 }
 
@@ -254,6 +182,10 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		Keys:    bson.D{{Key: "role_id", Value: 1}, {Key: "permission_id", Value: 1}},
 		Options: options.Index().SetUnique(true).SetName("rp_role_perm_unique"),
 	})
+
+	// Delete all existing role-permission links before re-inserting.
+	// This ensures idempotent correct seeding without fixup functions.
+	_, _ = rpColl.DeleteMany(ctx, bson.M{})
 
 	if _, err := rpColl.InsertMany(ctx, rolePermDocs); err != nil {
 		log.Printf("[rbac-seed] role-permissions insert error: %v", err)
