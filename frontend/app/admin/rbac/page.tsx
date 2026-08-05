@@ -27,7 +27,7 @@ interface RBACPermission {
   type: string;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 2;
 
 export default function RBACPage() {
   const { auth, apiFetch } = useAuth();
@@ -123,7 +123,7 @@ export default function RBACPage() {
             <div style={{ marginTop: '16px' }}>
               {roles.map((r) => (
                 <div key={r.id} data-testid={`rbac-role-${r.id}`}
-                  className="glass glass-hover" style={cardStyle}>
+                  className="glass glass-hover" style={{ ...cardStyle, marginBottom: 8 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <strong>{r.display_name}</strong>
@@ -163,7 +163,8 @@ export default function RBACPage() {
 
         {/* Permission Tab */}
         {tab === 'permissions' && (
-          <table className="glass" style={tableStyle}>
+          <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
+            <table style={tableStyle}>
             <thead>
               <tr>
                 <th style={thStyle}>Key</th>
@@ -193,6 +194,9 @@ export default function RBACPage() {
             </tbody>
           </table>
         )}
+
+            </table>
+          </div>
 
         {tab === 'permissions' && <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onPage={setPermPage} />}
 
@@ -329,9 +333,9 @@ const cardStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', 
 const badgeStyle = (level: number): React.CSSProperties => ({ padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 500, background: level === 0 ? '#ef4444' : level === 1 ? '#f59e0b' : '#34d399', color: '#fff' });
 const countBadgeStyle: React.CSSProperties = { fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(92, 124, 250, 0.1)', padding: '2px 8px', borderRadius: '4px' };
 const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse' };
-const thStyle: React.CSSProperties = { padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' };
-const tdStyle: React.CSSProperties = { padding: '10px 12px', borderBottom: '1px solid var(--border)', fontSize: '14px' };
-const trStyle: React.CSSProperties = { borderBottom: '1px solid var(--border-eo)' };
+const thStyle: React.CSSProperties = { textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 };
+const tdStyle: React.CSSProperties = { padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '13px' };
+const trStyle: React.CSSProperties = { borderBottom: '1px solid rgba(255,255,255,0.06)' };
 const modalOverlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
 const modalContentStyle: React.CSSProperties = { background: 'var(--card-bg)', padding: '24px', borderRadius: '12px', minWidth: '400px', maxWidth: '500px' };
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '13px', marginBottom: '8px', color: 'var(--text-secondary)' };
