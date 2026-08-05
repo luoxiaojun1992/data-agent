@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	usersvc "github.com/luoxiaojun1992/data-agent/internal/service/user"
 )
 
@@ -90,6 +91,8 @@ func (h *UserHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "禁止创建系统管理员"})
 		return
 	}
+	denyAdminManagingAdmin(c, model.UserRole(req.Role))
+	if c.IsAborted() { return }
 	user, err := h.svc.Create(c.Request.Context(), req.Username, req.Password, req.Role)
 	if err != nil {
 		if errors.Is(err, usersvc.ErrDuplicate) {
@@ -134,6 +137,10 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "禁止将用户设置为系统管理员"})
 		return
 	}
+	denyAdminManagingAdmin(c, user.Role)
+	if c.IsAborted() { return }
+	denyAdminManagingAdmin(c, req.Role)
+	if c.IsAborted() { return }
 	if req.Role != model.RoleSystemAdmin && req.Role != model.RoleAdmin && req.Role != model.RoleUser {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
 		return
@@ -161,6 +168,8 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "不能停用系统管理员"})
 		return
 	}
+	denyAdminManagingAdmin(c, user.Role)
+	if c.IsAborted() { return }
 	if err := h.svc.ToggleStatus(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -184,9 +193,19 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "不可删除系统管理员"})
 		return
 	}
+	denyAdminManagingAdmin(c, user.Role)
+	if c.IsAborted() { return }
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除用户失败"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "用户已删除"})
+}
+
+// denyAdminManagingAdmin rejects requests where admin role users try to
+// manage non-user roles (admin/system_admin). System_admin has no limits.
+func denyAdminManagingAdmin(c *gin.Context, targetRole model.UserRole) {
+	if c.GetString("role") == "admin" && targetRole != model.RoleUser {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin can only manage regular users"})
+	}
 }

@@ -187,7 +187,7 @@ function InvitesContent() {
                   data-testid="invites-role-select"
                 >
                   <option value="user">普通用户 (user)</option>
-                  <option value="admin">管理员 (admin)</option>
+                  {auth.role === 'system_admin' && <option value="admin">管理员 (admin)</option>}
                 </select>
               </div>
               <div data-testid="invites-expire-field">
