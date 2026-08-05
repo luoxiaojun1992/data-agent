@@ -90,7 +90,7 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	// Admin routes (auth).
 	admin := router.Group("/api/v1/admin")
 	admin.Use(deps.JWTManager.AuthMiddleware())
-	registerAdminRoutes(admin, deps.Auth, deps.RBACService)
+	registerAdminRoutes(admin, deps.Auth, deps.SysConfig, deps.RBACService)
 
 	// Feature routes (each guarded by auth middleware).
 	registerFeatureRoutes(router, deps)
@@ -114,7 +114,7 @@ func registerProtectedAPIRoutes(api *gin.RouterGroup, deps *RouteDeps) {
 		RegisterMemoryRoute(api, deps.Memory, deps.RBACService)
 	}
 	if deps.SysConfig != nil {
-		RegisterSysConfigRoutes(api, deps.SysConfig)
+		// SysConfig is admin-only; register under /admin group
 	}
 }
 
@@ -215,7 +215,7 @@ func registerAuthProtected(api *gin.RouterGroup, authHandler *AuthHandler) {
 	}
 }
 
-func registerAdminRoutes(admin *gin.RouterGroup, authHandler *AuthHandler, rbacSvc *rbacsvc.Service) {
+func registerAdminRoutes(admin *gin.RouterGroup, authHandler *AuthHandler, sysConfig *ConfigHandler, rbacSvc *rbacsvc.Service) {
 	if authHandler == nil {
 		return
 	}
@@ -223,6 +223,14 @@ func registerAdminRoutes(admin *gin.RouterGroup, authHandler *AuthHandler, rbacS
 	admin.GET("/invites", middleware.RequirePermission(rbacSvc, model.PermInviteView), authHandler.ListInvites)
 	admin.DELETE("/invites/:id", middleware.RequirePermission(rbacSvc, model.PermInviteCreate), authHandler.RevokeInvite)
 	admin.PUT("/invites/hmac-secret", middleware.RequirePermission(rbacSvc, model.PermSystemEdit), authHandler.UpdateHMACSecret)
+
+	// System configuration (admin)
+	if sysConfig != nil {
+		admin.GET(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), sysConfig.Get)
+		admin.PUT(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), sysConfig.Put)
+		admin.DELETE(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), sysConfig.Delete)
+		admin.POST("/change-password", sysConfig.ChangePassword)
+	}
 }
 
 func registerArtifactRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *ArtifactHandler) {
