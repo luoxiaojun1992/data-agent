@@ -32,17 +32,23 @@ const modelRoutePath = "/models"
 // provider is wired (sonar S1192: avoid duplicating the literal).
 const errProviderNotConfigured = "model provider not configured"
 
-// RegisterModelConfigRoutes registers model config management routes.
-func RegisterModelConfigRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
-	api.GET(modelRoutePath, h.Get)
-	api.PUT(modelRoutePath, h.Put)
-	api.GET(modelRoutePath+"/list", h.ListLLM)             // LLM-only, paginated (selector source)
-	api.GET(modelRoutePath+"/embedding", h.ListEmbedding)  // embedding models (admin UI)
-	api.POST(modelRoutePath, h.AddModel)                   // add single model (auto-gen ID)
-	api.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)    // decrypt per-model API key
-	api.PATCH(modelRoutePath+"/:id/default", h.SetDefault) // set as default
-	api.PATCH(modelRoutePath+"/:id", h.UpdateModel)        // update model fields
-	api.DELETE(modelRoutePath+"/:id", h.DeleteModel)       // delete single model
+// RegisterModelPublicRoutes registers model routes used by regular users
+// (chat model selector). Mounted under /api/v1 (no /admin prefix).
+func RegisterModelPublicRoutes(api *gin.RouterGroup, h *ModelConfigHandler) {
+	api.GET(modelRoutePath+"/list", h.ListLLM)            // LLM-only, paginated (chat selector)
+	api.GET(modelRoutePath+"/embedding", h.ListEmbedding) // embedding models (chat selector)
+}
+
+// RegisterModelAdminRoutes registers model config management routes.
+// Mounted under /api/v1/admin. Requires PermModelEdit (system_admin only).
+func RegisterModelAdminRoutes(admin *gin.RouterGroup, h *ModelConfigHandler) {
+	admin.GET(modelRoutePath, h.Get)
+	admin.PUT(modelRoutePath, h.Put)
+	admin.POST(modelRoutePath, h.AddModel)
+	admin.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)
+	admin.PATCH(modelRoutePath+"/:id/default", h.SetDefault)
+	admin.PATCH(modelRoutePath+"/:id", h.UpdateModel)
+	admin.DELETE(modelRoutePath+"/:id", h.DeleteModel)
 }
 
 // Get returns the full model configuration. When the page query param is

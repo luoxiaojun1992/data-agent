@@ -87,9 +87,17 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	registerAuthProtected(api, deps.Auth)
 	registerProtectedAPIRoutes(api, deps)
 
+	// Model public selectors (used by chat for any logged-in user)
+	if deps.ModelConfig != nil {
+		RegisterModelPublicRoutes(api, deps.ModelConfig)
+	}
+
 	// Admin routes (auth).
 	admin := router.Group("/api/v1/admin")
 	admin.Use(deps.JWTManager.AuthMiddleware())
+	if deps.ModelConfig != nil {
+		RegisterModelAdminRoutes(admin, deps.ModelConfig)
+	}
 	registerAdminRoutes(admin, deps.Auth, deps.SysConfig, deps.RBACService)
 
 	// Feature routes (each guarded by auth middleware).
