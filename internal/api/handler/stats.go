@@ -30,7 +30,7 @@ func RegisterStatsRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Stat
 		return
 	}
 	stats := router.Group("/api/v1/stats")
-	stats.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermUserManage))
+	stats.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermStatsView))
 	stats.GET("/llm", h.GetLLMStats)
 }
 

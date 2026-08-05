@@ -25,7 +25,7 @@ func NewMemoryHandler(memSvc memory.Service, appName string) *MemoryHandler {
 // RegisterMemoryRoute registers GET /memory/search on the given authenticated
 // router group (requires PermUserManage).
 func RegisterMemoryRoute(rg *gin.RouterGroup, h *MemoryHandler, rbacSvc *rbacsvc.Service) {
-	rg.GET("/memory/search", middleware.RequirePermission(rbacSvc, model.PermUserManage), h.Search)
+	rg.GET("/memory/search", middleware.RequirePermission(rbacSvc, model.PermMemorySearch), h.Search)
 }
 
 // Search queries the long-term memory store for the given user.
