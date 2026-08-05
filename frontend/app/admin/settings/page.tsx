@@ -52,7 +52,7 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       const pageParam = page > 1 ? `?page=${page}&page_size=${PAGE_SIZE}` : `?page_size=${PAGE_SIZE}`;
-      const res = await apiFetch(`/admin/sysconfig/system${pageParam}`);
+      const res = await apiFetch(`/sysconfig/system${pageParam}`);
       if (res.ok) {
         const data = await res.json();
         const descMap = new Map(BUILTIN_CONFIGS.map(b => [b.key, b.description]));
@@ -86,7 +86,7 @@ export default function SettingsPage() {
     if (!editingKey) return;
     setSaving(true);
     try {
-      const res = await apiFetch('/admin/sysconfig/system', {
+      const res = await apiFetch('/sysconfig/system', {
         method: 'PUT',
         body: JSON.stringify({ key: editingKey, value: editValue }),
       });
