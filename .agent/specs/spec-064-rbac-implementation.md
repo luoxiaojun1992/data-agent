@@ -22,7 +22,7 @@
 | 内置保护 | type=builtin 不可删除/修改；内置 role 可作为自定义 role 的父 |
 | RBAC 入口 | `/admin/rbac` 仅 system_admin 可访问（通过用户角色属性判断，非 RBAC） |
 | 功能权限 | **所有非 RBAC 功能的 API/UI 走 RBAC permission 检查，system_admin 无特权** |
-| 数据隔离 | **非 system_admin 按 `user_id + is_public` 筛选** |
+| 数据隔离 | **非 system_admin 按 `user_id + is_public` 筛选**（`user_id` / `is_system_admin` 注入 SkillContext，非 LLM 传参） |
 | 侧边栏 | 改用 RBAC permission 控制可见性 |
 | 初始化 | 默认 system_admin 用户(ID: `6a64aba51214fe22b2cb917d`) 关联 system_admin_role |
 
@@ -120,6 +120,16 @@ ID, UserID, RoleID, CreatedAt
 
 > system_admin_role 无直接 permission，通过向上递归获得 admin_role → user_role 所有权限。
 > 初始化时自动为默认 admin 用户关联 system_admin_role。
+
+### 数据隔离模式（参考 knowledge search skill）
+
+部分权限（如 `memory:search`）需要在 skill 执行时进行**数据范围隔离**，而非仅判断有无权限：
+
+- `memory:search` — system_admin 可搜索所有用户 memory，非 system_admin 仅搜索自己的 memory
+- `kb:view` — system_admin 可查看所有知识库文档，非 system_admin 仅查看自己的 + 公开文档
+- 会话/任务/产出物等所有用户关联数据同理
+
+**实现方式**: `user_id` 和 `is_system_admin`（由 `user_role` 属性推导）**注入到 SkillContext**，skill 内部根据这两个值构建 MongoDB/Qdrant filter，**不作为 LLM 生成参数传入**，避免 prompt injection 绕过数据隔离。
 
 ## 5. API 设计
 
