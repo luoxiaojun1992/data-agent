@@ -85,7 +85,7 @@ export default function UserRBACRolesPage() {
                     background: r.level === 0 ? '#ef4444' : r.level === 1 ? '#f59e0b' : '#34d399', color: '#fff' }}>L{r.level}</span>
                   <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 8 }}>{r.name}</span>
                 </div>
-                <button data-testid={`rbac-user-role-remove-${r.id}`} onClick={() => remove(r.id)} style={{ ...btnSm, color: '#ef4444' }}>移除</button>
+                {r.type !== 'builtin' && <button data-testid={`rbac-user-role-remove-${r.id}`} onClick={() => remove(r.id)} style={{ ...btnSm, color: '#ef4444' }}>移除</button>}
               </div>
             ))}
           </div>
