@@ -6,7 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	"github.com/luoxiaojun1992/data-agent/internal/service/config"
 )
 
@@ -25,10 +27,11 @@ func NewConfigHandler(cfgSvc config.Service, userRepo repository.UserRepository)
 const sysConfigRoutePath = "/sysconfig/:namespace"
 
 // RegisterSysConfigRoutes registers system configuration routes.
-func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler) {
-	admin.GET(sysConfigRoutePath, h.Get)
-	admin.PUT(sysConfigRoutePath, h.Put)
-	admin.DELETE(sysConfigRoutePath, h.Delete)
+// Sysconfig write operations require PermSystemEdit.
+func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler, rbacSvc *rbacsvc.Service) {
+	admin.GET(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Get)
+	admin.PUT(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Put)
+	admin.DELETE(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Delete)
 	admin.POST("/change-password", h.ChangePassword)
 }
 

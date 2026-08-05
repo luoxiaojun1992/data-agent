@@ -114,7 +114,7 @@ func registerProtectedAPIRoutes(api *gin.RouterGroup, deps *RouteDeps) {
 		RegisterMemoryRoute(api, deps.Memory, deps.RBACService)
 	}
 	if deps.SysConfig != nil {
-		RegisterSysConfigRoutes(api, deps.SysConfig)
+		RegisterSysConfigRoutes(api, deps.SysConfig, deps.RBACService)
 	}
 }
 
