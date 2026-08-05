@@ -86,6 +86,10 @@ func (h *UserHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数解析失败"})
 		return
 	}
+	if req.Role == string(model.RoleSystemAdmin) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "禁止创建系统管理员"})
+		return
+	}
 	user, err := h.svc.Create(c.Request.Context(), req.Username, req.Password, req.Role)
 	if err != nil {
 		if errors.Is(err, usersvc.ErrDuplicate) {
@@ -124,6 +128,10 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 	}
 	if user.Role == model.RoleSystemAdmin {
 		c.JSON(http.StatusForbidden, gin.H{"error": "不能修改系统管理员的角色"})
+		return
+	}
+	if req.Role == model.RoleSystemAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "禁止将用户设置为系统管理员"})
 		return
 	}
 	if req.Role != model.RoleSystemAdmin && req.Role != model.RoleAdmin && req.Role != model.RoleUser {
