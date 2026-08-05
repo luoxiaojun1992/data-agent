@@ -93,7 +93,7 @@ export default function UserRBACRolesPage() {
         ) : (
           <div>
             {roles.map((r) => (
-              <div key={r.id} style={cardStyle}>
+              <div key={r.id} className="glass glass-hover" style={cardStyle}>
                 <div style={{ flex: 1 }}>
                   <strong>{r.display_name}</strong>
                   <span style={{ ...badgeStyle(r.level), marginLeft: '8px' }}>L{r.level}</span>
@@ -163,7 +163,7 @@ const badgeStyle = (level: number): React.CSSProperties => ({ padding: '2px 8px'
 const btnPrimaryStyle: React.CSSProperties = { padding: '8px 16px', background: '#5c7cfa', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' };
 const btnSecondaryStyle: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' };
 const btnSmallStyle: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' };
-const cardStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', marginBottom: '8px', border: '1px solid var(--border)', borderRadius: '10px', background: 'var(--card-bg)' };
+const cardStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', marginBottom: '8px' };
 const modalOverlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
 const modalContentStyle: React.CSSProperties = { background: 'var(--card-bg)', padding: '24px', borderRadius: '12px', minWidth: '400px' };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' };

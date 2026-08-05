@@ -104,7 +104,7 @@ export default function RolePermissionsPage() {
           </button>
         </div>
 
-        <table style={tableStyle}>
+        <div className="glass" style={{ padding: 0, overflowX: 'auto' }}><table style={tableStyle}>
           <thead>
             <tr>
               <th style={thStyle}>Key</th><th style={thStyle}>名称</th><th style={thStyle}>模块</th><th style={thStyle}>操作</th>
@@ -123,7 +123,7 @@ export default function RolePermissionsPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
 
         {total > PAGE_SIZE && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onPage={setPage} />}
       </div>
