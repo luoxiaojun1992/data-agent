@@ -442,7 +442,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Logger) *handler.RouteDeps {
 	cfgSvc := configsvc.NewService(deps.sysConfigCacheRepo)
 	rbacRepo := mongoinfra.NewRBACRepository(deps.mongoClient.DB())
-	rbacSvc := rbacsvc.NewService(rbacRepo)
+	rbacSvc := rbacsvc.NewService(rbacRepo, deps.userRepo)
 
 	var imWebhook http.HandlerFunc
 	if deps.imService != nil {

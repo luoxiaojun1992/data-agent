@@ -8,16 +8,18 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
 const maxCount = 10
 
 type Service struct {
-	repo *mongo.RBACRepository
+	repo     *mongo.RBACRepository
+	userRepo repository.UserRepository
 }
 
-func NewService(repo *mongo.RBACRepository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *mongo.RBACRepository, userRepo repository.UserRepository) *Service {
+	return &Service{repo: repo, userRepo: userRepo}
 }
 
 // CanSeeAllData returns true for system_admin users (user role attribute, not RBAC).
@@ -252,9 +254,15 @@ func (s *Service) AddUserRole(ctx context.Context, userID, roleID string) error 
 }
 
 func (s *Service) RemoveUserRole(ctx context.Context, userID, roleID string) error {
-	// Prevent removing the system_admin_role from any user.
+	// Only reject removing system_admin_role from actual system_admin users.
 	if roleID == "rbac_role_system_admin" {
-		return fmt.Errorf("cannot remove system_admin_role from user")
+		user, err := s.userRepo.FindByID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("find user: %w", err)
+		}
+		if user != nil && user.Role == model.RoleSystemAdmin {
+			return fmt.Errorf("cannot remove system_admin_role from system_admin user")
+		}
 	}
 	return s.repo.RemoveUserRole(ctx, userID, roleID)
 }
