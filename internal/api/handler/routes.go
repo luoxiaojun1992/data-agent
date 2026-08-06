@@ -105,7 +105,7 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 
 	// RBAC routes
 	if deps.RBAC != nil {
-		registerRBACRoutes(router, deps.JWTManager, deps.RBAC)
+		registerRBACRoutes(router, deps.JWTManager, deps.RBAC, deps.RBACService)
 	}
 }
 
@@ -316,36 +316,36 @@ func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Fei
 	feishuRoutes.DELETE("/:id", h.Delete)
 }
 
-func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACHandler) {
+func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACHandler, rbacSvc *rbacsvc.Service) {
 	rbac := router.Group("/api/v1/rbac")
 	rbac.Use(jwt.AuthMiddleware())
 
-	// Roles
-	rbac.GET("/roles", h.ListRoles)
-	rbac.GET("/roles/:id", h.GetRole)
-	rbac.POST("/roles", h.CreateRole)
-	rbac.PUT("/roles/:id", h.UpdateRole)
-	rbac.DELETE("/roles/:id", h.DeleteRole)
-	rbac.GET("/roles/:id/available-parents", h.AvailableParents)
+	view := rbac.Group("")
+	view.Use(middleware.RequirePermission(rbacSvc, model.PermRBACView))
+	view.GET("/roles", h.ListRoles)
+	view.GET("/roles/:id", h.GetRole)
+	view.GET("/roles/:id/available-parents", h.AvailableParents)
+	view.GET("/permissions", h.ListPermissions)
+	view.GET("/permissions/:id", h.GetPermission)
+	view.GET("/roles/:id/permissions", h.ListRolePermissions)
+	view.GET("/roles/:id/effective-permissions", h.EffectivePermissions)
 
-	// Permissions
-	rbac.GET("/permissions", h.ListPermissions)
-	rbac.GET("/permissions/:id", h.GetPermission)
-	rbac.DELETE("/permissions/:id", h.DeletePermission)
+	manage := rbac.Group("")
+	manage.Use(middleware.RequirePermission(rbacSvc, model.PermRBACManage))
+	manage.POST("/roles", h.CreateRole)
+	manage.PUT("/roles/:id", h.UpdateRole)
+	manage.DELETE("/roles/:id", h.DeleteRole)
+	manage.DELETE("/permissions/:id", h.DeletePermission)
+	manage.POST("/roles/:id/permissions", h.AddRolePermission)
+	manage.DELETE("/roles/:id/permissions/:permId", h.RemoveRolePermission)
 
-	// Role-permission associations
-	rbac.GET("/roles/:id/permissions", h.ListRolePermissions)
-	rbac.POST("/roles/:id/permissions", h.AddRolePermission)
-	rbac.DELETE("/roles/:id/permissions/:permId", h.RemoveRolePermission)
-
-	// Effective permissions
-	rbac.GET("/roles/:id/effective-permissions", h.EffectivePermissions)
+	// /rbac/my-permissions — special, no extra perm check needed (just auth)
 	rbac.GET("/me/permissions", h.MyPermissions)
 
-	// User-role associations (admin)
+	// User-role associations (part of user management, not rbac:manage)
 	admin := router.Group("/api/v1/admin")
 	admin.Use(jwt.AuthMiddleware())
-	admin.GET("/users/:userId/rbac-roles", h.ListUserRoles)
-	admin.POST("/users/:userId/rbac-roles", h.AddUserRole)
-	admin.DELETE("/users/:userId/rbac-roles/:id", h.RemoveUserRole)
+	admin.GET("/users/:userId/rbac-roles", middleware.RequirePermission(rbacSvc, model.PermUserView), h.ListUserRoles)
+	admin.POST("/users/:userId/rbac-roles", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.AddUserRole)
+	admin.DELETE("/users/:userId/rbac-roles/:id", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.RemoveUserRole)
 }

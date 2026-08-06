@@ -151,6 +151,7 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_hermes_view", model.PermHermesView, "Hermes 探索", "hermes"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_artifact_view", model.PermArtifactView, "查看产出物", "artifact"), roleIDs: []string{user}},
 		// system_admin_role
+		{perm: RBACPerm("rbac_perm_rbac_view", model.PermRBACView, "查看 RBAC 角色与权限", "rbac"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_rbac_manage", model.PermRBACManage, "RBAC 管理", "rbac"), roleIDs: []string{sysAdmin}},
 		// Sidebar menu visibility
 		{perm: RBACPerm("rbac_perm_sidebar_dashboard", model.PermSidebarDashboard, "仪表盘菜单", "sidebar"), roleIDs: []string{user}},

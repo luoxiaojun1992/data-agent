@@ -221,6 +221,11 @@ func (h *RBACHandler) AddUserRole(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Admin users cannot assign admin_role or system_admin_role.
+	if c.GetString("role") == "admin" && (req.RoleID == "rbac_role_admin" || req.RoleID == "rbac_role_system_admin") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin cannot assign admin or system_admin RBAC role"})
+		return
+	}
 	if err := h.svc.AddUserRole(c.Request.Context(), c.Param("userId"), req.RoleID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
