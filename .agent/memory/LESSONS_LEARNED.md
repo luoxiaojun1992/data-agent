@@ -419,3 +419,38 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **根因**: 后端 `/models/list`（ListLLM handler）已按 SPEC-062 只返回 LLM 类型，前端再加 filter 是画蛇添足。占位项不如直接 pre-select 真实第一项。
 **正确做法**: 删除前端 filter 和占位项。加载时自动按 `is_default_for.includes('chat')` pre-select 默认模型。
 **教训**: 前后端各自过滤同一字段 = 冗余 + 维护负担。后端已过滤则前端直接消费。占位项用真实数据替代。
+
+## 2026-08-06: RBAC 权限系统重构
+
+### 1. 路由迁移必须三步验证
+**问题**：`routes.go` 改了路径，`wire.go` 没 new handler → `deps.SysConfig == nil` → `if sysConfig != nil` 跳过 → 路由永不注册。前端路径也忘了改 → 双层 404。
+**教训**：改路由时按顺序检查：① DI 注入（wire.go）→ ② 路由注册（routes.go）→ ③ 前端 API 调用。
+
+### 2. Docker --no-cache 是必须的
+**问题**：Go 编译有层缓存，scp 文件后不用 `--no-cache` 新代码不生效。前端 Next.js 同理。
+**教训**：每次后端部署必须 `docker compose build --no-cache`。
+
+### 3. Seed 幂等 ≠ 数据自动更新 — 禁止补偿修复函数
+**问题**：写 `fixAdminRolePermissionScope()` 在每次启动时修正旧数据。晓军明确禁止：seed 只负责首次安装的正确数据，已存在的错误数据用一次性 DB 操作修复，不写入项目代码。
+**教训**：Seed 只写入正确数据（幂等 skip）。线上 DB 修复用 mongosh 一次性执行，不留代码。
+
+### 4. 权限 = Seed 常量 + 路由 RequirePermission + 前端 gating，三层缺一不可
+**问题**：加了 `im:edit/im:delete` 到 seed 和 DB，但忘记在路由上加 `RequirePermission` → 安全缺口。
+**教训**：新增权限必须出现在三个地方：① `domain/model/rbac.go` 常量 ② `routes.go` 或 handler 注册函数里的 `RequirePermission` ③ 前端 sidebar/admin 页的 `canAccess(perm)`。
+
+### 5. 权限继承优于显式复制
+**问题**：`system_admin` 有 48 个权限——每个 admin/user 权限都手动 assign 给 system_admin。冗余且难维护。
+**教训**：改用 `parent_id` 链 `user → admin → system_admin` + `GetAllRoleIDsWithAncestors` 祖先查询。每个 perm 只 assign 到最低角色，上级通过继承链自动获得。
+
+### 6. Admin 权限限制需要多层防守
+**问题**：admin 不应管理 admin/system_admin 用户，但单层检查可能被绕过。
+**教训**：5 层独立校验：
+- 用户 CRUD：`denyAdminManagingAdmin()`（目标用户角色检查）
+- 角色升级：`UpdateRole` 阻止设置 admin/system_admin
+- RBAC 分配：`AddUserRole` 阻止分配 `rbac_role_admin`/`rbac_role_system_admin`
+- 邀请创建：`CreateInvite` 阻止邀请 admin/system_admin
+- 前端：角色选择下拉隐藏 admin/system_admin 选项
+
+### 7. 模型权限必须按接口拆分
+**问题**：`model:view` 同时控制公开模型列表和 admin 管理接口。普通用户拿到 `model:view` 即可调 admin 接口。
+**教训**：拆为 `model:list`（普通用户 Chat 选模型）+ `model:config:view`（管理员看配置含 API Key）。不同接口不同权限，不可共用。

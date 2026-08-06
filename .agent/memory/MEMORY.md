@@ -95,3 +95,13 @@
 ### 安全: SQL AST 白名单
 - **理由**: 通过 pingcap/tidb/parser 在 SQL 执行前进行 AST 解析，从语法层面拦截写入操作，而非依赖 LLM 自觉
 - **备选**: 纯 Prompt 约束 LLM → 不可靠，LLM 可能生成恶意 SQL
+
+## RBAC 权限系统关键约定（2026-08-06）
+
+- ⛔ Seed 只做首次幂等插入，禁止写补偿修复函数（线上数据修正用 mongosh 一次性执行）
+- ⛔ 新增权限必须覆盖三层：rbac.go 常量 → routes.go RequirePermission → 前端 canAccess
+- ⛔ 改路由必须三步验证：wire.go DI → routes.go 注册 → 前端 API 路径
+- ⛔ Docker 部署必须 `--no-cache`
+- 权限继承：user→admin→sysAdmin 通过 parent_id 链，GetAllRoleIDsWithAncestors 查询
+- Admin 限制：5 层防守（CRUD/角色升级/RBAC分配/邀请/前端）
+- 敏感接口权限不可共用（如 model:list ≠ model:config:view）
