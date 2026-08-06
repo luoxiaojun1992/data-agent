@@ -73,7 +73,7 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.IMBind != nil {
 		imBindGroup := router.Group("/api/v1/im/bind")
 		imBindGroup.Use(deps.JWTManager.AuthMiddleware())
-		RegisterIMBindRoutes(imBindGroup, deps.IMBind)
+		RegisterIMBindRoutes(imBindGroup, deps.IMBind, deps.RBACService)
 	}
 	RegisterHermesProxy(router, deps.HermesURL)
 	router.GET("/api/v1/system/stats", monitor.Handler())
@@ -142,7 +142,7 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.Session != nil {
 		sessionRoutes := router.Group("/api/v1/sessions")
 		sessionRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermChatView))
-		RegisterSessionRoutes(sessionRoutes, deps.Session)
+		RegisterSessionRoutes(sessionRoutes, deps.Session, deps.RBACService)
 	}
 	if deps.Artifact != nil {
 		registerArtifactRoutes(router, deps.JWTManager, deps.Artifact)

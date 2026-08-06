@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	"google.golang.org/adk/session"
@@ -27,16 +30,15 @@ func NewSessionHandler(mgr chat.SessionService, adkSessions ...session.Service) 
 	return &SessionHandler{mgr: mgr, adkSessions: service, appName: "data-agent"}
 }
 
-func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler) {
-	rg.GET("", h.List)
-	rg.POST("", h.Create)
-	// /deleted must be registered before /:id so the static path wins (UI-181).
-	rg.GET("/deleted", h.ListDeleted)
-	rg.GET("/:id", h.Get)
-	rg.GET("/:id/messages", h.Messages)
-	rg.PUT("/:id", h.Renew)
-	rg.DELETE("/:id", h.Delete)
-	rg.POST("/:id/restore", h.Restore)
+func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler, rbacSvc *rbacsvc.Service) {
+	rg.GET("", middleware.RequirePermission(rbacSvc, model.PermChatView), h.List)
+	rg.POST("", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Create)
+	rg.GET("/deleted", middleware.RequirePermission(rbacSvc, model.PermChatView), h.ListDeleted)
+	rg.GET("/:id", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Get)
+	rg.GET("/:id/messages", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Messages)
+	rg.PUT("/:id", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Renew)
+	rg.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermChatDelete), h.Delete)
+	rg.POST("/:id/restore", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Restore)
 }
 
 func (h *SessionHandler) List(c *gin.Context) {
