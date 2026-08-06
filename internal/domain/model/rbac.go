@@ -93,4 +93,26 @@ const (
 	PermStatsView      = "stats:view"
 	PermMemorySearch   = "memory:search"
 	PermRBACManage     = "rbac:manage"
+	PermAdminAccess    = "admin:access"
+
+	// Sidebar menu visibility permissions.
+	PermSidebarDashboard = "sidebar:dashboard"
+	PermSidebarChat      = "sidebar:chat"
+	PermSidebarHermes    = "sidebar:hermes"
+	PermSidebarAgent     = "sidebar:agent"
+	PermSidebarKnowledge = "sidebar:knowledge"
+	PermSidebarArtifact  = "sidebar:artifact"
+	PermSidebarIM        = "sidebar:im"
+	PermSidebarStats     = "sidebar:stats"
+	PermSidebarMemory    = "sidebar:memory"
+	PermSidebarAdmin     = "sidebar:admin"
+
+	// Admin dashboard menu entry visibility permissions.
+	PermAdminMenuModels   = "admin:menu:models"
+	PermAdminMenuSkills   = "admin:menu:skills"
+	PermAdminMenuUsers    = "admin:menu:users"
+	PermAdminMenuRBAC     = "admin:menu:rbac"
+	PermAdminMenuInvites  = "admin:menu:invites"
+	PermAdminMenuAudit    = "admin:menu:audit"
+	PermAdminMenuSettings = "admin:menu:settings"
 )

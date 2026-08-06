@@ -151,6 +151,25 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_artifact_view", model.PermArtifactView, "查看产出物", "artifact"), roleIDs: []string{user, admin, sysAdmin}},
 		// system_admin_role
 		{perm: RBACPerm("rbac_perm_rbac_manage", model.PermRBACManage, "RBAC 管理", "rbac"), roleIDs: []string{sysAdmin}},
+		// Sidebar menu visibility
+		{perm: RBACPerm("rbac_perm_sidebar_dashboard", model.PermSidebarDashboard, "仪表盘菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_chat", model.PermSidebarChat, "对话菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_hermes", model.PermSidebarHermes, "Hermes菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_agent", model.PermSidebarAgent, "Agent菜单", "sidebar"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_knowledge", model.PermSidebarKnowledge, "知识库菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_artifact", model.PermSidebarArtifact, "产出物菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_im", model.PermSidebarIM, "飞书菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_stats", model.PermSidebarStats, "统计菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_memory", model.PermSidebarMemory, "Memory菜单", "sidebar"), roleIDs: []string{user, admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_sidebar_admin", model.PermSidebarAdmin, "管理后台菜单", "sidebar"), roleIDs: []string{admin, sysAdmin}},
+		// Admin dashboard menu entries
+		{perm: RBACPerm("rbac_perm_admin_menu_models", model.PermAdminMenuModels, "模型配置入口", "admin"), roleIDs: []string{sysAdmin}},
+		{perm: RBACPerm("rbac_perm_admin_menu_skills", model.PermAdminMenuSkills, "Skill管理入口", "admin"), roleIDs: []string{sysAdmin}},
+		{perm: RBACPerm("rbac_perm_admin_menu_users", model.PermAdminMenuUsers, "用户管理入口", "admin"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_admin_menu_rbac", model.PermAdminMenuRBAC, "RBAC管理入口", "admin"), roleIDs: []string{sysAdmin}},
+		{perm: RBACPerm("rbac_perm_admin_menu_invites", model.PermAdminMenuInvites, "邀请管理入口", "admin"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_admin_menu_audit", model.PermAdminMenuAudit, "审计日志入口", "admin"), roleIDs: []string{admin, sysAdmin}},
+		{perm: RBACPerm("rbac_perm_admin_menu_settings", model.PermAdminMenuSettings, "系统设置入口", "admin"), roleIDs: []string{sysAdmin}},
 	}
 
 	permDocs := make([]interface{}, 0, len(perms))
