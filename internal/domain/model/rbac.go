@@ -72,6 +72,8 @@ const (
 	PermArtifactView   = "artifact:view"
 	PermArtifactDelete = "artifact:delete"
 	PermIMView         = "im:view"
+	PermIMEdit         = "im:edit"
+	PermIMDelete       = "im:delete"
 	PermUserView       = "user:view"
 	PermUserCreate     = "user:create"
 	PermUserEdit       = "user:edit"

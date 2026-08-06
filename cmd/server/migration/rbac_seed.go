@@ -119,13 +119,15 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 	perms := []permSeed{
 		// admin_role
 		{perm: RBACPerm("rbac_perm_dashboard_view", model.PermDashboardView, "查看仪表盘", "dashboard"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_chat_delete", model.PermChatDelete, "删除对话", "chat"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_chat_delete", model.PermChatDelete, "删除对话", "chat"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_agent_view", model.PermAgentView, "查看 Agent 任务", "agent"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_agent_create", model.PermAgentCreate, "创建 Agent 任务", "agent"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_agent_delete", model.PermAgentDelete, "删除 Agent 任务", "agent"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_kb_delete", model.PermKBDelete, "删除知识库文档", "knowledge"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_artifact_delete", model.PermArtifactDelete, "删除产出物", "artifact"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_kb_delete", model.PermKBDelete, "删除知识库文档", "knowledge"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_artifact_delete", model.PermArtifactDelete, "删除产出物", "artifact"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_im_view", model.PermIMView, "查看 IM 配置", "im"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_im_edit", model.PermIMEdit, "编辑 IM 配置", "im"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_im_delete", model.PermIMDelete, "删除 IM 配置", "im"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_user_view", model.PermUserView, "查看用户列表", "user"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_user_create", model.PermUserCreate, "创建用户", "user"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_user_edit", model.PermUserEdit, "编辑用户", "user"), roleIDs: []string{admin}},

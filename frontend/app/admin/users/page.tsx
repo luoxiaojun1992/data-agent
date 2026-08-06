@@ -526,8 +526,8 @@ export default function UsersPage() {
                   onChange={(e) => setFormRole(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
+                  {/* NOTE: both dropdowns (edit modal + add modal) */}
+
                 </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
@@ -572,8 +572,8 @@ export default function UsersPage() {
                   onChange={(e) => setFormRole(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
+                  {/* NOTE: both dropdowns (edit modal + add modal) */}
+
                 </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
