@@ -8,8 +8,33 @@ export interface AuthState {
   username: string | null;
   role: string | null;
   needChangePw: boolean;
+  permissions: string[];
   hydrated: boolean;
 }
+
+// Sidebar + admin menu permission keys used by canAccess.
+export const SIDEBAR_PERMS = {
+  dashboard: 'sidebar:dashboard',
+  chat: 'sidebar:chat',
+  hermes: 'sidebar:hermes',
+  agent: 'sidebar:agent',
+  knowledge: 'sidebar:knowledge',
+  artifact: 'sidebar:artifact',
+  im: 'sidebar:im',
+  stats: 'sidebar:stats',
+  memory: 'sidebar:memory',
+  admin: 'sidebar:admin',
+} as const;
+
+export const ADMIN_MENU_PERMS = {
+  models: 'admin:menu:models',
+  skills: 'admin:menu:skills',
+  users: 'admin:menu:users',
+  rbac: 'admin:menu:rbac',
+  invites: 'admin:menu:invites',
+  audit: 'admin:menu:audit',
+  settings: 'admin:menu:settings',
+} as const;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -27,6 +52,7 @@ export function useAuth() {
     username: null,
     role: null,
     needChangePw: false,
+    permissions: [],
     hydrated: false,
   });
 
@@ -37,10 +63,12 @@ export function useAuth() {
     const username = localStorage.getItem('username');
     const role = localStorage.getItem('role');
     const needChangePw = boolLS('needChangePw');
+    let perms: string[] = [];
+    try { perms = JSON.parse(localStorage.getItem('permissions') || '[]'); } catch { }
     if (token) {
-      setAuth({ token, userId, username, role, needChangePw, hydrated: true });
+      setAuth({ token, userId, username, role, needChangePw, permissions: perms, hydrated: true });
     } else {
-      setAuth({ token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: true });
+      setAuth({ token: null, userId: null, username: null, role: null, needChangePw: false, permissions: [], hydrated: true });
     }
   }, []);
 
@@ -60,12 +88,25 @@ export function useAuth() {
     localStorage.setItem('username', data.username);
     localStorage.setItem('role', data.role);
     localStorage.setItem('needChangePw', String(!!data.need_change_pw));
+    // Load RBAC permissions
+    let perms: string[] = [];
+    try {
+      const pRes = await fetch(`${API_BASE}/rbac/my-permissions`, {
+        headers: { 'Authorization': `Bearer ${data.access_token}` },
+      });
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        perms = pData.permissions || [];
+      }
+    } catch { /* ignore — sidebar will show no items if perms unavailable */ }
+    localStorage.setItem('permissions', JSON.stringify(perms));
     setAuth({
       token: data.access_token,
       userId: data.user_id,
       username: data.username,
       role: data.role,
       needChangePw: !!data.need_change_pw,
+      permissions: perms,
       hydrated: true,
     });
     return data;
@@ -77,7 +118,7 @@ export function useAuth() {
     localStorage.removeItem('username');
     localStorage.removeItem('role');
     localStorage.removeItem('needChangePw');
-    setAuth({ token: null, userId: null, username: null, role: null, needChangePw: false, hydrated: true });
+    setAuth({ token: null, userId: null, username: null, role: null, needChangePw: false, permissions: [], hydrated: true });
   }, []);
 
   const apiFetch = useCallback(async (path: string, options: RequestInit = {}) => {
@@ -107,5 +148,9 @@ export function useAuth() {
     return res;
   }, [auth.token, logout]);
 
-  return { auth, login, logout, apiFetch };
+  const canAccess = useCallback((perm: string) => {
+    return auth.permissions.includes(perm);
+  }, [auth.permissions]);
+
+  return { auth, login, logout, apiFetch, canAccess };
 }

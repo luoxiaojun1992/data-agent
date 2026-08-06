@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 interface SidebarProps {
   username?: string | null;
   role?: string | null;
+  permissions?: string[];
   onLogout: () => void;
   onToggle?: () => void;
   collapsed?: boolean;
@@ -14,14 +15,28 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard', roles: ['user', 'admin', 'system_admin'] as string[] },
-  { href: '/chat', label: 'Chat 对话', icon: '💬', testid: 'nav-chat', roles: ['user', 'admin', 'system_admin'] },
-  { href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent', roles: ['admin', 'system_admin'] },
-  { href: '/hermes', label: 'Hermes 探索', icon: '🔍', testid: 'nav-hermes', roles: ['user', 'admin', 'system_admin'] },
-  { href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt', roles: ['user', 'admin', 'system_admin'] },
-  { href: '/artifacts', label: '产出物', icon: '📦', testid: 'nav-artifacts', roles: ['user', 'admin', 'system_admin'] },
-  { href: '/im', label: 'IM 集成', icon: '🗨️', testid: 'nav-im', roles: ['user', 'admin', 'system_admin'] },
-  { href: '/admin', label: '管理后台', icon: '🛠', testid: 'nav-admin', roles: ['admin', 'system_admin'] },
+  { perm: 'sidebar:dashboard',
+    href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard' },
+  { perm: 'sidebar:chat',
+    href: '/chat', label: 'Chat 对话', icon: '💬', testid: 'nav-chat' },
+  { perm: 'sidebar:agent',
+    href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent' },
+  { perm: 'sidebar:hermes',
+    href: '/hermes', label: 'Hermes 探索', icon: '🔍', testid: 'nav-hermes' },
+  { perm: 'sidebar:knowledge',
+    href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt' },
+  { perm: 'sidebar:artifact',
+    href: '/artifacts', label: '产出物', icon: '📦', testid: 'nav-artifacts' },
+  { perm: 'sidebar:im',
+    href: '/im', label: 'IM 集成', icon: '🗨️', testid: 'nav-im' },
+  { perm: 'sidebar:stats',
+    href: '/stats', label: '统计分析', icon: '📊',
+  },
+  { perm: 'sidebar:memory',
+    href: '/memory', label: 'Memory 检索', icon: '🧠',
+  },
+  { perm: 'sidebar:admin',
+    href: '/admin', label: '管理后台', icon: '🛠', testid: 'nav-admin' },
 ];
 
 export default function Sidebar({ username, role, onLogout, onToggle, collapsed, onCollapseToggle }: SidebarProps) {
