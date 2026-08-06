@@ -130,6 +130,7 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_user_create", model.PermUserCreate, "创建用户", "user"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_user_edit", model.PermUserEdit, "编辑用户", "user"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_user_delete", model.PermUserDelete, "删除用户", "user"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_model_config_view", model.PermModelConfigView, "查看模型详细配置", "model"), roleIDs: []string{sysAdmin}},
 		{perm: RBACPerm("rbac_perm_model_edit", model.PermModelEdit, "编辑模型配置", "model"), roleIDs: []string{sysAdmin}},
 		{perm: RBACPerm("rbac_perm_system_view", model.PermSystemView, "查看系统配置", "system"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_system_edit", model.PermSystemEdit, "编辑系统配置", "system"), roleIDs: []string{sysAdmin}},
@@ -142,7 +143,7 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_stats_view", model.PermStatsView, "查看统计分析", "stats"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_memory_search", model.PermMemorySearch, "Memory 检索", "memory"), roleIDs: []string{user}},
 		// user_role
-		{perm: RBACPerm("rbac_perm_model_view", model.PermModelView, "查看模型配置", "model"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_model_view", model.PermModelList, "查看模型配置", "model"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_chat_send", model.PermChatSend, "发送消息", "chat"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_chat_view", model.PermChatView, "查看对话历史", "chat"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_kb_view", model.PermKBView, "查看知识库", "knowledge"), roleIDs: []string{user}},

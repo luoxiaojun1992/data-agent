@@ -96,7 +96,7 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	admin := router.Group("/api/v1/admin")
 	admin.Use(deps.JWTManager.AuthMiddleware())
 	if deps.ModelConfig != nil {
-		RegisterModelAdminRoutes(admin, deps.ModelConfig)
+		RegisterModelAdminRoutes(admin, deps.ModelConfig, deps.RBACService)
 	}
 	registerAdminRoutes(admin, deps.Auth, deps.SysConfig, deps.RBACService)
 

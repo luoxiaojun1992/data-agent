@@ -38,14 +38,14 @@ const errProviderNotConfigured = "model provider not configured"
 // RegisterModelPublicRoutes registers model routes used by regular users
 // (chat model selector). Mounted under /api/v1 (no /admin prefix).
 func RegisterModelPublicRoutes(api *gin.RouterGroup, h *ModelConfigHandler, rbacSvc *rbacsvc.Service) {
-	api.GET(modelRoutePath+"/list", middleware.RequirePermission(rbacSvc, model.PermModelView), h.ListLLM)
+	api.GET(modelRoutePath+"/list", middleware.RequirePermission(rbacSvc, model.PermModelList), h.ListLLM)
 }
 
 // RegisterModelAdminRoutes registers model config management routes.
 // Mounted under /api/v1/admin. Requires PermModelEdit (system_admin only).
-func RegisterModelAdminRoutes(admin *gin.RouterGroup, h *ModelConfigHandler) {
-	admin.GET(modelRoutePath+"/embedding", h.ListEmbedding) // embedding models
-	admin.GET(modelRoutePath, h.Get)
+func RegisterModelAdminRoutes(admin *gin.RouterGroup, h *ModelConfigHandler, rbacSvc *rbacsvc.Service) {
+	admin.GET(modelRoutePath+"/embedding", middleware.RequirePermission(rbacSvc, model.PermModelConfigView), h.ListEmbedding)
+	admin.GET(modelRoutePath, middleware.RequirePermission(rbacSvc, model.PermModelConfigView), h.Get)
 	admin.PUT(modelRoutePath, h.Put)
 	admin.POST(modelRoutePath, h.AddModel)
 	admin.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)
