@@ -270,6 +270,49 @@ func (r *RBACRepository) RemoveRolePermission(ctx context.Context, roleID, permi
 
 // ── Permission Lookup ────────────────────────────────────────────────
 
+
+// GetAllRoleIDsWithAncestors returns the given role IDs plus all ancestor role IDs
+// traversed via parent_id. Used for perm inheritance: a role inherits perms
+// from its parent chain (admin inherits from user, sysAdmin inherits from admin).
+func (r *RBACRepository) GetAllRoleIDsWithAncestors(ctx context.Context, roleIDs []string) ([]string, error) {
+	result := make(map[string]bool)
+	for _, rid := range roleIDs {
+		result[rid] = true
+	}
+	// Load all roles once
+	allRoles := make(map[string]string) // id -> parent_id
+	cur, err := r.db.Collection("rbac_roles").Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	var roles []model.RBACRole
+	if err := cur.All(ctx, &roles); err != nil {
+		return nil, err
+	}
+	for _, role := range roles {
+		allRoles[role.ID] = role.ParentID
+	}
+	// BFS upwards
+	queue := append([]string{}, roleIDs...)
+	for len(queue) > 0 {
+		rid := queue[0]
+		queue = queue[1:]
+		parent, ok := allRoles[rid]
+		if !ok || parent == "" {
+			continue
+		}
+		if !result[parent] {
+			result[parent] = true
+			queue = append(queue, parent)
+		}
+	}
+	out := make([]string, 0, len(result))
+	for id := range result {
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 func (r *RBACRepository) GetAllDescendantRoleIDs(ctx context.Context, roleIDs []string) ([]string, error) {
 	result := make(map[string]bool)
 	for _, rid := range roleIDs {
