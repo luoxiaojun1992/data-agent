@@ -38,11 +38,11 @@ export default function MemoryPage() {
   }, [loadList, auth.hydrated]);
 
   const extractText = (m: any): string => {
-    if (m.content?.parts?.length) {
-      return m.content.parts.map((p: any) => p.text || '').join('');
-    }
-    return m.text || '';
+    // Backend serializes adapter.Observation with Go-style capitalized fields.
+    return m.Content || (m.content?.parts?.map((p: any) => p.text || '').join('')) || m.text || '';
   };
+
+  const extractId = (m: any): string => m.id || m.ID || '';
 
   const truncate = (s: string, n: number): string => {
     if (s.length <= n) return s;
@@ -50,7 +50,7 @@ export default function MemoryPage() {
   };
 
   if (detailId) {
-    const detail = memories.find(m => m.id === detailId);
+    const detail = memories.find(m => extractId(m) === detailId);
     return (
       <AppLayout>
         <div className="animate-fade-in max-w-4xl">
@@ -62,15 +62,15 @@ export default function MemoryPage() {
             <div className="space-y-4">
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                 <div className="text-xs text-[var(--text-secondary)] mb-1">ID</div>
-                <div className="text-sm font-mono text-[var(--text-primary)] break-all">{detail.id}</div>
+                <div className="text-sm font-mono text-[var(--text-primary)] break-all">{extractId(detail)}</div>
               </div>
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                 <div className="text-xs text-[var(--text-secondary)] mb-1">用户</div>
-                <div className="text-sm font-mono text-[var(--text-primary)]">{detail.user_id}</div>
+                <div className="text-sm font-mono text-[var(--text-primary)]">{detail.UserID || detail.user_id}</div>
               </div>
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                 <div className="text-xs text-[var(--text-secondary)] mb-1">更新时间</div>
-                <div className="text-sm text-[var(--text-primary)]">{new Date(detail.updated_at).toLocaleString()}</div>
+                <div className="text-sm text-[var(--text-primary)]">{new Date(detail.UpdatedAt || detail.updated_at).toLocaleString()}</div>
               </div>
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                 <div className="text-xs text-[var(--text-secondary)] mb-2">内容</div>
@@ -106,8 +106,8 @@ export default function MemoryPage() {
             const text = extractText(m);
             return (
               <div
-                key={m.id}
-                onClick={() => setDetailId(m.id)}
+                key={extractId(m)}
+                onClick={() => setDetailId(extractId(m))}
                 className="p-3 rounded-lg bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
               >
                 <div className="text-sm text-[var(--text-primary)] font-mono break-all">
