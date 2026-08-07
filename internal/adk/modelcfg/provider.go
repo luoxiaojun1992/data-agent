@@ -169,7 +169,10 @@ func (p *Provider) models() []ModelEntry {
 				entries[i].Instruction = DefaultInstruction
 			}
 			p.applyEnvDefaults(&entries[i])
-			p.resolveAPIKey(ctx, &entries[i])
+			if err := p.resolveAPIKey(ctx, &entries[i]); err != nil {
+				// Vault decrypt failure — caller should not use this entry
+				// (models() is used by runtime; runtime will get auth error)
+			}
 			if entries[i].BaseURL == "" && legacyBaseURL != "" {
 				entries[i].BaseURL = legacyBaseURL
 			}
@@ -189,21 +192,25 @@ func (p *Provider) models() []ModelEntry {
 // so legacy callers/tests keep working. When vault is unavailable but the
 // field is a Vault path, it stays as-is (will surface as an auth error at
 // chat time, which is easier to diagnose than silently dropping).
-func (p *Provider) resolveAPIKey(ctx context.Context, m *ModelEntry) {
+func (p *Provider) resolveAPIKey(ctx context.Context, m *ModelEntry) error {
 	if m.APIKey == "" {
-		return
+		return nil
 	}
 	if !looksLikeVaultPath(m.APIKey) {
-		return // already plaintext
+		return nil // already plaintext
 	}
 	if p.vault == nil {
-		return // Vault path stays — will fail at auth time
+		return fmt.Errorf("model %q: Vault not available, cannot decrypt API key", m.ID)
 	}
 	plain, err := p.vault.Retrieve(ctx, m.APIKey)
-	if err == nil && plain != "" {
-		m.APIKey = plain
+	if err != nil {
+		return fmt.Errorf("model %q: Vault decrypt failed: %w", m.ID, err)
 	}
-	// Decrypt failure keeps the path — auth error will surface at LLM call time.
+	if plain == "" {
+		return fmt.Errorf("model %q: empty API key from Vault", m.ID)
+	}
+	m.APIKey = plain
+	return nil
 }
 
 // looksLikeVaultPath reports whether the string resembles one of our Vault

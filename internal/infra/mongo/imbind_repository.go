@@ -35,11 +35,11 @@ func (r *IMBindRepository) Get(ctx context.Context, userID string) (map[string]i
 	// Decrypt app_secret from Vault if exists
 	if result != nil && r.vault != nil {
 		if vaultKey, ok := result["vault_secret_path"].(string); ok && vaultKey != "" {
-			if secret, err := r.vault.Retrieve(ctx, vaultKey); err == nil {
-				result["app_secret"] = secret
-			} else {
-				result["app_secret"] = "••••••••••"
+			secret, err := r.vault.Retrieve(ctx, vaultKey)
+			if err != nil {
+				return nil, fmt.Errorf("decrypt im app_secret: %w", err)
 			}
+			result["app_secret"] = secret
 			delete(result, "vault_secret_path")
 		}
 	}
