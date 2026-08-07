@@ -43,14 +43,16 @@ rejected   — 拒绝
 | POST | / | user:create | 上传 OpenAPI 文件（multipart/form-data） |
 | GET | /:id | user:view | 详情（含解析后的 API 文档） |
 | PUT | /:id | user:edit | 编辑 name/description |
-| DELETE | /:id | user:edit | 删除（仅 own） |
+| DELETE | /:id | api:collection:delete | 删除（仅 own） |
 | POST | /:id/approve | system:edit | 审批通过/拒绝（body: {status:"approved|rejected"}） |
 
 ### 3.2 Skill 工具接口（/api/v1/tools/api）
 
+**全局规则：所有 Skill 工具只返回/调用 status == "approved" 的 API 集合。pending 和 rejected 的集合对 Skill 不可见。**
+
 | 工具名 | 权限 | 说明 |
 |--------|------|------|
-| external_api_search | chat:view | 模糊搜索 API 集合描述（limit=10，审核通过的集合） |
+| external_api_search | chat:view | 模糊搜索 API 集合描述（limit=10，仅 approved） |
 | external_api_summary | chat:view | 查询某个集合有哪些 API（分页：max 100 pages, max 10/page） |
 | external_api_method | chat:view | 查询某个 API 方法详情（入参/出参） |
 | external_api_call | chat:view | 调用外部 API（透传参数） |
@@ -62,6 +64,7 @@ rejected   — 拒绝
 ```go
 PermAPICollectionView   = "api:collection:view"   // → admin_role
 PermAPICollectionEdit   = "api:collection:edit"   // → admin_role
+PermAPICollectionDelete = "api:collection:delete" // → admin_role
 PermAPICollectionApprove = "api:collection:approve" // → sysAdmin_role only
 ```
 
