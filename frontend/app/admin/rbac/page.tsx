@@ -105,7 +105,7 @@ export default function RBACPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <a href={`/admin/admin/rbac/roles/${r.id}/permissions`} style={{ ...btnSm, color: '#5c7cfa', textDecoration: 'none' }}>管理权限</a>
+                <a href={`/admin/rbac/roles/${r.id}/permissions`} style={{ ...btnSm, color: '#5c7cfa', textDecoration: 'none' }}>管理权限</a>
                 {r.level < 2 && <button data-testid={`rbac-role-sub-${r.id}`}
                   onClick={() => { setParentFilter(r.id); setParentFilterName(r.display_name); setRolePage(1); }}
                   style={{ ...btnSm, color: '#a855f7' }}>子角色 ({r.child_count})</button>}
@@ -201,7 +201,7 @@ function AddRoleModal({ apiFetch, roles, onClose, onSuccess, showToast }: any) {
   const [parentID, setParentID] = useState('');
   const create = async () => {
     try {
-      await apiFetch('/admin/admin/rbac/roles', { method: 'POST', body: JSON.stringify({ name, display_name: displayName, description, parent_id: parentID }) });
+      await apiFetch('/admin/rbac/roles', { method: 'POST', body: JSON.stringify({ name, display_name: displayName, description, parent_id: parentID }) });
       showToast('角色已创建'); onSuccess();
     } catch (e: any) { showToast(e?.message || '创建失败'); }
   };
