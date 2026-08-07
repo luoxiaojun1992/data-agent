@@ -33,7 +33,6 @@ type RouteDeps struct {
 	Artifact     *ArtifactHandler
 	Knowledge    *KnowledgeHandler
 	Audit        *AuditHandler
-	APIReview    *APIReviewHandler
 	Notification *NotificationHandler
 	Task         *TaskHandler
 	Dashboard    *DashboardHandler
@@ -172,9 +171,6 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.Audit != nil {
 		registerAuditRoutes(router, deps.JWTManager, deps.Audit, deps.RBACService)
 	}
-	if deps.APIReview != nil {
-		registerAPIReviewRoutes(router, deps.JWTManager, deps.APIReview, deps.RBACService)
-	}
 	if deps.Notification != nil {
 		registerNotificationRoutes(router, deps.JWTManager, deps.Notification)
 	}
@@ -276,14 +272,7 @@ func registerAuditRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Audi
 	auditRoutes.POST("/export", h.ExportAuditLogs)
 }
 
-func registerAPIReviewRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *APIReviewHandler, rbacSvc *rbacsvc.Service) {
-	apiRevRoutes := router.Group("/api/v1/admin/api-reviews")
-	apiRevRoutes.Use(jwt.AuthMiddleware())
-	apiRevRoutes.GET("", h.ListAPIReviews)
-	apiRevRoutes.POST("", h.CreateAPIReview)
-	apiRevRoutes.PUT("/:id/approve", h.ApproveAPIReview)
-	apiRevRoutes.PUT("/:id/reject", h.RejectAPIReview)
-}
+
 
 func registerNotificationRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *NotificationHandler) {
 	notifRoutes := router.Group("/api/v1/notifications")

@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/feishu"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
@@ -553,50 +552,9 @@ func docToChunk(d bson.M) *knowledge.Chunk {
 
 // ── APIReview ───────────────────────────────────────────────────────
 
-func apiReviewToDoc(r *apireview.APIReview) bson.M {
-	doc := bson.M{
-		"_id":        r.ID,
-		"name":       r.Name,
-		"file_name":  r.FileName,
-		"version":    r.Version,
-		"endpoints":  r.Endpoints,
-		"domain":     r.Domain,
-		"rate_limit": r.RateLimit,
-		"submitter":  r.Submitter,
-		"status":     r.Status,
-		"created_at": r.CreatedAt,
-		"updated_at": r.UpdatedAt,
-	}
-	if r.Reviewer != "" {
-		doc["reviewer"] = r.Reviewer
-	}
-	if r.RejectReason != "" {
-		doc["reject_reason"] = r.RejectReason
-	}
-	if r.ReviewedAt != nil {
-		doc["reviewed_at"] = *r.ReviewedAt
-	}
-	return doc
-}
 
-func docToAPIReview(d bson.M) *apireview.APIReview {
-	return &apireview.APIReview{
-		ID:           getStr(d, "_id"),
-		Name:         getStr(d, "name"),
-		FileName:     getStr(d, "file_name"),
-		Version:      getStr(d, "version"),
-		Endpoints:    getInt(d, "endpoints"),
-		Domain:       getStr(d, "domain"),
-		RateLimit:    getInt(d, "rate_limit"),
-		Submitter:    getStr(d, "submitter"),
-		Reviewer:     getStr(d, "reviewer"),
-		RejectReason: getStr(d, "reject_reason"),
-		Status:       apireview.Status(getStr(d, "status")),
-		ReviewedAt:   getTimePtr(d, "reviewed_at"),
-		CreatedAt:    getTime(d, "created_at"),
-		UpdatedAt:    getTime(d, "updated_at"),
-	}
-}
+
+
 
 // ── TaskDef (definition) ─────────────────────────────────────────────
 

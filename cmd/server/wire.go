@@ -35,7 +35,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/scheduler"
-	apireview "github.com/luoxiaojun1992/data-agent/internal/service/apireview"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
@@ -338,8 +337,6 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 func initAuditAndNotifications(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.auditService = auditsvc.NewService(mongoinfra.NewAuditRepository(mongoClient.DB()))
 	deps.auditHandler = handler.NewAuditHandler(deps.auditService)
-	deps.apiReviewSvc = apireview.NewService(mongoinfra.NewAPIReviewRepository(mongoClient.DB()))
-	deps.apiReviewHandler = handler.NewAPIReviewHandler(deps.apiReviewSvc)
 	deps.notifSvc = notifsvc.NewService(mongoinfra.NewNotificationRepository(mongoClient.DB()))
 	deps.notifHandler = handler.NewNotificationHandler(deps.notifSvc)
 }
@@ -490,7 +487,6 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Artifact:      deps.artifactHandler,
 		Knowledge:     deps.kbHandler,
 		Audit:         deps.auditHandler,
-		APIReview:     deps.apiReviewHandler,
 		Notification:  deps.notifHandler,
 		Task:          deps.taskHandler,
 		Dashboard:     handler.NewDashboardHandler(deps.taskService, deps.kbService, deps.llmRecorder),

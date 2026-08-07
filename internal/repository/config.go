@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 
-	"github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
@@ -37,16 +36,6 @@ type ModelConfigRepository interface {
 	GetAll(ctx context.Context) ([]map[string]interface{}, error)
 	Upsert(ctx context.Context, key string, config map[string]interface{}) error
 	Delete(ctx context.Context, key string) error
-}
-
-//go:generate mockery --name APIReviewRepository --output ./mocks --outpkg mocks
-
-// APIReviewRepository defines the data access contract for API review records.
-type APIReviewRepository interface {
-	Create(ctx context.Context, review *apireview.APIReview) error
-	List(ctx context.Context, skip, limit int64) ([]apireview.APIReview, error)
-	FindByID(ctx context.Context, id string) (*apireview.APIReview, error)
-	UpdateStatus(ctx context.Context, id string, update map[string]interface{}) error
 }
 
 //go:generate mockery --name IMBindRepository --output ./mocks --outpkg mocks

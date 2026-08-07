@@ -37,7 +37,6 @@ import (
 	agentlogic "github.com/luoxiaojun1992/data-agent/internal/logic/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
-	apireview "github.com/luoxiaojun1992/data-agent/internal/service/apireview"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
@@ -108,8 +107,6 @@ type serverDependencies struct {
 	taskHandler      *handler.TaskHandler
 	auditService     *auditsvc.Service
 	auditHandler     *handler.AuditHandler
-	apiReviewSvc     *apireview.Service
-	apiReviewHandler *handler.APIReviewHandler
 	notifSvc         *notifsvc.Service
 	notifHandler     *handler.NotificationHandler
 }

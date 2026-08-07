@@ -12,6 +12,5 @@ var (
 	_ repository.SysConfigRepository    = (*SystemConfigRepository)(nil)
 	_ repository.AuditRepository        = (*AuditRepository)(nil)
 	_ repository.NotificationRepository = (*NotificationRepository)(nil)
-	_ repository.APIReviewRepository    = (*APIReviewRepository)(nil)
 	_ repository.IMBindRepository       = (*IMBindRepository)(nil)
 )
