@@ -48,7 +48,6 @@ func RegisterModelAdminRoutes(admin *gin.RouterGroup, h *ModelConfigHandler, rba
 	admin.GET(modelRoutePath, middleware.RequirePermission(rbacSvc, model.PermModelConfigView), h.Get)
 	admin.PUT(modelRoutePath, h.Put)
 	admin.POST(modelRoutePath, h.AddModel)
-	admin.GET(modelRoutePath+"/:id/api-key", h.GetAPIKey)
 	admin.PATCH(modelRoutePath+"/:id/default", h.SetDefault)
 	admin.PATCH(modelRoutePath+"/:id", h.UpdateModel)
 	admin.DELETE(modelRoutePath+"/:id", h.DeleteModel)
@@ -267,21 +266,6 @@ func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已设为默认", "id": id, "use_cases": req.UseCases})
 }
 
-// GetAPIKey decrypts and returns the plaintext API key for a model.
-// GET /models/:id/api-key
-func (h *ModelConfigHandler) GetAPIKey(c *gin.Context) {
-	if h.provider == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
-		return
-	}
-	id := c.Param("id")
-	plaintext, err := h.provider.DecryptModelAPIKey(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"plaintext": plaintext})
-}
 
 // UpdateModel updates an existing model's fields.
 // PATCH /models/:id
