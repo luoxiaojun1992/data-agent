@@ -66,7 +66,6 @@ export default function ModelsPage() {
   const [embeddingTotal, setEmbeddingTotal] = useState(0);
   const [embeddingPage, setEmbeddingPage] = useState(1);
   const PAGE = 10;
-  const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>(null);
@@ -133,32 +132,6 @@ export default function ModelsPage() {
   useEffect(() => {
     if (auth.hydrated) { fetchLLMList(); fetchEmbeddingList(); fetchHermesConfig(); }
   }, [auth.hydrated, fetchLLMList, fetchEmbeddingList, fetchHermesConfig]);
-
-  const revealKey = async (id: string | undefined) => {
-    if (!id) return;
-    if (revealedKeys[id]) {
-      setRevealedKeys(prev => {
-        const c = { ...prev };
-        delete c[id];
-        return c;
-      });
-      return;
-    }
-    try {
-      const res = await apiFetch(`/admin/models/${id}/api-key`);
-      if (res.ok) {
-        const data = await res.json();
-        setRevealedKeys(prev => ({ ...prev, [id]: data.plaintext }));
-        setTimeout(() => {
-          setRevealedKeys(prev => {
-            const c = { ...prev };
-            delete c[id];
-            return c;
-          });
-        }, 30000);
-      } else showToast('解密失败', 'error');
-    } catch { showToast('解密失败', 'error'); }
-  };
 
   const revealHermesKey = async () => {
     if (revealedHermesKey !== null) {
@@ -437,9 +410,7 @@ export default function ModelsPage() {
                 {filteredLLM.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
-                  const isRevealed = !!revealedKeys[rowId];
-                  const hasKey = !!m.api_key;
-                  const keyDisplay = isRevealed ? revealedKeys[rowId] : (hasKey ? MASK : '未设置');
+                  const keyDisplay = m.api_key || '未设置';
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
                       <td style={{ padding: '10px 12px' }}>
@@ -448,17 +419,9 @@ export default function ModelsPage() {
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>{m.base_url || '-'}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {keyDisplay}
-                          </code>
-                          <button
-                            data-testid={`model-list-key-eye-${i}`}
-                            onClick={() => revealKey(m.id)}
-                            title={isRevealed ? '隐藏' : '查看明文'}
-                            style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
-                          ><EyeIcon open={isRevealed} /></button>
-                        </div>
+                        <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {keyDisplay}
+                        </code>
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '12px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {m.instruction || '-'}
@@ -529,9 +492,7 @@ export default function ModelsPage() {
                 {filteredEmbedding.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
-                  const isRevealed = !!revealedKeys[rowId];
-                  const hasKey = !!m.api_key;
-                  const keyDisplay = isRevealed ? revealedKeys[rowId] : (hasKey ? MASK : '未设置');
+                  const keyDisplay = m.api_key || '未设置';
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`embedding-list-row-${i}`}>
                       <td style={{ padding: '10px 12px' }}>
@@ -540,15 +501,7 @@ export default function ModelsPage() {
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>{m.base_url || '-'}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
-                          <button
-                            data-testid={`embedding-list-key-eye-${i}`}
-                            onClick={() => revealKey(m.id)}
-                            title={isRevealed ? '隐藏' : '查看明文'}
-                            style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
-                          ><EyeIcon open={isRevealed} /></button>
-                        </div>
+                        <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         {m.is_default ? (
