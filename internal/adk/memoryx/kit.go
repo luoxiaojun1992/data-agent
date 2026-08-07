@@ -46,6 +46,11 @@ func NewKit(db *mongo.Database, appName string, llm model.LLM, embedFn func(ctx 
 }
 
 // Service returns the memory.Service (implements google.golang.org/adk/memory.Service).
+// Storage returns the underlying storage interface.
+func (k *Kit) Storage() Storage {
+	return k.storage
+}
+
 func (k *Kit) Service() memory.Service {
 	return k.MemoryKit.Service
 }

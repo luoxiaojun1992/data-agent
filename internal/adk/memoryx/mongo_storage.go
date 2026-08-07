@@ -91,6 +91,44 @@ func (s *MongoStorage) Store(ctx context.Context, obs *adapter.Observation) erro
 	return err
 }
 
+
+
+// List returns a paginated list of observations filtered by user_id and app_name.
+func (s *MongoStorage) List(ctx context.Context, userID string, page, pageSize int) ([]adapter.Observation, int64, error) {
+	filter := bson.M{"app_name": s.appName}
+	if userID != "" {
+		filter["user_id"] = userID
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+	total, err := s.coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	findOpts := options.Find().
+		SetSort(bson.D{{Key: "updated_at", Value: -1}}).
+		SetSkip(int64((page - 1) * pageSize)).
+		SetLimit(int64(pageSize))
+	cur, err := s.coll.Find(ctx, filter, findOpts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cur.Close(ctx)
+	var docs []mongoDoc
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, 0, err
+	}
+	obs := make([]adapter.Observation, 0, len(docs))
+	for _, d := range docs {
+		obs = append(obs, *obsFromDoc(d))
+	}
+	return obs, total, nil
+}
+
 // GetByID retrieves an observation by ID.
 func (s *MongoStorage) GetByID(ctx context.Context, id idx.ID) (*adapter.Observation, error) {
 	var doc mongoDoc
