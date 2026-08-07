@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
@@ -146,18 +145,22 @@ func (s *MongoStorage) GetByID(ctx context.Context, id idx.ID) (*adapter.Observa
 	return obsFromDoc(doc), nil
 }
 
-// Search performs vector search over embedding or falls back to keyword match.
+// Search returns observations matching the query via content regex search,
+// limited to MaxResults and sorted by CreatedAt descending.
 func (s *MongoStorage) Search(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
 	filter := bson.M{"app_name": s.appName}
 	if opts.UserID != "" {
 		filter["user_id"] = opts.UserID
+	}
+	if opts.Query != "" {
+		filter["content"] = bson.M{"$regex": regexp.QuoteMeta(opts.Query), "$options": "i"}
 	}
 
 	findOpts := options.Find()
 	if opts.MaxResults > 0 {
 		findOpts.SetLimit(int64(opts.MaxResults))
 	}
-	findOpts.SetSort(bson.D{{Key: "updated_at", Value: -1}})
+	findOpts.SetSort(bson.D{{Key: "created_at", Value: -1}})
 
 	cur, err := s.coll.Find(ctx, filter, findOpts)
 	if err != nil {
@@ -172,10 +175,9 @@ func (s *MongoStorage) Search(ctx context.Context, opts *adapter.SearchOptions) 
 			continue
 		}
 		obs := obsFromDoc(doc)
-		score := computeScore(opts, obs)
 		results = append(results, adapter.SearchResult{
 			Observation: *obs,
-			Score:       score,
+			Score:       obs.Score() + 0.2, // already matched via $regex, so keyword bonus
 			Source:      "keyword",
 		})
 	}
@@ -183,15 +185,6 @@ func (s *MongoStorage) Search(ctx context.Context, opts *adapter.SearchOptions) 
 		return nil, err
 	}
 	return results, nil
-}
-
-// computeScore calculates relevance by keyword match + level score.
-func computeScore(opts *adapter.SearchOptions, obs *adapter.Observation) float64 {
-	base := obs.Score()
-	if opts.Query != "" && strings.Contains(strings.ToLower(obs.Content), strings.ToLower(opts.Query)) {
-		base += 0.2
-	}
-	return base
 }
 
 // Forget deletes an observation by ID. Not-found is a no-op.
