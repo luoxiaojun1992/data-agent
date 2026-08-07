@@ -89,6 +89,7 @@ const (
 	PermSkillsView     = "skills:view"
 	PermSkillsEdit     = "skills:edit"
 	PermStatsView      = "stats:view"
+	PermMemoryView     = "memory:view"
 	PermMemorySearch   = "memory:search"
 	PermRBACView       = "rbac:view"
 	PermAPICollectionView    = "api:collection:view"
