@@ -520,9 +520,8 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 	return backends[0], nil
 }
 
-// ListEmbeddingModels returns paginated Type==embedding model entries. The admin UI
-// uses this to render the embedding-model table; API keys stay as Vault
-// references (never decrypted here) and are masked at the API layer.
+// ListEmbeddingModels returns paginated Type==embedding model entries.
+// API keys are decrypted from Vault and returned as plaintext.
 func (p *Provider) ListEmbeddingModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if p.repo == nil {
 		return nil, 0, nil
@@ -536,7 +535,7 @@ func (p *Provider) ListEmbeddingModels(ctx context.Context, page, pageSize int) 
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	all := p.modelsFromDB()
+	all := p.models() // decrypted, plaintext API keys returned
 	var out []ModelEntry
 	for _, m := range all {
 		if m.Type == ModelTypeEmbedding {
@@ -610,7 +609,7 @@ func (p *Provider) GetDefaultEmbeddingModel(ctx context.Context) (*ModelEntry, e
 // layer) can mask them before responding. modelsFromDB is used (not models())
 // to avoid decrypting every key just to list them.
 func (p *Provider) ListAllModels(ctx context.Context) []ModelEntry {
-	all := p.modelsFromDB()
+	all := p.models() // decrypted, plaintext API keys
 	out := make([]ModelEntry, 0, len(all))
 	for _, m := range all {
 		if m.Type == "" {
