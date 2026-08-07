@@ -25,14 +25,17 @@ export default function MemoryPage() {
 
   // Debounced search on every keystroke
   useEffect(() => {
+    if (!auth.hydrated) return;
     const t = setTimeout(() => {
       setPage(1);
       loadList();
     }, 200);
     return () => clearTimeout(t);
-  }, [searchQuery]);
+  }, [searchQuery, auth.hydrated]);
 
-  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => {
+    if (auth.hydrated) loadList();
+  }, [loadList, auth.hydrated]);
 
   const extractText = (m: any): string => {
     if (m.content?.parts?.length) {
