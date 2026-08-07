@@ -47,6 +47,8 @@ import (
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
+	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/user"
@@ -496,6 +498,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Stats:         handler.NewStatsHandler(deps.llmRecorder),
 		SkillConfig:   deps.skillConfigHandler,
 		FeishuConfig: handler.NewFeishuConfigHandler(deps.feishuCfgService),
+		APICollection: handler.NewAPICollectionHandler(apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))),
 		IMWebhook:     imWebhook,
 		HermesURL:     os.Getenv("HERMES_URL"),
 		AppName:       appName,

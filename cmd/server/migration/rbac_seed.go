@@ -154,6 +154,10 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_artifact_view", model.PermArtifactView, "查看产出物", "artifact"), roleIDs: []string{user}},
 		// system_admin_role
 		{perm: RBACPerm("rbac_perm_rbac_view", model.PermRBACView, "查看 RBAC 角色与权限", "rbac"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_api_collection_view", model.PermAPICollectionView, "查看 API 集合", "api"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_api_collection_edit", model.PermAPICollectionEdit, "编辑 API 集合", "api"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_api_collection_delete", model.PermAPICollectionDelete, "删除 API 集合", "api"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_api_collection_approve", model.PermAPICollectionApprove, "审批 API 集合", "api"), roleIDs: []string{sysAdmin}},
 		{perm: RBACPerm("rbac_perm_rbac_manage", model.PermRBACManage, "RBAC 管理", "rbac"), roleIDs: []string{sysAdmin}},
 		// Sidebar menu visibility
 		{perm: RBACPerm("rbac_perm_sidebar_dashboard", model.PermSidebarDashboard, "仪表盘菜单", "sidebar"), roleIDs: []string{user}},
@@ -173,6 +177,7 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_admin_menu_rbac", model.PermAdminMenuRBAC, "RBAC管理入口", "admin"), roleIDs: []string{sysAdmin}},
 		{perm: RBACPerm("rbac_perm_admin_menu_invites", model.PermAdminMenuInvites, "邀请管理入口", "admin"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_admin_menu_audit", model.PermAdminMenuAudit, "审计日志入口", "admin"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_admin_menu_api_collections", model.PermAdminMenuAPICollections, "API 管理入口", "admin"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_admin_menu_settings", model.PermAdminMenuSettings, "系统设置入口", "admin"), roleIDs: []string{sysAdmin}},
 	}
 

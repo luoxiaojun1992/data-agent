@@ -42,6 +42,7 @@ type RouteDeps struct {
 	SkillConfig  *SkillConfigHandler
 	FeishuConfig *FeishuConfigHandler
 	RBAC         *RBACHandler
+	APICollection *APICollectionHandler
 	RBACService  *rbacsvc.Service // for RequirePermission middleware
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
@@ -99,6 +100,11 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 		RegisterModelAdminRoutes(admin, deps.ModelConfig, deps.RBACService)
 	}
 	registerAdminRoutes(admin, deps.Auth, deps.SysConfig, deps.RBACService)
+
+	// API Collection management (admin + system_admin)
+	if deps.APICollection != nil {
+		registerAPICollectionRoutes(admin, deps.APICollection, deps.RBACService)
+	}
 
 	// Feature routes (each guarded by auth middleware).
 	registerFeatureRoutes(router, deps)
@@ -348,4 +354,16 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	admin.GET("/users/:userId/rbac-roles", middleware.RequirePermission(rbacSvc, model.PermUserView), h.ListUserRoles)
 	admin.POST("/users/:userId/rbac-roles", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.AddUserRole)
 	admin.DELETE("/users/:userId/rbac-roles/:id", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.RemoveUserRole)
+}
+
+
+
+func registerAPICollectionRoutes(admin *gin.RouterGroup, h *APICollectionHandler, rbacSvc *rbacsvc.Service) {
+	apiCol := admin.Group("/api-collections")
+	apiCol.GET("", middleware.RequirePermission(rbacSvc, model.PermAPICollectionView), h.List)
+	apiCol.POST("", middleware.RequirePermission(rbacSvc, model.PermAPICollectionEdit), h.Create)
+	apiCol.GET("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionView), h.Get)
+	apiCol.PUT("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionEdit), h.Update)
+	apiCol.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionDelete), h.Delete)
+	apiCol.POST("/:id/approve", middleware.RequirePermission(rbacSvc, model.PermAPICollectionApprove), h.Approve)
 }

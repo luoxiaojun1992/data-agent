@@ -92,6 +92,10 @@ const (
 	PermStatsView      = "stats:view"
 	PermMemorySearch   = "memory:search"
 	PermRBACView       = "rbac:view"
+	PermAPICollectionView    = "api:collection:view"
+	PermAPICollectionEdit    = "api:collection:edit"
+	PermAPICollectionDelete  = "api:collection:delete"
+	PermAPICollectionApprove = "api:collection:approve"
 	PermRBACManage     = "rbac:manage"
 	PermAdminAccess    = "admin:access"
 
@@ -114,5 +118,6 @@ const (
 	PermAdminMenuRBAC     = "admin:menu:rbac"
 	PermAdminMenuInvites  = "admin:menu:invites"
 	PermAdminMenuAudit    = "admin:menu:audit"
+	PermAdminMenuAPICollections = "admin:menu:api-collections"
 	PermAdminMenuSettings = "admin:menu:settings"
 )

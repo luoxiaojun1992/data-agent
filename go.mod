@@ -3,6 +3,7 @@ module github.com/luoxiaojun1992/data-agent
 go 1.26.0
 
 require (
+	github.com/CoolBanHub/genppt v0.0.0-20260101075009-61df96324be9
 	github.com/agiledragon/gomonkey/v2 v2.13.0
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/gin-gonic/gin v1.12.0
@@ -31,7 +32,6 @@ require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/CoolBanHub/genppt v0.0.0-20260101075009-61df96324be9 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
