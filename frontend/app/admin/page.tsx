@@ -7,6 +7,7 @@ import { useAuth, ADMIN_MENU_PERMS } from '../../lib/api';
 const ENTRIES = [
   { title: '模型配置', desc: '管理 LLM 模型配置与参数', icon: '🤖', href: '/admin/models', perm: ADMIN_MENU_PERMS.models },
   { title: 'Skill 管理', desc: '管理 Agent 技能工具与配置', icon: '🔧', href: '/admin/skills', perm: ADMIN_MENU_PERMS.skills },
+  { title: 'API 管理', desc: '管理外部 API 集合注册与审批', icon: '🔌', href: '/admin/api-collections', perm: 'admin:menu:api-collections' },
   { title: '用户管理', desc: '用户 CRUD 与角色分配', icon: '👥', href: '/admin/users', perm: ADMIN_MENU_PERMS.users },
   { title: 'RBAC 管理', desc: '角色与权限配置', icon: '🛡️', href: '/admin/rbac', perm: ADMIN_MENU_PERMS.rbac },
   { title: '邀请管理', desc: '生成和管理邀请注册链接', icon: '📨', href: '/admin/invites', perm: ADMIN_MENU_PERMS.invites },
