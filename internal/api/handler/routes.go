@@ -43,6 +43,7 @@ type RouteDeps struct {
 	FeishuConfig *FeishuConfigHandler
 	RBAC         *RBACHandler
 	APICollection *APICollectionHandler
+	APITools     *APIToolsHandler
 	RBACService  *rbacsvc.Service // for RequirePermission middleware
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
@@ -108,6 +109,11 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 
 	// Feature routes (each guarded by auth middleware).
 	registerFeatureRoutes(router, deps)
+
+	// Skill API tools (for agent tool calling)
+	if deps.APITools != nil {
+		registerAPIToolsRoutes(router, deps.APITools, deps.JWTManager, deps.RBACService)
+	}
 
 	// RBAC routes
 	if deps.RBAC != nil {
@@ -366,4 +372,14 @@ func registerAPICollectionRoutes(admin *gin.RouterGroup, h *APICollectionHandler
 	apiCol.PUT("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionEdit), h.Update)
 	apiCol.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionDelete), h.Delete)
 	apiCol.POST("/:id/approve", middleware.RequirePermission(rbacSvc, model.PermAPICollectionApprove), h.Approve)
+}
+
+
+func registerAPIToolsRoutes(router *gin.Engine, h *APIToolsHandler, jwt *middleware.JWTManager, rbacSvc *rbacsvc.Service) {
+	tools := router.Group("/api/v1/tools/api")
+	tools.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermChatView))
+	tools.GET("/search", h.Search)
+	tools.GET("/summary", h.Summary)
+	tools.GET("/method", h.Method)
+	tools.POST("/call", h.Call)
 }

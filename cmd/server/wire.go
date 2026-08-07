@@ -499,6 +499,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		SkillConfig:   deps.skillConfigHandler,
 		FeishuConfig: handler.NewFeishuConfigHandler(deps.feishuCfgService),
 		APICollection: handler.NewAPICollectionHandler(apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))),
+		APITools:     handler.NewAPIToolsHandler(apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))),
 		IMWebhook:     imWebhook,
 		HermesURL:     os.Getenv("HERMES_URL"),
 		AppName:       appName,
