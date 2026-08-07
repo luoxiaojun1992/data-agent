@@ -5,6 +5,7 @@ package memoryx
 import (
 	"context"
 	"errors"
+	"math"
 	"regexp"
 	"time"
 
@@ -175,10 +176,14 @@ func (s *MongoStorage) Search(ctx context.Context, opts *adapter.SearchOptions) 
 			continue
 		}
 		obs := obsFromDoc(doc)
+		baseScore := obs.Score()
+		// Time decay: newer = higher (1 day = 0.01 decay)
+		ageHours := time.Since(obs.CreatedAt).Hours()
+		timeScore := 1.0 / (1.0 + ageHours/2400.0) // ~100 day half-life
 		results = append(results, adapter.SearchResult{
 			Observation: *obs,
-			Score:       obs.Score() + 0.2, // already matched via $regex, so keyword bonus
-			Source:      "keyword",
+			Score:       math.Min(baseScore+timeScore, 1.0),
+			Source:      "keyword+time",
 		})
 	}
 	if err := cur.Err(); err != nil {
