@@ -62,13 +62,14 @@ func (k *Kit) Provider() *adkmemory.Provider {
 
 // WriteMemory writes a piece of content to long-term memory via the storage backend.
 // Implements tools.MemoryWriter for agent-triggered memory_write tool.
-func (k *Kit) WriteMemory(ctx context.Context, userID, content string) error {
+func (k *Kit) WriteMemory(ctx context.Context, userID, sessionID, content string) error {
 	obs := adapter.Observation{
-		ID:      NewID(),
-		Content: content,
-		Level:   adapter.LevelExplicit,
-		UserID:  userID,
-		AppName: k.storage.appName,
+		ID:        NewID(),
+		Content:   content,
+		Level:     adapter.LevelExplicit,
+		UserID:    userID,
+		SessionID: sessionID,
+		AppName:   k.storage.appName,
 	}
 	k.ensureEmbedding(ctx, &obs)
 	return k.storage.Store(ctx, &obs)

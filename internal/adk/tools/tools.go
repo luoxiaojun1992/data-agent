@@ -52,7 +52,7 @@ type Deps struct {
 
 // MemoryWriter writes content to long-term memory on agent request.
 type MemoryWriter interface {
-	WriteMemory(ctx context.Context, userID, content string) error
+	WriteMemory(ctx context.Context, userID, sessionID, content string) error
 }
 
 // stateString reads a string value from the tool session state.
@@ -250,7 +250,8 @@ func memoryWrite(deps *Deps) functiontool.Func[MemoryWriteArgs, MemoryWriteResul
 			return MemoryWriteResult{Status: "skipped", Message: "memory writer not configured"}, nil
 		}
 		userID := stateString(tc, "user_id")
-		if err := deps.MemoryWriter.WriteMemory(tc, userID, args.Content); err != nil {
+		sessionID := stateString(tc, "session_id")
+		if err := deps.MemoryWriter.WriteMemory(tc, userID, sessionID, args.Content); err != nil {
 			return MemoryWriteResult{}, fmt.Errorf("memory_write: %w", err)
 		}
 		return MemoryWriteResult{Status: "written", Message: "memory stored"}, nil
