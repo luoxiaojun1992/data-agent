@@ -20,9 +20,9 @@ func NewSkillConfigHandler(svc *skillsvc.ConfigService) *SkillConfigHandler {
 // RegisterSkillConfigRoutes registers admin skill config routes.
 // Only routes registered; auth middleware is applied by the caller.
 func RegisterSkillConfigRoutes(rg *gin.RouterGroup, h *SkillConfigHandler) {
-	rg.GET("/admin/skills", h.List)
-	rg.GET("/admin/skills/:name", h.Get)
-	rg.PUT("/admin/skills/:name", h.Upsert)
+	rg.GET("/skills", h.List)
+	rg.GET("/skills/:name", h.Get)
+	rg.PUT("/skills/:name", h.Upsert)
 }
 
 // List returns all skill configs (predefined defaults merged with saved overrides).

@@ -106,6 +106,12 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	if deps.APICollection != nil {
 		registerAPICollectionRoutes(admin, deps.APICollection, deps.RBACService)
 	}
+	// SkillConfig (system_admin only)
+	if deps.SkillConfig != nil {
+		admin.GET("/skills", middleware.RequirePermission(deps.RBACService, model.PermModelEdit), deps.SkillConfig.List)
+		admin.GET("/skills/:name", middleware.RequirePermission(deps.RBACService, model.PermModelEdit), deps.SkillConfig.Get)
+		admin.PUT("/skills/:name", middleware.RequirePermission(deps.RBACService, model.PermModelEdit), deps.SkillConfig.Upsert)
+	}
 
 	// Feature routes (each guarded by auth middleware).
 	registerFeatureRoutes(router, deps)
@@ -144,7 +150,6 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 			RegisterEnhanceRoute(chatRoutes, deps.Enhance)
 		}
 	}
-	// SkillConfig moved to admin group above
 
 	if deps.Agent != nil {
 		agentRoutes := router.Group("/api/v1/agent")

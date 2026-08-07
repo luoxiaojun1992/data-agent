@@ -107,7 +107,7 @@ export default function ModelsPage() {
   const fetchEmbeddingList = useCallback(async () => {
     try {
       const size = search ? 100 : PAGE;
-      const res = await apiFetch(`/models/embedding?page=${embeddingPage}&page_size=${size}`);
+      const res = await apiFetch(`/admin/models/embedding?page=${embeddingPage}&page_size=${size}`);
       if (res.ok) {
         const data = await res.json();
         setEmbeddingList(data.models || []);
