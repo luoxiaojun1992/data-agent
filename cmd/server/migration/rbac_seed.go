@@ -143,7 +143,6 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_skills_edit", model.PermSkillsEdit, "编辑技能", "skills"), roleIDs: []string{sysAdmin}},
 		{perm: RBACPerm("rbac_perm_stats_view", model.PermStatsView, "查看统计分析", "stats"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_memory_view", model.PermMemoryView, "查看 Memory 列表", "memory"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_memory_search", model.PermMemorySearch, "Memory 检索", "memory"), roleIDs: []string{user}},
 		// user_role
 		{perm: RBACPerm("rbac_perm_model_view", model.PermModelList, "查看模型配置", "model"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_chat_send", model.PermChatSend, "发送消息", "chat"), roleIDs: []string{user}},
