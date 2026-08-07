@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../providers';
+import Pagination from '../components/Pagination';
 import { useAuth } from '../../lib/api';
 
 const PAGE_SIZE = 20;
@@ -123,18 +124,11 @@ export default function MemoryPage() {
           )}
         </div>
 
-        {total > PAGE_SIZE && (
-          <div className="flex justify-center gap-2 mt-4">
-            {Array.from({ length: Math.ceil(total / PAGE_SIZE) }, (_, i) => (
-              <button key={i} onClick={() => setPage(i + 1)}
-                className={`px-3 py-1 rounded text-sm ${
-                  page === i + 1 ? 'bg-[#B1E2FF] text-black' : 'bg-white/5 text-[var(--text-secondary)]'
-                }`}>
-                {i + 1}
-              </button>
-            ))}
-          </div>
-        )}
+        <Pagination
+          current={page}
+          totalPages={Math.ceil(total / PAGE_SIZE)}
+          onChange={setPage}
+        />
       </div>
     </AppLayout>
   );
