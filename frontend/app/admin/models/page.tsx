@@ -145,7 +145,7 @@ export default function ModelsPage() {
       return;
     }
     try {
-      const res = await apiFetch(`/models/${id}/api-key`);
+      const res = await apiFetch(`/admin/models/${id}/api-key`);
       if (res.ok) {
         const data = await res.json();
         setRevealedKeys(prev => ({ ...prev, [id]: data.plaintext }));
@@ -201,7 +201,7 @@ export default function ModelsPage() {
     if (!id) return;
     if (!confirm('确定删除该模型？')) return;
     try {
-      const res = await apiFetch(`/models/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/admin/models/${id}`, { method: 'DELETE' });
       if (res.ok) { showToast('已删除', 'success'); fetchLLMList(); fetchEmbeddingList(); }
       else showToast('删除失败', 'error');
     } catch { showToast('删除失败', 'error'); }
@@ -209,7 +209,7 @@ export default function ModelsPage() {
 
   const setDefaultModel = async (id: string, useCases: string[] = []) => {
     try {
-      const res = await apiFetch(`/models/${id}/default`, {
+      const res = await apiFetch(`/admin/models/${id}/default`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ use_cases: useCases }),
@@ -247,7 +247,7 @@ export default function ModelsPage() {
     // Fetch the plaintext API key from Vault so the eye button in the modal
     // can actually toggle between plaintext and mask.
     try {
-      const res = await apiFetch(`/models/${m.id}/api-key`);
+      const res = await apiFetch(`/admin/models/${m.id}/api-key`);
       if (res.ok) {
         const data = await res.json();
         setEditActualKey(data.plaintext || '');
@@ -280,7 +280,7 @@ export default function ModelsPage() {
         is_default_for: editForm.is_default_for || [],
       };
       if (editForm.api_key && editForm.api_key !== MASK) body.api_key = editForm.api_key;
-      const res = await apiFetch(`/models/${editForm.id}`, {
+      const res = await apiFetch(`/admin/models/${editForm.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
