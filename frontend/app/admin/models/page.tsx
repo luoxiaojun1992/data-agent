@@ -72,6 +72,7 @@ export default function ModelsPage() {
   const [editActualKey, setEditActualKey] = useState<string | null>(null); // fetched plaintext, null=not loaded
   const [editKeyLoaded, setEditKeyLoaded] = useState(false);
   const [showEditKey, setShowEditKey] = useState(false);
+  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set()); // model ids whose key is visible in list
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -217,16 +218,10 @@ export default function ModelsPage() {
       is_default_for: m.is_default_for || [],
       embedding_dim: String(m.embedding_dim ?? 768),
     });
-    // Fetch the plaintext API key from Vault so the eye button in the modal
-    // can actually toggle between plaintext and mask.
-    try {
-      const res = await apiFetch(`/admin/models/${m.id}/api-key`);
-      if (res.ok) {
-        const data = await res.json();
-        setEditActualKey(data.plaintext || '');
-        setEditKeyLoaded(true);
-      }
-    } catch { /* leave as MASK-only */ }
+    // The list endpoint already returns plaintext from Vault — populate the
+    // edit modal from m.api_key so the eye toggle works without a separate fetch.
+    setEditActualKey(m.api_key || '');
+    setEditKeyLoaded(true);
   };
 
   const closeEdit = () => {
@@ -410,7 +405,8 @@ export default function ModelsPage() {
                 {filteredLLM.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
-                  const keyDisplay = m.api_key || '未设置';
+                  const isRevealed = revealedKeys.has(rowId);
+                  const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
                       <td style={{ padding: '10px 12px' }}>
@@ -419,9 +415,24 @@ export default function ModelsPage() {
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>{m.base_url || '-'}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {keyDisplay}
-                        </code>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {keyDisplay}
+                          </code>
+                          {m.api_key && (
+                            <button
+                              data-testid={`model-list-key-eye-${i}`}
+                              onClick={() => setRevealedKeys(prev => {
+                                const next = new Set(prev);
+                                if (next.has(rowId)) next.delete(rowId);
+                                else next.add(rowId);
+                                return next;
+                              })}
+                              title={isRevealed ? '隐藏' : '查看明文'}
+                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                            ><EyeIcon open={isRevealed} /></button>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '12px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {m.instruction || '-'}
@@ -492,7 +503,8 @@ export default function ModelsPage() {
                 {filteredEmbedding.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
-                  const keyDisplay = m.api_key || '未设置';
+                  const isRevealed = revealedKeys.has(rowId);
+                  const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`embedding-list-row-${i}`}>
                       <td style={{ padding: '10px 12px' }}>
@@ -501,7 +513,22 @@ export default function ModelsPage() {
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>{m.base_url || '-'}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
+                          {m.api_key && (
+                            <button
+                              data-testid={`embedding-list-key-eye-${i}`}
+                              onClick={() => setRevealedKeys(prev => {
+                                const next = new Set(prev);
+                                if (next.has(rowId)) next.delete(rowId);
+                                else next.add(rowId);
+                                return next;
+                              })}
+                              title={isRevealed ? '隐藏' : '查看明文'}
+                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                            ><EyeIcon open={isRevealed} /></button>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         {m.is_default ? (
