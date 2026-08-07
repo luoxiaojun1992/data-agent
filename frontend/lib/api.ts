@@ -92,7 +92,7 @@ export function useAuth() {
     // Load RBAC permissions
     let perms: string[] = [];
     try {
-      const pRes = await fetch(`${API_BASE}/rbac/my-permissions`, {
+      const pRes = await fetch(`${API_BASE}/rbac/me/permissions`, {
         headers: { 'Authorization': `Bearer ${data.access_token}` },
       });
       if (pRes.ok) {
