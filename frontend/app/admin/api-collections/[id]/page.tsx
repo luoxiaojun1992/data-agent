@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '../../../../providers';
-import { useAuth } from '../../../../../lib/api';
+import AppLayout from '../../../providers';
+import { useAuth } from '../../../../lib/api';
 
 const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   pending: { text: '待审核', color: '#f59e0b' },

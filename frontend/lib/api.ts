@@ -34,6 +34,7 @@ export const ADMIN_MENU_PERMS = {
   invites: 'admin:menu:invites',
   audit: 'admin:menu:audit',
   settings: 'admin:menu:settings',
+  apiCollections: 'admin:menu:api-collections',
 } as const;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';

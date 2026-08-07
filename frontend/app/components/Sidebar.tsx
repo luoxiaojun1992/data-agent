@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '../../lib/api';
 
 interface SidebarProps {
   username?: string | null;
@@ -41,9 +42,9 @@ const navItems = [
 
 export default function Sidebar({ username, role, onLogout, onToggle, collapsed, onCollapseToggle }: SidebarProps) {
   const pathname = usePathname();
-  const userRole = role || 'user';
+  const { canAccess } = useAuth();
 
-  const visibleItems = navItems.filter(item => item.roles.includes(userRole));
+  const visibleItems = navItems.filter(item => canAccess(item.perm));
 
   return (
     <aside className={`${collapsed ? 'w-16' : 'w-60'} h-screen flex flex-col border-r border-[var(--border-glass)] bg-[var(--bg-secondary)] z-50 transition-all duration-300`} data-testid="sidebar">
