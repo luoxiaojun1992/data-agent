@@ -1,28 +1,32 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ieshan/adk-go-memory/adapter"
 	"google.golang.org/adk/memory"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/memoryx"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // MemoryHandler exposes the long-term memory search endpoint.
 type MemoryHandler struct {
-	memSvc  memory.Service
-	storage memoryx.Storage
-	appName string
+	memSvc   memory.Service
+	storage  memoryx.Storage
+	appName  string
+	userRepo repository.UserRepository
 }
 
 // NewMemoryHandler creates a memory search handler.
-func NewMemoryHandler(memSvc memory.Service, storage memoryx.Storage, appName string) *MemoryHandler {
-	return &MemoryHandler{memSvc: memSvc, storage: storage, appName: appName}
+func NewMemoryHandler(memSvc memory.Service, storage memoryx.Storage, appName string, userRepo repository.UserRepository) *MemoryHandler {
+	return &MemoryHandler{memSvc: memSvc, storage: storage, appName: appName, userRepo: userRepo}
 }
 
 // RegisterMemoryRoute registers GET /memory/search on the given authenticated
@@ -54,5 +58,40 @@ func (h *MemoryHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": obs, "total": total, "page": page, "page_size": pageSize, "user_id": targetUser})
+	// Enrich with user email for display
+	items := enrichWithUsers(c.Request.Context(), h.userRepo, obs)
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "page_size": pageSize, "user_id": targetUser})
+}
+
+// enrichWithUsers adds UserEmail to each memory item by looking up the user record.
+func enrichWithUsers(ctx context.Context, userRepo repository.UserRepository, obs []adapter.Observation) []gin.H {
+	if userRepo == nil {
+		out := make([]gin.H, len(obs))
+		for i := range obs {
+			out[i] = gin.H{"ID": obs[i].ID, "Content": obs[i].Content, "Level": obs[i].Level, "SessionID": obs[i].SessionID, "UserID": obs[i].UserID, "AppName": obs[i].AppName, "Tags": obs[i].Tags, "TimesDerived": obs[i].TimesDerived, "CreatedAt": obs[i].CreatedAt}
+		}
+		return out
+	}
+	cache := make(map[string]string)
+	out := make([]gin.H, len(obs))
+	for i := range obs {
+		email := ""
+		if obs[i].UserID != "" {
+			if cached, ok := cache[obs[i].UserID]; ok {
+				email = cached
+			} else if u, err := userRepo.FindByID(ctx, obs[i].UserID); err == nil && u != nil {
+				email = u.Username
+				cache[obs[i].UserID] = email
+			} else {
+				email = obs[i].UserID
+			}
+		}
+		out[i] = gin.H{
+			"ID": obs[i].ID, "Content": obs[i].Content, "Level": obs[i].Level,
+			"SessionID": obs[i].SessionID, "UserID": obs[i].UserID, "UserEmail": email,
+			"AppName": obs[i].AppName, "Tags": obs[i].Tags, "TimesDerived": obs[i].TimesDerived,
+			"CreatedAt": obs[i].CreatedAt,
+		}
+	}
+	return out
 }

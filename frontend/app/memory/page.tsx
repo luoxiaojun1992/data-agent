@@ -66,8 +66,8 @@ export default function MemoryPage() {
                 <div className="text-sm font-mono text-[var(--text-primary)] break-all">{extractId(detail)}</div>
               </div>
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-                <div className="text-xs text-[var(--text-secondary)] mb-1">类型</div>
-                <div className="text-sm text-[var(--text-primary)]">{detail.Level || detail.level || "-"}</div>
+                <div className="text-xs text-[var(--text-secondary)] mb-1">用户</div>
+                <div className="text-sm font-mono text-[var(--text-primary)]">{detail.UserEmail || detail.user_email || detail.UserID || detail.user_id}</div>
               </div>
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                 <div className="text-xs text-[var(--text-secondary)] mb-1">创建时间</div>
