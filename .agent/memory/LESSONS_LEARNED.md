@@ -454,3 +454,51 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 ### 7. 模型权限必须按接口拆分
 **问题**：`model:view` 同时控制公开模型列表和 admin 管理接口。普通用户拿到 `model:view` 即可调 admin 接口。
 **教训**：拆为 `model:list`（普通用户 Chat 选模型）+ `model:config:view`（管理员看配置含 API Key）。不同接口不同权限，不可共用。
+
+## 2026-08-07 新增（Memory 功能、权限清理、API Key 明文）
+
+### scp 多文件到不同目录必须逐个复制
+**日期**: 2026-08-07 | **影响**: Vault 失败部署 3 轮，`rbac.go` 错误出现在 `cmd/server/migration/`  
+**根因**: `scp rbac.go rbac_seed.go user@host:/target/` 将**两个文件都拷贝到 /target/**，`rbac.go`（`package model`）被放入 `cmd/server/migration/`，导致 `go build` 报 "found packages model and migration in same directory"。  
+**教训**: scp 多文件时，每个文件必须单独 `scp source user@host:/exact/dest/path`。不能用空格分隔多个源文件到一个目录。
+
+### Next.js import 深度取决于目录嵌套层级
+**日期**: 2026-08-07 | **影响**: memory 页面 3 轮 build 失败，`Module not found`  
+**根因**: `frontend/app/memory/page.tsx`（depth 2）导入 `frontend/app/providers.tsx`（depth 1）应该用 `../providers`，而不是 `../../providers`。`../../providers` 解析为 `frontend/providers` 而非 `frontend/app/providers`。  
+**教训**: Next.js App Router 的 import 计算：`../` = up one level from current page file. `app/memory/page.tsx` → `../` = `app/` → `../providers` = `app/providers`。每次加新页面后先 `npx tsc --noEmit`。
+
+### MongoDB BSON 和 Go JSON 字段名是两个世界
+**日期**: 2026-08-07 | **影响**: 记忆搜索返回空、前端列表显示为空  
+**根因**: `Observation` struct 无 JSON/BSON tag→ Go `encoding/json` 序列化为 `Content`（TitleCase），MongoDB bson driver 序列化为 `content`（lowercase）。前端接收 `Content` 但代码访问 `m.content?.parts` → undefined。MongoDB `$regex` filter 用 `content.parts.text`（嵌套，不存在）而非 `content`（单字符串）。  
+**教训**: 跨语言字段映射时，先 curl API 看实际返回的 JSON key 名称。MongoDB 查询用 BSON 字段名（小写），HTTP 响应用 JSON 字段名（TitleCase）。不要假设结构。
+
+### 部署后验证才是真·完成
+**日期**: 2026-08-07 | **影响**: 多次口头宣布"已部署"，实际 404/500  
+**根因**: 文件 scp 到服务器但 docker build 用了缓存、或文件路径拼错（scp 同目录陷阱）。宣布完成时从未用 curl 验证过 HTTP 状态码。  
+**教训**: **部署流程的最后一个命令必须是 `curl -s -o /dev/null -w "%{http_code}" <endpoint>`**。返回 200/401（需要 auth）才算成功。404/500 = 部署失败，继续排查。
+
+### 数据隔离必须后端 JWT 强隔离
+**日期**: 2026-08-07 | **影响**: memory list 用 `?user_id=` query param 控制归属，外部可传任意 user_id  
+**根因**: `targetUser := c.Query("user_id")` + `if role != "system_admin" { targetUser = userID }`。逻辑虽然正确但设计思想不硬——隔离策略依赖 query param 的存在性。  
+**修正**: 改为 `targetUser := userID; if role == "system_admin" { targetUser = "" }`。不再接受 query param 覆盖，system_admin 默认无过滤。  
+**教训**: 数据归属必须从 JWT 直接推导，不接受任何 query param 或 body 字段作为 filter 候选。system_admin 全量是 `""` 而非 `"*"`。
+
+### Docker compose build --no-cache 是构建新页面的必须项
+**日期**: 2026-08-07 | **影响**: Pagination 组件和 memory/page.tsx 多次 build 缓存跳过  
+**根因**: `docker compose build frontend` 使用 layer cache，新文件（Pagination.tsx、memory/page.tsx）即使在 host 上存在，构建时如果 cache key 命中旧层则不会重新编译。  
+**教训**: 新增文件/页面时，前端 build 必须 `--no-cache`。仅修改已有文件内容时可以用 cache。
+
+### Go json tag 空值 → TitleCase；bson tag 空值 → lowercase
+**日期**: 2026-08-07 | **影响**: memory list API 返回 `Content`（前端不认识）而非 `content`  
+**根因**: `adapter.Observation` struct 无 json/bson tag。Go 默认 json tag = field name (`Content`)，bson driver 默认 lowercase (`content`)。前端用 `m.content?.parts` 访问但 JSON key 是 `Content`。  
+**教训**: 无 tag struct → json key 大写，bson key 小写。跨层对接时明确看到底在对接哪一层。API 响应是 JSON层（TitleCase），MongoDB 查询是 BSON层（lowercase）。
+
+### memory DB写入缺乏 session_id 归属
+**日期**: 2026-08-07 | **影响**: 382 条 memory 记录中 333 条 user_id="system" + session_id=""  
+**根因**: `Kit.WriteMemory` 写 Observation 时未设置 `SessionID`；历史代码中 session 上下文丢失。脏数据通过 `deleteMany({user_id:"system", session_id:""})` 一次性清理（333 条），不补代码。  
+**修正**: `WriteMemory` 加 `sessionID` 参数并填入 `Observation.SessionID`；tools.go 从 `stateString(tc, "session_id")` 获取。  
+**教训**: 所有数据写入必须关联归属（user + session），禁止 "system" 或空 user_id 的写入路径。
+
+### HTTPS 敏感字段后端直接返回明文，前端 eye-toggle 控制可见
+**日期**: 2026-08-07 | **延续 Lesson 411**: model API key 不再 mask，handler 移除 `••••••••••` 硬编码。前端小眼睛控制 list + edit form 的 mask/plain toggle。  
+**新增**: Vault 解密失败直接返回 error，不打 mask 兜底——防止前端把 mask 值当真实 key 回存覆盖。
