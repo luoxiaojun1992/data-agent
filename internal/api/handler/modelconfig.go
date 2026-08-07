@@ -140,9 +140,6 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 		return
 	}
 	for i := range models {
-		if models[i].APIKey != "" {
-			models[i].APIKey = "••••••••••"
-		}
 		// Apply sane defaults for legacy DB rows where fields weren't tracked.
 		if models[i].ContextLen == 0 {
 			models[i].ContextLen = 128000
@@ -174,11 +171,6 @@ func (h *ModelConfigHandler) ListEmbedding(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-	for i := range models {
-		if models[i].APIKey != "" {
-			models[i].APIKey = "••••••••••"
-		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"models":    models,

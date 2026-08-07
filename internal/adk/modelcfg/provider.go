@@ -623,9 +623,8 @@ func (p *Provider) ListAllModels(ctx context.Context) []ModelEntry {
 // Returns (models, total, error) where total is the full LLM count. page
 // starts at 1; pageSize is clamped to [1, 100].
 //
-// Uses modelsFromDB so API keys stay as Vault paths in the returned slice
-// (the caller masks them at the API layer). Calling p.models() here would
-// decrypt to plaintext and leak keys through the list endpoint.
+// API keys are decrypted from Vault before returning. The admin UI is a
+// trusted caller and renders the plaintext in the model list/edit pages.
 func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if page < 1 {
 		page = 1
@@ -636,7 +635,7 @@ func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]Mod
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	all := p.modelsFromDB()
+	all := p.models() // decrypted, plaintext API keys returned
 	var llmModels []ModelEntry
 	for _, m := range all {
 		if m.Type == ModelTypeLLM {
