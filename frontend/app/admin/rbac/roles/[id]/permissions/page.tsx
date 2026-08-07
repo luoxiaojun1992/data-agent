@@ -25,20 +25,20 @@ export default function RolePermissionsPage() {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2000); };
 
   const fetchPerms = () => {
-    apiFetch(`/rbac/roles/${id}/permissions?page=${page}&page_size=${PAGE_SIZE}`).then(r => r.json()).then(data => {
+    apiFetch(`/admin/rbac/roles/${id}/permissions?page=${page}&page_size=${PAGE_SIZE}`).then(r => r.json()).then(data => {
       setPerms(data.permissions || []); setTotal(data.total || 0);
     }).catch(() => showToast('加载失败'));
   };
 
   const fetchAll = () => {
-    apiFetch('/admin/rbac/permissions?page=1&page_size=200').then(r => r.json()).then(data => {
+    apiFetch('/admin/admin/rbac/permissions?page=1&page_size=200').then(r => r.json()).then(data => {
       setAllPerms(data.permissions || []);
     });
   };
 
   useEffect(() => {
     if (!auth.hydrated) return;
-    apiFetch(`/rbac/roles/${id}`).then(r => r.json()).then(data => {
+    apiFetch(`/admin/rbac/roles/${id}`).then(r => r.json()).then(data => {
       setRoleName(data.role?.display_name || ''); setLevel(data.role?.level || 0);
     });
     fetchPerms();
@@ -48,11 +48,11 @@ export default function RolePermissionsPage() {
     (search === '' || p.key.includes(search) || p.name.includes(search)));
 
   const add = (pid: string) => {
-    apiFetch(`/rbac/roles/${id}/permissions`, { method: 'POST', body: JSON.stringify({ permission_id: pid }) })
+    apiFetch(`/admin/rbac/roles/${id}/permissions`, { method: 'POST', body: JSON.stringify({ permission_id: pid }) })
       .then(() => { showToast('已添加'); fetchPerms(); }).catch(() => showToast('添加失败'));
   };
   const remove = (pid: string) => {
-    apiFetch(`/rbac/roles/${id}/permissions/${pid}`, { method: 'DELETE' })
+    apiFetch(`/admin/rbac/roles/${id}/permissions/${pid}`, { method: 'DELETE' })
       .then(() => { showToast('已移除'); fetchPerms(); }).catch(() => showToast('移除失败'));
   };
 

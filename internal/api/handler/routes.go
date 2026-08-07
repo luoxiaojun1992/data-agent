@@ -334,10 +334,16 @@ func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Fei
 }
 
 func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACHandler, rbacSvc *rbacsvc.Service) {
-	rbac := router.Group("/api/v1/rbac")
-	rbac.Use(jwt.AuthMiddleware())
+	// Public: any logged-in user can check their own permissions
+	rbacPublic := router.Group("/api/v1/rbac")
+	rbacPublic.Use(jwt.AuthMiddleware())
+	rbacPublic.GET("/me/permissions", h.MyPermissions)
 
-	view := rbac.Group("")
+	// Admin: role/permission management
+	rbacAdmin := router.Group("/api/v1/admin")
+	rbacAdmin.Use(jwt.AuthMiddleware())
+
+	view := rbacAdmin.Group("/rbac")
 	view.Use(middleware.RequirePermission(rbacSvc, model.PermRBACView))
 	view.GET("/roles", h.ListRoles)
 	view.GET("/roles/:id", h.GetRole)
@@ -347,7 +353,7 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	view.GET("/roles/:id/permissions", h.ListRolePermissions)
 	view.GET("/roles/:id/effective-permissions", h.EffectivePermissions)
 
-	manage := rbac.Group("")
+	manage := rbacAdmin.Group("/rbac")
 	manage.Use(middleware.RequirePermission(rbacSvc, model.PermRBACManage))
 	manage.POST("/roles", h.CreateRole)
 	manage.PUT("/roles/:id", h.UpdateRole)
@@ -356,12 +362,8 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	manage.POST("/roles/:id/permissions", h.AddRolePermission)
 	manage.DELETE("/roles/:id/permissions/:permId", h.RemoveRolePermission)
 
-	// /rbac/my-permissions — special, no extra perm check needed (just auth)
-	rbac.GET("/me/permissions", h.MyPermissions)
-
 	// User-role associations (part of user management, not rbac:manage)
-	admin := router.Group("/api/v1/admin")
-	admin.Use(jwt.AuthMiddleware())
+	admin := rbacAdmin
 	admin.GET("/users/:userId/rbac-roles", middleware.RequirePermission(rbacSvc, model.PermUserView), h.ListUserRoles)
 	admin.POST("/users/:userId/rbac-roles", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.AddUserRole)
 	admin.DELETE("/users/:userId/rbac-roles/:id", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.RemoveUserRole)

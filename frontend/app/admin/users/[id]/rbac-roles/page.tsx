@@ -28,7 +28,7 @@ export default function UserRBACRolesPage() {
     }).catch(() => showToast('加载失败'));
   };
   const fetchAll = () => {
-    apiFetch('/admin/rbac/roles?page=1&page_size=200').then(r => r.json()).then(data => setAllRoles(data.permissions || data.roles || []));
+    apiFetch('/admin/admin/rbac/roles?page=1&page_size=200').then(r => r.json()).then(data => setAllRoles(data.permissions || data.roles || []));
   };
 
   useEffect(() => { if (auth.hydrated) fetchRoles(); }, [id, page, auth.hydrated]);

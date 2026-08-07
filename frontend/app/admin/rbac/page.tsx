@@ -36,13 +36,13 @@ export default function RBACPage() {
   const fetchRoles = () => {
     const q = new URLSearchParams({ page: String(rolePage), page_size: String(PAGE_SIZE) });
     if (parentFilter) q.set('parent_id', parentFilter);
-    apiFetch(`/rbac/roles?${q}`).then(r => r.json()).then(data => {
+    apiFetch(`/admin/rbac/roles?${q}`).then(r => r.json()).then(data => {
       setRoles(data.roles || []); setRoleTotal(data.total || 0);
     }).catch(() => showToast('加载角色失败'));
   };
 
   const fetchPerms = () => {
-    apiFetch(`/rbac/permissions?page=${permPage}&page_size=${PAGE_SIZE}`).then(r => r.json()).then(data => {
+    apiFetch(`/admin/rbac/permissions?page=${permPage}&page_size=${PAGE_SIZE}`).then(r => r.json()).then(data => {
       setPerms(data.permissions || []); setPermTotal(data.total || 0);
     }).catch(() => showToast('加载权限失败'));
   };
@@ -52,12 +52,12 @@ export default function RBACPage() {
 
   const deleteRole = async (id: string) => {
     if (!confirm('确定删除？')) return;
-    try { await apiFetch(`/rbac/roles/${id}`, { method: 'DELETE' }); showToast('已删除'); fetchRoles(); }
+    try { await apiFetch(`/admin/rbac/roles/${id}`, { method: 'DELETE' }); showToast('已删除'); fetchRoles(); }
     catch { showToast('删除失败'); }
   };
   const deletePerm = async (id: string) => {
     if (!confirm('确定删除？')) return;
-    try { await apiFetch(`/rbac/permissions/${id}`, { method: 'DELETE' }); showToast('已删除'); fetchPerms(); }
+    try { await apiFetch(`/admin/rbac/permissions/${id}`, { method: 'DELETE' }); showToast('已删除'); fetchPerms(); }
     catch { showToast('删除失败'); }
   };
 
@@ -105,7 +105,7 @@ export default function RBACPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <a href={`/admin/rbac/roles/${r.id}/permissions`} style={{ ...btnSm, color: '#5c7cfa', textDecoration: 'none' }}>管理权限</a>
+                <a href={`/admin/admin/rbac/roles/${r.id}/permissions`} style={{ ...btnSm, color: '#5c7cfa', textDecoration: 'none' }}>管理权限</a>
                 {r.level < 2 && <button data-testid={`rbac-role-sub-${r.id}`}
                   onClick={() => { setParentFilter(r.id); setParentFilterName(r.display_name); setRolePage(1); }}
                   style={{ ...btnSm, color: '#a855f7' }}>子角色 ({r.child_count})</button>}
@@ -201,7 +201,7 @@ function AddRoleModal({ apiFetch, roles, onClose, onSuccess, showToast }: any) {
   const [parentID, setParentID] = useState('');
   const create = async () => {
     try {
-      await apiFetch('/admin/rbac/roles', { method: 'POST', body: JSON.stringify({ name, display_name: displayName, description, parent_id: parentID }) });
+      await apiFetch('/admin/admin/rbac/roles', { method: 'POST', body: JSON.stringify({ name, display_name: displayName, description, parent_id: parentID }) });
       showToast('角色已创建'); onSuccess();
     } catch (e: any) { showToast(e?.message || '创建失败'); }
   };
@@ -229,7 +229,7 @@ function EditRoleModal({ apiFetch, role, roles, onClose, onSuccess, showToast }:
   const [parentID, setParentID] = useState(role.parent_id || '');
   const update = async () => {
     try {
-      await apiFetch(`/rbac/roles/${role.id}`, { method: 'PUT', body: JSON.stringify({ display_name: displayName, description, parent_id: parentID }) });
+      await apiFetch(`/admin/rbac/roles/${role.id}`, { method: 'PUT', body: JSON.stringify({ display_name: displayName, description, parent_id: parentID }) });
       showToast('已更新'); onSuccess();
     } catch (e: any) { showToast(e?.message || '更新失败'); }
   };
