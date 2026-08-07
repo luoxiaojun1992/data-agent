@@ -166,7 +166,6 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_sidebar_knowledge", model.PermSidebarKnowledge, "知识库菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_artifact", model.PermSidebarArtifact, "产出物菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_im", model.PermSidebarIM, "飞书菜单", "sidebar"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_sidebar_stats", model.PermSidebarStats, "统计菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_memory", model.PermSidebarMemory, "Memory菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_admin", model.PermSidebarAdmin, "管理后台菜单", "sidebar"), roleIDs: []string{admin}},
 		// Admin dashboard menu entries

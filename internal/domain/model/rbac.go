@@ -106,7 +106,6 @@ const (
 	PermSidebarKnowledge = "sidebar:knowledge"
 	PermSidebarArtifact  = "sidebar:artifact"
 	PermSidebarIM        = "sidebar:im"
-	PermSidebarStats     = "sidebar:stats"
 	PermSidebarMemory    = "sidebar:memory"
 	PermSidebarAdmin     = "sidebar:admin"
 
