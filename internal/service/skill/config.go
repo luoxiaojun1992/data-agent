@@ -38,6 +38,36 @@ func predefinedSkills() []skill.SkillConfig {
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
+
+		{
+			Name:        "external_api_search",
+			DisplayName: "外部 API 搜索",
+			Description: "模糊搜索已审批的 API 集合描述",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "external_api_summary",
+			DisplayName: "外部 API 概览",
+			Description: "查看某个 API 集合下的所有方法列表",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "external_api_method",
+			DisplayName: "外部 API 方法详情",
+			Description: "查询某个具体 API 方法的入参/出参",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "external_api_call",
+			DisplayName: "外部 API 调用",
+			Description: "调用外部 API 方法透（参数",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+
 		{
 			Name:        "knowledge_search",
 			DisplayName: "知识库搜索",
