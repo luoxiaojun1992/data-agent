@@ -186,6 +186,7 @@ func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text strin
 
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoinfra.NewSessionRepository(mongoClient.DB()), 24*time.Hour)
+	deps.sessionRepo = mongoinfra.NewSessionRepository(mongoClient.DB())
 	deps.llmRecorder = llmstats.NewRecorder(mongoClient.DB())
 	if deps.redisClient != nil {
 		deps.llmCache = llmcache.New(deps.redisClient.Client())
@@ -479,7 +480,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		RBACService:   rbacSvc,
 		ModelConfig:   handler.NewModelConfigHandler(cfgSvc, deps.modelCfg),
 		SysConfig:     handler.NewConfigHandler(cfgSvc, deps.userRepo),
-		Memory:        handler.NewMemoryHandler(deps.memoryService, deps.memoryKit.Storage(), appName, deps.userRepo),
+		Memory:        handler.NewMemoryHandler(deps.memoryService, deps.memoryKit.Storage(), appName, deps.userRepo, deps.sessionRepo),
 		Chat:          handler.NewChatHandler(deps.chatService),
 		Enhance:       handler.NewEnhanceHandler(deps.enhanceService),
 		Agent:         handler.NewAgentHandler(deps.orchestrator, deps.taskService, toolLister),

@@ -18,15 +18,16 @@ import (
 
 // MemoryHandler exposes the long-term memory search endpoint.
 type MemoryHandler struct {
-	memSvc   memory.Service
-	storage  memoryx.Storage
-	appName  string
-	userRepo repository.UserRepository
+	memSvc      memory.Service
+	storage     memoryx.Storage
+	appName     string
+	userRepo    repository.UserRepository
+	sessionRepo repository.SessionRepository
 }
 
 // NewMemoryHandler creates a memory search handler.
-func NewMemoryHandler(memSvc memory.Service, storage memoryx.Storage, appName string, userRepo repository.UserRepository) *MemoryHandler {
-	return &MemoryHandler{memSvc: memSvc, storage: storage, appName: appName, userRepo: userRepo}
+func NewMemoryHandler(memSvc memory.Service, storage memoryx.Storage, appName string, userRepo repository.UserRepository, sessionRepo repository.SessionRepository) *MemoryHandler {
+	return &MemoryHandler{memSvc: memSvc, storage: storage, appName: appName, userRepo: userRepo, sessionRepo: sessionRepo}
 }
 
 // RegisterMemoryRoute registers GET /memory/search on the given authenticated
@@ -58,13 +59,13 @@ func (h *MemoryHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// Enrich with user email for display
-	items := enrichWithUsers(c.Request.Context(), h.userRepo, obs)
+	// Enrich with user email + session title for display
+	items := enrichWithUsers(c.Request.Context(), h.userRepo, h.sessionRepo, obs)
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "page_size": pageSize, "user_id": targetUser})
 }
 
 // enrichWithUsers adds UserEmail to each memory item by looking up the user record.
-func enrichWithUsers(ctx context.Context, userRepo repository.UserRepository, obs []adapter.Observation) []gin.H {
+func enrichWithUsers(ctx context.Context, userRepo repository.UserRepository, sessionRepo repository.SessionRepository, obs []adapter.Observation) []gin.H {
 	if userRepo == nil {
 		out := make([]gin.H, len(obs))
 		for i := range obs {
@@ -72,23 +73,34 @@ func enrichWithUsers(ctx context.Context, userRepo repository.UserRepository, ob
 		}
 		return out
 	}
-	cache := make(map[string]string)
+	emailCache := make(map[string]string)
+	titleCache := make(map[string]string)
 	out := make([]gin.H, len(obs))
 	for i := range obs {
 		email := ""
 		if obs[i].UserID != "" {
-			if cached, ok := cache[obs[i].UserID]; ok {
+			if cached, ok := emailCache[obs[i].UserID]; ok {
 				email = cached
 			} else if u, err := userRepo.FindByID(ctx, obs[i].UserID); err == nil && u != nil {
 				email = u.Username
-				cache[obs[i].UserID] = email
+				emailCache[obs[i].UserID] = email
 			} else {
 				email = obs[i].UserID
 			}
 		}
+		sessionTitle := ""
+		if obs[i].SessionID != "" && sessionRepo != nil {
+			if cached, ok := titleCache[obs[i].SessionID]; ok {
+				sessionTitle = cached
+			} else if sess, err := sessionRepo.Get(ctx, obs[i].SessionID); err == nil && sess != nil {
+				sessionTitle = sess.Title
+				titleCache[obs[i].SessionID] = sessionTitle
+			}
+		}
 		out[i] = gin.H{
 			"ID": obs[i].ID, "Content": obs[i].Content, "Level": obs[i].Level,
-			"SessionID": obs[i].SessionID, "UserID": obs[i].UserID, "UserEmail": email,
+			"SessionID": obs[i].SessionID, "SessionTitle": sessionTitle,
+			"UserID": obs[i].UserID, "UserEmail": email,
 			"AppName": obs[i].AppName, "Tags": obs[i].Tags, "TimesDerived": obs[i].TimesDerived,
 			"CreatedAt": obs[i].CreatedAt,
 		}

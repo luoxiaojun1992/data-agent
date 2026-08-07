@@ -69,6 +69,15 @@ export default function MemoryPage() {
                 <div className="text-xs text-[var(--text-secondary)] mb-1">用户</div>
                 <div className="text-sm font-mono text-[var(--text-primary)]">{detail.UserEmail || detail.user_email || detail.UserID || detail.user_id}</div>
               </div>
+              {detail.SessionID && (
+                <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+                  <div className="text-xs text-[var(--text-secondary)] mb-1">关联会话</div>
+                  <div className="text-sm">
+                    <div className="font-mono text-[var(--text-secondary)] text-xs mb-1">{detail.SessionID}</div>
+                    <div className="text-[var(--text-primary)]">{detail.SessionTitle || detail.session_title || '(无标题)'}</div>
+                  </div>
+                </div>
+              )}
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                 <div className="text-xs text-[var(--text-secondary)] mb-1">创建时间</div>
                 <div className="text-sm text-[var(--text-primary)]">{new Date(detail.CreatedAt || detail.created_at || detail.updated_at).toLocaleString()}</div>

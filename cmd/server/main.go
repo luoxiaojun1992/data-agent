@@ -37,6 +37,7 @@ import (
 	agentlogic "github.com/luoxiaojun1992/data-agent/internal/logic/agent"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
@@ -84,6 +85,7 @@ type serverDependencies struct {
 	memoryService  memory.Service
 	memoryKit      *memoryx.Kit
 	sessionManager *chat.Manager
+	sessionRepo    repository.SessionRepository
 	chatService    *chat.Service
 	secAuditor     *security.Auditor
 	cbRegistry     *security.CircuitBreakerRegistry
