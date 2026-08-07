@@ -5,6 +5,7 @@ package memoryx
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -100,7 +101,7 @@ func (s *MongoStorage) List(ctx context.Context, userID, query string, page, pag
 		filter["user_id"] = userID
 	}
 	if query != "" {
-		filter["content.parts.text"] = bson.M{"$regex": query, "$options": "i"}
+		filter["content"] = bson.M{"$regex": regexp.QuoteMeta(query), "$options": "i"}
 	}
 	if page <= 0 {
 		page = 1
