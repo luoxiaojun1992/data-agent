@@ -278,7 +278,7 @@ func registerAuditRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Audi
 
 func registerAPIReviewRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *APIReviewHandler, rbacSvc *rbacsvc.Service) {
 	apiRevRoutes := router.Group("/api/v1/admin/api-reviews")
-	apiRevRoutes.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAPIReviewView))
+	apiRevRoutes.Use(jwt.AuthMiddleware())
 	apiRevRoutes.GET("", h.ListAPIReviews)
 	apiRevRoutes.POST("", h.CreateAPIReview)
 	apiRevRoutes.PUT("/:id/approve", h.ApproveAPIReview)

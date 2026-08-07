@@ -86,7 +86,6 @@ const (
 	PermAuditView      = "audit:view"
 	PermInviteView     = "invite:view"
 	PermInviteCreate   = "invite:create"
-	PermAPIReviewView  = "apireview:view"
 	PermSkillsView     = "skills:view"
 	PermSkillsEdit     = "skills:edit"
 	PermStatsView      = "stats:view"
