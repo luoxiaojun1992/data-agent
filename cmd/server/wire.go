@@ -453,7 +453,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 
 	var imBindHandler *handler.IMBindHandler
 	if deps.mongoClient != nil {
-		imBindHandler = handler.NewIMBindHandler(im.NewBindService(mongoinfra.NewIMBindRepository(deps.mongoClient.DB())))
+		imBindHandler = handler.NewIMBindHandler(im.NewBindService(mongoinfra.NewIMBindRepository(deps.mongoClient.DB(), deps.vaultClient)))
 	}
 
 	toolLister := handler.ToolListerFunc(func() []string {
