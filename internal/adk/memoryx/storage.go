@@ -12,5 +12,5 @@ type Storage interface {
 	Store(ctx context.Context, obs *adapter.Observation) error
 	GetByID(ctx context.Context, id idx.ID) (*adapter.Observation, error)
 	Search(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error)
-	List(ctx context.Context, userID string, page, pageSize int) ([]adapter.Observation, int64, error)
+	List(ctx context.Context, userID, query string, page, pageSize int) ([]adapter.Observation, int64, error)
 }

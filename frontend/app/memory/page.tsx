@@ -10,28 +10,22 @@ export default function MemoryPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<'list' | 'semantic'>('list');
-  const [searchResults, setSearchResults] = useState<string[]>([]);
   const PAGE_SIZE = 20;
 
   const loadList = useCallback(async () => {
-    const res = await apiFetch(`/memory/list?page=${page}&page_size=${PAGE_SIZE}`);
+    const q = searchQuery.trim();
+    const qs = q ? `&q=${encodeURIComponent(q)}` : '';
+    const res = await apiFetch(`/memory/list?page=${page}&page_size=${PAGE_SIZE}${qs}`);
     const data = await res.json();
     setMemories(data.items || []);
     setTotal(data.total || 0);
-  }, [apiFetch, page]);
-
-  const doSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    const res = await apiFetch(`/memory/search?q=${encodeURIComponent(searchQuery)}`);
-    const data = await res.json();
-    setSearchResults(data.results || data.memories || []);
-  }, [apiFetch, searchQuery]);
+  }, [apiFetch, page, searchQuery]);
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  const handleSearch = () => {
+    setPage(1); // reset to page 1 on new search
+  };
 
   return (
     <AppLayout>
@@ -44,76 +38,48 @@ export default function MemoryPage() {
         </div>
 
         <div className="flex gap-2 mb-4">
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            placeholder="搜索记忆内容（可选）"
+            className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm"
+          />
           <button
-            onClick={() => setSearchMode('list')}
-            className={`px-3 py-1.5 rounded text-sm ${
-              searchMode === 'list' ? 'bg-[#B1E2FF] text-black' : 'bg-white/5 text-[var(--text-secondary)]'
-            }`}
+            onClick={handleSearch}
+            className="px-4 py-2 bg-[#B1E2FF] text-black rounded-lg text-sm"
           >
-            列表浏览
-          </button>
-          <button
-            onClick={() => setSearchMode('semantic')}
-            className={`px-3 py-1.5 rounded text-sm ${
-              searchMode === 'semantic' ? 'bg-[#B1E2FF] text-black' : 'bg-white/5 text-[var(--text-secondary)]'
-            }`}
-          >
-            语义搜索
+            搜索
           </button>
         </div>
 
-        {searchMode === 'semantic' && (
-          <div className="flex gap-2 mb-4">
-            <input
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && doSearch()}
-              placeholder="输入查询..."
-              className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm"
-            />
-            <button onClick={doSearch} className="px-4 py-2 bg-[#B1E2FF] text-black rounded-lg text-sm">
-              搜索
-            </button>
-          </div>
-        )}
-
-        {searchMode === 'semantic' ? (
-          <div className="space-y-2">
-            {searchResults.map((r, i) => (
-              <div key={i} className="p-4 rounded-lg bg-white/5 border border-white/10 text-sm text-[var(--text-primary)]">
-                {r}
+        <div className="space-y-2">
+          {memories.map((m: any) => (
+            <div key={m.id} className="p-4 rounded-lg bg-white/5 border border-white/10">
+              <div className="text-xs text-[var(--text-secondary)] mb-1">
+                {new Date(m.updated_at).toLocaleString()} | user: {m.user_id}
               </div>
-            ))}
-            {searchResults.length === 0 && <p className="text-[var(--text-secondary)] text-sm">无结果</p>}
-          </div>
-        ) : (
-          <>
-            <div className="space-y-2">
-              {memories.map((m: any) => (
-                <div key={m.id} className="p-4 rounded-lg bg-white/5 border border-white/10">
-                  <div className="text-xs text-[var(--text-secondary)] mb-1">
-                    {new Date(m.updated_at).toLocaleString()} | user: {m.user_id}
-                  </div>
-                  <div className="text-sm text-[var(--text-primary)] font-mono break-all">
-                    {m.content?.parts?.map((p: any) => p.text).join('') || m.text || JSON.stringify(m)}
-                  </div>
-                </div>
-              ))}
-              {memories.length === 0 && <p className="text-[var(--text-secondary)] text-sm">无记忆数据</p>}
+              <div className="text-sm text-[var(--text-primary)] font-mono break-all">
+                {m.content?.parts?.map((p: any) => p.text).join('') || m.text || JSON.stringify(m)}
+              </div>
             </div>
-            {total > PAGE_SIZE && (
-              <div className="flex justify-center gap-2 mt-4">
-                {Array.from({ length: Math.ceil(total / PAGE_SIZE) }, (_, i) => (
-                  <button key={i} onClick={() => setPage(i + 1)}
-                    className={`px-3 py-1 rounded text-sm ${
-                      page === i + 1 ? 'bg-[#B1E2FF] text-black' : 'bg-white/5 text-[var(--text-secondary)]'
-                    }`}>
-                    {i + 1}
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
+          ))}
+          {memories.length === 0 && <p className="text-[var(--text-secondary)] text-sm">
+            {searchQuery ? '无匹配结果' : '无记忆数据'}
+          </p>}
+        </div>
+
+        {total > PAGE_SIZE && (
+          <div className="flex justify-center gap-2 mt-4">
+            {Array.from({ length: Math.ceil(total / PAGE_SIZE) }, (_, i) => (
+              <button key={i} onClick={() => setPage(i + 1)}
+                className={`px-3 py-1 rounded text-sm ${
+                  page === i + 1 ? 'bg-[#B1E2FF] text-black' : 'bg-white/5 text-[var(--text-secondary)]'
+                }`}>
+                {i + 1}
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </AppLayout>

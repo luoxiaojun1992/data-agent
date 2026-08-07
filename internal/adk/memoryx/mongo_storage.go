@@ -94,10 +94,13 @@ func (s *MongoStorage) Store(ctx context.Context, obs *adapter.Observation) erro
 
 
 // List returns a paginated list of observations filtered by user_id and app_name.
-func (s *MongoStorage) List(ctx context.Context, userID string, page, pageSize int) ([]adapter.Observation, int64, error) {
+func (s *MongoStorage) List(ctx context.Context, userID, query string, page, pageSize int) ([]adapter.Observation, int64, error) {
 	filter := bson.M{"app_name": s.appName}
 	if userID != "" {
 		filter["user_id"] = userID
+	}
+	if query != "" {
+		filter["content.parts.text"] = bson.M{"$regex": query, "$options": "i"}
 	}
 	if page <= 0 {
 		page = 1
