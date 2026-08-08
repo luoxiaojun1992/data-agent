@@ -96,7 +96,7 @@ func (s *MongoStorage) Store(ctx context.Context, obs *adapter.Observation) erro
 
 // List returns a paginated list of observations filtered by user_id and app_name.
 func (s *MongoStorage) List(ctx context.Context, userID, query string, page, pageSize int) ([]adapter.Observation, int64, error) {
-	filter := bson.M{"app_name": s.appName}
+	filter := bson.M{"app_name": s.appName, "user_id": bson.M{"$ne": "system"}}
 	if userID != "" {
 		filter["user_id"] = userID
 	}
@@ -149,7 +149,7 @@ func (s *MongoStorage) GetByID(ctx context.Context, id idx.ID) (*adapter.Observa
 // Search returns observations matching the query via content regex search,
 // limited to MaxResults and sorted by CreatedAt descending.
 func (s *MongoStorage) Search(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
-	filter := bson.M{"app_name": s.appName}
+	filter := bson.M{"app_name": s.appName, "user_id": bson.M{"$ne": "system"}}
 	if opts.UserID != "" {
 		filter["user_id"] = opts.UserID
 	}

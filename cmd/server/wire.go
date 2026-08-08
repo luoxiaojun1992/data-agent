@@ -384,29 +384,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 
 	sched := scheduler.New(scheduler.NewTaskCreatorFromService(deps.taskService))
 	sched.Start(context.Background())
-
-	// Create a persistent Task definition for the monitoring schedule so
-	// each trigger creates a new TaskRun (not a new Task).
-	monitorTask, _, err := deps.taskService.CreateTask("system",
-		"system_monitor",
-		[]string{"stats_engine"},
-		map[string]interface{}{"method": "descriptive"},
-		"",
-	)
-	if err != nil {
-		logger.Warn("Failed to create monitoring task def", zap.Error(err))
-	} else {
-		monitorTask.Title = "System Monitoring Stats"
-		if err := sched.AddSchedule(&scheduler.Schedule{
-			TaskID:   monitorTask.ID,
-			Name:     "System Monitoring Stats",
-			CronExpr: "every_5m",
-			Enabled:  true,
-		}); err != nil {
-			logger.Warn("Failed to add monitoring schedule", zap.Error(err))
-		}
-	}
-	logger.Info("Scheduler started with default tasks")
+	logger.Info("Scheduler started")
 
 	// SPEC-063: replace the no-op simpleExecutor stub with a real AgentExecutor
 	// that reuses the Runtime.RunAndCollect execution path. The executor owns
