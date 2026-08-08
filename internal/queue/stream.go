@@ -34,23 +34,23 @@ func NewStream(client *redis.Client) (*Stream, error) {
 
 // Enqueue adds a task run to the Redis Stream.
 func (s *Stream) Enqueue(ctx context.Context, run *task.TaskRun) error {
-	msg := task.QueueMessage{
+	payload, _ := json.Marshal(task.AgentTaskPayload{
 		RunID:      run.ID,
 		TaskID:     run.TaskID,
 		SessionID:  run.SessionID,
 		UserID:     run.UserID,
-		Type:       run.Type,
 		ModelID:    run.ModelID,
 		SkillChain: run.SkillChain,
-		Params:     run.Params,
 		CreatedAt:  run.CreatedAt.Format(time.RFC3339),
+	})
+	msg := task.QueueMessage{
+		Type:    "agent_task",
+		Payload: payload,
 	}
-
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal queue message: %w", err)
 	}
-
 	_, err = s.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: streamKey,
 		Values: map[string]interface{}{"data": string(data)},
@@ -138,10 +138,14 @@ func (s *Stream) ClaimPending(ctx context.Context, consumerID string, minIdle ti
 
 // EnqueueRaw pushes a raw job payload without creating task/task_run records.
 // Used for KB indexing and other non-agent-task async workers.
-func (s *Stream) EnqueueRaw(ctx context.Context, jobType string, payload map[string]interface{}) error {
-	msg := map[string]interface{}{
-		"type":    jobType,
-		"payload": payload,
+func (s *Stream) EnqueueRaw(ctx context.Context, jobType string, payloadData interface{}) error {
+	payload, err := json.Marshal(payloadData)
+	if err != nil {
+		return fmt.Errorf("marshal raw payload: %w", err)
+	}
+	msg := task.QueueMessage{
+		Type:    jobType,
+		Payload: payload,
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {

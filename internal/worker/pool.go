@@ -160,44 +160,64 @@ func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
 
 	rawBytes := []byte(data.(string))
 
-	// Try raw kb_index job first (no task/task_run records).
-	var rawJob struct {
-		Type    string                 `json:"type"`
-		Payload map[string]interface{} `json:"payload"`
-	}
-	if err := json.Unmarshal(rawBytes, &rawJob); err == nil && rawJob.Type == "kb_index" && p.kbExecutor != nil {
-		// Build a minimal TaskRun for the KB executor (it only needs Params).
-		run := &task.TaskRun{
-			ID:   fmt.Sprintf("raw_kb_%s", msg.ID),
-			Type: task.TaskTypeKBIndex,
-			Params: rawJob.Payload,
-		}
-		start := time.Now()
-		if err := p.kbExecutor.Execute(context.Background(), run); err != nil {
-			log.Printf("[worker] kb_index raw job %s failed after %s: %v", msg.ID, time.Since(start), err)
-		}
-		_ = p.queue.Ack(context.Background(), msg.ID)
-		return
-	}
-
+	// Parse unified QueueMessage envelope ({type, payload}).
 	var qm task.QueueMessage
 	if err := json.Unmarshal(rawBytes, &qm); err != nil {
 		log.Printf("Failed to parse queue message: %v", err)
 		return
 	}
 
-	// SPEC-063: load the full TaskRun from DB instead of rebuilding it in
-	// memory from the queue message. The queue message carries only the
-	// IDs/params needed to locate the run; the authoritative state lives
-	// in MongoDB and may have changed since enqueue.
-	run, err := p.runSvc.GetRun(qm.RunID)
-	if err != nil || run == nil {
-		log.Printf("Failed to load run %s: %v", qm.RunID, err)
-		_ = p.queue.Ack(context.Background(), msg.ID)
-		return
-	}
+	switch qm.Type {
+	case "agent_task":
+		// Deserialize AgentTaskPayload and load TaskRun from DB.
+		var atp task.AgentTaskPayload
+		if err := json.Unmarshal(qm.Payload, &atp); err != nil {
+			log.Printf("Failed to parse agent_task payload: %v", err)
+			_ = p.queue.Ack(context.Background(), msg.ID)
+			return
+		}
+		run, err := p.runSvc.GetRun(atp.RunID)
+		if err != nil || run == nil {
+			log.Printf("Failed to load run %s: %v", atp.RunID, err)
+			_ = p.queue.Ack(context.Background(), msg.ID)
+			return
+		}
+		p.dispatch(ctx, run, msg.ID)
 
-	// Route by type: kb_index runs go to the KB executor (synchronous blocking).
+	case "kb_index":
+		if p.kbExecutor == nil {
+			_ = p.queue.Ack(context.Background(), msg.ID)
+			return
+		}
+		var kbp task.KBIndexPayload
+		if err := json.Unmarshal(qm.Payload, &kbp); err != nil {
+			log.Printf("Failed to parse kb_index payload: %v", err)
+			_ = p.queue.Ack(context.Background(), msg.ID)
+			return
+		}
+		run := &task.TaskRun{
+			ID:   fmt.Sprintf("raw_kb_%s", msg.ID),
+			Type: task.TaskTypeKBIndex,
+			Params: map[string]interface{}{
+				"doc_id":         kbp.DocID,
+				"gridfs_file_id": kbp.GridFSFileID,
+			},
+		}
+		start := time.Now()
+		if err := p.kbExecutor.Execute(context.Background(), run); err != nil {
+			log.Printf("[worker] kb_index job %s failed after %s: %v", msg.ID, time.Since(start), err)
+		}
+		_ = p.queue.Ack(context.Background(), msg.ID)
+
+	default:
+		log.Printf("[worker] unknown message type: %s", qm.Type)
+		_ = p.queue.Ack(context.Background(), msg.ID)
+	}
+}
+
+// dispatch routes an agent task run to the appropriate executor.
+func (p *Pool) dispatch(ctx context.Context, run *task.TaskRun, msgID string) {
+
 	exec := p.executor
 	if run.Type == task.TaskTypeKBIndex && p.kbExecutor != nil {
 		exec = p.kbExecutor
@@ -210,11 +230,10 @@ func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
 		log.Printf("[worker] run %s (task %s) failed after %s: %v", run.ID, run.TaskID, time.Since(start), execErr)
 		run.RetryCount++
 		if run.RetryCount >= run.MaxRetries {
-			_ = p.queue.MoveToDLQ(context.Background(), msg.ID, []byte(data.(string)))
+			_ = p.queue.MoveToDLQ(context.Background(), msgID, []byte{})
 		}
 	}
-
-	_ = p.queue.Ack(context.Background(), msg.ID)
+	_ = p.queue.Ack(context.Background(), msgID)
 }
 
 // heartbeat writes periodic liveness timestamps.

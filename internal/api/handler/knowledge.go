@@ -1,6 +1,7 @@
 package handler
 
 import (
+	task "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"fmt"
 	"log"
@@ -61,9 +62,9 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 
 	// Enqueue async indexing via queue (no task/task_run records).
 	if h.queueRepo != nil && gridFSFileID != "" {
-		if err := h.queueRepo.EnqueueRaw(c.Request.Context(), "kb_index", map[string]interface{}{
-			"doc_id":         doc.ID,
-			"gridfs_file_id": gridFSFileID,
+		if err := h.queueRepo.EnqueueRaw(c.Request.Context(), "kb_index", task.KBIndexPayload{
+			DocID:        doc.ID,
+			GridFSFileID: gridFSFileID,
 		}); err != nil {
 			log.Printf("[kb] failed to enqueue index job for doc=%s: %v", doc.ID, err)
 		}

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -146,15 +147,28 @@ type ScheduledTask struct {
 	CreatedAt  time.Time              `json:"created_at"`
 }
 
-// QueueMessage is the JSON message format for Redis Stream.
+// QueueMessage is the unified JSON envelope for all Redis Stream messages.
+// The Type field determines the Payload schema:
+//   - "agent_task" → AgentTaskPayload (task_run record reference)
+//   - "kb_index"   → KBIndexPayload
 type QueueMessage struct {
-	RunID      string                 `json:"run_id"`
-	TaskID     string                 `json:"task_id"`
-	SessionID  string                 `json:"session_id"`
-	UserID     string                 `json:"user_id"`
-	Type       string                 `json:"type"`
-	ModelID    string                 `json:"model_id"` // worker selects Runtime by this
-	SkillChain []string               `json:"skill_chain"`
-	Params     map[string]interface{} `json:"params"`
-	CreatedAt  string                 `json:"created_at"`
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// AgentTaskPayload references an existing TaskRun record for agent execution.
+type AgentTaskPayload struct {
+	RunID      string   `json:"run_id"`
+	TaskID     string   `json:"task_id"`
+	SessionID  string   `json:"session_id"`
+	UserID     string   `json:"user_id"`
+	ModelID    string   `json:"model_id"`
+	SkillChain []string `json:"skill_chain"`
+	CreatedAt  string   `json:"created_at"`
+}
+
+// KBIndexPayload is the payload for KB indexing jobs.
+type KBIndexPayload struct {
+	DocID        string `json:"doc_id"`
+	GridFSFileID string `json:"gridfs_file_id"`
 }
