@@ -374,10 +374,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService) // same Service implements both contracts
 
 	// Wire task service into KB handler for async indexing.
-	if deps.kbHandler != nil {
-		deps.kbHandler.SetTaskService(deps.taskService)
-	}
-
+	
 	// Re-wire the orchestrator now that the task service exists.
 	if deps.orchestrator != nil {
 		deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService, deps.modelCfg)
