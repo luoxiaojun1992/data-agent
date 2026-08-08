@@ -41,6 +41,17 @@ export default function AgentPage() {
     loadTasks(page);
   }, [page, auth.hydrated, auth.token]);
 
+  const toggleScheduledEnabled = async (t: AgentTask) => {
+    const enabled = t.scheduled_enabled === false;
+    const res = await apiFetch('/admin/tasks/' + t.task_id + '/scheduled-enabled', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    });
+    if (res.ok) {
+      setTasks(prev => prev.map(x => x.task_id === t.task_id ? { ...x, scheduled_enabled: enabled } : x));
+    }
+  };
+
   const loadTasks = async (p: number) => {
     setLoading(true);
     try {
