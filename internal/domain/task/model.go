@@ -26,6 +26,12 @@ const (
 	TaskTypeKBIndex       = "kb_index"
 )
 
+// Schedule modes.
+const (
+	ScheduleModeOneTime  = "one_time"  // execute once at specific time
+	ScheduleModeRecurring = "recurring" // execute on cron schedule
+)
+
 // Task represents an async agent task definition(MongoDB).
 // Task definitions are persistent and do NOT carry execution state.
 // Execution state lives on TaskRun (run-level); Task only records the
@@ -39,8 +45,10 @@ type Task struct {
 	ModelID     string                 `json:"model_id"`
 	SkillChain  []string               `json:"skill_chain"`
 	Params      map[string]interface{} `json:"params"`
-	CronExpr    string                 `json:"cron_expr,omitempty" bson:"cron_expr,omitempty"`
-	RunCount    int64                  `json:"run_count" bson:"run_count"`           // incremented atomically per run creation
+	CronExpr         string     `json:"cron_expr,omitempty" bson:"cron_expr,omitempty"`
+	ScheduleMode     string     `json:"schedule_mode,omitempty" bson:"schedule_mode,omitempty"`
+	ScheduledAt      *time.Time `json:"scheduled_at,omitempty" bson:"scheduled_at,omitempty"`
+	RunCount         int64                  `json:"run_count" bson:"run_count"`           // incremented atomically per run creation
 	LastRunAt   *time.Time             `json:"last_run_at,omitempty" bson:"last_run_at,omitempty"`
 	ScheduledEnabled bool              `json:"scheduled_enabled" bson:"scheduled_enabled"` // on/off switch for scheduled tasks (non-scheduled always true)
 	ScheduledDone    bool              `json:"scheduled_done" bson:"scheduled_done"`       // only set true for one-shot scheduled tasks

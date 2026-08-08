@@ -4,6 +4,8 @@
 // the service implementation.
 package task
 
+import "time"
+
 // TaskService is the domain contract for task definition management.
 // Task definitions are persistent metadata; execution state lives on TaskRun.
 //
@@ -11,7 +13,7 @@ package task
 type TaskService interface {
 	// CreateTask creates a new task definition and a first TaskRun,
 	// enqueuing the run. Returns (taskDef, taskRun, error).
-	CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) (*Task, *TaskRun, error)
+	CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID, scheduleMode, cronExpr string, scheduledAt *time.Time) (*Task, *TaskRun, error)
 	GetTask(id string) (*Task, error)
 	CancelTask(id string) error
 	ListTasks(userID string, skip, limit int64) ([]*Task, int64, error)

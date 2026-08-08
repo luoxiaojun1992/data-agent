@@ -44,10 +44,12 @@ func (a *taskRepoAdapter) ListScheduled(ctx context.Context, skip, limit int64) 
 	defs := make([]TaskDef, len(tasks))
 	for i, t := range tasks {
 		defs[i] = TaskDef{
-			ID:         t.ID,
-			UserID:     t.UserID,
-			Title:      t.Title,
-			CronExpr:   t.CronExpr,
+			ID:           t.ID,
+			UserID:       t.UserID,
+			Title:        t.Title,
+			ScheduleMode: t.ScheduleMode,
+			CronExpr:     t.CronExpr,
+			ScheduledAt:  t.ScheduledAt,
 			SkillChain: t.SkillChain,
 			Params:     t.Params,
 			ModelID:    t.ModelID,

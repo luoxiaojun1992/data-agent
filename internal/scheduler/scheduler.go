@@ -15,11 +15,13 @@ import (
 // Task definition. When triggered, the scheduler creates a new TaskRun for
 // the bound TaskID and enqueues it — it does NOT create a new Task each time.
 type Schedule struct {
-	ID         string                 `json:"id" bson:"_id"`
-	TaskID     string                 `json:"task_id" bson:"task_id"` // links to persistent Task definition
-	Name       string                 `json:"name" bson:"name"`
-	CronExpr   string                 `json:"cron_expr" bson:"cron_expr"`
-	Interval   time.Duration          `json:"-" bson:"interval_sec"`
+	ID           string                 `json:"id" bson:"_id"`
+	TaskID       string                 `json:"task_id" bson:"task_id"` // links to persistent Task definition
+	Name         string                 `json:"name" bson:"name"`
+	ScheduleMode string                 `json:"-" bson:"-"` // "one_time" | "recurring"
+	CronExpr     string                 `json:"cron_expr" bson:"cron_expr"`
+	ScheduledAt  *time.Time             `json:"-" bson:"-"`
+	Interval     time.Duration          `json:"-" bson:"interval_sec"`
 	Enabled    bool                   `json:"enabled" bson:"enabled"`
 	SkillChain []string               `json:"-" bson:"-"` // informational; stored on Task now
 	Params     map[string]interface{} `json:"-" bson:"-"` // informational; stored on Task now
@@ -209,13 +211,15 @@ type ScheduleProvider interface {
 
 // TaskDef is a minimal scheduled task definition needed by the scheduler.
 type TaskDef struct {
-	ID          string
-	UserID      string
-	Title       string
-	CronExpr    string
-	SkillChain  []string
-	Params      map[string]interface{}
-	ModelID     string
+	ID           string
+	UserID       string
+	Title        string
+	ScheduleMode string
+	CronExpr     string
+	ScheduledAt  *time.Time
+	SkillChain   []string
+	Params       map[string]interface{}
+	ModelID      string
 }
 
 // LoadFromDB paginates through all scheduled tasks from the provider and registers them.
@@ -229,24 +233,42 @@ func (s *Scheduler) LoadFromDB(ctx context.Context, provider ScheduleProvider) (
 			return loaded, err
 		}
 		for _, t := range tasks {
-			interval, err := parseCronExpr(t.CronExpr)
-			if err != nil {
-				log.Printf("Scheduler: skipping task %s (%s): invalid cron %q: %v", t.ID, t.Title, t.CronExpr, err)
+			sch := &Schedule{
+				TaskID:       t.ID,
+				Name:         t.Title,
+				ScheduleMode: t.ScheduleMode,
+				CronExpr:     t.CronExpr,
+				ScheduledAt:  t.ScheduledAt,
+				Enabled:      true,
+				SkillChain:   t.SkillChain,
+				Params:       t.Params,
+				ModelID:      t.ModelID,
+				CreatedAt:    time.Now(),
+			}
+			switch t.ScheduleMode {
+			case "recurring":
+				if t.CronExpr == "" {
+					log.Printf("Scheduler: skipping task %s (%s): recurring mode but no cron_expr", t.ID, t.Title)
+					continue
+				}
+				interval, err := parseCronExpr(t.CronExpr)
+				if err != nil {
+					log.Printf("Scheduler: skipping task %s (%s): invalid cron %q: %v", t.ID, t.Title, t.CronExpr, err)
+					continue
+				}
+				sch.Interval = interval
+				sch.NextRun = time.Now()
+			case "one_time":
+				if t.ScheduledAt == nil {
+					log.Printf("Scheduler: skipping task %s (%s): one_time mode but no scheduled_at", t.ID, t.Title)
+					continue
+				}
+				sch.NextRun = *t.ScheduledAt
+				sch.Interval = 0 // one-shot, no recurrence
+			default:
+				log.Printf("Scheduler: skipping task %s (%s): unknown mode %q", t.ID, t.Title, t.ScheduleMode)
 				continue
 			}
-			sch := &Schedule{
-				TaskID:     t.ID,
-				Name:       t.Title,
-				CronExpr:   t.CronExpr,
-				Interval:   interval,
-				Enabled:    true,
-				SkillChain: t.SkillChain,
-				Params:     t.Params,
-				ModelID:    t.ModelID,
-				CreatedAt:  time.Now(),
-			}
-			// NextRun starts immediately for pending schedules
-			sch.NextRun = time.Now()
 			s.AddSchedule(sch)
 			loaded++
 		}

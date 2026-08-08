@@ -88,7 +88,7 @@ func (o *Orchestrator) CreateAgentTask(ctx context.Context, userID string, req C
 		// async executor (deriveUserMessage) can recover the user input that
 		// would otherwise be lost at the task boundary.
 		params := enrichTaskParams(req)
-		t, run, err := o.tasks.CreateTask(userID, taskType, skillChain, params, sess.ModelID)
+		t, run, err := o.tasks.CreateTask(userID, taskType, skillChain, params, sess.ModelID, "", "", nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task")
 		}

@@ -65,7 +65,7 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 			"doc_id":         doc.ID,
 			"gridfs_file_id": gridFSFileID,
 		}
-		if _, _, err := h.taskSvc.CreateTask(userID.(string), task.TaskTypeKBIndex, nil, params, ""); err != nil {
+		if _, _, err := h.taskSvc.CreateTask(userID.(string), task.TaskTypeKBIndex, nil, params, "", "", "", nil); err != nil {
 			log.Printf("[kb] failed to enqueue index task for doc=%s: %v", doc.ID, err)
 		}
 	}

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -25,14 +26,16 @@ func NewTaskHandler(svc task.TaskService, runSvc task.TaskRunService) *TaskHandl
 // POST /api/v1/tasks
 func (h *TaskHandler) CreateTask(c *gin.Context) {
 	var req struct {
-		Title       string                 `json:"title"`
-		Description string                 `json:"description"`
-		Type        string                 `json:"type"`
-		SkillChain  []string               `json:"skill_chain"`
-		Skills      []string               `json:"skills"`
-		Params      map[string]interface{} `json:"params"`
-		CronExpr    string                 `json:"cron_expr"`
-		ModelID     string                 `json:"model_id"`
+		Title        string                 `json:"title"`
+		Description  string                 `json:"description"`
+		Type         string                 `json:"type"`
+		SkillChain   []string               `json:"skill_chain"`
+		Skills       []string               `json:"skills"`
+		Params       map[string]interface{} `json:"params"`
+		CronExpr     string                 `json:"cron_expr"`
+		ScheduledAt  *time.Time             `json:"scheduled_at"`
+		ScheduleMode string                 `json:"schedule_mode"`
+		ModelID      string                 `json:"model_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -67,7 +70,19 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		params["cron_expr"] = req.CronExpr
 	}
 
-	t, run, err := h.svc.CreateTask(userID.(string), taskType, skillChain, params, req.ModelID)
+	// Derive schedule_mode from input
+	scheduleMode := ""
+	if taskType == domaintask.TaskTypeScheduledExec {
+		if req.CronExpr != "" && req.ScheduledAt == nil {
+			scheduleMode = domaintask.ScheduleModeRecurring
+		} else if req.ScheduledAt != nil {
+			scheduleMode = domaintask.ScheduleModeOneTime
+		} else if req.ScheduleMode != "" {
+			scheduleMode = req.ScheduleMode
+		}
+	}
+
+	t, run, err := h.svc.CreateTask(userID.(string), taskType, skillChain, params, req.ModelID, scheduleMode, req.CronExpr, req.ScheduledAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
