@@ -172,7 +172,8 @@ func (r *TaskDefRepository) ListScheduled(ctx context.Context, skip, limit int64
 			{"cron_expr": bson.M{"$ne": "", "$exists": true}},
 			{"scheduled_at": bson.M{"$lte": now, "$exists": true}},
 		},
-		"scheduled_done": bson.M{"$ne": true},
+		"scheduled_done":    bson.M{"$ne": true},
+		"scheduled_enabled": bson.M{"$ne": false},
 	}
 	total, err := r.coll.CountDocuments(ctx, filter)
 	if err != nil {
