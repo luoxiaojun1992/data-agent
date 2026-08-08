@@ -351,6 +351,7 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	manage.POST("/roles", h.CreateRole)
 	manage.PUT("/roles/:id", h.UpdateRole)
 	manage.DELETE("/roles/:id", h.DeleteRole)
+	manage.POST("/permissions", h.CreatePermission)
 	manage.DELETE("/permissions/:id", h.DeletePermission)
 	manage.POST("/roles/:id/permissions", h.AddRolePermission)
 	manage.DELETE("/roles/:id/permissions/:permId", h.RemoveRolePermission)

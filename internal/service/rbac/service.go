@@ -174,6 +174,10 @@ func (s *Service) ListPermissions(ctx context.Context, page, pageSize int) ([]mo
 	return s.repo.ListPermissions(ctx, skip, int64(pageSize))
 }
 
+func (s *Service) CreatePermission(ctx context.Context, p *model.RBACPermission) error {
+	return s.repo.CreatePermission(ctx, p)
+}
+
 func (s *Service) GetPermission(ctx context.Context, id string) (*model.RBACPermission, error) {
 	return s.repo.GetPermission(ctx, id)
 }

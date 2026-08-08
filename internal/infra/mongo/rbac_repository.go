@@ -173,6 +173,11 @@ func (r *RBACRepository) ListPermissions(ctx context.Context, skip, limit int64)
 	return perms, total, nil
 }
 
+func (r *RBACRepository) CreatePermission(ctx context.Context, p *model.RBACPermission) error {
+	_, err := r.db.Collection("rbac_permissions").InsertOne(ctx, p)
+	return err
+}
+
 func (r *RBACRepository) GetPermission(ctx context.Context, id string) (*model.RBACPermission, error) {
 	var p model.RBACPermission
 	err := r.db.Collection("rbac_permissions").FindOne(ctx, bson.M{"_id": id}).Decode(&p)

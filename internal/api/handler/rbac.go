@@ -3,9 +3,12 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
@@ -104,6 +107,34 @@ func (h *RBACHandler) AvailableParents(c *gin.Context) {
 }
 
 // ── Permissions ──────────────────────────────────────────────────────
+
+// CreatePermission creates a new permission. ID is auto-generated UUID.
+func (h *RBACHandler) CreatePermission(c *gin.Context) {
+	var req struct {
+		Key         string `json:"key" json:"required"`
+		Name        string `json:"name" json:"required"`
+		Module      string `json:"module" json:"required"`
+		Description string `json:"description"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	perm := &model.RBACPermission{
+		ID:          "rbac_perm_" + uuid.New().String(),
+		Key:         req.Key,
+		Name:        req.Name,
+		Module:      req.Module,
+		Description: req.Description,
+		Type:        model.RBACPermTypeCustom,
+		CreatedAt:   time.Now(),
+	}
+	if err := h.svc.CreatePermission(c.Request.Context(), perm); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"permission": perm})
+}
 
 func (h *RBACHandler) ListPermissions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

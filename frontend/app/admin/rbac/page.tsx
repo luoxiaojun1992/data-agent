@@ -28,6 +28,7 @@ export default function RBACPage() {
   const [parentFilterName, setParentFilterName] = useState('');
   const [selectedRole, setSelectedRole] = useState<RBACRole | null>(null);
   const [showAddRole, setShowAddRole] = useState(false);
+  const [showAddPerm, setShowAddPerm] = useState(false);
   const [showEditRole, setShowEditRole] = useState(false);
   const [toast, setToast] = useState('');
 
@@ -152,12 +153,14 @@ export default function RBACPage() {
               </tbody>
             </table>
           </div>
+          <button data-testid="rbac-add-perm-btn" onClick={() => setShowAddPerm(true)} style={btnPri}>+ 新建权限</button>
           <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onPage={setPermPage} />
         </>)}
 
         {toast && <div style={{ position: 'fixed', bottom: 20, right: 20, padding: '10px 20px', borderRadius: 8,
           background: toast.includes('失败') ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast}</div>}
 
+        {showAddPerm && <AddPermModal apiFetch={apiFetch} onClose={() => setShowAddPerm(false)} onSuccess={() => { setShowAddPerm(false); fetchPerms(); }} showToast={showToast} />}
         {showAddRole && <AddRoleModal apiFetch={apiFetch} roles={roles} onClose={() => setShowAddRole(false)}
           onSuccess={() => { setShowAddRole(false); fetchRoles(); }} showToast={showToast} />}
         {showEditRole && selectedRole && <EditRoleModal apiFetch={apiFetch} role={selectedRole} roles={roles}
@@ -248,5 +251,37 @@ function EditRoleModal({ apiFetch, role, roles, onClose, onSuccess, showToast }:
         <button data-testid="rbac-edit-role-submit" onClick={update} style={btnPri}>保存</button>
       </div>
     </div></div>
+  );
+}
+
+
+function AddPermModal({ apiFetch, onClose, onSuccess, showToast }: any) {
+  const [key, setKey] = useState('');
+  const [name, setName] = useState('');
+  const [module, setModule] = useState('custom');
+  const [description, setDescription] = useState('');
+  const create = async () => {
+    if (!key || !name || !module) { showToast('Key、名称、模块必填'); return; }
+    try {
+      await apiFetch('/admin/rbac/permissions', { method: 'POST', body: JSON.stringify({ key, name, module, description }) });
+      showToast('权限已创建'); onSuccess();
+    } catch (e: any) { showToast(e?.message || '创建失败'); }
+  };
+  const mo: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
+  const mc: React.CSSProperties = { background: 'var(--card-bg)', padding: 24, borderRadius: 12, minWidth: 450 };
+  return (
+    <div style={mo} onClick={onClose}>
+      <div style={mc} onClick={e => e.stopPropagation()}>
+        <h3 style={{ marginBottom: 12 }}>新建权限</h3>
+        <label style={inLabel}>Key (必填, e.g. mymodule:action) <input style={inStyle} value={key} onChange={e => setKey(e.target.value)} /></label>
+        <label style={inLabel}>名称 (必填) <input style={inStyle} value={name} onChange={e => setName(e.target.value)} /></label>
+        <label style={inLabel}>模块 (必填) <input style={inStyle} value={module} onChange={e => setModule(e.target.value)} /></label>
+        <label style={inLabel}>描述 <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <button onClick={onClose} style={btnSec}>取消</button>{' '}
+          <button onClick={create} style={btnPri} data-testid="rbac-add-perm-submit">创建</button>
+        </div>
+      </div>
+    </div>
   );
 }

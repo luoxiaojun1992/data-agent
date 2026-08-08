@@ -70,6 +70,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				s.runDueJobs(ctx)
+				s.reloadFromDB(ctx)
 			case <-s.stopCh:
 				return
 			case <-ctx.Done():
