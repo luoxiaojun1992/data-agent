@@ -59,8 +59,10 @@ export default function MemoryPage() {
     try {
       const blob = new Blob([content], { type: 'text/plain' });
       const fileName = `memory-${id}.txt`;
+      // Use first line of memory as title (trim & truncate)
+      const titleSnippet = content.replace(/\s+/g, ' ').trim().slice(0, 60) || `Memory ${id.slice(0, 12)}`;
       const fd = new FormData();
-      fd.append('title', `Memory ${id.slice(0, 12)}`);
+      fd.append('title', titleSnippet);
       fd.append('file_name', fileName);
       fd.append('file_type', 'txt');
       fd.append('size_bytes', String(blob.size));

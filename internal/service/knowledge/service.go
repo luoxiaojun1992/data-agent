@@ -34,6 +34,7 @@ func (s *Service) WithVectorIndex(repo repository.VectorRepository, embed Embedd
 }
 
 func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes int64, gridFSFileID string) (*knowledge.KnowledgeDoc, error) {
+	now := time.Now()
 	doc := &knowledge.KnowledgeDoc{
 		ID:           "kbdoc_" + genShortID(),
 		UserID:       userID,
@@ -42,6 +43,8 @@ func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes 
 		FileType:     fileType,
 		SizeBytes:    sizeBytes,
 		GridFSFileID: gridFSFileID,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 		Status:       knowledge.StatusUploaded,
 	}
 	if err := s.kb.CreateDoc(context.Background(), doc); err != nil {
