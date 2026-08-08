@@ -53,7 +53,7 @@ export default function AgentPage() {
   const createTask = async () => {
     if (!newTask.title.trim()) return;
     // If cron is enabled, a schedule must be chosen.
-    if (newTask.cronEnabled && !newTask.cron) return;
+    if (newTask.cronEnabled && !newTask.cron && !newTask.scheduledAt) return;
     try {
       const body: Record<string, unknown> = {
         title: newTask.title,
