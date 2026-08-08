@@ -89,16 +89,16 @@ func (s *Service) CancelTask(id string) error {
 	return s.repo.Cancel(context.Background(), id)
 }
 
+func (s *Service) SetScheduledEnabled(taskID string, enabled bool) error {
+	return s.repo.SetScheduledEnabled(context.Background(), taskID, enabled)
+}
+
 func (s *Service) ListTasks(userID string, skip, limit int64) ([]*task.Task, int64, error) {
 	return s.repo.List(context.Background(), userID, skip, limit)
 }
 
 func (s *Service) ListAllTasks(userID string) ([]*task.Task, error) {
 	return s.repo.ListAll(context.Background(), userID)
-}
-
-func (s *Service) SetScheduledEnabled(id string, enabled bool) error {
-	return s.repo.SetScheduledEnabled(context.Background(), id, enabled)
 }
 
 func (s *Service) BatchCancelTasks(ids []string) error {

@@ -237,3 +237,19 @@ func (h *TaskHandler) RetryTask(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "retried", "task_id": taskID, "run": run})
 }
+
+
+// ToggleScheduledEnabled turns scheduled task on/off. PATCH /admin/tasks/:id/scheduled-enabled
+func (h *TaskHandler) ToggleScheduledEnabled(c *gin.Context) {
+	taskID := c.Param("id")
+	var req struct{ Enabled bool `json:"enabled"` }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.svc.SetScheduledEnabled(taskID, req.Enabled); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"enabled": req.Enabled})
+}

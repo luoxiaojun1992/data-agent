@@ -21,6 +21,8 @@ type TaskService interface {
 	BatchCancelTasks(ids []string) error
 	// CreateRun creates a new TaskRun from the task definition and enqueues it.
 	CreateRun(taskID string) (*TaskRun, error)
+	// SetScheduledEnabled toggles the on/off flag for scheduled tasks.
+	SetScheduledEnabled(taskID string, enabled bool) error
 }
 
 // TaskRunService is the domain contract for run-level execution state.

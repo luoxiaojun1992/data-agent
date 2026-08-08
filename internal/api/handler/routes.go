@@ -303,6 +303,7 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	adminTasks.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentView))
 	adminTasks.GET("", h.ListAllTasks)
 	adminTasks.PUT("/:task_id/retry", h.RetryTask)
+	adminTasks.PATCH("/:id/scheduled-enabled", h.ToggleScheduledEnabled)
 	adminTasks.POST("/batch-cancel", h.BatchCancelTasks)
 
 	// Standalone run endpoint — useful for the run-detail page where the
