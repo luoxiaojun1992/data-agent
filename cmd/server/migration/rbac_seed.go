@@ -254,6 +254,21 @@ func seedDefaultUserRole(ctx context.Context, db *mongo.Database) error {
 		log.Printf("[rbac-seed] default user-role insert error: %v", err)
 		return err
 	}
+	// Also link legacy admin users (role=admin in users collection) to rbac_role_admin
+	cur, _ := db.Collection("users").Find(ctx, bson.M{"role": "admin"})
+	defer cur.Close(ctx)
+	for cur.Next(ctx) {
+		var u bson.M
+		_ = cur.Decode(&u)
+		uid, ok := u["_id"].(string)
+		if !ok { continue }
+		n, _ := coll.CountDocuments(ctx, bson.M{"user_id": uid, "role_id": "rbac_role_admin"})
+		if n == 0 {
+			coll.InsertOne(ctx, &model.UserRBACRole{
+				ID: "rbac_ur_" + uuid.New().String()[:8], UserID: uid, RoleID: "rbac_role_admin", CreatedAt: time.Now(),
+			})
+		}
+	}
 
 	db.Collection("users").UpdateOne(ctx,
 		bson.M{"_id": defaultSystemAdminUserID},
