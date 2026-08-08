@@ -199,6 +199,16 @@ func (h *TaskHandler) CreateRun(c *gin.Context) {
 	c.JSON(http.StatusAccepted, run)
 }
 
+// CancelRun cancels a run by ID if not yet started. POST /admin/tasks/:run_id/cancel
+func (h *TaskHandler) CancelRun(c *gin.Context) {
+	runID := c.Param("run_id")
+	if err := h.runSvc.CancelRun(runID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "cancelled", "run_id": runID})
+}
+
 // PauseTask pauses a scheduled task (delegates to CancelRun).
 // PUT /api/v1/tasks/:task_id/pause
 func (h *TaskHandler) PauseTask(c *gin.Context) {

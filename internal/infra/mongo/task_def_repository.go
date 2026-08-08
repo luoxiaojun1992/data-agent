@@ -158,7 +158,9 @@ func (r *TaskRunRepository) UpdateSessionID(ctx context.Context, id, sessionID s
 }
 
 func (r *TaskRunRepository) Cancel(ctx context.Context, id string) error {
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"status": task.StatusCancelled}})
+	_, err := r.coll.UpdateOne(ctx,
+		bson.M{"_id": id, "status": bson.M{"$in": []string{string(task.StatusQueued), string(task.StatusPending)}}},
+		bson.M{"$set": bson.M{"status": task.StatusCancelled}})
 	return err
 }
 
