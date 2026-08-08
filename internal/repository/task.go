@@ -45,4 +45,6 @@ type TaskRunRepository interface {
 type QueueRepository interface {
 	Enqueue(ctx context.Context, r *task.TaskRun) error
 	Dequeue(ctx context.Context, timeout time.Duration) (*task.TaskRun, error)
+	// EnqueueRaw pushes a raw job payload (e.g. KB indexing) without creating task/task_run records.
+	EnqueueRaw(ctx context.Context, jobType string, payload map[string]interface{}) error
 }

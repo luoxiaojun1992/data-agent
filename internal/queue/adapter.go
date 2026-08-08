@@ -25,3 +25,7 @@ func (a *streamAdapter) Enqueue(ctx context.Context, r *task.TaskRun) error {
 func (a *streamAdapter) Dequeue(ctx context.Context, timeout time.Duration) (*task.TaskRun, error) {
 	return nil, nil
 }
+
+func (a *streamAdapter) EnqueueRaw(ctx context.Context, jobType string, payload map[string]interface{}) error {
+	return a.stream.EnqueueRaw(ctx, jobType, payload)
+}

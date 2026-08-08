@@ -369,7 +369,8 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 
 	// Wire Redis queue into the already-created task service (created in initTaskService).
 	if deps.taskService != nil {
-		deps.taskService.SetQueueRepo(queue.QueueRepository(taskStream))
+		deps.queueRepo = queue.QueueRepository(taskStream)
+	deps.taskService.SetQueueRepo(deps.queueRepo)
 	}
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService) // same Service implements both contracts
 

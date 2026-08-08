@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"context"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,12 +13,18 @@ import (
 
 // KnowledgeHandler provides HTTP handlers for knowledge base operations.
 type KnowledgeHandler struct {
-	svc knowledge.KnowledgeService
+	svc       knowledge.KnowledgeService
+	queueRepo repository.QueueRepository // optional: nil when queue is unavailable
 }
 
 // NewKnowledgeHandler creates a knowledge base handler.
 func NewKnowledgeHandler(svc knowledge.KnowledgeService) *KnowledgeHandler {
 	return &KnowledgeHandler{svc: svc}
+}
+
+// SetQueueRepo injects the queue repository for async KB indexing.
+func (h *KnowledgeHandler) SetQueueRepo(qr repository.QueueRepository) {
+	h.queueRepo = qr
 }
 
 // UploadDoc creates a new knowledge document with optional file upload to GridFS.
@@ -53,14 +59,14 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 		return
 	}
 
-	// Index asynchronously via dedicated KB worker (no task/task_run records — keeps agent task list clean).
-	if gridFSFileID != "" {
-		go func(docID, fileID string) {
-			ctx := context.Background()
-			if err := h.svc.IndexDocument(ctx, docID, nil); err != nil {
-				log.Printf("[kb] async index failed for doc=%s: %v", docID, err)
-			}
-		}(doc.ID, gridFSFileID)
+	// Enqueue async indexing via queue (no task/task_run records).
+	if h.queueRepo != nil && gridFSFileID != "" {
+		if err := h.queueRepo.EnqueueRaw(c.Request.Context(), "kb_index", map[string]interface{}{
+			"doc_id":         doc.ID,
+			"gridfs_file_id": gridFSFileID,
+		}); err != nil {
+			log.Printf("[kb] failed to enqueue index job for doc=%s: %v", doc.ID, err)
+		}
 	}
 
 	c.JSON(http.StatusCreated, doc)

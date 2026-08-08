@@ -135,3 +135,24 @@ func (s *Stream) ClaimPending(ctx context.Context, consumerID string, minIdle ti
 	}
 	return msgs, nil
 }
+
+// EnqueueRaw pushes a raw job payload without creating task/task_run records.
+// Used for KB indexing and other non-agent-task async workers.
+func (s *Stream) EnqueueRaw(ctx context.Context, jobType string, payload map[string]interface{}) error {
+	msg := map[string]interface{}{
+		"type":    jobType,
+		"payload": payload,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal raw message: %w", err)
+	}
+	_, err = s.client.XAdd(ctx, &redis.XAddArgs{
+		Stream: streamKey,
+		Values: map[string]interface{}{"data": string(data)},
+	}).Result()
+	if err != nil {
+		return fmt.Errorf("xadd raw to stream: %w", err)
+	}
+	return nil
+}

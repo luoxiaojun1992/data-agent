@@ -87,6 +87,7 @@ type serverDependencies struct {
 	sessionManager *chat.Manager
 	sessionRepo    repository.SessionRepository
 	taskRepo       repository.TaskRepository
+	queueRepo      repository.QueueRepository
 	chatService    *chat.Service
 	secAuditor     *security.Auditor
 	cbRegistry     *security.CircuitBreakerRegistry
