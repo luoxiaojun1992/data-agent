@@ -122,6 +122,7 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_chat_delete", model.PermChatDelete, "删除对话", "chat"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_agent_view", model.PermAgentView, "查看 Agent 任务", "agent"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_agent_create", model.PermAgentCreate, "创建 Agent 任务", "agent"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_agent_edit", model.PermAgentEdit, "操作 Agent 任务（切换/执行/取消）", "agent"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_agent_delete", model.PermAgentDelete, "删除 Agent 任务", "agent"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_kb_delete", model.PermKBDelete, "删除知识库文档", "knowledge"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_artifact_delete", model.PermArtifactDelete, "删除产出物", "artifact"), roleIDs: []string{user}},

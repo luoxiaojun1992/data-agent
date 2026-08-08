@@ -64,6 +64,7 @@ const (
 	PermChatDelete     = "chat:delete"
 	PermAgentView      = "agent:view"
 	PermAgentCreate    = "agent:create"
+	PermAgentEdit      = "agent:edit"   // task switch/run/cancel
 	PermAgentDelete    = "agent:delete"
 	PermKBView         = "kb:view"
 	PermKBUpload       = "kb:upload"

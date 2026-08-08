@@ -302,9 +302,12 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	adminTasks := router.Group("/api/v1/admin/tasks")
 	adminTasks.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentView))
 	adminTasks.GET("", h.ListAllTasks)
-	adminTasks.PUT("/:task_id/retry", h.RetryTask)
-	adminTasks.PATCH("/:id/scheduled-enabled", h.ToggleScheduledEnabled)
-	adminTasks.POST("/batch-cancel", h.BatchCancelTasks)
+
+	adminTasksWrite := router.Group("/api/v1/admin/tasks")
+	adminTasksWrite.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentEdit))
+	adminTasksWrite.PUT("/:task_id/retry", h.RetryTask)
+	adminTasksWrite.PATCH("/:id/scheduled-enabled", h.ToggleScheduledEnabled)
+	adminTasksWrite.POST("/batch-cancel", h.BatchCancelTasks)
 
 	// Standalone run endpoint — useful for the run-detail page where the
 	// client only has run_id (task_id is in URL state).
