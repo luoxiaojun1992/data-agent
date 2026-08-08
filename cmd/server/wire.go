@@ -372,7 +372,10 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 		deps.queueRepo = queue.QueueRepository(taskStream)
 	deps.taskService.SetQueueRepo(deps.queueRepo)
 	}
-	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService) // same Service implements both contracts
+	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService)
+	if deps.kbHandler != nil && deps.queueRepo != nil {
+		deps.kbHandler.SetQueueRepo(deps.queueRepo)
+	} // same Service implements both contracts
 
 	// Wire task service into KB handler for async indexing.
 	
