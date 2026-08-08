@@ -44,7 +44,7 @@ export default function MemoryPage() {
     return m.Content || (m.content?.parts?.map((p: any) => p.text || '').join('')) || m.text || '';
   };
 
-  const extractId = (m: any): string => m.id || m.ID || m._id || '';
+  const extractId = (m: any): string => m.id || m.ID || '';
 
   const truncate = (s: string, n: number): string => {
     if (s.length <= n) return s;
@@ -59,10 +59,8 @@ export default function MemoryPage() {
     try {
       const blob = new Blob([content], { type: 'text/plain' });
       const fileName = `memory-${id}.txt`;
-      // Use actual memory ID in title
-      const titleSnippet = content.replace(/\s+/g, ' ').trim().slice(0, 60) || `Memory ${id}`;
       const fd = new FormData();
-      fd.append('title', titleSnippet);
+      fd.append('title', `Memory ${id}`);
       fd.append('file_name', fileName);
       fd.append('file_type', 'txt');
       fd.append('size_bytes', String(blob.size));
