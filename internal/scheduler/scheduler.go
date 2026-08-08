@@ -44,6 +44,12 @@ type Scheduler struct {
 	schedules map[string]*Schedule
 	creator   TaskCreator
 	stopCh    chan struct{}
+	provider ScheduleProvider // optional DB-backed reload
+}
+
+// SetProvider injects a ScheduleProvider so newly created tasks can be picked up.
+func (s *Scheduler) SetProvider(p ScheduleProvider) {
+	s.provider = p
 }
 
 // New creates a new Scheduler.
@@ -363,4 +369,57 @@ func (s *Scheduler) LoadFromDB(ctx context.Context, provider ScheduleProvider) (
 	}
 	log.Printf("Scheduler: loaded %d scheduled tasks from DB", loaded)
 	return loaded, nil
+}
+
+// reloadFromDB re-fetches scheduled tasks so newly created ones are picked up.
+func (s *Scheduler) reloadFromDB(ctx context.Context) {
+	if s.provider == nil {
+		return
+	}
+	tasks, _, err := s.provider.ListScheduled(ctx, 0, 100)
+	if err != nil {
+		log.Printf("Scheduler: reload failed: %v", err)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range tasks {
+		if _, exists := s.schedules[t.ID]; exists {
+			continue
+		}
+		sch := &Schedule{
+			ID:           t.ID,
+			TaskID:       t.ID,
+			Name:         t.Title,
+			ScheduleMode: t.ScheduleMode,
+			CronExpr:     t.CronExpr,
+			ScheduledAt:  t.ScheduledAt,
+			SkillChain:   t.SkillChain,
+			Params:       t.Params,
+			ModelID:      t.ModelID,
+		}
+		switch t.ScheduleMode {
+		case "recurring":
+			if t.CronExpr == "" {
+				continue
+			}
+			interval, err := parseCronExpr(t.CronExpr)
+			if err != nil {
+				continue
+			}
+			sch.Interval = interval
+			now := time.Now()
+			sch.LastRun = &now
+		case "one_time":
+			if t.ScheduledAt == nil {
+				continue
+			}
+			sch.NextRun = *t.ScheduledAt
+			sch.Interval = 0
+		default:
+			continue
+		}
+		s.schedules[t.ID] = sch
+		log.Printf("Scheduler: loaded new task %s (%s) next=%s", t.ID, t.Title, sch.NextRun.Format(time.RFC3339))
+	}
 }

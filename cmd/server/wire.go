@@ -388,6 +388,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	sched.Start(context.Background())
 	// Load scheduled agent tasks from DB
 	provider := scheduler.NewScheduleProviderFromRepo(deps.taskRepo)
+	sched.SetProvider(provider)
 	if n, err := sched.LoadFromDB(context.Background(), provider); err != nil {
 		logger.Warn("Scheduler failed to load tasks", zap.Error(err))
 	} else {
