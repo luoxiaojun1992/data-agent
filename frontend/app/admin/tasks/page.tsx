@@ -193,6 +193,7 @@ export default function TasksPage() {
                             {new Date(t.scheduled_at).toLocaleString('zh-CN')}
                           </span>
                         )}
+                        <button
                           onClick={() => toggleScheduledEnabled(t)}
                           style={{
                             marginLeft: '6px', padding: '2px 8px', borderRadius: '4px', fontSize: '11px',
