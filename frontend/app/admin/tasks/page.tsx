@@ -10,6 +10,8 @@ interface Task {
   user_id?: string;
   type?: string;
   cron_expr?: string;
+  schedule_mode?: string;
+  scheduled_at?: string;
   scheduled_enabled?: boolean;
   status: string;
   skill_chain?: string[];
@@ -180,9 +182,17 @@ export default function TasksPage() {
                   <td style={tdStyle}>
                     {t.type === 'scheduled_exec' ? (
                       <span>
-                        <span style={{ color: '#60a5fa', fontWeight: 500 }}>定时</span>
-                        {t.cron_expr && <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginLeft: '4px' }}>{t.cron_expr}</span>}
-                        <button
+                        <span style={{ color: '#60a5fa', fontWeight: 500 }}>
+                          {t.schedule_mode === 'one_time' ? '一次性' : '定时'}
+                        </span>
+                        {t.schedule_mode === 'recurring' && t.cron_expr && (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginLeft: '4px' }}>{t.cron_expr}</span>
+                        )}
+                        {t.schedule_mode === 'one_time' && t.scheduled_at && (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginLeft: '4px' }}>
+                            {new Date(t.scheduled_at).toLocaleString('zh-CN')}
+                          </span>
+                        )}
                           onClick={() => toggleScheduledEnabled(t)}
                           style={{
                             marginLeft: '6px', padding: '2px 8px', borderRadius: '4px', fontSize: '11px',

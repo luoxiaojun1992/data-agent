@@ -29,7 +29,7 @@ export default function AgentPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
-  const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false });
+  const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring' as 'recurring' | 'one_time', scheduledAt: '' });
 
   // Wait for auth hydration before loading — otherwise loadTasks fires with
   // auth.token=null and the request misses the Authorization header.
@@ -55,20 +55,25 @@ export default function AgentPage() {
     // If cron is enabled, a schedule must be chosen.
     if (newTask.cronEnabled && !newTask.cron) return;
     try {
-      const res = await apiFetch('/tasks', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: newTask.title,
-          description: newTask.description,
-          cron_expr: newTask.cronEnabled ? newTask.cron : undefined,
-        }),
-      });
+      const body: Record<string, unknown> = {
+        title: newTask.title,
+        description: newTask.description,
+        type: newTask.cronEnabled ? 'scheduled_exec' : 'agent_exec',
+      };
+      if (newTask.cronEnabled) {
+        if (newTask.scheduleMode === 'recurring' && newTask.cron) {
+          body.cron_expr = newTask.cron;
+        } else if (newTask.scheduleMode === 'one_time' && newTask.scheduledAt) {
+          body.scheduled_at = new Date(newTask.scheduledAt).toISOString();
+        }
+      }
+      const res = await apiFetch('/tasks', { method: 'POST', body: JSON.stringify(body) });
       if (res.ok) {
         await loadTasks(page);
         setShowModal(false);
-        setNewTask({ title: '', description: '', cron: '', cronEnabled: false });
+        setNewTask({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring', scheduledAt: '' });
       }
-    } catch (e) { console.error('[agent] loadTasks failed:', e); }
+    } catch (e) { console.error('[agent] task create failed:', e); }
   };
 
   const cancelTask = async (taskId: string) => {
@@ -198,16 +203,63 @@ export default function AgentPage() {
                 设为定时任务
               </label>
               {newTask.cronEnabled && (
-                <div data-testid="agent-task-cron-config">
-                  <label className="block text-xs text-[var(--text-secondary)] mb-1">调度规则</label>
-                  <select value={newTask.cron} onChange={e => setNewTask(p => ({ ...p, cron: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)]"
-                    data-testid="agent-task-cron-select">
-                    <option value="">选择...</option>
-                    <option value="0 8 * * *">每日 8:00</option>
-                    <option value="0 9 * * 1">每周一 9:00</option>
-                    <option value="0 0 1 * *">每月1号 0:00</option>
-                  </select>
+                <div data-testid="agent-task-cron-config" className="space-y-3">
+                  {/* Mode toggle */ }
+                  <div>
+                    <label className="block text-xs text-[var(--text-secondary)] mb-1">调度方式</label>
+                    <div className="flex gap-2">
+                      {(['recurring', 'one_time'] as const).map(mode => (
+                        <button key={mode} type="button"
+                          onClick={() => setNewTask(p => ({ ...p, scheduleMode: mode, cron: mode === 'recurring' ? p.cron : '', scheduledAt: mode === 'one_time' ? p.scheduledAt : '' }))}
+                          className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${
+                            newTask.scheduleMode === mode
+                              ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
+                              : 'bg-[var(--glass-bg)] border-[var(--border-glass)] text-[var(--text-secondary)]'
+                          }`}>
+                          {mode === 'recurring' ? '🔄 重复执行' : '📅 一次性'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {newTask.scheduleMode === 'recurring' ? (
+                    <div>
+                      <label className="block text-xs text-[var(--text-secondary)] mb-1">计划选项</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { label: '每小时', value: '0 * * * *' },
+                          { label: '每天 0:00', value: '0 0 * * *' },
+                          { label: '每天 6:00', value: '0 6 * * *' },
+                          { label: '每天 8:00', value: '0 8 * * *' },
+                          { label: '每周一 9:00', value: '0 9 * * 1' },
+                          { label: '每月1号 0:00', value: '0 0 1 * *' },
+                          { label: '每年1月1日', value: '0 0 1 1 *' },
+                        ].map(p => (
+                          <button key={p.value} type="button"
+                            onClick={() => setNewTask(prev => ({ ...prev, cron: p.value }))}
+                            className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
+                              newTask.cron === p.value
+                                ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
+                                : 'bg-[var(--glass-bg)] border-[var(--border-glass)] text-[var(--text-secondary)] hover:border-[var(--accent)]/40'
+                            }`}>
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <input value={newTask.cron} onChange={e => setNewTask(p => ({ ...p, cron: e.target.value }))}
+                        className="w-full mt-2 px-3 py-2 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] font-mono"
+                        placeholder="自定义 cron: 分 时 日 月 周" />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs text-[var(--text-secondary)] mb-1">执行时间</label>
+                      <input type="datetime-local" value={newTask.scheduledAt}
+                        min={new Date().toISOString().slice(0, 16)}
+                        onChange={e => setNewTask(p => ({ ...p, scheduledAt: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
               <div className="flex gap-3 pt-2">
@@ -215,7 +267,7 @@ export default function AgentPage() {
                   className="flex-1 px-4 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">取消</button>
                 <button onClick={createTask}
                   className="flex-1 px-4 py-2 text-sm rounded-xl bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40"
-                  data-testid="agent-task-create-btn" disabled={!newTask.title.trim() || (newTask.cronEnabled && !newTask.cron)}>创建任务</button>
+                  data-testid="agent-task-create-btn" disabled={!newTask.title.trim() || (newTask.cronEnabled && !(newTask.cron || newTask.scheduledAt))}>创建任务</button>
               </div>
             </div>
           </div>
