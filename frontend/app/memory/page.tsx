@@ -14,6 +14,7 @@ export default function MemoryPage() {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const loadList = useCallback(async () => {
     const q = searchQuery.trim();
@@ -50,6 +51,34 @@ export default function MemoryPage() {
     return s.slice(0, n) + '…';
   };
 
+  const uploadToKnowledge = async (m: any) => {
+    const id = extractId(m);
+    const content = extractText(m);
+    if (!id || !content) return;
+    setUploading(true);
+    try {
+      const blob = new Blob([content], { type: 'text/plain' });
+      const fileName = `memory-${id}.txt`;
+      const fd = new FormData();
+      fd.append('title', `Memory ${id.slice(0, 12)}`);
+      fd.append('file_name', fileName);
+      fd.append('file_type', 'txt');
+      fd.append('size_bytes', String(blob.size));
+      fd.append('file', blob, fileName);
+      const res = await apiFetch('/knowledge/docs', { method: 'POST', body: fd });
+      if (res.ok) {
+        alert('已上传到知识库');
+      } else {
+        const err = await res.json().catch(() => ({ error: 'upload failed' }));
+        alert('上传失败: ' + (err.error || res.status));
+      }
+    } catch (e: any) {
+      alert('上传失败: ' + e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   if (detailId) {
     const detail = memories.find(m => extractId(m) === detailId);
     return (
@@ -58,7 +87,13 @@ export default function MemoryPage() {
           <button onClick={() => setDetailId(null)} className="mb-4 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
             ← 返回列表
           </button>
-          <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-4">记忆详情</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-[var(--text-primary)]">记忆详情</h2>
+            <button onClick={() => uploadToKnowledge(detail)} disabled={uploading}
+              className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/25 disabled:opacity-40">
+              {uploading ? '上传中...' : '📤 上传到知识库'}
+            </button>
+          </div>
           {detail ? (
             <div className="space-y-4">
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
