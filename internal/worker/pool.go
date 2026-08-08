@@ -158,8 +158,30 @@ func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
 		return
 	}
 
+	rawBytes := []byte(data.(string))
+
+	// Try raw kb_index job first (no task/task_run records).
+	var rawJob struct {
+		Type    string                 `json:"type"`
+		Payload map[string]interface{} `json:"payload"`
+	}
+	if err := json.Unmarshal(rawBytes, &rawJob); err == nil && rawJob.Type == "kb_index" && p.kbExecutor != nil {
+		// Build a minimal TaskRun for the KB executor (it only needs Params).
+		run := &task.TaskRun{
+			ID:   fmt.Sprintf("raw_kb_%s", msg.ID),
+			Type: task.TaskTypeKBIndex,
+			Params: rawJob.Payload,
+		}
+		start := time.Now()
+		if err := p.kbExecutor.Execute(context.Background(), run); err != nil {
+			log.Printf("[worker] kb_index raw job %s failed after %s: %v", msg.ID, time.Since(start), err)
+		}
+		_ = p.queue.Ack(context.Background(), msg.ID)
+		return
+	}
+
 	var qm task.QueueMessage
-	if err := json.Unmarshal([]byte(data.(string)), &qm); err != nil {
+	if err := json.Unmarshal(rawBytes, &qm); err != nil {
 		log.Printf("Failed to parse queue message: %v", err)
 		return
 	}
