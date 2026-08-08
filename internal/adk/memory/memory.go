@@ -80,9 +80,6 @@ func NewService(db *mongo.Database, embed EmbeddingFunc) *Service {
 // It is idempotent per (session, event text): previously stored texts for the
 // session are skipped, so calling it repeatedly only appends new content.
 func (s *Service) AddSessionToMemory(ctx context.Context, sess session.Session) error {
-	if sess.UserID() == "" || sess.UserID() == "system" {
-		return nil // skip sessions without a real user
-	}
 	texts := extractTexts(sess)
 	if len(texts) == 0 {
 		return nil
