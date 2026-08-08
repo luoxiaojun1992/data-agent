@@ -502,3 +502,64 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 ### HTTPS 敏感字段后端直接返回明文，前端 eye-toggle 控制可见
 **日期**: 2026-08-07 | **延续 Lesson 411**: model API key 不再 mask，handler 移除 `••••••••••` 硬编码。前端小眼睛控制 list + edit form 的 mask/plain toggle。  
 **新增**: Vault 解密失败直接返回 error，不打 mask 兜底——防止前端把 mask 值当真实 key 回存覆盖。
+
+---
+## 2026-08-08 新增（SPEC-063 定时任务调度 + KB 索引重构 + RBAC agent:edit）
+
+### Converter 漏字段 → 功能完全失效且无任何报错
+**日期**: 2026-08-08 | **影响**: 反复创建定时任务但全部立即执行，DB 中 schedule_mode/scheduled_at/scheduled_enabled 三个字段始终为空  
+**根因**: `taskDefToDoc` 序列化和 `docToTaskDef` 反序列化均未包含新增的三个 schedule 字段。Service 层正确设置了 `t.ScheduleMode = "one_time"` 等，但写入 MongoDB 的 bson.M 中根本没有这三个 key；从 DB 读回时 `schedule_mode` 保持 Go zero value `""` → Service 判断 `taskType == scheduled_exec && scheduleMode == ""` → 按实时任务处理 → 立即执行。  
+**解决**: converter 中 taskDefToDoc 补全 `"schedule_mode": t.ScheduleMode` 等 3 个字段；docToTaskDef 补全 `ScheduleMode: getStr(d, "schedule_mode")` 等 3 个字段。  
+**教训**: **新增 domain struct 字段时，严禁漏改 converter/serialization 层**。Go 的 zero value 特性使漏字段不会 panic、不会编译报错、不会在代码 review 中显著暴露——字段默默为空值，系统行为与预期完全不符。
+
+### Scheduler 只启动时加载任务，不动态 reload DB——新建定时任务永远不触发
+**日期**: 2026-08-08 | **影响**: 多次创建定时任务，scheduler 日志中完全没有 "loaded new task" 记录，定时时间到也不执行  
+**根因**: Scheduler 在 `Start()` 启动时调用一次 `LoadFromDB` 加载已有任务。之后 tick 循环每 30s 只调用 `runDueJobs`，从不重新查询 DB。运行时新建的任务 scheduler 根本不知道存在。
+**解决**: 1) tick 循环中加 `s.reloadFromDB(ctx)` 调用 2) 新增 `SetProvider` 注入 `ScheduleProvider` 接口 3) `reloadFromDB` 每 30s 查询 `ListScheduled`，新增的任务加入内存 map。  
+**教训**: 任何定时器/轮询器必须有从数据源刷新当前列表的机制。不能假设"启动加载一次就够"——运行时可能创建新任务、删除旧任务、修改 task 参数。
+
+### docker compose build --no-cache 仍可能复用旧容器 binary
+**日期**: 2026-08-08 | **影响**: 至少 5 轮部署声称"已修复"，实际容器内运行的仍是 13:32 的旧 binary（缺 converter 修复），操作系统行为毫无变化  
+**根因**: `docker compose build --no-cache data-agent` 构建了镜像，但 `docker compose up -d` 如果容器已存在且 image tag 相同，可能直接 start 旧容器（其中的 binary 是旧的）。多次 build 后 `docker exec ... ls -la /usr/local/bin/data-agent` 发现时间戳始终是 13:32。  
+**解决**: 部署流程改为 `docker stop + rm -f <container> + docker rmi -f <image> + rm -rf .next + build --no-cache + up -d`。容器和镜像都要先删除。  
+**教训**: `--no-cache` 只控制构建层缓存，不控制容器复用。部署验证的最后一步必须是 `docker exec <container> ls -la /path/to/binary` 检查二进制时间戳，不只是 `curl HTTP` 状态码。
+
+### 磁盘满导致所有 Docker 服务假死
+**日期**: 2026-08-08 | **影响**: MongoDB 反复 crash-loop、frontend/data-agent 启动失败、`docker compose up` 报 "no space left on device"。每次开发迭代产生大量 dangling image + build cache 累积。  
+**解决**: `docker system prune -af` 释放数十 GB。副作用：清理也删除了 host 上的源文件（通过 dangling container 关联）→ 必须重新 `scp` 所有修改过的源文件。  
+**教训**: 1) 每次部署后 `df -h /` 检查磁盘使用率，>85% 报警 2) 定期 `docker system prune` 3) `prune -af` 之后必须重新同步所有源文件。
+
+### Python str.replace 操作 Go 源码 + git checkout 回退 → 连锁破坏
+**日期**: 2026-08-08 | **影响**: 多次 Python heredoc 替换 Go 代码导致 build failure + 一次 `git checkout file.go` 回退了之前 `python3 -c "..."` 写入的其他修复  
+**根因**: 1) Python `str.replace` 匹配字符串 `const fetchTasks`，但实际变量名是 `loadTasks` → `toggleScheduledEnabled` 函数定义插入到错误位置，编译通过但运行时点击开关无反应 2) `git checkout internal/service/task/service.go` 回退了 `python3 -c "..."` 刚刚写好的 `isScheduled` 跳过初始 run 的逻辑，必须重新 apply。  
+**教训**: 1) Go 源码变更优先用 `Edit` 工具（exact match） 2) `git checkout` 回退前必须 `git diff` 确认没有丢失其他变更 3) Python 字符串替换无法理解代码语义——匹配依赖精确的变量名/缩进/注释字符串。
+
+### RBAC permission DB 记录缺 `key` 字段 → 403 Forbidden
+**日期**: 2026-08-08 | **影响**: admin 用户点击 scheduled task 开关 → PATCH 请求返回 403，排查多轮才定位到 permission 数据问题  
+**根因**: `rbac_perm_agent_edit` 是通过 mongosh 手动插入的，只有 `{name: "agent:edit", resource: "agent"}`，缺少 `key`/`module`/`type` 三个字段。`RolesHavePermission` 查询是 `{"_id": {$in: permIDs}, "key": "agent:edit"}` → 缺 `key` 字段导致查不到 → middleware 返回 403。对比 `rbac_perm_agent_view` 有完整的 `{key: "agent:view", module: "agent", type: "builtin"}`。  
+**解决**: mongosh 补全三个缺失字段。seed 中的 `RBACPerm(id, key, name, module)` 函数自动设置全字段——新增权限应走 seed 幂等插入。  
+**教训**: DB 数据修改必须与 Go model struct 全字段对齐。手动 mongosh 插入最容易遗漏字段（Go 不会报错，只是零值）。新增权限/配置优先走 seed（幂等插入），一次性 DB 修复只做已有错误数据的补齐。
+
+### 前端分支校验只覆盖部分条件 → 一次性定时任务被错误拦截
+**日期**: 2026-08-08 | **影响**: 选"一次性"模式点击创建无反应（无 toast、无 error、无 network request）  
+**根因**: `if (newTask.cronEnabled && !newTask.cron) return;` — 一次性模式不设 cron 表达式，被此条件拦截。recurring 模式依赖 `newTask.cron`，one_time 模式依赖 `newTask.scheduledAt`，但校验只检查了 cron。  
+**解决**: 改为 `if (newTask.cronEnabled && ((mode === 'recurring' && !cron) || (mode === 'one_time' && !scheduledAt))) { alert(...); return; }`。  
+**教训**: 新增分支逻辑（recurring / one_time）后，所有相关 if 条件必须覆盖全部分支。只检查一个分支 = 另一个分支隐形死路。
+
+### QueueMessage 应使用 type+payload 统一 envelope
+**日期**: 2026-08-08 | **影响**: worker pool 中需要特殊处理 `kb_index` raw job（先试反序列化 raw format，失败再 fallback TaskRun format），逻辑脆弱  
+**根因**: 原始 `QueueMessage` 是平铺 struct `{run_id, task_id, session_id, ...}`，`EnqueueRaw` 用 `map[string]interface{}`。两种格式并存 → worker 需要 try-then-fallback 逻辑。  
+**解决**: 统一为 `{type: string, payload: json.RawMessage}` envelope。`type="agent_task"` → payload 是 `AgentTaskPayload`，`type="kb_index"` → payload 是 `KBIndexPayload`。Worker dispatch 用 switch type + `json.Unmarshal` per-type。  
+**教训**: 消息队列的 message 格式优先用 type+payload envelope 设计。payload 是具体结构体，不要用 `map[string]interface{}`。
+
+### Scheduled task 创建时不应创建初始 TaskRun
+**日期**: 2026-08-08 | **影响**: 创建定时任务后立即产生一条 run_count=1 的 run 记录  
+**根因**: `Service.CreateTask` 对所有 task 类型无差别创建 `NewTaskRun` → 即使是 scheduled_exec 也产生初始 run。  
+**解决**: `if isScheduled → return t, nil, nil`。scheduler 在到达 ScheduledAt / cron 时间点时自行创建 run。  
+**教训**: 定时任务和实时任务是两种完全不同的生命周期。定时任务 = 只创建定义，不创建初始 run。
+
+### Toggle 函数定义插入到错误位置（Python str.replace 匹配错误变量名）
+**日期**: 2026-08-08 | **影响**: 前端代码中 `toggleScheduledEnabled` 函数定义被插入到 `const fetchTasks` 之前但实际变量名是 `loadTasks`，Next.js 编译通过但函数未注册到组件作用域 → 运行时点击开关无反应  
+**根因**: Python `str.replace` 匹配 `const fetchTasks = useCallback(async () => {`，但新版代码中变量已改名为 `loadTasks` → 替换不匹配，函数定义留在字符串字面量之外。  
+**解决**: 用 `Edit` 工具精确找到 `useEffect` 和 `loadTasks` 之间的位置，直接插入函数定义。  
+**教训**: 前端变量名随时间变化，Python 字符串替换依赖精确匹配旧名称 → 极易失效且无错误提示（JSX/TSX bundler 不检查未引用的函数）。

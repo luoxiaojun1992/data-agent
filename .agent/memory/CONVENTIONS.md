@@ -113,6 +113,14 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 20 | **MongoDB `$push` 字段名与 Go struct bson tag 不一致** | `$push` 的目标 MongoDB 字段名必须与对应 Go struct 的 `bson:"field_name"` tag 完全一致 |
 | 21 | **MongoDB 文档初始化 array 字段用 nil** | 所有需要 `$push` 的 array 字段必须在 Create 时初始化为空数组 `[]*T{}`，不能依赖 nil → `$push` 报错 |
 | 22 | **前端 `NEXT_PUBLIC_API_URL` 用 Docker 内部 hostname** | 前端 client-side API 调用必须用相对路径（走 nginx 代理）或公网地址，浏览器无法解析 Docker 内部名称 |
+| 23 | **Domain struct 新增字段不同步更新 converter 序列化/反序列化** | 新增 domain 字段时必须同时更新 `taskDefToDoc`/`docToTaskDef` 等所有序列化路径。Go zero value 不会 panic/报错 → 字段默默为空值。 |
+| 24 | **Docker 部署不先删除旧容器和镜像** | `--no-cache` 只控制构建层缓存。部署流程必须：`docker rm -f <container>` + `docker rmi -f <image>` + `rm -rf .next` → `build --no-cache` → `up -d` |
+| 25 | **部署后不检查容器内 binary 时间戳** | 部署验证最后一步必须是 `docker exec <container> ls -la /path/to/binary`，不只是 `curl HTTP` 状态码。旧容器可能 start 旧的 binary。 |
+| 26 | **DB 手动改数据不按 Go model struct 全字段对齐** | mongosh 手动插入/更新记录时必须与对应 Go struct 的 bson tag 全字段对齐。漏字段 = Go 读为零值 = 功能静默失效且无报错。新增数据优先走 seed 幂等插入。 |
+| 27 | **Scheduler/轮询器只启动加载，不运行时 reload** | 所有定时器/轮询器必须有从数据源动态刷新的机制。运行时可能创建新任务/修改参数。 |
+| 28 | **新增分支逻辑后只更新部分 if 条件** | 新增 `one_time` 模式后校验只检查 `!newTask.cron` → 一次性定时被错误拦截。所有涉及相同分支的条件必须全部覆盖。 |
+| 29 | **消息队列用平铺 struct 或 map[string]interface{}** | 使用 `{type, payload: json.RawMessage}` envelope。worker 用 switch type + json.Unmarshal per-type，清晰可扩展。 |
+| 30 | **Git checkout 回退时不检查是否丢失其他变更** | checkout 前必须 `git diff` 确认。Python heredoc 写好的修复可能被无差别回退。
 
 ## 开发工作流约定
 
