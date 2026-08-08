@@ -18,6 +18,7 @@ interface AgentTask {
   cron_expr?: string;
   schedule_mode?: string;
   scheduled_at?: string;
+  scheduled_enabled?: boolean;
   logs?: string[];
   artifacts?: { name: string; id: string }[];
 }
@@ -143,6 +144,17 @@ export default function AgentPage() {
                       }}>
                         {task.type === 'scheduled_exec' ? '⏰ 定时' : '▶ 实时'}
                       </span>
+                      {task.type === 'scheduled_exec' && (
+                        <button onClick={(e) => { e.stopPropagation(); toggleScheduledEnabled(task); }}
+                          style={{
+                            fontSize: '10px', padding: '1px 6px', borderRadius: '4px', cursor: 'pointer',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            background: task.scheduled_enabled !== false ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.1)',
+                            color: task.scheduled_enabled !== false ? '#10b981' : '#ef4444',
+                          }}>
+                          {task.scheduled_enabled !== false ? 'ON' : 'OFF'}
+                        </button>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-secondary)]">
                       <span data-testid={`agent-task-run-count-${idx}`}>

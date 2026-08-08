@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -162,12 +164,27 @@ func (s *Scheduler) executeJob(ctx context.Context, sch *Schedule) {
 
 	lastRun := now
 	sch.LastRun = &lastRun
-	sch.NextRun = now.Add(sch.Interval)
-	log.Printf("Scheduler: completed %q, next run at %s", sch.Name, sch.NextRun.Format(time.RFC3339))
+
+	if sch.Interval == 0 {
+		// One-time schedule: disable after first execution.
+		sch.Enabled = false
+		log.Printf("Scheduler: one-time schedule %q completed, disabled", sch.Name)
+	} else {
+		sch.NextRun = now.Add(sch.Interval)
+		log.Printf("Scheduler: completed %q, next run at %s", sch.Name, sch.NextRun.Format(time.RFC3339))
+	}
 }
 
-// parseCronExpr parses simplified cron expressions into time.Duration.
+// parseCronExpr parses a cron expression into an interval (approximate)
+// and returns the next occurrence time from now.
 func parseCronExpr(expr string) (time.Duration, error) {
+	// Standard 5-part cron: minute hour day-of-month month day-of-week
+	if len(expr) > 0 && expr[0] >= '0' && expr[0] <= '9' && strings.Count(expr, " ") >= 4 {
+		dur, err := nextCronDuration(expr)
+		if err == nil {
+			return dur, nil
+		}
+	}
 	switch expr {
 	case "every_1m":
 		return 1 * time.Minute, nil
@@ -193,6 +210,73 @@ func parseCronExpr(expr string) (time.Duration, error) {
 		return 0, fmt.Errorf("unsupported cron expression %q (supported: every_1m, every_5m, every_1h, every_24h, daily_09:00, weekly_monday_09:00)", expr)
 	}
 }
+
+
+// nextCronTime returns the next occurrence time for a standard 5-part cron expression.
+func nextCronTime(expr string) (time.Time, error) {
+	// Parse: minute hour day month weekday
+	parts := strings.Fields(expr)
+	if len(parts) != 5 {
+		return time.Time{}, fmt.Errorf("invalid cron: want 5 parts, got %d", len(parts))
+	}
+	minute, _ := strconv.Atoi(parts[0])
+	hour, _ := strconv.Atoi(parts[1])
+	now := time.Now()
+	candidate := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+	if !candidate.After(now) {
+		candidate = candidate.Add(24 * time.Hour)
+	}
+	return candidate, nil
+}
+
+// nextCronDuration calculates interval until next cron occurrence (approximate).
+func nextCronDuration(expr string) (time.Duration, error) {
+	parts := strings.Fields(expr)
+	if len(parts) != 5 {
+		return 0, fmt.Errorf("invalid cron: want 5 parts, got %d", len(parts))
+	}
+	minute, _ := strconv.Atoi(parts[0])
+	hour, _ := strconv.Atoi(parts[1])
+	day := parts[2]
+	month := parts[3]
+	weekday := parts[4]
+
+	// Estimate: daily, weekly, monthly, yearly
+	if day == "*" && month == "*" && weekday == "*" {
+		// Daily
+		now := time.Now()
+		next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+		if !next.After(now) {
+			next = next.Add(24 * time.Hour)
+		}
+		return next.Sub(now), nil
+	}
+	if day == "*" && month == "*" && weekday != "*" {
+		// Specific weekday
+		w, _ := strconv.Atoi(weekday) // 0=Sun, 1=Mon, ...
+		if w >= 0 && w <= 6 {
+			now := time.Now()
+			daysUntil := (w - int(now.Weekday()) + 7) % 7
+			if daysUntil == 0 {
+				candidate := time.Date(now.Year(), now.Month(), now.Day()+daysUntil, hour, minute, 0, 0, now.Location())
+				if !candidate.After(now) {
+					daysUntil = 7
+				}
+			}
+			next := time.Date(now.Year(), now.Month(), now.Day()+daysUntil, hour, minute, 0, 0, now.Location())
+			return next.Sub(now), nil
+		}
+	}
+	// Default: daily at specified time
+	now := time.Now()
+	next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+	if !next.After(now) {
+		next = next.Add(24 * time.Hour)
+	}
+	return next.Sub(now), nil
+}
+
+// getNextHoursUntil is kept for backward compatibility.
 
 func getNextHoursUntil(targetHour int) int {
 	now := time.Now()
@@ -257,7 +341,7 @@ func (s *Scheduler) LoadFromDB(ctx context.Context, provider ScheduleProvider) (
 					continue
 				}
 				sch.Interval = interval
-				sch.NextRun = time.Now()
+				sch.NextRun = time.Now().Add(interval)
 			case "one_time":
 				if t.ScheduledAt == nil {
 					log.Printf("Scheduler: skipping task %s (%s): one_time mode but no scheduled_at", t.ID, t.Title)
