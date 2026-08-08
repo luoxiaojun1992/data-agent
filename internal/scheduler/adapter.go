@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"time"
 
 	task_model "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
@@ -36,8 +37,8 @@ func NewScheduleProviderFromRepo(repo repository.TaskRepository) ScheduleProvide
 	return &taskRepoAdapter{repo: repo}
 }
 
-func (a *taskRepoAdapter) ListScheduled(ctx context.Context, skip, limit int64) ([]TaskDef, int64, error) {
-	tasks, total, err := a.repo.ListScheduled(ctx, skip, limit)
+func (a *taskRepoAdapter) ListScheduled(ctx context.Context, skip, limit int64, now time.Time) ([]TaskDef, int64, error) {
+	tasks, total, err := a.repo.ListScheduled(ctx, skip, limit, now)
 	if err != nil {
 		return nil, 0, err
 	}

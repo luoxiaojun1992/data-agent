@@ -296,7 +296,7 @@ func getNextHoursUntil(targetHour int) int {
 
 // ScheduleProvider reads scheduled task definitions from persistent storage.
 type ScheduleProvider interface {
-	ListScheduled(ctx context.Context, skip, limit int64) (tasks []TaskDef, total int64, err error)
+	ListScheduled(ctx context.Context, skip, limit int64, now time.Time) (tasks []TaskDef, total int64, err error)
 	MarkScheduledDone(ctx context.Context, id string) error
 }
 
@@ -319,7 +319,7 @@ func (s *Scheduler) LoadFromDB(ctx context.Context, provider ScheduleProvider) (
 	var skip int64
 	const batchSize int64 = 100
 	for {
-		tasks, total, err := provider.ListScheduled(ctx, skip, batchSize)
+		tasks, total, err := provider.ListScheduled(ctx, skip, batchSize, time.Now())
 		if err != nil {
 			return loaded, err
 		}
@@ -377,7 +377,7 @@ func (s *Scheduler) reloadFromDB(ctx context.Context) {
 	if s.provider == nil {
 		return
 	}
-	tasks, _, err := s.provider.ListScheduled(ctx, 0, 100)
+	tasks, _, err := s.provider.ListScheduled(ctx, 0, 100, time.Now())
 	if err != nil {
 		log.Printf("Scheduler: reload failed: %v", err)
 		return
