@@ -31,14 +31,20 @@ func (s *Service) SetQueueRepo(qr repository.QueueRepository) {
 func (s *Service) CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID, scheduleMode, cronExpr string, scheduledAt *time.Time) (*task.Task, *task.TaskRun, error) {
 	ctx := context.Background()
 	t := task.NewTask(userID, taskType, skillChain, params, modelID)
-	if taskType == task.TaskTypeScheduledExec && scheduleMode != "" {
+	t.ScheduledEnabled = true
+	isScheduled := taskType == task.TaskTypeScheduledExec && scheduleMode != ""
+	if isScheduled {
 		t.ScheduleMode = scheduleMode
 		t.CronExpr = cronExpr
 		t.ScheduledAt = scheduledAt
-		t.ScheduledEnabled = true
 	}
 	if err := s.repo.Create(ctx, t); err != nil {
 		return nil, nil, fmt.Errorf("insert task def: %w", err)
+	}
+	// For real-time tasks, create the first run immediately.
+	// For scheduled tasks, the scheduler creates runs at the scheduled time.
+	if isScheduled {
+		return t, nil, nil
 	}
 	run := task.NewTaskRun(t)
 	run.Status = task.StatusQueued
