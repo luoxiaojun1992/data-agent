@@ -9,6 +9,8 @@ interface Task {
   session_id?: string;
   user_id?: string;
   type?: string;
+  cron_expr?: string;
+  scheduled_enabled?: boolean;
   status: string;
   skill_chain?: string[];
   created_at?: string;
@@ -27,6 +29,17 @@ export default function TasksPage() {
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const toggleScheduledEnabled = async (t: Task) => {
+    const enabled = t.scheduled_enabled === false; // toggle
+    const res = await apiFetch(`/admin/tasks/${t.task_id}/scheduled-enabled`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    });
+    if (res.ok) {
+      setTasks(prev => prev.map(x => x.task_id === t.task_id ? { ...x, scheduled_enabled: enabled } : x));
+    }
   };
 
   const fetchTasks = useCallback(async () => {
@@ -169,6 +182,17 @@ export default function TasksPage() {
                       <span>
                         <span style={{ color: '#60a5fa', fontWeight: 500 }}>定时</span>
                         {t.cron_expr && <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginLeft: '4px' }}>{t.cron_expr}</span>}
+                        <button
+                          onClick={() => toggleScheduledEnabled(t)}
+                          style={{
+                            marginLeft: '6px', padding: '2px 8px', borderRadius: '4px', fontSize: '11px',
+                            border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer',
+                            background: t.scheduled_enabled !== false ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.1)',
+                            color: t.scheduled_enabled !== false ? '#10b981' : '#ef4444',
+                          }}
+                        >
+                          {t.scheduled_enabled !== false ? 'ON' : 'OFF'}
+                        </button>
                       </span>
                     ) : (
                       <span style={{ color: 'var(--text-secondary)' }}>{t.type || 'agent'}</span>

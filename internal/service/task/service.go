@@ -90,6 +90,10 @@ func (s *Service) ListAllTasks(userID string) ([]*task.Task, error) {
 	return s.repo.ListAll(context.Background(), userID)
 }
 
+func (s *Service) SetScheduledEnabled(id string, enabled bool) error {
+	return s.repo.SetScheduledEnabled(context.Background(), id, enabled)
+}
+
 func (s *Service) BatchCancelTasks(ids []string) error {
 	for _, id := range ids {
 		_ = s.repo.Cancel(context.Background(), id)

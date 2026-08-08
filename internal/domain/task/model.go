@@ -40,9 +40,10 @@ type Task struct {
 	SkillChain  []string               `json:"skill_chain"`
 	Params      map[string]interface{} `json:"params"`
 	CronExpr    string                 `json:"cron_expr,omitempty" bson:"cron_expr,omitempty"`
-	RunCount    int64                  `json:"run_count" bson:"run_count"`       // incremented atomically per run creation
+	RunCount    int64                  `json:"run_count" bson:"run_count"`           // incremented atomically per run creation
 	LastRunAt   *time.Time             `json:"last_run_at,omitempty" bson:"last_run_at,omitempty"`
-	ScheduledDone bool                `json:"scheduled_done" bson:"scheduled_done"` // true when one-shot schedule completed
+	ScheduledEnabled bool              `json:"scheduled_enabled" bson:"scheduled_enabled"` // on/off switch for scheduled tasks (non-scheduled always true)
+	ScheduledDone    bool              `json:"scheduled_done" bson:"scheduled_done"`       // only set true for one-shot scheduled tasks
 	CreatedAt   time.Time              `json:"created_at" bson:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at" bson:"updated_at"`
 }

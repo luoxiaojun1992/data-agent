@@ -191,3 +191,9 @@ func (r *TaskDefRepository) MarkScheduledDone(ctx context.Context, id string) er
 	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"scheduled_done": true}})
 	return err
 }
+
+// SetScheduledEnabled toggles the scheduled_enabled flag on a task.
+func (r *TaskDefRepository) SetScheduledEnabled(ctx context.Context, id string, enabled bool) error {
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"scheduled_enabled": enabled}})
+	return err
+}
