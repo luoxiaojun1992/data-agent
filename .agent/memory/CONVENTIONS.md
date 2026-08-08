@@ -120,7 +120,10 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 27 | **Scheduler/轮询器只启动加载，不运行时 reload** | 所有定时器/轮询器必须有从数据源动态刷新的机制。运行时可能创建新任务/修改参数。 |
 | 28 | **新增分支逻辑后只更新部分 if 条件** | 新增 `one_time` 模式后校验只检查 `!newTask.cron` → 一次性定时被错误拦截。所有涉及相同分支的条件必须全部覆盖。 |
 | 29 | **消息队列用平铺 struct 或 map[string]interface{}** | 使用 `{type, payload: json.RawMessage}` envelope。worker 用 switch type + json.Unmarshal per-type，清晰可扩展。 |
-| 30 | **Git checkout 回退时不检查是否丢失其他变更** | checkout 前必须 `git diff` 确认。Python heredoc 写好的修复可能被无差别回退。
+| 30 | **Git checkout 回退时不检查是否丢失其他变更** | checkout 前必须 `git diff` 确认。Python heredoc 写好的修复可能被无差别回退。 |
+| 31 | **用户给的具体条件（含比较运算符）只做一半** | 用户说 `<= 当前时间` 就必须有 `$lte: now`，不能降级为 `$exists: true` 或 `$ne: nil`。逐字翻译，不打折扣。 |
+| 32 | **新增过滤字段只在 write 端加、漏掉 read 端的 query filter** | toggle 写入 `scheduled_enabled=false` 后，ListScheduled 也必须加 `scheduled_enabled: {$ne: false}`。write 和 read 是两次独立操作，必须同步。 |
+| 33 | **Go interface 签名变更不问全链路就声称完成** | 改 repo 接口签名 → grep 所有 implement + 所有 caller。adapter、provider interface、两个调用处一个都不能漏。 |
 
 ## 开发工作流约定
 

@@ -563,3 +563,22 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **根因**: Python `str.replace` 匹配 `const fetchTasks = useCallback(async () => {`，但新版代码中变量已改名为 `loadTasks` → 替换不匹配，函数定义留在字符串字面量之外。  
 **解决**: 用 `Edit` 工具精确找到 `useEffect` 和 `loadTasks` 之间的位置，直接插入函数定义。  
 **教训**: 前端变量名随时间变化，Python 字符串替换依赖精确匹配旧名称 → 极易失效且无错误提示（JSX/TSX bundler 不检查未引用的函数）。
+
+---
+## 2026-08-09 新增（ListScheduled filter 不完整 + scheduled_enabled 遗漏）
+
+### 实现不完备 — 用户明确要求的条件只做了一半
+**日期**: 2026-08-09 | **影响**: 用户两次纠正同一个 filter 问题  
+**用户原始要求**: "DB筛选 cron_expr not empty or (任务时间<=当前时间)"  
+**第一次实现**: `"scheduled_at": {$ne: nil, $exists: true}` — 只检查字段存在，没做 `<= now`。**纠正后**: `"scheduled_at": {$lte: now, $exists: true}`。  
+**教训**: 用户给的具体条件含比较运算符（`<=`）必须逐字翻译。不要自作聪明降级为 `$exists`。
+
+### scheduled_enabled 在 filter 中遗漏 — 开关做成但没生效
+**日期**: 2026-08-09 | **影响**: toggle ON/OFF 做了但 scheduler 仍加载关闭的任务执行  
+**根因**: write 端（PATCH toggle → DB set scheduled_enabled=false）和 read 端（ListScheduled 查询）没同步加 filter。  
+**教训**: 新增过滤字段时，所有读取该字段的 query 必须同步添加 filter 条件。
+
+### 接口签名变更 → 全链路 5 处必须同步
+**日期**: 2026-08-09 | **影响**: `ListScheduled(ctx, skip, limit)` → `ListScheduled(ctx, skip, limit, now time.Time)`  
+**涉及 5 层**: ① `repository/task.go` 接口 ② `infra/mongo/task_def_repository.go` 实现 ③ `scheduler/adapter.go` 适配器 ④ `scheduler/scheduler.go` ScheduleProvider 接口 ⑤ `scheduler/scheduler.go` LoadFromDB + reloadFromDB 两个调用处  
+**教训**: Go interface 签名变更时，grep 所有 implement 该接口的 struct + 所有调用处，不能只改接口和实现。
