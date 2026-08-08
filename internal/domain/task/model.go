@@ -68,9 +68,16 @@ type TaskProgress struct {
 // NewTask creates a new task definition with a generated ID.
 func NewTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) *Task {
 	now := time.Now()
+	title := ""
+	if params != nil {
+		if v, ok := params["title"].(string); ok {
+			title = v
+		}
+	}
 	return &Task{
 		ID:         "task_" + uuid.New().String(),
 		UserID:     userID,
+		Title:      title,
 		Type:       taskType,
 		ModelID:    modelID,
 		SkillChain: skillChain,

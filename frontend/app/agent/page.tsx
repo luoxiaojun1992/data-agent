@@ -16,6 +16,8 @@ interface AgentTask {
   created_at: string;
   updated_at?: string;
   cron_expr?: string;
+  schedule_mode?: string;
+  scheduled_at?: string;
   logs?: string[];
   artifacts?: { name: string; id: string }[];
 }
@@ -131,8 +133,17 @@ export default function AgentPage() {
                 <button onClick={() => openTask(task.task_id)}
                   className="w-full text-left p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
                   data-testid={`agent-task-title-${idx}`}>
-                  <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">{task.title || task.type || task.task_id?.slice(0, 12)}</p>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-[var(--text-primary)]">{task.title || task.type || task.task_id?.slice(0, 12)}</p>
+                      <span style={{
+                        fontSize: '10px', padding: '1px 6px', borderRadius: '4px', fontWeight: 500,
+                        background: task.type === 'scheduled_exec' ? 'rgba(96,165,250,0.15)' : 'rgba(148,163,184,0.15)',
+                        color: task.type === 'scheduled_exec' ? '#60a5fa' : '#94a3b8',
+                      }}>
+                        {task.type === 'scheduled_exec' ? '⏰ 定时' : '▶ 实时'}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-secondary)]">
                       <span data-testid={`agent-task-run-count-${idx}`}>
                         🔁 {(task.run_count ?? 0)} 次运行
@@ -142,8 +153,15 @@ export default function AgentPage() {
                           · 上次: {new Date(task.last_run_at).toLocaleString()}
                         </span>
                       )}
+                      {task.type === 'scheduled_exec' && task.schedule_mode === 'recurring' && task.cron_expr && (
+                        <span>· 📋 {task.cron_expr}</span>
+                      )}
+                      {task.type === 'scheduled_exec' && task.schedule_mode === 'one_time' && task.scheduled_at && (
+                        <span>· 🕐 {new Date(task.scheduled_at).toLocaleString()}</span>
+                      )}
                     </div>
                   </div>
+                  <div className="text-[var(--text-secondary)] text-sm">▶</div>
                 </button>
               </div>
             ))}
