@@ -167,8 +167,11 @@ func (r *TaskRunRepository) Cancel(ctx context.Context, id string) error {
 // ListScheduled returns scheduled tasks (type=scheduled_exec, cron_expr set, not yet done) paginated.
 func (r *TaskDefRepository) ListScheduled(ctx context.Context, skip, limit int64) ([]*task.Task, int64, error) {
 	filter := bson.M{
-		"type":           task.TaskTypeScheduledExec,
-		"cron_expr":      bson.M{"$ne": "", "$exists": true},
+		"type": task.TaskTypeScheduledExec,
+		"$or": []bson.M{
+			{"cron_expr": bson.M{"$ne": "", "$exists": true}},
+			{"scheduled_at": bson.M{"$ne": nil, "$exists": true}},
+		},
 		"scheduled_done": bson.M{"$ne": true},
 	}
 	total, err := r.coll.CountDocuments(ctx, filter)
