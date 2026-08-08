@@ -17,6 +17,10 @@ type TaskRepository interface {
 	Cancel(ctx context.Context, id string) error
 	List(ctx context.Context, userID string, skip, limit int64) ([]*task.Task, int64, error)
 	ListAll(ctx context.Context, userID string) ([]*task.Task, error)
+	// ListScheduled returns tasks with type=scheduled_exec and active cron, paginated.
+	ListScheduled(ctx context.Context, skip, limit int64) ([]*task.Task, int64, error)
+	// MarkScheduledDone sets scheduled_done=true for a task (one-shot completion).
+	MarkScheduledDone(ctx context.Context, id string) error
 }
 
 //go:generate mockery --name TaskRunRepository --output ./mocks --outpkg mocks

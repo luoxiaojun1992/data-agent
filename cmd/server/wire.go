@@ -105,8 +105,9 @@ func initVault(deps *serverDependencies, logger *zap.Logger) {
 // so the save_task_result ADK tool has a non-nil TaskRunService dep.
 // The queue repo is injected later by initTaskQueue after Redis connects.
 func initTaskService(deps *serverDependencies, mongoClient *mongoinfra.Client) {
+	deps.taskRepo = mongoinfra.NewTaskDefRepository(mongoClient.DB())
 	deps.taskService = task_svc.NewService(
-		mongoinfra.NewTaskDefRepository(mongoClient.DB()),
+		deps.taskRepo,
 		mongoinfra.NewTaskRunRepository(mongoClient.DB()),
 		nil, // queue wired later by initTaskQueue
 	)
@@ -384,7 +385,13 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 
 	sched := scheduler.New(scheduler.NewTaskCreatorFromService(deps.taskService))
 	sched.Start(context.Background())
-	logger.Info("Scheduler started")
+	// Load scheduled agent tasks from DB
+	provider := scheduler.NewScheduleProviderFromRepo(deps.taskRepo)
+	if n, err := sched.LoadFromDB(context.Background(), provider); err != nil {
+		logger.Warn("Scheduler failed to load tasks", zap.Error(err))
+	} else {
+		logger.Info("Scheduler loaded tasks", zap.Int("count", n))
+	}
 
 	// SPEC-063: replace the no-op simpleExecutor stub with a real AgentExecutor
 	// that reuses the Runtime.RunAndCollect execution path. The executor owns

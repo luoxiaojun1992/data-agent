@@ -200,3 +200,61 @@ func getNextHoursUntil(targetHour int) int {
 	}
 	return (24 - currentHour) + targetHour
 }
+
+// ScheduleProvider reads scheduled task definitions from persistent storage.
+type ScheduleProvider interface {
+	ListScheduled(ctx context.Context, skip, limit int64) (tasks []TaskDef, total int64, err error)
+	MarkScheduledDone(ctx context.Context, id string) error
+}
+
+// TaskDef is a minimal scheduled task definition needed by the scheduler.
+type TaskDef struct {
+	ID          string
+	UserID      string
+	Title       string
+	CronExpr    string
+	SkillChain  []string
+	Params      map[string]interface{}
+	ModelID     string
+}
+
+// LoadFromDB paginates through all scheduled tasks from the provider and registers them.
+func (s *Scheduler) LoadFromDB(ctx context.Context, provider ScheduleProvider) (int, error) {
+	var loaded int
+	var skip int64
+	const batchSize int64 = 100
+	for {
+		tasks, total, err := provider.ListScheduled(ctx, skip, batchSize)
+		if err != nil {
+			return loaded, err
+		}
+		for _, t := range tasks {
+			interval, err := parseCronExpr(t.CronExpr)
+			if err != nil {
+				log.Printf("Scheduler: skipping task %s (%s): invalid cron %q: %v", t.ID, t.Title, t.CronExpr, err)
+				continue
+			}
+			sch := &Schedule{
+				TaskID:     t.ID,
+				Name:       t.Title,
+				CronExpr:   t.CronExpr,
+				Interval:   interval,
+				Enabled:    true,
+				SkillChain: t.SkillChain,
+				Params:     t.Params,
+				ModelID:    t.ModelID,
+				CreatedAt:  time.Now(),
+			}
+			// NextRun starts immediately for pending schedules
+			sch.NextRun = time.Now()
+			s.AddSchedule(sch)
+			loaded++
+		}
+		skip += batchSize
+		if skip >= total {
+			break
+		}
+	}
+	log.Printf("Scheduler: loaded %d scheduled tasks from DB", loaded)
+	return loaded, nil
+}

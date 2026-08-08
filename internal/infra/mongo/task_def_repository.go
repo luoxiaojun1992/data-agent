@@ -161,3 +161,33 @@ func (r *TaskRunRepository) Cancel(ctx context.Context, id string) error {
 	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"status": task.StatusCancelled}})
 	return err
 }
+
+// ListScheduled returns scheduled tasks (type=scheduled_exec, cron_expr set, not yet done) paginated.
+func (r *TaskDefRepository) ListScheduled(ctx context.Context, skip, limit int64) ([]*task.Task, int64, error) {
+	filter := bson.M{
+		"type":           task.TaskTypeScheduledExec,
+		"cron_expr":      bson.M{"$ne": "", "$exists": true},
+		"scheduled_done": bson.M{"$ne": true},
+	}
+	total, err := r.coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	opts := options.Find().SetSort(bson.M{"created_at": 1}).SetSkip(skip).SetLimit(limit)
+	cursor, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+	var tasks []*task.Task
+	if err := cursor.All(ctx, &tasks); err != nil {
+		return nil, 0, err
+	}
+	return tasks, total, nil
+}
+
+// MarkScheduledDone marks a scheduled task as completed.
+func (r *TaskDefRepository) MarkScheduledDone(ctx context.Context, id string) error {
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"scheduled_done": true}})
+	return err
+}

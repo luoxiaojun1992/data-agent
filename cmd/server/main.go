@@ -86,6 +86,7 @@ type serverDependencies struct {
 	memoryKit      *memoryx.Kit
 	sessionManager *chat.Manager
 	sessionRepo    repository.SessionRepository
+	taskRepo       repository.TaskRepository
 	chatService    *chat.Service
 	secAuditor     *security.Auditor
 	cbRegistry     *security.CircuitBreakerRegistry

@@ -164,7 +164,16 @@ export default function TasksPage() {
                   <td style={tdStyle}>
                     <span style={statusBadge(t.status)}>{statusLabel(t.status)}</span>
                   </td>
-                  <td style={tdStyle}>{t.type || 'agent'}</td>
+                  <td style={tdStyle}>
+                    {t.type === 'scheduled_exec' ? (
+                      <span>
+                        <span style={{ color: '#60a5fa', fontWeight: 500 }}>定时</span>
+                        {t.cron_expr && <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginLeft: '4px' }}>{t.cron_expr}</span>}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)' }}>{t.type || 'agent'}</span>
+                    )}
+                  </td>
                   <td style={tdStyle} data-testid={`task-mgmt-creator-${t.task_id}`}>{t.user_id?.slice(0, 8) || '—'}</td>
                   <td style={tdStyle}>{t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : '—'}</td>
                   <td style={tdStyle}>

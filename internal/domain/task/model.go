@@ -39,11 +39,12 @@ type Task struct {
 	ModelID     string                 `json:"model_id"`
 	SkillChain  []string               `json:"skill_chain"`
 	Params      map[string]interface{} `json:"params"`
-	CronExpr    string                 `json:"cron_expr,omitempty"`
-	RunCount    int64                  `json:"run_count"`            // incremented atomically per run creation
-	LastRunAt   *time.Time             `json:"last_run_at,omitempty"` // updated on each new run creation
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
+	CronExpr    string                 `json:"cron_expr,omitempty" bson:"cron_expr,omitempty"`
+	RunCount    int64                  `json:"run_count" bson:"run_count"`       // incremented atomically per run creation
+	LastRunAt   *time.Time             `json:"last_run_at,omitempty" bson:"last_run_at,omitempty"`
+	ScheduledDone bool                `json:"scheduled_done" bson:"scheduled_done"` // true when one-shot schedule completed
+	CreatedAt   time.Time              `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at" bson:"updated_at"`
 }
 
 // TaskProgress tracks execution progress.
