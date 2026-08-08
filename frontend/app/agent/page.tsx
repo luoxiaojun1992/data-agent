@@ -66,6 +66,7 @@ export default function AgentPage() {
 
   const createTask = async () => {
     if (!newTask.title.trim()) return;
+    if (newTask.cronEnabled && ((newTask.scheduleMode === "recurring" && !newTask.cron) || (newTask.scheduleMode === "one_time" && !newTask.scheduledAt))) { alert("请填写完整的定时信息"); return; }
     // If cron is enabled, a schedule must be chosen.
     if (newTask.cronEnabled && !newTask.cron && !newTask.scheduledAt) return;
     try {
@@ -75,6 +76,7 @@ export default function AgentPage() {
         type: newTask.cronEnabled ? 'scheduled_exec' : 'agent_exec',
       };
       if (newTask.cronEnabled) {
+        body.schedule_mode = newTask.scheduleMode;
         if (newTask.scheduleMode === 'recurring' && newTask.cron) {
           body.cron_expr = newTask.cron;
         } else if (newTask.scheduleMode === 'one_time' && newTask.scheduledAt) {
