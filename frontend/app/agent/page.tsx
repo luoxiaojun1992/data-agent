@@ -144,15 +144,6 @@ export default function AgentPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {statusPill(task.status)}
-                    {task.progress != null && task.status === 'running' && (
-                      <div className="w-20 h-1.5 bg-[var(--glass-bg)] rounded-full overflow-hidden" data-testid={`task-progress-bar-${idx}`}>
-                        <div className="h-full bg-[var(--accent)] rounded-full" style={{ width: `${task.progress}%` }} data-testid={`task-progress-fill-${idx}`} />
-                      </div>
-                    )}
-                    <span className="text-xs text-[var(--text-secondary)]">▶</span>
-                  </div>
                 </button>
               </div>
             ))}
