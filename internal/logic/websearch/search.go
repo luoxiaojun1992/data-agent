@@ -4,6 +4,7 @@
 package websearch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Config is the per-skill websearch configuration, read from skill config JSON.
@@ -163,27 +165,32 @@ func searchBing(ctx context.Context, query, apiKey string, topN int) ([]ResultIt
 	return out, nil
 }
 
-// ---- Baidu Search (requires API key from Baidu AI开放平台) ----
-
-type baiduResponse struct {
-	Items []struct {
-		Title   string `json:"title"`
-		URL     string `json:"url"`
-		Summary string `json:"summary"`
-	} `json:"items"`
-}
+// ---- Baidu Search (requires API key from Baidu Qianfan 智能搜索) ----
 
 func searchBaidu(ctx context.Context, query, apiKey string, topN int) ([]ResultItem, error) {
-	apiURL := "https://qianfan.baidubce.com/v2/app/search?" + url.Values{
-		"query": {query},
-		"top_n": {fmt.Sprintf("%d", topN)},
-	}.Encode()
+	// Baidu Qianfan 智能搜索生成 API (https://cloud.baidu.com/doc/qianfan/s/2mh4su4uy)
+	apiURL := "https://qianfan.baidubce.com/v2/ai_search/web_search"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	body := map[string]interface{}{
+		"messages": []map[string]string{
+			{"role": "user", "content": query},
+		},
+		"search_source": "baidu_search_v2",
+		"resource_type_filter": []map[string]interface{}{
+			{"type": "web", "top_k": topN},
+		},
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -191,28 +198,49 @@ func searchBaidu(ctx context.Context, query, apiKey string, topN int) ([]ResultI
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var br baiduResponse
-	if err := json.Unmarshal(body, &br); err != nil {
+	var br struct {
+		References []struct {
+			Title   string `json:"title"`
+			URL     string `json:"url"`
+			Snippet string `json:"snippet"`
+			Content string `json:"content"`
+			Date    string `json:"date"`
+		} `json:"references"`
+	}
+	if err := json.Unmarshal(respBody, &br); err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
 
 	var out []ResultItem
-	for _, v := range br.Items {
+	for _, r := range br.References {
+		snippet := r.Snippet
+		if snippet == "" {
+			snippet = r.Content
+		}
 		out = append(out, ResultItem{
-			Title:   v.Title,
-			URL:     v.URL,
-			Snippet: v.Summary,
+			Title:   r.Title,
+			URL:     r.URL,
+			Snippet: truncate(snippet, 500),
 			Engine:  "baidu",
 		})
 	}
 	return out, nil
+}
+
+// truncate cuts a string to maxLen runes without breaking UTF-8.
+func truncate(s string, maxLen int) string {
+	if utf8.RuneCountInString(s) <= maxLen {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:maxLen]) + "..."
 }
