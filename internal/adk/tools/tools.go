@@ -385,11 +385,11 @@ func specs(deps *Deps) []toolSpec {
 		},
 		{
 			name:        "web_search",
-			description: "Searches the web using DuckDuckGo (free, no API key) to answer factual questions, find recent information, definitions, and related topics. Use for real-time or factual lookups.",
+			description: "Searches the web via Bing/Baidu APIs to find real-time information. Requires bing_api_key or baidu_api_key in skill config (set via Admin panel). If no API key is configured, returns an error explaining how to enable it.",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{
 					Name:        "web_search",
-					Description: "Searches the web using DuckDuckGo (free, no API key) to answer factual questions, find recent information, definitions, and related topics. Use for real-time or factual lookups.",
+					Description: "Searches the web via Bing/Baidu APIs to find real-time information. Requires bing_api_key or baidu_api_key in skill config (set via Admin panel). If no API key is configured, returns an error explaining how to enable it.",
 				}, webSearch(deps))
 			},
 		},
@@ -473,13 +473,18 @@ type WebSearchArgs struct {
 	Query string `json:"query" description:"The search query to look up on the web"`
 }
 
-// webSearch performs a free web search via DuckDuckGo.
-func webSearch(_ *Deps) functiontool.Func[WebSearchArgs, websearchpkg.SearchResult] {
+// webSearch performs a web search via configured engines (Bing/Baidu).
+// API keys are read from skill config; empty key → engine skipped.
+func webSearch(deps *Deps) functiontool.Func[WebSearchArgs, websearchpkg.SearchResult] {
 	return func(ctx agent.ToolContext, args WebSearchArgs) (websearchpkg.SearchResult, error) {
 		if args.Query == "" {
 			return websearchpkg.SearchResult{Error: "query is required"}, nil
 		}
-		result, err := websearchpkg.Search(ctx, args.Query)
+		var cfg websearchpkg.Config
+		if deps.SkillConfig != nil {
+			_ = deps.SkillConfig.GetConfig(context.Background(), "web_search", &cfg)
+		}
+		result, err := websearchpkg.Search(context.Background(), args.Query, cfg)
 		if err != nil {
 			return websearchpkg.SearchResult{Error: err.Error()}, nil
 		}

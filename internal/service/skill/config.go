@@ -113,9 +113,9 @@ func predefinedSkills() []skill.SkillConfig {
 		{
 			Name:        "web_search",
 			DisplayName: "联网搜索",
-			Description: "通过 DuckDuckGo 进行免费的联网搜索，获取实时信息、定义和相关主题",
+			Description: "通过 Bing/Baidu API 进行联网搜索。需在 Config 中配置 bing_api_key 或 baidu_api_key，未配置时降级返回空结果",
 			Enabled:     true,
-			ConfigJSON:  "{}",
+			ConfigJSON:  `{"bing_api_key":"","baidu_api_key":""}`,
 		},
 	}
 }

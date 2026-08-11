@@ -1,5 +1,7 @@
-// Package websearch provides free web search via DuckDuckGo Instant Answer API.
-// No API key required. Returns structured results: abstract, heading, answer, related topics.
+// Package websearch provides multi-engine web search via Bing/Baidu APIs.
+// API keys are injected from skill config; if empty, the engine is skipped.
+// Errors are logged and returned as an Error field in the result — the LLM
+// sees a graceful degradation rather than a tool-call exception.
 package websearch
 
 import (
@@ -7,198 +9,175 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
 
-// Result holds a single search result from DuckDuckGo.
-type Result struct {
-	Abstract       string `json:"Abstract"`       // short summary
-	AbstractText   string `json:"AbstractText"`   // plain-text abstract
-	AbstractSource string `json:"AbstractSource"` // source name (e.g. "Wikipedia")
-	AbstractURL    string `json:"AbstractURL"`    // source URL
-	Answer         string `json:"Answer"`         // instant answer (e.g. "42")
-	AnswerType     string `json:"AnswerType"`     // type of instant answer
-	Definition     string `json:"Definition"`     // dictionary definition
-	DefinitionSource string `json:"DefinitionSource"`
-	DefinitionURL  string `json:"DefinitionURL"`
-	Entity         string `json:"Entity"`         // entity name (e.g. "OpenAI")
-	Heading        string `json:"Heading"`        // main heading
-	Image          string `json:"Image"`          // related image URL
-	Redirect       string `json:"Redirect"`       // official site redirect
-	Type           string `json:"Type"`           // "A" (article) or "D" (disambiguation)
-	Infobox        json.RawMessage `json:"Infobox,omitempty"`
-	RelatedTopics  []RelatedTopic  `json:"RelatedTopics"`
-	Results        []RelatedTopic  `json:"Results"`
+// Config is the per-skill websearch configuration, read from skill config JSON.
+type Config struct {
+	BingAPIKey  string `json:"bing_api_key"`
+	BaiduAPIKey string `json:"baidu_api_key"`
 }
 
-// RelatedTopic represents a related topic or search result link.
-type RelatedTopic struct {
-	Result   string   `json:"Result"`   // HTML snippet with link
-	Text     string   `json:"Text"`     // plain text
-	FirstURL string   `json:"FirstURL"` // URL
-	Icon     IconInfo `json:"Icon"`
-	Name     string   `json:"Name"`
-	Topics   []RelatedTopic `json:"Topics,omitempty"` // nested topics
-}
-
-// IconInfo holds icon metadata.
-type IconInfo struct {
-	URL    string `json:"URL"`
-	Width  string `json:"Width,omitempty"`
-	Height string `json:"Height,omitempty"`
+// ResultItem is a single search result returned to the LLM.
+type ResultItem struct {
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Snippet string `json:"snippet"`
 }
 
 // SearchResult is the clean output returned to the LLM.
 type SearchResult struct {
-	Query    string `json:"query"`
-	Abstract string `json:"abstract,omitempty"`
-	Answer   string `json:"answer,omitempty"`
-	Heading  string `json:"heading,omitempty"`
-	Redirect string `json:"redirect,omitempty"`
-	Definition string `json:"definition,omitempty"`
-	Topics   []TopicItem `json:"topics,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Query   string       `json:"query"`
+	Total   int          `json:"total,omitempty"`
+	Results []ResultItem `json:"results,omitempty"`
+	Error   string       `json:"error,omitempty"`
 }
 
-// TopicItem is a flattened related topic.
-type TopicItem struct {
-	Text string `json:"text"`
-	URL  string `json:"url,omitempty"`
-}
+var httpClient = &http.Client{Timeout: 12 * time.Second}
 
-var httpClient = &http.Client{Timeout: 10 * time.Second}
-
-// Search performs a DuckDuckGo search for the given query.
-// Returns structured results suitable for LLM consumption.
-func Search(ctx context.Context, query string) (*SearchResult, error) {
+// Search performs a web search using configured engine APIs.
+func Search(ctx context.Context, query string, cfg Config) (*SearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, fmt.Errorf("web_search: query is empty")
+		return &SearchResult{Error: "query is required"}, nil
 	}
 
-	// Build DuckDuckGo Instant Answer API URL
-	apiURL := "https://api.duckduckgo.com/?" + url.Values{
+	// Try Bing first
+	if cfg.BingAPIKey != "" {
+		result, err := searchBing(ctx, query, cfg.BingAPIKey)
+		if err == nil {
+			return result, nil
+		}
+		log.Printf("[websearch] bing error: %v", err)
+	}
+
+	// Fall back to Baidu
+	if cfg.BaiduAPIKey != "" {
+		result, err := searchBaidu(ctx, query, cfg.BaiduAPIKey)
+		if err == nil {
+			return result, nil
+		}
+		log.Printf("[websearch] baidu error: %v", err)
+	}
+
+	return &SearchResult{
+		Query: query,
+		Error: "no search engine configured or all engines failed; configure bing_api_key or baidu_api_key in skill config",
+	}, nil
+}
+
+// ---- Bing Web Search API (free tier: 1000 queries/month) ----
+
+type bingResponse struct {
+	WebPages struct {
+		TotalEstimatedMatches int `json:"totalEstimatedMatches"`
+		Value                 []struct {
+			Name    string `json:"name"`
+			URL     string `json:"url"`
+			Snippet string `json:"snippet"`
+		} `json:"value"`
+	} `json:"webPages"`
+}
+
+func searchBing(ctx context.Context, query, apiKey string) (*SearchResult, error) {
+	apiURL := "https://api.bing.microsoft.com/v7.0/search?" + url.Values{
 		"q":     {query},
-		"format": {"json"},
-		"no_html": {"1"},
-		"skip_disambig": {"1"},
+		"count": {"10"},
+		"mkt":   {"zh-CN"},
 	}.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("web_search: create request: %w", err)
+		return nil, fmt.Errorf("bing: create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "DataAgent/1.0 (web-search)")
+	req.Header.Set("Ocp-Apim-Subscription-Key", apiKey)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("web_search: http request: %w", err)
+		return nil, fmt.Errorf("bing: http request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, fmt.Errorf("web_search: read response: %w", err)
+		return nil, fmt.Errorf("bing: read response: %w", err)
 	}
 
-	var ddg Result
-	if err := json.Unmarshal(body, &ddg); err != nil {
-		return nil, fmt.Errorf("web_search: parse response: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bing: http %d: %s", resp.StatusCode, string(body))
 	}
 
-	out := &SearchResult{Query: query}
-
-	// Extract the most useful fields
-	if ddg.AbstractText != "" {
-		out.Abstract = fmt.Sprintf("%s (source: %s)", ddg.AbstractText, ddg.AbstractURL)
-	}
-	if ddg.Answer != "" {
-		out.Answer = ddg.Answer
-	}
-	if ddg.Heading != "" {
-		out.Heading = ddg.Heading
-	}
-	if ddg.Redirect != "" {
-		out.Redirect = ddg.Redirect
-	}
-	if ddg.Definition != "" {
-		out.Definition = fmt.Sprintf("%s (source: %s)", ddg.Definition, ddg.DefinitionURL)
+	var br bingResponse
+	if err := json.Unmarshal(body, &br); err != nil {
+		return nil, fmt.Errorf("bing: parse response: %w", err)
 	}
 
-	// Flatten related topics
-	var topics []TopicItem
-	for _, t := range ddg.RelatedTopics {
-		flattenTopic(&topics, t)
+	out := &SearchResult{Query: query, Total: br.WebPages.TotalEstimatedMatches}
+	for _, v := range br.WebPages.Value {
+		out.Results = append(out.Results, ResultItem{
+			Title:   v.Name,
+			URL:     v.URL,
+			Snippet: v.Snippet,
+		})
 	}
-	for _, r := range ddg.Results {
-		flattenTopic(&topics, r)
-	}
-
-	// Deduplicate and limit
-	seen := make(map[string]bool)
-	var filtered []TopicItem
-	for _, t := range topics {
-		key := t.Text
-		if key == "" {
-			key = t.URL
-		}
-		if key == "" || seen[key] {
-			continue
-		}
-		seen[key] = true
-		filtered = append(filtered, t)
-		if len(filtered) >= 10 {
-			break
-		}
-	}
-	out.Topics = filtered
-
-	// If nothing was found, return a useful message
-	if out.Abstract == "" && out.Answer == "" && len(out.Topics) == 0 {
-		out.Error = fmt.Sprintf("no results found for %q", query)
-	}
-
 	return out, nil
 }
 
-// flattenTopic recursively extracts RelatedTopic entries into a flat list.
-func flattenTopic(out *[]TopicItem, t RelatedTopic) {
-	if len(t.Topics) > 0 {
-		for _, nested := range t.Topics {
-			flattenTopic(out, nested)
-		}
-		return
-	}
-	if t.Text != "" || t.FirstURL != "" {
-		// Strip HTML from Result field if present
-		text := t.Text
-		if text == "" && t.Result != "" {
-			text = stripHTML(t.Result)
-		}
-		if text != "" {
-			*out = append(*out, TopicItem{Text: text, URL: t.FirstURL})
-		}
-	}
+// ---- Baidu Search (requires API key from Baidu AI开放平台) ----
+
+type baiduResponse struct {
+	Items []struct {
+		Title   string `json:"title"`
+		URL     string `json:"url"`
+		Summary string `json:"summary"`
+	} `json:"items"`
+	Total int `json:"total"`
 }
 
-// stripHTML removes basic HTML tags from a string.
-func stripHTML(s string) string {
-	var result strings.Builder
-	inTag := false
-	for _, c := range s {
-		switch c {
-		case '<':
-			inTag = true
-		case '>':
-			inTag = false
-		default:
-			if !inTag {
-				result.WriteRune(c)
-			}
-		}
+func searchBaidu(ctx context.Context, query, apiKey string) (*SearchResult, error) {
+	// Baidu AI开放平台 搜索接口 (需要申请)
+	apiURL := "https://qianfan.baidubce.com/v2/app/search?" + url.Values{
+		"query": {query},
+		"top_n": {"10"},
+	}.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("baidu: create request: %w", err)
 	}
-	return strings.TrimSpace(result.String())
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("baidu: http request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("baidu: read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("baidu: http %d: %s", resp.StatusCode, string(body))
+	}
+
+	var br baiduResponse
+	if err := json.Unmarshal(body, &br); err != nil {
+		return nil, fmt.Errorf("baidu: parse response: %w", err)
+	}
+
+	out := &SearchResult{Query: query, Total: br.Total}
+	for _, v := range br.Items {
+		out.Results = append(out.Results, ResultItem{
+			Title:   v.Title,
+			URL:     v.URL,
+			Snippet: v.Summary,
+		})
+	}
+	return out, nil
 }
