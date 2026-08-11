@@ -110,6 +110,13 @@ func predefinedSkills() []skill.SkillConfig {
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
+		{
+			Name:        "web_search",
+			DisplayName: "联网搜索",
+			Description: "通过 DuckDuckGo 进行免费的联网搜索，获取实时信息、定义和相关主题",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
 	}
 }
 

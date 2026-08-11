@@ -18,6 +18,7 @@ import (
 	pptxpkg "github.com/luoxiaojun1992/data-agent/internal/logic/pptx"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
+	websearchpkg "github.com/luoxiaojun1992/data-agent/internal/logic/websearch"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
@@ -383,6 +384,16 @@ func specs(deps *Deps) []toolSpec {
 			},
 		},
 		{
+			name:        "web_search",
+			description: "Searches the web using DuckDuckGo (free, no API key) to answer factual questions, find recent information, definitions, and related topics. Use for real-time or factual lookups.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{
+					Name:        "web_search",
+					Description: "Searches the web using DuckDuckGo (free, no API key) to answer factual questions, find recent information, definitions, and related topics. Use for real-time or factual lookups.",
+				}, webSearch(deps))
+			},
+		},
+		{
 			name:        "memory_write",
 			description: "Writes a piece of information to long-term memory for later retrieval",
 			build: func() (tool.Tool, error) {
@@ -453,6 +464,27 @@ func Names(deps *Deps) ([]string, error) {
 		names = append(names, t.Name())
 	}
 	return names, nil
+}
+
+// ---- web_search ----
+
+// WebSearchArgs are the arguments for the web_search tool.
+type WebSearchArgs struct {
+	Query string `json:"query" description:"The search query to look up on the web"`
+}
+
+// webSearch performs a free web search via DuckDuckGo.
+func webSearch(_ *Deps) functiontool.Func[WebSearchArgs, websearchpkg.SearchResult] {
+	return func(ctx agent.ToolContext, args WebSearchArgs) (websearchpkg.SearchResult, error) {
+		if args.Query == "" {
+			return websearchpkg.SearchResult{Error: "query is required"}, nil
+		}
+		result, err := websearchpkg.Search(ctx, args.Query)
+		if err != nil {
+			return websearchpkg.SearchResult{Error: err.Error()}, nil
+		}
+		return *result, nil
+	}
 }
 
 func truncateContent(content string, maxLen int) string {
