@@ -365,7 +365,15 @@ func (s *Scheduler) LoadFromDB(ctx context.Context, provider ScheduleProvider) (
 				log.Printf("Scheduler: skipping task %s (%s): unknown mode %q", t.ID, t.Title, t.ScheduleMode)
 				continue
 			}
-			s.AddSchedule(sch)
+			// Directly insert into map — AddSchedule() requires a cron expr which one_time tasks don't have.
+			if sch.ID == "" {
+				sch.ID = t.ID
+			}
+			if sch.Params == nil {
+				sch.Params = make(map[string]interface{})
+			}
+			sch.CreatedAt = time.Now()
+			s.schedules[sch.ID] = sch
 			loaded++
 		}
 		skip += batchSize
