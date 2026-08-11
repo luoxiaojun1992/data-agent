@@ -71,7 +71,6 @@ func (s *Scheduler) Start(ctx context.Context) {
 			case <-ticker.C:
 				s.runDueJobs(ctx)
 				s.reloadFromDB(ctx)
-				log.Printf("Scheduler: tick OK, %d schedules", len(s.schedules))
 			case <-s.stopCh:
 				return
 			case <-ctx.Done():
@@ -151,11 +150,13 @@ func (s *Scheduler) runDueJobs(ctx context.Context) {
 			due = append(due, sch)
 		}
 	}
+	// Debug: log every schedule so we can see which field is wrong.
+	log.Printf("Scheduler: runDueJobs: %d schedules, now=%s, due=%d", len(s.schedules), now.Format(time.RFC3339), len(due))
+	for _, sch := range s.schedules {
+		log.Printf("Scheduler:   id=%q taskID=%q enabled=%v nextRun=%s", sch.ID, sch.TaskID, sch.Enabled, sch.NextRun.Format(time.RFC3339))
+	}
 	s.mu.RUnlock()
 
-	if len(due) > 0 {
-		log.Printf("Scheduler: found %d due jobs in %d total schedules", len(due), len(s.schedules))
-	}
 	for _, sch := range due {
 		s.executeJob(ctx, sch)
 	}
