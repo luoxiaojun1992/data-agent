@@ -71,6 +71,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 			case <-ticker.C:
 				s.runDueJobs(ctx)
 				s.reloadFromDB(ctx)
+				log.Printf("Scheduler: tick OK, %d schedules", len(s.schedules))
 			case <-s.stopCh:
 				return
 			case <-ctx.Done():
@@ -152,6 +153,9 @@ func (s *Scheduler) runDueJobs(ctx context.Context) {
 	}
 	s.mu.RUnlock()
 
+	if len(due) > 0 {
+		log.Printf("Scheduler: found %d due jobs in %d total schedules", len(due), len(s.schedules))
+	}
 	for _, sch := range due {
 		s.executeJob(ctx, sch)
 	}

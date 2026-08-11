@@ -124,6 +124,7 @@ export default function RBACPage() {
 
         {/* Permissions Tab */}
         {tab === 'permissions' && (<>
+          <button data-testid="rbac-add-perm-btn" onClick={() => setShowAddPerm(true)} style={btnPri}>+ 新建权限</button>
           <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <thead>
@@ -153,7 +154,6 @@ export default function RBACPage() {
               </tbody>
             </table>
           </div>
-          <button data-testid="rbac-add-perm-btn" onClick={() => setShowAddPerm(true)} style={btnPri}>+ 新建权限</button>
           <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onPage={setPermPage} />
         </>)}
 
