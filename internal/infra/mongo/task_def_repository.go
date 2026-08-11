@@ -185,9 +185,13 @@ func (r *TaskDefRepository) ListScheduled(ctx context.Context, skip, limit int64
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
-	var tasks []*task.Task
-	if err := cursor.All(ctx, &tasks); err != nil {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, 0, err
+	}
+	tasks := make([]*task.Task, len(docs))
+	for i, d := range docs {
+		tasks[i] = docToTaskDef(d)
 	}
 	return tasks, total, nil
 }
