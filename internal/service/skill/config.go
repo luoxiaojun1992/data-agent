@@ -115,7 +115,7 @@ func predefinedSkills() []skill.SkillConfig {
 			DisplayName: "联网搜索",
 			Description: "通过 Bing/Baidu API 进行联网搜索。需在 Config 中配置 bing_api_key 或 baidu_api_key，未配置时降级返回空结果",
 			Enabled:     true,
-			ConfigJSON:  `{"bing_api_key":"","baidu_api_key":""}`,
+			ConfigJSON:  `{"bing_api_key":"","baidu_api_key":"","top_n":5}`,
 		},
 	}
 }
