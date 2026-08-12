@@ -46,7 +46,7 @@ func (s *Service) CreateUpload(ctx context.Context, userID, name, description st
 		Name:        name,
 		Description: description,
 		Status:      model.APICollectionPending,
-		OpenAPISpec: rawDoc,
+		OpenAPISpec: json.RawMessage(rawSpec),
 		FileID:      fileID,
 		UserID:      userID,
 		APICount:    apiCount,
@@ -122,7 +122,7 @@ func (s *Service) GetAPISummary(ctx context.Context, collectionID string, page, 
 	}
 
 	var allPaths []PathEntry
-	specMap, _ := coll.OpenAPISpec.(map[string]interface{})
+	specMap := parseOpenAPISpec(coll.OpenAPISpec)
 	if paths, ok := specMap["paths"].(map[string]interface{}); ok {
 		for path, methodsRaw := range paths {
 			methods, _ := methodsRaw.(map[string]interface{})
@@ -182,7 +182,7 @@ func (s *Service) GetAPIMethod(ctx context.Context, collectionID, path, method s
 		return nil, fmt.Errorf("collection not approved")
 	}
 
-	specMap, _ := coll.OpenAPISpec.(map[string]interface{})
+	specMap := parseOpenAPISpec(coll.OpenAPISpec)
 	pathsRaw, _ := specMap["paths"].(map[string]interface{})
 	if pathsRaw == nil {
 		return nil, fmt.Errorf("path not found: %s", path)
@@ -225,7 +225,7 @@ func (s *Service) CallAPI(ctx context.Context, collectionID, path, method string
 		return nil, fmt.Errorf("collection not approved")
 	}
 
-	specMap, _ := coll.OpenAPISpec.(map[string]interface{})
+	specMap := parseOpenAPISpec(coll.OpenAPISpec)
 
 	baseURL := ""
 	if servers, ok := specMap["servers"].([]interface{}); ok && len(servers) > 0 {
@@ -273,4 +273,17 @@ func (s *Service) CallAPI(ctx context.Context, collectionID, path, method string
 		Body:    respJSON,
 		Headers: resp.Header,
 	}, nil
+}
+
+// parseOpenAPISpec unmarshals a json.RawMessage spec into a map for traversal.
+// Returns an empty map on parse failure.
+func parseOpenAPISpec(spec json.RawMessage) map[string]interface{} {
+	if len(spec) == 0 {
+		return nil
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(spec, &m); err != nil {
+		return nil
+	}
+	return m
 }
