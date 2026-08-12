@@ -408,9 +408,9 @@ func specs(deps *Deps) []toolSpec {
 		out = append(out,
 			toolSpec{
 				name:        "external_api_search",
-				description: "Searches approved API collections by description to discover available external APIs",
+				description: "Searches approved API collections by description using regex keyword matching. Use SHORT single keywords (1-2 words like 'user', 'order', 'weather') — long phrases will NOT match. Returns up to 3 top results.",
 				build: func() (tool.Tool, error) {
-					return functiontool.New(functiontool.Config{Name: "external_api_search", Description: "Searches approved API collections by description to discover available external APIs"}, externalAPISearch(deps))
+					return functiontool.New(functiontool.Config{Name: "external_api_search", Description: "Searches approved API collections by description using regex keyword matching. Use SHORT single keywords (1-2 words like 'user', 'order', 'weather') — long phrases will NOT match. Returns up to 3 top results."}, externalAPISearch(deps))
 				},
 			},
 			toolSpec{
@@ -698,7 +698,7 @@ func externalAPISearch(deps *Deps) functiontool.Func[ExternalAPISearchArgs, Exte
 		if args.Query == "" {
 			return ExternalAPISearchResult{}, nil
 		}
-		items, err := deps.APICollections.SearchApproved(context.Background(), args.Query, 5)
+		items, err := deps.APICollections.SearchApproved(context.Background(), args.Query, 3)
 		if err != nil {
 			return ExternalAPISearchResult{}, err
 		}
