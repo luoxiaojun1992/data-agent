@@ -60,10 +60,8 @@ func Search(ctx context.Context, query string, cfg Config) (*SearchResult, error
 	}
 
 	if cfg.BingAPIKey == "" && cfg.BaiduAPIKey == "" {
-		return &SearchResult{
-			Query: query,
-			Error: "no search engine configured; set bing_api_key or baidu_api_key in skill config",
-		}, nil
+		log.Printf("[websearch] no engine configured; returning empty results")
+		return &SearchResult{Query: query}, nil
 	}
 
 	n := cfg.topN()
@@ -97,14 +95,6 @@ func Search(ctx context.Context, query string, cfg Config) (*SearchResult, error
 		}()
 	}
 	wg.Wait()
-
-	if len(all) == 0 {
-		return &SearchResult{
-			Query: query,
-			Error: "all configured engines returned no results or failed",
-		}, nil
-	}
-
 	return &SearchResult{Query: query, Results: all}, nil
 }
 

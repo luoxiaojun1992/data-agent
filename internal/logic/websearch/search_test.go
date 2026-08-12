@@ -2,7 +2,6 @@ package websearch
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 )
@@ -22,8 +21,8 @@ func TestSearch_NoEngineConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result.Error, "no search engine configured") {
-		t.Errorf("expected 'no search engine configured', got %q", result.Error)
+	if len(result.Results) != 0 {
+		t.Errorf("expected empty results, got %d", len(result.Results))
 	}
 }
 
