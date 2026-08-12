@@ -213,6 +213,8 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 
 	initMemoryBackend(deps, mongoClient, compactionLLM, logger)
 
+	deps.apiCollectionSvc = apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))
+
 	toolDeps := &adktools.Deps{
 		KBService:     deps.kbService,
 		SkillConfig:   deps.skillConfigSvc,
@@ -254,7 +256,6 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// Orchestrator coordinates session + task for async agent tasks (SPEC-058,
 	// SPEC-062: provider resolves default model for task binding).
 	deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService, deps.modelCfg)
-	deps.apiCollectionSvc = apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))
 }
 
 func initEnhance(deps *serverDependencies) {
