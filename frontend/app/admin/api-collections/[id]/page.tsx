@@ -22,6 +22,7 @@ export default function APICollectionDetailPage() {
   const [editDesc, setEditDesc] = useState('');
 
   const load = useCallback(async () => {
+    if (!auth.hydrated) return;
     const res = await apiFetch(`/admin/api-collections/${id}`);
     if (res.ok) {
       const data = await res.json();
@@ -30,9 +31,11 @@ export default function APICollectionDetailPage() {
       setEditDesc(data.description);
     }
     setLoading(false);
-  }, [apiFetch, id]);
+  }, [apiFetch, id, auth.hydrated]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (auth.hydrated) load();
+  }, [load, auth.hydrated]);
 
   const handleApprove = async (status: string) => {
     await apiFetch(`/admin/api-collections/${id}/approve`, {
