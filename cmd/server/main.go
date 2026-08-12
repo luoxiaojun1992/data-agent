@@ -39,6 +39,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	enhancesvc "github.com/luoxiaojun1992/data-agent/internal/service/enhance"
@@ -113,6 +114,7 @@ type serverDependencies struct {
 	auditHandler     *handler.AuditHandler
 	notifSvc         *notifsvc.Service
 	notifHandler     *handler.NotificationHandler
+	apiCollectionSvc *apicollectionsvc.Service
 }
 
 func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDependencies) {

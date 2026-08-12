@@ -214,14 +214,15 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	initMemoryBackend(deps, mongoClient, compactionLLM, logger)
 
 	toolDeps := &adktools.Deps{
-		KBService:    deps.kbService,
-		SkillConfig:  deps.skillConfigSvc,
-		Memory:       deps.memoryService,
-		MemoryWriter: deps.memoryKit,
-		AppName:      appName,
-		Tasks:        deps.taskService,
-		SessionSvc:   deps.sessionManager,
-		Artifacts:    deps.artifactStorage,
+		KBService:     deps.kbService,
+		SkillConfig:   deps.skillConfigSvc,
+		Memory:        deps.memoryService,
+		MemoryWriter:  deps.memoryKit,
+		AppName:       appName,
+		Tasks:         deps.taskService,
+		SessionSvc:    deps.sessionManager,
+		Artifacts:     deps.artifactStorage,
+		APICollections: deps.apiCollectionSvc,
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -253,6 +254,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// Orchestrator coordinates session + task for async agent tasks (SPEC-058,
 	// SPEC-062: provider resolves default model for task binding).
 	deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService, deps.modelCfg)
+	deps.apiCollectionSvc = apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))
 }
 
 func initEnhance(deps *serverDependencies) {
@@ -482,8 +484,8 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Stats:         handler.NewStatsHandler(deps.llmRecorder),
 		SkillConfig:   deps.skillConfigHandler,
 		FeishuConfig: handler.NewFeishuConfigHandler(deps.feishuCfgService),
-		APICollection: handler.NewAPICollectionHandler(apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))),
-		APITools:     handler.NewAPIToolsHandler(apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))),
+		APICollection: handler.NewAPICollectionHandler(deps.apiCollectionSvc),
+		APITools:     handler.NewAPIToolsHandler(deps.apiCollectionSvc),
 		IMWebhook:     imWebhook,
 		HermesURL:     os.Getenv("HERMES_URL"),
 		AppName:       appName,

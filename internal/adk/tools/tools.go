@@ -20,6 +20,7 @@ import (
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 	websearchpkg "github.com/luoxiaojun1992/data-agent/internal/logic/websearch"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
 	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	knowledgepkg "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
@@ -49,6 +50,8 @@ type Deps struct {
 	SessionSvc domainchat.SessionService
 	// Artifacts backs the save_artifact tool (create record + upload).
 	Artifacts artifact_svc.Service
+	// APICollections backs the external_api_* tools for proxying approved API calls.
+	APICollections *apicollectionsvc.Service
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -401,6 +404,38 @@ func specs(deps *Deps) []toolSpec {
 			},
 		},
 	}
+	if deps.APICollections != nil {
+		out = append(out,
+			toolSpec{
+				name:        "external_api_search",
+				description: "Searches approved API collections by description to discover available external APIs",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "external_api_search", Description: "Searches approved API collections by description to discover available external APIs"}, externalAPISearch(deps))
+				},
+			},
+			toolSpec{
+				name:        "external_api_summary",
+				description: "Lists all API methods in an approved collection given its ID",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "external_api_summary", Description: "Lists all API methods in an approved collection given its ID"}, externalAPISummary(deps))
+				},
+			},
+			toolSpec{
+				name:        "external_api_method",
+				description: "Shows detailed parameter information for a specific API method",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "external_api_method", Description: "Shows detailed parameter information for a specific API method"}, externalAPIMethod(deps))
+				},
+			},
+			toolSpec{
+				name:        "external_api_call",
+				description: "Calls an approved external API endpoint with given parameters and returns the response",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "external_api_call", Description: "Calls an approved external API endpoint with given parameters and returns the response"}, externalAPICall(deps))
+				},
+			},
+		)
+	}
 	if deps.KBService != nil {
 		out = append(out, toolSpec{
 			name:        "knowledge_search",
@@ -642,4 +677,102 @@ func zipToWriter(srcPath string, info os.FileInfo, w io.Writer) error {
 	defer src.Close()
 	_, err = io.Copy(f, src)
 	return err
+}
+
+// ---- external_api_* ----
+
+type ExternalAPISearchArgs struct {
+	Query string `json:"query" description:"Search query to match against API collection descriptions"`
+}
+type ExternalAPISearchResult struct {
+	Collections []struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		APICount    int    `json:"api_count"`
+	} `json:"collections"`
+}
+
+func externalAPISearch(deps *Deps) functiontool.Func[ExternalAPISearchArgs, ExternalAPISearchResult] {
+	return func(ctx agent.ToolContext, args ExternalAPISearchArgs) (ExternalAPISearchResult, error) {
+		if args.Query == "" {
+			return ExternalAPISearchResult{}, nil
+		}
+		items, err := deps.APICollections.SearchApproved(context.Background(), args.Query, 5)
+		if err != nil {
+			return ExternalAPISearchResult{}, err
+		}
+		var out ExternalAPISearchResult
+		for _, c := range items {
+			out.Collections = append(out.Collections, struct {
+				ID          string `json:"id"`
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				APICount    int    `json:"api_count"`
+			}{c.ID, c.Name, c.Description, c.APICount})
+		}
+		return out, nil
+	}
+}
+
+type ExternalAPISummaryArgs struct {
+	CollectionID string `json:"collection_id" description:"The API collection ID to list methods for"`
+}
+type ExternalAPISummaryResult struct {
+	Name  string              `json:"name"`
+	Paths []externalPathEntry `json:"paths"`
+}
+type externalPathEntry struct {
+	Path    string `json:"path"`
+	Method  string `json:"method"`
+	Summary string `json:"summary"`
+}
+
+func externalAPISummary(deps *Deps) functiontool.Func[ExternalAPISummaryArgs, ExternalAPISummaryResult] {
+	return func(ctx agent.ToolContext, args ExternalAPISummaryArgs) (ExternalAPISummaryResult, error) {
+		summary, err := deps.APICollections.GetAPISummary(context.Background(), args.CollectionID, 1, 20)
+		if err != nil {
+			return ExternalAPISummaryResult{}, err
+		}
+		var out ExternalAPISummaryResult
+		out.Name = summary.Name
+		for _, p := range summary.Paths {
+			out.Paths = append(out.Paths, externalPathEntry(p))
+		}
+		return out, nil
+	}
+}
+
+type ExternalAPIMethodArgs struct {
+	CollectionID string `json:"collection_id" description:"The API collection ID"`
+	Path         string `json:"path" description:"The API path, e.g. /users"`
+	Method       string `json:"method" description:"HTTP method, e.g. get, post"`
+}
+
+func externalAPIMethod(deps *Deps) functiontool.Func[ExternalAPIMethodArgs, any] {
+	return func(ctx agent.ToolContext, args ExternalAPIMethodArgs) (any, error) {
+		detail, err := deps.APICollections.GetAPIMethod(context.Background(), args.CollectionID, args.Path, args.Method)
+		if err != nil {
+			return nil, err
+		}
+		return detail, nil
+	}
+}
+
+type ExternalAPICallArgs struct {
+	CollectionID string            `json:"collection_id" description:"The API collection ID"`
+	Path         string            `json:"path" description:"The API path, e.g. /users"`
+	Method       string            `json:"method" description:"HTTP method: get, post, put, delete"`
+	Params       map[string]string `json:"params" description:"Query parameters, e.g. {\"page\":\"1\"}"`
+	Body         any               `json:"body" description:"Request body for POST/PUT"`
+}
+
+func externalAPICall(deps *Deps) functiontool.Func[ExternalAPICallArgs, any] {
+	return func(ctx agent.ToolContext, args ExternalAPICallArgs) (any, error) {
+		result, err := deps.APICollections.CallAPI(context.Background(), args.CollectionID, args.Path, args.Method, args.Params, args.Body, nil)
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
 }
