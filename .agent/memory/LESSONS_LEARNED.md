@@ -624,3 +624,21 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 - build 成功后 `docker compose up -d` 可能因旧容器名冲突失败 → 先 `docker rm -f <name>` 再 `up -d`
 - 部署验证的最后一步是 `docker exec <c> ls -la /path/to/binary` 检查时间戳
 - `df -h /` 磁盘告警（94%），prune 释放 1GB 后才正常
+
+---
+## 2026-08-13 新增（Scheduler 一次性任务重复执行）
+
+### 内存态状态变更未持久化 → 一次性任务无限重复执行
+**日期**: 2026-08-13 | **影响**: 一个一次性定时任务跑了 **732 次**，跨 3 天，间隔 300-330 秒
+**根因**: `executeJob()` 对一次性任务（`Interval == 0`）执行后只设了内存中的 `sch.Enabled = false`，**从未调用 `MarkScheduledDone()` 持久化到 DB**。下次 `reloadFromDB()`（每 30s tick 触发）或进程重启时，DB 里 `scheduled_done` 仍为空 → `ListScheduled` 照常返回该任务 → 重新加入调度 → 再次执行。DB 查询层 `ListScheduled` 其实**已有** `scheduled_done: {$ne: true}` 过滤条件，但写入端从不设置这个字段，过滤形同虚设。
+**解决**: `executeJob()` 一次性任务分支中加 `if s.provider != nil { s.provider.MarkScheduledDone(ctx, sch.TaskID) }` 持久化。
+**教训**:
+- ⛔ **任何状态变更必须双端同步：内存态 + DB 持久化态**。只改内存 = 进程重启/tick reload 后状态丢失，静默回退。
+- 过滤条件（read 端）已经存在 ≠ 写入端一定会触发。排查重复执行类 bug 时，先确认 write 端是否真的落库。
+- 孤儿数据陷阱：任务定义被删后，其 `task_runs` 记录成为孤儿，前端按任务聚合展示时看不到，但 DB 里实打实存在大量脏数据。排查数据量异常必须直接查 DB，不能只看前端列表。
+
+### 定时任务排查的 DB 检查清单
+**日期**: 2026-08-13 | **教训**:
+- 一次性任务应只有 1 条 run；多条 run 间隔等于 scheduler tick（30s）或其整数倍 → 典型「执行后未持久化完成态」
+- `aggregate` 按 `task_id` group 计数能快速定位「重复执行」的重灾区
+- mongosh 的 `$` 聚合操作符在 bash 双引号里会被转义吃掉，正确做法：写成 `.js` 文件 `docker cp` 进容器后 `mongosh /path/file.js` 执行，避免 heredoc `$` 转义地狱
