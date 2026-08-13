@@ -181,6 +181,12 @@ func (s *Scheduler) executeJob(ctx context.Context, sch *Schedule) {
 		// One-time schedule: disable after first execution.
 		sch.Enabled = false
 		log.Printf("Scheduler: one-time schedule %q completed, disabled", sch.Name)
+		// Persist scheduled_done=true so reloadFromDB won't re-add this task.
+		if s.provider != nil {
+			if err := s.provider.MarkScheduledDone(ctx, sch.TaskID); err != nil {
+				log.Printf("Scheduler: failed to mark scheduled_done for %q (task_id=%s): %v", sch.Name, sch.TaskID, err)
+			}
+		}
 	} else {
 		sch.NextRun = now.Add(sch.Interval)
 		log.Printf("Scheduler: completed %q, next run at %s", sch.Name, sch.NextRun.Format(time.RFC3339))

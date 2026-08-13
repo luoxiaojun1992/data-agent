@@ -13,6 +13,21 @@
 - **理由**:
   - 当前 81 个用例覆盖率 100% 但系统不可用 — 「覆盖率」≠「系统可用」
   - 截图是真相，E2E 截图中肉眼可见的 bug 必须修复
+
+## 2026-08-12: external_api_* Tools 上线 + Web Search + API 集合 Bug 修复
+
+### Skill/Seed 架构铁律
+- ⛔ **新增 skill = 三步同步**: ① `predefinedSkills()` Seed 配置 ② `specs()` ADK Tool 注册 ③ Deps 字段初始化
+- ⛔ **wire.go Deps 字段赋值必须在消费之前**: `deps.xxx = NewService()` 放 `toolDeps := &adktools.Deps{...}` 之前，否则 nil → tools 永远跳过
+- DB Seed 与 ADK Tool 注册是两条独立代码路径，无编译期关联
+
+### 联网搜索方案
+- 中国使用: DuckDuckGo 不通、SearXNG 是 AGPL（禁止）
+- 最终方案: 自实现 Bing + Baidu 双引擎，API key 配置化，降级返空
+
+### MongoBSON 教训
+- `interface{}` 字段 BSON 解码 → `primitive.D`（JSON 序列化为数组）
+- 正确: 用 `json.RawMessage` 保持 JSON 结构端到端
   - mockllm 当前 SHA256 单 key 匹配不支持多轮工具调用链路
 - **影响**:
   - 新增 3 个 spec 文件、3 个 fixture、1 个 mockllm 协议扩展

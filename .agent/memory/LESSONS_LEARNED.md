@@ -582,3 +582,45 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **日期**: 2026-08-09 | **影响**: `ListScheduled(ctx, skip, limit)` → `ListScheduled(ctx, skip, limit, now time.Time)`  
 **涉及 5 层**: ① `repository/task.go` 接口 ② `infra/mongo/task_def_repository.go` 实现 ③ `scheduler/adapter.go` 适配器 ④ `scheduler/scheduler.go` ScheduleProvider 接口 ⑤ `scheduler/scheduler.go` LoadFromDB + reloadFromDB 两个调用处  
 **教训**: Go interface 签名变更时，grep 所有 implement 该接口的 struct + 所有调用处，不能只改接口和实现。
+
+---
+## 2026-08-12 新增（external_api_* tools 上线 + web_search 实现）
+
+### Skill Seed 与 ADK Tool 注册是完全独立的两条链路
+**日期**: 2026-08-12 | **影响**: 4 个 `external_api_*` skill 在管理员后台可见（DB 有配置），但 Chat 中 LLM 完全看不到这些 tool
+**根因**: `predefinedSkills()` (Seed → DB) 和 `specs()` (ADK tool 注册 → Runtime) 是两个独立的代码路径，没有任何关联机制。两个文件其中一个漏了＝skill 配置存在但功能不存在。
+**解决**: 在 `tools.go` 的 `specs()` 中补全 4 个 tool spec + handler：`external_api_search` / `external_api_summary` / `external_api_method` / `external_api_call`。
+**教训**: 新增 skill 必须三步：① `predefinedSkills()` Seed 配置 + ② `specs()` Tool 注册 + ③ TOKEN 初始化（若需要）。任何一步遗漏 = 功能不完整且无编译错误。
+
+### wire.go Deps 字段初始化顺序决定工具是否注册
+**日期**: 2026-08-12 | **影响**: external_api_* tools 代码写好了编译通过但 LLM 仍然看不到，因为 `toolDeps.APICollections` 始终为 nil
+**根因**: `deps.apiCollectionSvc = NewService(...)` 在 line 257 赋值，但 `toolDeps := &adktools.Deps{APICollections: deps.apiCollectionSvc}` 在 line 225 创建。赋值在后面，消费在前面 = 传进去是 nil = `specs()` 里 `if deps.APICollections != nil` 为 false = tools 永远跳过。
+**解决**: 把 `apiCollectionSvc` 的初始化移到 `toolDeps` 创建之前。
+**教训**: 任何 `deps.xxxSvc` 赋值必须在消费它的代码之前。wire.go 是顺序执行的代码，不是声明式的。赋值顺序 = 运行时时序。
+
+### Mongo BSON `interface{}` 字段解码 = `primitive.D`，非 `map[string]interface{}`
+**日期**: 2026-08-12 | **影响**: API 集合详情页显示"暂无 API 路径"，`openapi_spec` JSON 序列化成 `[{Key:"openapi", Value:"3.0.0"}, ...]` 数组
+**根因**: Go model `OpenAPISpec interface{}` + MongoDB `Decode` → mongo-driver 默认 codec 将 BSON document 解码为 `primitive.D`（有序键值对切片）。Go `json.Marshal(primitive.D)` = JSON array of `{Key, Value}`。
+**解决**: 字段类型改为 `json.RawMessage`（原始 JSON bytes），端到端保持 JSON 结构不变。内部遍历用 `parseOpenAPISpec()` 辅助函数 `json.Unmarshal` 转为 `map[string]interface{}`。
+**教训**: MongoDB BSON → Go `interface{}` ≠ `map[string]interface{}`。需要保留 JSON 结构时用 `json.RawMessage` 或 `bson.Raw`。`primitive.D` 的数组序列化是 mongodb-go-driver 的默认行为。
+
+### 国内免费联网搜索方案选型
+**日期**: 2026-08-12 | **影响**: 多次尝试 SESSION 方案
+- DuckDuckGo `api.duckduckgo.com` → 国内不通（需要 proxy）
+- SearXNG → **AGPL-3.0 许可证**，晓军明确禁止引入任何 AGPL 软件
+- **最终方案**: 自实现多引擎搜索，支持 Bing API（1000次/月免费）+ Baidu 千帆 API（50次/天免费），API key 在 skill config 中配置，空 key/报错 → 降级返回空结果
+- Baidu 千帆正确 endpoint: `POST qianfan.baidubce.com/v2/ai_search/web_search`（JSON body），不是 `/v2/app/search`
+**教训**: AGPL = 硬红线。联网搜索在中国必须正向规划（API-based），不存在"免费无限制零配置"方案。
+
+### 前端 auth hydration 竞态 — useEffect 中 apiFetch 在 AuthProvider 恢复 token 前执行
+**日期**: 2026-08-12 | **影响**: 硬刷新页面（hard refresh）时 `Error: auth not hydrated yet`
+**根因**: `useEffect(() => { load() }, [load])` 在 React hydration 完成时立即调用 `apiFetch()`，但 `AuthProvider` 从 localStorage 恢复 token 的异步过程可能还未完成（`auth.hydrated === false`）。`apiFetch()` 的闸门：`if (!auth.hydrated) throw new Error('auth not hydrated yet')`。
+**解决**: 加 `if (!auth.hydrated) return;` 到 `load()` 函数开头，并在 useEffect 依赖中加入 `auth.hydrated`。
+**教训**: 任何依赖 auth 的 useEffect 数据加载必须等待 `auth.hydrated === true`。现有模式（其他页面已做）：`if (!auth.hydrated || !auth.token) return;`。
+
+### Docker 部署强化
+**日期**: 2026-08-12 | **教训合集**:
+- ⛔ `docker system prune -af` 会同时清理容器关联的 host 挂载文件 → 必须重新 `scp` 所有修改过的源文件再 build
+- build 成功后 `docker compose up -d` 可能因旧容器名冲突失败 → 先 `docker rm -f <name>` 再 `up -d`
+- 部署验证的最后一步是 `docker exec <c> ls -la /path/to/binary` 检查时间戳
+- `df -h /` 磁盘告警（94%），prune 释放 1GB 后才正常
