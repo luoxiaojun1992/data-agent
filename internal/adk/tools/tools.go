@@ -201,7 +201,7 @@ func knowledgeSearch(deps *Deps) functiontool.Func[KnowledgeSearchArgs, Knowledg
 
 // MemorySearchArgs are the arguments for the memory_search tool.
 type MemorySearchArgs struct {
-	Query string `json:"query" jsonschema:"搜索关键词"`
+	Query string `json:"query" jsonschema:"搜索关键词（用 1-2 个短小词，正则匹配，长句可能匹配不到）"`
 	Limit int    `json:"limit,omitempty" jsonschema:"返回结果数（默认 5）"`
 }
 
@@ -382,9 +382,9 @@ func specs(deps *Deps) []toolSpec {
 		},
 		{
 			name:        "memory_search",
-			description: "Searches long-term memory for information from past conversations",
+			description: "Searches long-term memory for information from past conversations. Use SHORT single keywords (1-2 words like '销售', '部署', '模型') — the search uses regex matching, so long phrases will NOT match.",
 			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "memory_search", Description: "Searches long-term memory for information from past conversations"}, memorySearch(deps))
+				return functiontool.New(functiontool.Config{Name: "memory_search", Description: "Searches long-term memory for information from past conversations. Use SHORT single keywords (1-2 words like '销售', '部署', '模型') — the search uses regex matching, so long phrases will NOT match."}, memorySearch(deps))
 			},
 		},
 		{
