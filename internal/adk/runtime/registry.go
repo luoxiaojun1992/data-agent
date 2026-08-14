@@ -150,11 +150,15 @@ func (r *Registry) GetOrCreateWithInstruction(ctx context.Context, modelID, inst
 
 	var instruction string
 	if instructionSuffix != "" {
-		if entry.Instruction == "" {
-			instruction = instructionSuffix
-		} else {
-			instruction = entry.Instruction + "\n\n" + instructionSuffix
+		// Task mode: base = model instruction (fallback to the default
+		// instruction when empty), then append the suffix. This keeps the
+		// data-analysis workflow prompt even for models without a custom
+		// instruction, and guarantees save_task_result guidance on top.
+		base := entry.Instruction
+		if base == "" {
+			base = modelcfg.DefaultInstruction
 		}
+		instruction = base + "\n\n" + instructionSuffix
 	} else {
 		instruction = entry.Instruction
 	}
