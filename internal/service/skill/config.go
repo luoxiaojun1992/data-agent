@@ -117,6 +117,13 @@ func predefinedSkills() []skill.SkillConfig {
 			Enabled:     true,
 			ConfigJSON:  `{"bing_api_key":"","baidu_api_key":"","top_n":5}`,
 		},
+		{
+			Name:        "web_fetch",
+			DisplayName: "网页抓取",
+			Description: "抓取指定 URL 的网页内容并提取纯文本（仅支持 GET 请求）",
+			Enabled:     true,
+			ConfigJSON:  `{"max_chars":8000,"max_body_size":524288,"timeout_sec":10}`,
+		},
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
 	websearchpkg "github.com/luoxiaojun1992/data-agent/internal/logic/websearch"
+	webfetchpkg "github.com/luoxiaojun1992/data-agent/internal/logic/webfetch"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
 	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
@@ -397,6 +398,16 @@ func specs(deps *Deps) []toolSpec {
 			},
 		},
 		{
+			name:        "web_fetch",
+			description: "Fetches a single web page by URL using HTTP GET and returns its extracted plain text (title + body). Only GET is supported. Use this to read the content of a specific page or URL.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{
+					Name:        "web_fetch",
+					Description: "Fetches a single web page by URL using HTTP GET and returns its extracted plain text (title + body). Only GET is supported. Use this to read the content of a specific page or URL.",
+				}, webFetch(deps))
+			},
+		},
+		{
 			name:        "memory_write",
 			description: "Writes a piece of information to long-term memory for later retrieval",
 			build: func() (tool.Tool, error) {
@@ -522,6 +533,28 @@ func webSearch(deps *Deps) functiontool.Func[WebSearchArgs, websearchpkg.SearchR
 		result, err := websearchpkg.Search(context.Background(), args.Query, cfg)
 		if err != nil {
 			return websearchpkg.SearchResult{Error: err.Error()}, nil
+		}
+		return *result, nil
+	}
+}
+
+// ---- web_fetch ----
+
+// WebFetchArgs are the arguments for the web_fetch tool.
+type WebFetchArgs struct {
+	URL string `json:"url" description:"The full web page URL to fetch (must start with http:// or https://)"`
+}
+
+// webFetch fetches a single page via HTTP GET and returns extracted text.
+func webFetch(deps *Deps) functiontool.Func[WebFetchArgs, webfetchpkg.Result] {
+	return func(ctx agent.ToolContext, args WebFetchArgs) (webfetchpkg.Result, error) {
+		var cfg webfetchpkg.Config
+		if deps.SkillConfig != nil {
+			_ = deps.SkillConfig.GetConfig(context.Background(), "web_fetch", &cfg)
+		}
+		result, err := webfetchpkg.Fetch(context.Background(), args.URL, cfg)
+		if err != nil {
+			return webfetchpkg.Result{Error: err.Error()}, nil
 		}
 		return *result, nil
 	}
