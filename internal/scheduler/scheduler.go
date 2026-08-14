@@ -414,6 +414,7 @@ func (s *Scheduler) reloadFromDB(ctx context.Context) {
 			ScheduleMode: t.ScheduleMode,
 			CronExpr:     t.CronExpr,
 			ScheduledAt:  t.ScheduledAt,
+			Enabled:      true,
 			SkillChain:   t.SkillChain,
 			Params:       t.Params,
 			ModelID:      t.ModelID,
