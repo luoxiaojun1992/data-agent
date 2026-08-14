@@ -270,7 +270,7 @@ func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 
 func initFeishuConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.feishuCfgRepo = mongoinfra.NewFeishuConfigRepository(mongoClient.DB())
-	deps.feishuCfgService = feishu_svc.NewConfigService(deps.feishuCfgRepo, deps.sessionManager)
+	deps.feishuCfgService = feishu_svc.NewConfigService(deps.feishuCfgRepo, deps.sessionManager, deps.vaultClient)
 }
 
 // initBuiltins seeds all built-in system configs and skill configs into

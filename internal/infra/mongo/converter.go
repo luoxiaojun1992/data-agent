@@ -663,30 +663,30 @@ func docToTaskRun(d bson.M) *task.TaskRun {
 
 func feishuCfgToDoc(cfg *feishu.Config) bson.M {
 	return bson.M{
-		"_id":        cfg.ID,
-		"user_id":    cfg.UserID,
-		"name":       cfg.Name,
-		"app_id":     cfg.AppID,
-		"app_secret": cfg.AppSecret,
-		"model_id":   cfg.ModelID,
-		"session_id": cfg.SessionID,
-		"enabled":    cfg.Enabled,
-		"created_at": cfg.CreatedAt,
-		"updated_at": cfg.UpdatedAt,
+		"_id":               cfg.ID,
+		"user_id":           cfg.UserID,
+		"name":              cfg.Name,
+		"app_id":            cfg.AppID,
+		"vault_secret_path": cfg.VaultSecretPath,
+		"model_id":          cfg.ModelID,
+		"session_id":        cfg.SessionID,
+		"enabled":           cfg.Enabled,
+		"created_at":        cfg.CreatedAt,
+		"updated_at":        cfg.UpdatedAt,
 	}
 }
 
 func docToFeishuCfg(d bson.M) *feishu.Config {
 	return &feishu.Config{
-		ID:        getStr(d, "_id"),
-		UserID:    getStr(d, "user_id"),
-		Name:      getStr(d, "name"),
-		AppID:     getStr(d, "app_id"),
-		AppSecret: getStr(d, "app_secret"),
-		ModelID:   getStr(d, "model_id"),
-		SessionID: getStr(d, "session_id"),
-		Enabled:   getBool(d, "enabled"),
-		CreatedAt: getTime(d, "created_at"),
-		UpdatedAt: getTime(d, "updated_at"),
+		ID:              getStr(d, "_id"),
+		UserID:          getStr(d, "user_id"),
+		Name:            getStr(d, "name"),
+		AppID:           getStr(d, "app_id"),
+		VaultSecretPath: getStr(d, "vault_secret_path"),
+		ModelID:         getStr(d, "model_id"),
+		SessionID:       getStr(d, "session_id"),
+		Enabled:         getBool(d, "enabled"),
+		CreatedAt:       getTime(d, "created_at"),
+		UpdatedAt:       getTime(d, "updated_at"),
 	}
 }

@@ -32,12 +32,13 @@ func (r *IMBindRepository) Get(ctx context.Context, userID string) (map[string]i
 		}
 		return nil, fmt.Errorf("get im bind: %w", err)
 	}
-	// Decrypt app_secret from Vault if exists
+	// Decrypt app_secret from Vault if exists. On failure return empty (never
+	// the Vault path) so callers/UI show an empty secret rather than a path.
 	if result != nil && r.vault != nil {
 		if vaultKey, ok := result["vault_secret_path"].(string); ok && vaultKey != "" {
 			secret, err := r.vault.Retrieve(ctx, vaultKey)
 			if err != nil {
-				return nil, fmt.Errorf("decrypt im app_secret: %w", err)
+				secret = ""
 			}
 			result["app_secret"] = secret
 			delete(result, "vault_secret_path")
