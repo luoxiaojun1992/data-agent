@@ -44,7 +44,7 @@ func newMultipartCtx(filename, fileContent, sessionID, persistent string) (*gin.
 // ── NewArtifactHandler ──
 
 func TestNewArtifactHandler(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 	if h == nil {
@@ -61,7 +61,7 @@ func TestNewArtifactHandler(t *testing.T) {
 // ── Upload ──
 
 func TestUpload_Success(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -92,7 +92,7 @@ func TestUpload_Success(t *testing.T) {
 }
 
 func TestUpload_NoFile(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -106,7 +106,7 @@ func TestUpload_NoFile(t *testing.T) {
 }
 
 func TestUpload_StorageError(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -122,7 +122,7 @@ func TestUpload_StorageError(t *testing.T) {
 }
 
 func TestUpload_WithoutSessionID(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -147,7 +147,7 @@ func TestUpload_WithoutSessionID(t *testing.T) {
 // ── Download ──
 
 func TestDownload_Success(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -178,7 +178,7 @@ func TestDownload_Success(t *testing.T) {
 }
 
 func TestDownload_NotFound(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -196,7 +196,7 @@ func TestDownload_NotFound(t *testing.T) {
 // ── Delete ──
 
 func TestDelete_Success(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -215,7 +215,7 @@ func TestDelete_Success(t *testing.T) {
 }
 
 func TestDelete_StorageError(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -233,7 +233,7 @@ func TestDelete_StorageError(t *testing.T) {
 // ── ListSession ──
 
 func TestListSession_Success(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -256,7 +256,7 @@ func TestListSession_Success(t *testing.T) {
 }
 
 func TestListSession_MissingSessionID(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -269,7 +269,7 @@ func TestListSession_MissingSessionID(t *testing.T) {
 }
 
 func TestListSession_StorageError(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -284,7 +284,7 @@ func TestListSession_StorageError(t *testing.T) {
 }
 
 func TestListSession_Empty(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -301,7 +301,7 @@ func TestListSession_Empty(t *testing.T) {
 // ── ListWorkspace ──
 
 func TestListWorkspace_Success(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -323,7 +323,7 @@ func TestListWorkspace_Success(t *testing.T) {
 }
 
 func TestListWorkspace_Error(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -340,7 +340,7 @@ func TestListWorkspace_Error(t *testing.T) {
 }
 
 func TestListWorkspace_Empty(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -359,7 +359,7 @@ func TestListWorkspace_Empty(t *testing.T) {
 // ── ReadWorkspaceFile ──
 
 func TestReadWorkspaceFile_Success(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -384,7 +384,7 @@ func TestReadWorkspaceFile_Success(t *testing.T) {
 }
 
 func TestReadWorkspaceFile_NotFound(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -406,7 +406,7 @@ func TestReadWorkspaceFile_NotFound(t *testing.T) {
 // ── WriteWorkspaceFile ──
 
 func TestWriteWorkspaceFile_Success(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -430,7 +430,7 @@ func TestWriteWorkspaceFile_Success(t *testing.T) {
 }
 
 func TestWriteWorkspaceFile_Error(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -450,7 +450,7 @@ func TestWriteWorkspaceFile_Error(t *testing.T) {
 }
 
 func TestWriteWorkspaceFile_EmptyBody(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -472,7 +472,7 @@ func TestWriteWorkspaceFile_EmptyBody(t *testing.T) {
 // ── Upload Missing File Field ──
 
 func TestUpload_EmptyContentType(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -509,7 +509,7 @@ func TestUpload_EmptyContentType(t *testing.T) {
 }
 
 func TestUpload_MissingFileField(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 
@@ -539,7 +539,7 @@ type errorBodyReader struct{}
 func (errorBodyReader) Read(p []byte) (int, error) { return 0, fmt.Errorf("read error") }
 
 func TestWriteWorkspaceFile_ReadError(t *testing.T) {
-	storage := mockartifact_svc.NewStorageService(t)
+	storage := mockartifact_svc.NewService(t)
 	wm := mockwm.NewWorkspaceManager(t)
 	h := NewArtifactHandler(storage, wm)
 

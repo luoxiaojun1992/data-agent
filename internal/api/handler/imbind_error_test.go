@@ -23,7 +23,7 @@ func TestRegisterIMBindRoutes_NilSvc(t *testing.T) {
 	h := NewIMBindHandler(nil)
 	rg := r.Group("/api/im/bind")
 	rg.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() })
-	RegisterIMBindRoutes(rg, h)
+	RegisterIMBindRoutes(rg, h, nil)
 
 	// GET with nil svc → 503
 	req := httptest.NewRequest("GET", "/api/im/bind", nil)
@@ -62,7 +62,7 @@ func TestRegisterIMBindRoutes_WithService(t *testing.T) {
 	h := NewIMBindHandler(svc)
 	rg := r.Group("/api/im/bind")
 	rg.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() })
-	RegisterIMBindRoutes(rg, h)
+	RegisterIMBindRoutes(rg, h, nil)
 
 	// GET with real svc → 200
 	req := httptest.NewRequest("GET", "/api/im/bind", nil)

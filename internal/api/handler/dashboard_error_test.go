@@ -10,8 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	domainknowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
-	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
-	taskmocks "github.com/luoxiaojun1992/data-agent/internal/domain/task/mocks"
 	kbmocks "github.com/luoxiaojun1992/data-agent/internal/service/knowledge/mocks"
 )
 
@@ -20,13 +18,10 @@ import (
 // dashboard intentionally swallows errors so partial outages do not break the
 // admin UI.
 func TestDashboardHandler_Get_AllServicesError(t *testing.T) {
-	tasks := taskmocks.NewTaskService(t)
 	kb := kbmocks.NewKnowledgeService(t)
-
-	tasks.On("ListAllTasks", "u1").Return(([]*domaintask.Task)(nil), errStr("task db down"))
 	kb.On("ListAllDocs", 1, 1).Return(([]*domainknowledge.KnowledgeDoc)(nil), int64(0), errStr("kb db down"))
 
-	h := NewDashboardHandler(tasks, kb, nil)
+	h := NewDashboardHandler(nil, kb, nil)
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -39,16 +34,8 @@ func TestDashboardHandler_Get_AllServicesError(t *testing.T) {
 	}
 	var resp map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	// Errors are ignored; task_stats is still present (zeroed) so the UI can
+	// Errors are swallowed; kb_docs is still present (zeroed) so the UI can
 	// render an empty state.
-	taskStats, ok := resp["task_stats"].(map[string]any)
-	if !ok {
-		t.Errorf("missing task_stats field: %+v", resp)
-	} else {
-		if taskStats["total"].(float64) != 0 {
-			t.Errorf("task_stats.total = %v, want 0 on error", taskStats["total"])
-		}
-	}
 	if _, ok := resp["kb_docs"]; !ok {
 		t.Errorf("missing kb_docs field: %+v", resp)
 	}
@@ -61,11 +48,9 @@ func TestDashboardHandler_Get_AllServicesError(t *testing.T) {
 func TestRegisterDashboardRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	tasks := taskmocks.NewTaskService(t)
 	kb := kbmocks.NewKnowledgeService(t)
-	tasks.On("ListAllTasks", "u1").Return([]*domaintask.Task{{ID: "t1", Status: domaintask.StatusCompleted}}, nil)
 	kb.On("ListAllDocs", 1, 1).Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}}, int64(1), nil)
-	h := NewDashboardHandler(tasks, kb, nil)
+	h := NewDashboardHandler(nil, kb, nil)
 	midd := func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() }
 	RegisterDashboardRoutes(r, midd, h)
 
@@ -75,9 +60,6 @@ func TestRegisterDashboardRoutes(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "task_stats") {
-		t.Errorf("expected task_stats field in body, got %s", w.Body.String())
 	}
 	if !strings.Contains(w.Body.String(), "kb_docs") {
 		t.Errorf("expected kb_docs field in body, got %s", w.Body.String())

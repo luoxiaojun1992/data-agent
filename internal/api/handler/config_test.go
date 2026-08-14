@@ -12,7 +12,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	configmocks "github.com/luoxiaojun1992/data-agent/internal/service/config/mocks"
-	rolemocks "github.com/luoxiaojun1992/data-agent/internal/service/role/mocks"
 	repomocks "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 )
 
@@ -27,8 +26,8 @@ func newCfgGin(method, path, body string) (*gin.Context, *httptest.ResponseRecor
 
 func TestConfigHandler_Get(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{{Key: "k"}}, nil)
-	h := NewConfigHandler(cfgSvc, nil, nil)
+	cfgSvc.On("List", mock.Anything, "models", 1, 20).Return([]model.SystemConfig{{Key: "k"}}, int64(1), nil)
+	h := NewConfigHandler(cfgSvc, nil)
 	c, w := newCfgGin("GET", "/sysconfig/models", "")
 	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
 	h.Get(c)
@@ -39,8 +38,8 @@ func TestConfigHandler_Get(t *testing.T) {
 
 func TestConfigHandler_Get_Error(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("GetAll", mock.Anything, "models").Return(([]model.SystemConfig)(nil), errStr("db"))
-	h := NewConfigHandler(cfgSvc, nil, nil)
+	cfgSvc.On("List", mock.Anything, "models", 1, 20).Return(([]model.SystemConfig)(nil), int64(0), errStr("db"))
+	h := NewConfigHandler(cfgSvc, nil)
 	c, w := newCfgGin("GET", "/sysconfig/models", "")
 	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
 	h.Get(c)
@@ -52,7 +51,7 @@ func TestConfigHandler_Get_Error(t *testing.T) {
 func TestConfigHandler_Put(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
 	cfgSvc.On("Upsert", mock.Anything, "models", "k", "v").Return(nil)
-	h := NewConfigHandler(cfgSvc, nil, nil)
+	h := NewConfigHandler(cfgSvc, nil)
 	c, w := newCfgGin("PUT", "/sysconfig/models", `{"key":"k","value":"v"}`)
 	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
 	h.Put(c)
@@ -62,7 +61,7 @@ func TestConfigHandler_Put(t *testing.T) {
 }
 
 func TestConfigHandler_Put_InvalidBody(t *testing.T) {
-	h := NewConfigHandler(nil, nil, nil)
+	h := NewConfigHandler(nil, nil)
 	c, w := newCfgGin("PUT", "/sysconfig/models", "not-json")
 	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
 	h.Put(c)
@@ -92,7 +91,7 @@ func TestConfigHandler_ChangePassword_Success(t *testing.T) {
 	oldHash, _ := middleware.HashPassword("OldPass1")
 	userRepo.On("FindByID", mock.Anything, "u1").Return(&model.User{ID: "u1", PasswordHash: oldHash}, nil)
 	userRepo.On("UpdatePassword", mock.Anything, "u1", mock.Anything).Return(nil)
-	h := NewConfigHandler(nil, nil, userRepo)
+	h := NewConfigHandler(nil, userRepo)
 	c, w := newCfgGin("POST", "/change-password", `{"old_password":"OldPass1","new_password":"NewPass1"}`)
 	c.Set("user_id", "u1")
 	h.ChangePassword(c)
@@ -102,7 +101,7 @@ func TestConfigHandler_ChangePassword_Success(t *testing.T) {
 }
 
 func TestConfigHandler_ChangePassword_WeakPassword(t *testing.T) {
-	h := NewConfigHandler(nil, nil, repomocks.NewUserRepository(t))
+	h := NewConfigHandler(nil, repomocks.NewUserRepository(t))
 	c, w := newCfgGin("POST", "/change-password", `{"old_password":"old","new_password":"weak"}`)
 	c.Set("user_id", "u1")
 	h.ChangePassword(c)
@@ -112,7 +111,7 @@ func TestConfigHandler_ChangePassword_WeakPassword(t *testing.T) {
 }
 
 func TestConfigHandler_ChangePassword_InvalidBody(t *testing.T) {
-	h := NewConfigHandler(nil, nil, repomocks.NewUserRepository(t))
+	h := NewConfigHandler(nil, repomocks.NewUserRepository(t))
 	c, w := newCfgGin("POST", "/change-password", "not-json")
 	c.Set("user_id", "u1")
 	h.ChangePassword(c)
@@ -124,7 +123,7 @@ func TestConfigHandler_ChangePassword_InvalidBody(t *testing.T) {
 func TestConfigHandler_ChangePassword_UserNotFound(t *testing.T) {
 	userRepo := repomocks.NewUserRepository(t)
 	userRepo.On("FindByID", mock.Anything, "u1").Return((*model.User)(nil), errStr("not found"))
-	h := NewConfigHandler(nil, nil, userRepo)
+	h := NewConfigHandler(nil, userRepo)
 	c, w := newCfgGin("POST", "/change-password", `{"old_password":"OldPass1","new_password":"NewPass1"}`)
 	c.Set("user_id", "u1")
 	h.ChangePassword(c)
@@ -137,7 +136,7 @@ func TestConfigHandler_ChangePassword_WrongOldPassword(t *testing.T) {
 	userRepo := repomocks.NewUserRepository(t)
 	oldHash, _ := middleware.HashPassword("CorrectOld1")
 	userRepo.On("FindByID", mock.Anything, "u1").Return(&model.User{ID: "u1", PasswordHash: oldHash}, nil)
-	h := NewConfigHandler(nil, nil, userRepo)
+	h := NewConfigHandler(nil, userRepo)
 	c, w := newCfgGin("POST", "/change-password", `{"old_password":"WrongOld1","new_password":"NewPass1"}`)
 	c.Set("user_id", "u1")
 	h.ChangePassword(c)
@@ -146,48 +145,3 @@ func TestConfigHandler_ChangePassword_WrongOldPassword(t *testing.T) {
 	}
 }
 
-func TestConfigHandler_ListRoles(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("List", mock.Anything).Return([]model.Role{{ID: "r1"}}, nil)
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("GET", "/roles", "")
-	h.ListRoles(c)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
-}
-
-func TestConfigHandler_CreateRole(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("Create", mock.Anything, "editor", "编辑", []string{"read"}).Return(&model.Role{ID: "r1"}, nil)
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("POST", "/roles", `{"name":"editor","display_name":"编辑","permissions":["read"]}`)
-	h.CreateRole(c)
-	if w.Code != http.StatusCreated {
-		t.Errorf("expected 201, got %d", w.Code)
-	}
-}
-
-func TestConfigHandler_UpdateRole(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("Update", mock.Anything, "r1", []string{"read"}).Return(nil)
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("PUT", "/roles/r1", `{"permissions":["read"]}`)
-	c.Params = gin.Params{{Key: "id", Value: "r1"}}
-	h.UpdateRole(c)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
-}
-
-func TestConfigHandler_DeleteRole(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("Delete", mock.Anything, "r1").Return(nil)
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("DELETE", "/roles/r1", "")
-	c.Params = gin.Params{{Key: "id", Value: "r1"}}
-	h.DeleteRole(c)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
-}

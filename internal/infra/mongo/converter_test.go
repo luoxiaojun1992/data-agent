@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luoxiaojun1992/data-agent/internal/domain/apireview"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
@@ -525,96 +524,6 @@ func TestTaskProgressRoundtrip(t *testing.T) {
 	}
 }
 
-func TestTaskRoundtrip(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	completedAt := now.Add(time.Minute)
-	orig := &task.Task{
-		ID:         "task_abc",
-		SessionID:  "sess1",
-		UserID:     "user1",
-		Type:       "agent_exec",
-		Status:     task.StatusCompleted,
-		SkillChain: []string{"sql-executor", "stats-engine"},
-		Params:     map[string]interface{}{"query": "SELECT 1"},
-		Result:     map[string]interface{}{"rows": 10},
-		Error:      "",
-		Progress: task.TaskProgress{
-			CurrentStep: 2,
-			TotalSteps:  2,
-			Message:     "Done",
-			Percent:     100,
-		},
-		RetryCount:  0,
-		MaxRetries:  3,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		CompletedAt: &completedAt,
-		DurationMs:  1500,
-	}
-	doc := taskToDoc(orig)
-	// Error is empty (omitempty) → should be absent
-	if _, ok := doc["error"]; ok {
-		t.Error("error should be absent when empty")
-	}
-	got := docToTask(doc)
-	if got.ID != orig.ID || got.SessionID != orig.SessionID || got.UserID != orig.UserID {
-		t.Errorf("basic fields mismatch: got %+v", got)
-	}
-	if got.Type != orig.Type || got.Status != orig.Status {
-		t.Errorf("type/status mismatch: got %+v", got)
-	}
-	if len(got.SkillChain) != 2 || got.SkillChain[0] != "sql-executor" {
-		t.Errorf("SkillChain mismatch: got %v", got.SkillChain)
-	}
-	if got.Params["query"] != "SELECT 1" {
-		t.Errorf("Params mismatch: got %v", got.Params)
-	}
-	if got.Result["rows"] != 10 {
-		t.Errorf("Result mismatch: got %v", got.Result)
-	}
-	if got.Progress.CurrentStep != 2 || got.Progress.TotalSteps != 2 || got.Progress.Percent != 100 {
-		t.Errorf("Progress mismatch: got %+v", got.Progress)
-	}
-	if got.RetryCount != orig.RetryCount || got.MaxRetries != orig.MaxRetries {
-		t.Errorf("retry fields mismatch: got %d/%d", got.RetryCount, got.MaxRetries)
-	}
-	if got.DurationMs != orig.DurationMs {
-		t.Errorf("DurationMs mismatch: got %d", got.DurationMs)
-	}
-	if got.CompletedAt == nil || !got.CompletedAt.Equal(*orig.CompletedAt) {
-		t.Errorf("CompletedAt mismatch: got %v", got.CompletedAt)
-	}
-}
-
-func TestTaskRoundtripNilOptionals(t *testing.T) {
-	orig := &task.Task{
-		ID:         "task_pending",
-		SessionID:  "sess1",
-		UserID:     "user1",
-		Type:       "agent_exec",
-		Status:     task.StatusPending,
-		SkillChain: []string{},
-		Params:     nil,
-	}
-	doc := taskToDoc(orig)
-	if _, ok := doc["result"]; ok {
-		t.Error("result should be absent when nil")
-	}
-	if _, ok := doc["error"]; ok {
-		t.Error("error should be absent when empty")
-	}
-	if _, ok := doc["completed_at"]; ok {
-		t.Error("completed_at should be absent when nil")
-	}
-	got := docToTask(doc)
-	if got.CompletedAt != nil {
-		t.Errorf("CompletedAt should be nil: got %v", got.CompletedAt)
-	}
-	if got.Result != nil {
-		t.Errorf("Result should be nil: got %v", got.Result)
-	}
-}
-
 func TestArtifactRoundtrip(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	orig := &artifact.Artifact{
@@ -757,81 +666,6 @@ func TestChunkZeroMilvusID(t *testing.T) {
 	}
 }
 
-func TestAPIReviewRoundtrip(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	reviewedAt := now.Add(time.Hour)
-	orig := &apireview.APIReview{
-		ID:           "review1",
-		Name:         "Payment API",
-		FileName:     "payment.yaml",
-		Version:      "3.0",
-		Endpoints:    12,
-		Domain:       "finance",
-		RateLimit:    100,
-		Submitter:    "user1",
-		Reviewer:     "admin1",
-		RejectReason: "",
-		Status:       apireview.StatusApproved,
-		ReviewedAt:   &reviewedAt,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	doc := apiReviewToDoc(orig)
-	// RejectReason empty → absent
-	if _, ok := doc["reject_reason"]; ok {
-		t.Error("reject_reason should be absent when empty")
-	}
-	got := docToAPIReview(doc)
-	if got.ID != orig.ID || got.Name != orig.Name || got.FileName != orig.FileName {
-		t.Errorf("basic fields mismatch: got %+v", got)
-	}
-	if got.Version != orig.Version || got.Endpoints != orig.Endpoints || got.Domain != orig.Domain {
-		t.Errorf("version/endpoints/domain mismatch: got %+v", got)
-	}
-	if got.RateLimit != orig.RateLimit || got.Submitter != orig.Submitter {
-		t.Errorf("ratelimit/submitter mismatch: got %+v", got)
-	}
-	if got.Reviewer != orig.Reviewer {
-		t.Errorf("Reviewer mismatch: got %q", got.Reviewer)
-	}
-	if got.Status != orig.Status {
-		t.Errorf("Status mismatch: got %q", got.Status)
-	}
-	if got.ReviewedAt == nil || !got.ReviewedAt.Equal(*orig.ReviewedAt) {
-		t.Errorf("ReviewedAt mismatch: got %v", got.ReviewedAt)
-	}
-	if !got.CreatedAt.Equal(orig.CreatedAt) || !got.UpdatedAt.Equal(orig.UpdatedAt) {
-		t.Errorf("timestamps mismatch")
-	}
-}
-
-func TestAPIReviewPendingNoReviewer(t *testing.T) {
-	orig := &apireview.APIReview{
-		ID:        "review2",
-		Name:      "Pending API",
-		FileName:  "pending.yaml",
-		Version:   "3.0",
-		Endpoints: 5,
-		Domain:    "general",
-		RateLimit: 50,
-		Submitter: "user2",
-		Status:    apireview.StatusPending,
-	}
-	doc := apiReviewToDoc(orig)
-	for _, key := range []string{"reviewer", "reject_reason", "reviewed_at"} {
-		if _, ok := doc[key]; ok {
-			t.Errorf("%s should be absent when empty/nil", key)
-		}
-	}
-	got := docToAPIReview(doc)
-	if got.Reviewer != "" {
-		t.Errorf("Reviewer should be empty: got %q", got.Reviewer)
-	}
-	if got.ReviewedAt != nil {
-		t.Errorf("ReviewedAt should be nil: got %v", got.ReviewedAt)
-	}
-}
-
 // ── Edge case tests for 100% coverage ───────────────────────────────
 
 func TestGetTimeNonTime(t *testing.T) {
@@ -895,48 +729,5 @@ func TestGetSubDocNonDoc(t *testing.T) {
 	got := getSubDoc(d, "sub")
 	if len(got) != 0 {
 		t.Errorf("getSubDoc non-doc: got %v, want empty", got)
-	}
-}
-
-func TestTaskToDocWithError(t *testing.T) {
-	orig := &task.Task{
-		ID:        "task_err",
-		SessionID: "sess1",
-		UserID:    "user1",
-		Type:      "agent_exec",
-		Status:    task.StatusFailed,
-		Error:     "connection timeout",
-	}
-	doc := taskToDoc(orig)
-	if v, ok := doc["error"]; !ok || v != "connection timeout" {
-		t.Errorf("error field: got %v, want %q", v, "connection timeout")
-	}
-	got := docToTask(doc)
-	if got.Error != orig.Error {
-		t.Errorf("Error mismatch: got %q, want %q", got.Error, orig.Error)
-	}
-}
-
-func TestAPIReviewToDocWithRejectReason(t *testing.T) {
-	orig := &apireview.APIReview{
-		ID:           "review3",
-		Name:         "Bad API",
-		FileName:     "bad.yaml",
-		Version:      "3.0",
-		Endpoints:    2,
-		Domain:       "test",
-		RateLimit:    10,
-		Submitter:    "user3",
-		Reviewer:     "admin2",
-		RejectReason: "Invalid schema",
-		Status:       apireview.StatusRejected,
-	}
-	doc := apiReviewToDoc(orig)
-	if v, ok := doc["reject_reason"]; !ok || v != "Invalid schema" {
-		t.Errorf("reject_reason: got %v, want %q", v, "Invalid schema")
-	}
-	got := docToAPIReview(doc)
-	if got.RejectReason != orig.RejectReason {
-		t.Errorf("RejectReason mismatch: got %q, want %q", got.RejectReason, orig.RejectReason)
 	}
 }

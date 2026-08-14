@@ -11,8 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	domainknowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
-	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
-	taskmocks "github.com/luoxiaojun1992/data-agent/internal/domain/task/mocks"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	kbmocks "github.com/luoxiaojun1992/data-agent/internal/service/knowledge/mocks"
 )
@@ -32,17 +30,10 @@ func (f *fakeAggregator) AggregateByTime(ctx context.Context, since time.Time, b
 }
 
 func TestDashboardHandler_Get(t *testing.T) {
-	tasks := taskmocks.NewTaskService(t)
 	kb := kbmocks.NewKnowledgeService(t)
-
-	tasks.On("ListAllTasks", "u1").Return([]*domaintask.Task{
-		{ID: "t1", Status: domaintask.StatusCompleted},
-		{ID: "t2", Status: domaintask.StatusPending},
-		{ID: "t3", Status: domaintask.StatusFailed},
-	}, nil)
 	kb.On("ListAllDocs", 1, 1).Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}, {ID: "d2"}}, int64(2), nil)
 
-	h := NewDashboardHandler(tasks, kb, nil)
+	h := NewDashboardHandler(nil, kb, nil)
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -56,39 +47,19 @@ func TestDashboardHandler_Get(t *testing.T) {
 	var resp map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
-	taskStats, ok := resp["task_stats"].(map[string]any)
-	if !ok {
-		t.Fatalf("missing task_stats field: %+v", resp)
-	}
-	if taskStats["total"].(float64) != 3 {
-		t.Errorf("task_stats.total = %v, want 3", taskStats["total"])
-	}
-	if taskStats["completed"].(float64) != 1 {
-		t.Errorf("task_stats.completed = %v, want 1", taskStats["completed"])
-	}
-	if taskStats["pending"].(float64) != 1 {
-		t.Errorf("task_stats.pending = %v, want 1", taskStats["pending"])
-	}
-	if taskStats["failed"].(float64) != 1 {
-		t.Errorf("task_stats.failed = %v, want 1", taskStats["failed"])
-	}
 	if resp["kb_docs"].(float64) != 2 {
 		t.Errorf("kb_docs = %v, want 2", resp["kb_docs"])
 	}
 }
 
 func TestDashboardHandler_GetTrends(t *testing.T) {
-	tasks := taskmocks.NewTaskService(t)
 	kb := kbmocks.NewKnowledgeService(t)
-	tasks.On("ListAllTasks", "u1").Return([]*domaintask.Task{
-		{ID: "t1", Status: domaintask.StatusCompleted, CreatedAt: time.Now().Add(-1 * time.Hour)},
-	}, nil)
 
 	agg := &fakeAggregator{buckets: []llmstats.TimeBucketResult{
 		{BucketStart: time.Now().Add(-1 * time.Hour), TotalTokens: 200},
 	}}
 
-	h := NewDashboardHandler(tasks, kb, agg)
+	h := NewDashboardHandler(nil, kb, agg)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Set("user_id", "u1")
@@ -127,13 +98,11 @@ func TestDashboardHandler_GetTrends(t *testing.T) {
 }
 
 func TestDashboardHandler_GetTrends_RecorderError(t *testing.T) {
-	tasks := taskmocks.NewTaskService(t)
 	kb := kbmocks.NewKnowledgeService(t)
-	tasks.On("ListAllTasks", "u1").Return([]*domaintask.Task{}, nil)
 
 	agg := &fakeAggregator{err: errStr("llmstats down")}
 
-	h := NewDashboardHandler(tasks, kb, agg)
+	h := NewDashboardHandler(nil, kb, agg)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Set("user_id", "u1")
@@ -156,12 +125,10 @@ func TestDashboardHandler_GetTrends_RecorderError(t *testing.T) {
 }
 
 func TestDashboardHandler_GetTrends_NilRecorder(t *testing.T) {
-	tasks := taskmocks.NewTaskService(t)
 	kb := kbmocks.NewKnowledgeService(t)
-	tasks.On("ListAllTasks", "u1").Return([]*domaintask.Task{}, nil)
 
 	// nil recorder (e.g. when MongoDB is unavailable) must not panic.
-	h := NewDashboardHandler(tasks, kb, nil)
+	h := NewDashboardHandler(nil, kb, nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Set("user_id", "u1")

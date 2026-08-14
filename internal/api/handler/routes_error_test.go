@@ -29,10 +29,9 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		AppName:     "data-agent",
 		Auth:         NewAuthHandler(nil),
 		User:         NewUserHandler(nil),
-		Role:         NewRoleHandler(nil),
 		ModelConfig:  NewModelConfigHandler(nil, nil),
-		SysConfig:    NewConfigHandler(nil, nil, nil),
-		Memory:       NewMemoryHandler(nil, "data-agent"),
+		SysConfig:    NewConfigHandler(nil, nil),
+		Memory:       NewMemoryHandler(nil, nil, "data-agent", nil, nil),
 		Chat:         NewChatHandler(nil),
 		Enhance:      NewEnhanceHandler(nil),
 		Agent:        NewAgentHandler(nil, nil, nil),
@@ -40,9 +39,8 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		Artifact:     NewArtifactHandler(nil, nil),
 		Knowledge:    NewKnowledgeHandler(nil),
 		Audit:        NewAuditHandler(nil),
-		APIReview:    NewAPIReviewHandler(nil),
 		Notification: NewNotificationHandler(nil),
-		Task:         NewTaskHandler(nil),
+		Task:         NewTaskHandler(nil, nil),
 		Dashboard:    NewDashboardHandler(nil, nil, nil),
 		IMBind:       NewIMBindHandler(nil),
 	}
@@ -197,7 +195,7 @@ func TestRegisterAdminRoutes_NilHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	admin := r.Group("/api/v1/admin")
-	registerAdminRoutes(admin, nil)
+	registerAdminRoutes(admin, nil, nil, nil)
 
 	// No routes should be registered under /api/v1/admin.
 	routes := r.Routes()

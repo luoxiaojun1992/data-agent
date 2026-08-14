@@ -99,7 +99,7 @@ func TestRegisterSessionRoutes(t *testing.T) {
 	h := NewSessionHandler(mgr)
 	api := r.Group("/api/v1/sessions")
 	api.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() })
-	RegisterSessionRoutes(api, h)
+	RegisterSessionRoutes(api, h, nil)
 
 	// GET /api/v1/sessions → 200 (List)
 	req := httptest.NewRequest("GET", "/api/v1/sessions", nil)

@@ -19,7 +19,7 @@ func init() { gin.SetMode(gin.TestMode) }
 
 func TestNewTaskHandler(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 	if h == nil {
 		t.Fatal("NewTaskHandler returned nil")
 	}
@@ -32,15 +32,13 @@ func TestNewTaskHandler(t *testing.T) {
 
 func TestCreateTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	now := time.Now()
 	mockTask := &task.Task{
 		ID:        "task_1",
-		SessionID: "sess-1",
 		UserID:    "user-1",
 		Type:      "agent_exec",
-		Status:    task.StatusQueued,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -59,7 +57,7 @@ func TestCreateTask_Success(t *testing.T) {
 
 func TestCreateTask_DefaultType(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	mockTask := &task.Task{ID: "task_2", Type: "agent_exec"}
 
@@ -78,7 +76,7 @@ func TestCreateTask_DefaultType(t *testing.T) {
 
 func TestCreateTask_FromFrontend(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	mockTask := &task.Task{ID: "task_3", Type: "agent_exec"}
 
@@ -97,7 +95,7 @@ func TestCreateTask_FromFrontend(t *testing.T) {
 
 func TestCreateTask_WithParams(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	mockTask := &task.Task{ID: "task_4", Type: "agent_exec"}
 
@@ -115,7 +113,7 @@ func TestCreateTask_WithParams(t *testing.T) {
 
 func TestCreateTask_WithCronExpr(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	mockTask := &task.Task{ID: "task_5", Type: "agent_exec"}
 
@@ -133,7 +131,7 @@ func TestCreateTask_WithCronExpr(t *testing.T) {
 
 func TestCreateTask_InvalidJSON(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	c, w := newGinContext("POST", "/tasks", "not-json")
 	c.Set("user_id", "user-1")
@@ -146,7 +144,7 @@ func TestCreateTask_InvalidJSON(t *testing.T) {
 
 func TestCreateTask_ServiceError(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( nil, fmt.Errorf("queue full"))
 
@@ -164,13 +162,11 @@ func TestCreateTask_ServiceError(t *testing.T) {
 
 func TestGetTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	mockTask := &task.Task{
 		ID:        "task_1",
-		SessionID: "sess-1",
 		UserID:    "user-1",
-		Status:    task.StatusCompleted,
 	}
 
 	svc.On("GetTask", mock.Anything).Return( mockTask, nil)
@@ -186,7 +182,7 @@ func TestGetTask_Success(t *testing.T) {
 
 func TestGetTask_NotFound(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("GetTask", mock.Anything).Return( nil, fmt.Errorf("not found"))
 
@@ -203,7 +199,7 @@ func TestGetTask_NotFound(t *testing.T) {
 
 func TestCancelTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("CancelTask", mock.Anything).Return(nil)
 
@@ -221,7 +217,7 @@ func TestCancelTask_Success(t *testing.T) {
 
 func TestCancelTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("CancelTask", mock.Anything).Return( fmt.Errorf("cannot cancel completed"))
 
@@ -238,11 +234,11 @@ func TestCancelTask_Error(t *testing.T) {
 
 func TestListTasks_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	tasks := []*task.Task{
-		{ID: "task_1", UserID: "user-1", Status: task.StatusCompleted},
-		{ID: "task_2", UserID: "user-1", Status: task.StatusRunning},
+		{ID: "task_1", UserID: "user-1"},
+		{ID: "task_2", UserID: "user-1"},
 	}
 
 	svc.On("ListTasks", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( tasks, int64(len(tasks)), nil)
@@ -258,7 +254,7 @@ func TestListTasks_Success(t *testing.T) {
 
 func TestListTasks_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("ListTasks", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( ([]*task.Task)(nil), int64(0), fmt.Errorf("db error"))
 
@@ -273,7 +269,7 @@ func TestListTasks_Error(t *testing.T) {
 
 func TestListTasks_Empty(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("ListTasks", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return( ([]*task.Task)(nil), int64(0), nil)
 
@@ -290,7 +286,7 @@ func TestListTasks_Empty(t *testing.T) {
 
 func TestPauseTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
 
@@ -308,7 +304,7 @@ func TestPauseTask_Success(t *testing.T) {
 
 func TestPauseTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return( fmt.Errorf("invalid status transition"))
 
@@ -325,7 +321,7 @@ func TestPauseTask_Error(t *testing.T) {
 
 func TestResumeTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
 
@@ -343,7 +339,7 @@ func TestResumeTask_Success(t *testing.T) {
 
 func TestResumeTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return( fmt.Errorf("task not found"))
 
@@ -360,9 +356,9 @@ func TestResumeTask_Error(t *testing.T) {
 
 func TestDownloadArtifacts_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
-	mockTask := &task.Task{ID: "task_1", UserID: "user-1", Status: task.StatusCompleted}
+	mockTask := &task.Task{ID: "task_1", UserID: "user-1"}
 
 	svc.On("GetTask", mock.Anything).Return( mockTask, nil)
 
@@ -381,7 +377,7 @@ func TestDownloadArtifacts_Success(t *testing.T) {
 
 func TestDownloadArtifacts_TaskNotFound(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("GetTask", mock.Anything).Return( nil, fmt.Errorf("not found"))
 
@@ -396,7 +392,7 @@ func TestDownloadArtifacts_TaskNotFound(t *testing.T) {
 
 func TestDownloadArtifacts_NilTask(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("GetTask", mock.Anything).Return( (*task.Task)(nil), nil)
 
@@ -413,12 +409,12 @@ func TestDownloadArtifacts_NilTask(t *testing.T) {
 
 func TestListAllTasks_All(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	tasks := []*task.Task{
-		{ID: "task_1", UserID: "user-1", Status: task.StatusCompleted},
-		{ID: "task_2", UserID: "user-2", Status: task.StatusRunning},
-		{ID: "task_3", UserID: "user-3", Status: task.StatusFailed},
+		{ID: "task_1", UserID: "user-1"},
+		{ID: "task_2", UserID: "user-2"},
+		{ID: "task_3", UserID: "user-3"},
 	}
 
 	svc.On("ListAllTasks", mock.Anything).Return( tasks, nil)
@@ -433,10 +429,10 @@ func TestListAllTasks_All(t *testing.T) {
 
 func TestListAllTasks_WithStatusFilter(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	tasks := []*task.Task{
-		{ID: "task_1", UserID: "user-1", Status: task.StatusRunning},
+		{ID: "task_1", UserID: "user-1"},
 	}
 
 	svc.On("ListAllTasks", mock.Anything).Return( tasks, nil)
@@ -451,7 +447,7 @@ func TestListAllTasks_WithStatusFilter(t *testing.T) {
 
 func TestListAllTasks_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("ListAllTasks", mock.Anything).Return( nil, fmt.Errorf("db error"))
 
@@ -465,7 +461,7 @@ func TestListAllTasks_Error(t *testing.T) {
 
 func TestListAllTasks_Empty(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("ListAllTasks", mock.Anything).Return([]*task.Task{}, nil)
 
@@ -481,9 +477,9 @@ func TestListAllTasks_Empty(t *testing.T) {
 
 func TestRetryTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
-	var mockTask *task.Task = &task.Task{ID: "task_1", Status: task.StatusRunning, SessionID: "s1", UserID: "u1"}
+	var mockTask *task.Task = &task.Task{ID: "task_1", UserID: "u1"}
 	svc.On("RetryTask", mock.Anything).Return(mockTask, nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/retry", "")
@@ -500,7 +496,7 @@ func TestRetryTask_Success(t *testing.T) {
 
 func TestRetryTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("RetryTask", mock.Anything).Return((*task.Task)(nil), fmt.Errorf("only failed tasks can be retried"))
 
@@ -517,7 +513,7 @@ func TestRetryTask_Error(t *testing.T) {
 
 func TestBatchCancelTasks_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("BatchCancelTasks", mock.Anything).Return( nil)
 
@@ -535,7 +531,7 @@ func TestBatchCancelTasks_Success(t *testing.T) {
 
 func TestBatchCancelTasks_SingleTask(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("BatchCancelTasks", mock.Anything).Return( nil)
 
@@ -553,7 +549,7 @@ func TestBatchCancelTasks_SingleTask(t *testing.T) {
 
 func TestBatchCancelTasks_InvalidJSON(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	c, w := newGinContext("POST", "/tasks/batch-cancel", "bad")
 	h.BatchCancelTasks(c)
@@ -565,7 +561,7 @@ func TestBatchCancelTasks_InvalidJSON(t *testing.T) {
 
 func TestBatchCancelTasks_ServiceError(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("BatchCancelTasks", mock.Anything).Return( fmt.Errorf("db error"))
 
@@ -580,7 +576,7 @@ func TestBatchCancelTasks_ServiceError(t *testing.T) {
 
 func TestBatchCancelTasks_EmptyList(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc)
+	h := NewTaskHandler(svc, nil)
 
 	svc.On("BatchCancelTasks", mock.Anything).Return( nil)
 

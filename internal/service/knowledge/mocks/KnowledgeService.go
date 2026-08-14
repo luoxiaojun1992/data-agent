@@ -3,6 +3,7 @@
 package mocks
 
 import (
+	context "context"
 	io "io"
 
 	domainknowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
@@ -185,9 +186,46 @@ func (_m *KnowledgeService) ListDocs(userID string, page int, pageSize int) ([]*
 	return r0, r1, r2
 }
 
-// Search provides a mock function with given fields: userID, query, topK, role
-func (_m *KnowledgeService) Search(userID string, query string, topK int, role string) ([]domainknowledge.SearchResult, error) {
-	ret := _m.Called(userID, query, topK, role)
+// ListDocsByVisibility provides a mock function with given fields: userID, isSystemAdmin, page, pageSize
+func (_m *KnowledgeService) ListDocsByVisibility(userID string, isSystemAdmin bool, page int, pageSize int) ([]*domainknowledge.KnowledgeDoc, int64, error) {
+	ret := _m.Called(userID, isSystemAdmin, page, pageSize)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListDocsByVisibility")
+	}
+
+	var r0 []*domainknowledge.KnowledgeDoc
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(string, bool, int, int) ([]*domainknowledge.KnowledgeDoc, int64, error)); ok {
+		return rf(userID, isSystemAdmin, page, pageSize)
+	}
+	if rf, ok := ret.Get(0).(func(string, bool, int, int) []*domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(userID, isSystemAdmin, page, pageSize)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*domainknowledge.KnowledgeDoc)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(string, bool, int, int) int64); ok {
+		r1 = rf(userID, isSystemAdmin, page, pageSize)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(string, bool, int, int) error); ok {
+		r2 = rf(userID, isSystemAdmin, page, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Search provides a mock function with given fields: userID, query, topK, isSystemAdmin
+func (_m *KnowledgeService) Search(userID string, query string, topK int, isSystemAdmin bool) ([]domainknowledge.SearchResult, error) {
+	ret := _m.Called(userID, query, topK, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Search")
@@ -195,24 +233,42 @@ func (_m *KnowledgeService) Search(userID string, query string, topK int, role s
 
 	var r0 []domainknowledge.SearchResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, string, int, string) ([]domainknowledge.SearchResult, error)); ok {
-		return rf(userID, query, topK, role)
+	if rf, ok := ret.Get(0).(func(string, string, int, bool) ([]domainknowledge.SearchResult, error)); ok {
+		return rf(userID, query, topK, isSystemAdmin)
 	}
-	if rf, ok := ret.Get(0).(func(string, string, int, string) []domainknowledge.SearchResult); ok {
-		r0 = rf(userID, query, topK, role)
+	if rf, ok := ret.Get(0).(func(string, string, int, bool) []domainknowledge.SearchResult); ok {
+		r0 = rf(userID, query, topK, isSystemAdmin)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]domainknowledge.SearchResult)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string, int, string) error); ok {
-		r1 = rf(userID, query, topK, role)
+	if rf, ok := ret.Get(1).(func(string, string, int, bool) error); ok {
+		r1 = rf(userID, query, topK, isSystemAdmin)
 	} else {
 		r1 = ret.Error(1)
 	}
 
 	return r0, r1
+}
+
+// SetPublicFlag provides a mock function with given fields: ctx, docID, isPublic
+func (_m *KnowledgeService) SetPublicFlag(ctx context.Context, docID string, isPublic bool) error {
+	ret := _m.Called(ctx, docID, isPublic)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetPublicFlag")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = rf(ctx, docID, isPublic)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // UploadFile provides a mock function with given fields: fileName, contentType, reader

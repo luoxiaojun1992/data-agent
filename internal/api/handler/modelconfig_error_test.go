@@ -2,11 +2,8 @@ package handler
 
 import (
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
@@ -46,39 +43,3 @@ func TestModelConfigHandler_Get_ServiceErrorReturningEmptyList(t *testing.T) {
 	}
 }
 
-// TestRegisterModelConfigRoutes verifies that RegisterModelConfigRoutes wires
-// GET/PUT /models on the given router group. This exercises the previously
-// uncovered RegisterModelConfigRoutes function.
-func TestRegisterModelConfigRoutes(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	svc := configmocks.NewService(t)
-	svc.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
-	svc.On("Upsert", mock.Anything, "model", "k", "v").Return(nil)
-	h := NewModelConfigHandler(svc, nil)
-	api := r.Group("/api/v1")
-	RegisterModelConfigRoutes(api, h)
-
-	// GET /api/v1/models → 200
-	req := httptest.NewRequest("GET", "/api/v1/models", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("Get expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "models") {
-		t.Errorf("expected models field in body, got %s", w.Body.String())
-	}
-
-	// PUT /api/v1/models → 200
-	req = httptest.NewRequest("PUT", "/api/v1/models", strings.NewReader(`{"key":"k","value":"v"}`))
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("Put expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "已保存") {
-		t.Errorf("expected saved message in body, got %s", w.Body.String())
-	}
-}

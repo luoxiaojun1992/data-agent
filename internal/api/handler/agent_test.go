@@ -33,7 +33,7 @@ func TestAgentHandler_CreateAgentTask(t *testing.T) {
 
 func TestAgentHandler_GetAgentTask_Found(t *testing.T) {
 	tasks := taskmocks.NewTaskService(t)
-	tk := &domaintask.Task{ID: "task_1", SessionID: "s1", UserID: "u1", Status: domaintask.StatusPending}
+	tk := &domaintask.Task{ID: "task_1", UserID: "u1", Title: "test task"}
 	tasks.On("GetTask", "task_1").Return(tk, nil)
 	h := NewAgentHandler(nil, tasks, nil)
 
@@ -46,7 +46,7 @@ func TestAgentHandler_GetAgentTask_Found(t *testing.T) {
 	}
 	var resp map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["task_id"] != "task_1" || resp["status"] != "pending" {
+	if resp["task_id"] != "task_1" || resp["title"] != "test task" {
 		t.Errorf("resp = %v", resp)
 	}
 }

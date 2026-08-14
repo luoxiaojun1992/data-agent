@@ -63,6 +63,34 @@ func (_m *Service) Download(id string) ([]byte, error) {
 	return r0, r1
 }
 
+// DownloadURL provides a mock function with given fields: id
+func (_m *Service) DownloadURL(id string) (string, error) {
+	ret := _m.Called(id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DownloadURL")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string) (string, error)); ok {
+		return rf(id)
+	}
+	if rf, ok := ret.Get(0).(func(string) string); ok {
+		r0 = rf(id)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // FindByID provides a mock function with given fields: id
 func (_m *Service) FindByID(id string) (*domainartifact.Artifact, error) {
 	ret := _m.Called(id)
@@ -151,6 +179,43 @@ func (_m *Service) ListByTask(taskID string) ([]*domainartifact.Artifact, error)
 	}
 
 	return r0, r1
+}
+
+// ListByUser provides a mock function with given fields: userID, page, pageSize
+func (_m *Service) ListByUser(userID string, page int, pageSize int) ([]*domainartifact.Artifact, int64, error) {
+	ret := _m.Called(userID, page, pageSize)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListByUser")
+	}
+
+	var r0 []*domainartifact.Artifact
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(string, int, int) ([]*domainartifact.Artifact, int64, error)); ok {
+		return rf(userID, page, pageSize)
+	}
+	if rf, ok := ret.Get(0).(func(string, int, int) []*domainartifact.Artifact); ok {
+		r0 = rf(userID, page, pageSize)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*domainartifact.Artifact)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(string, int, int) int64); ok {
+		r1 = rf(userID, page, pageSize)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(string, int, int) error); ok {
+		r2 = rf(userID, page, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // Upload provides a mock function with given fields: userID, sessionID, taskID, name, mimeType, reader, persistent

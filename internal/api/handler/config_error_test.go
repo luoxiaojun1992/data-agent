@@ -12,7 +12,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	configmocks "github.com/luoxiaojun1992/data-agent/internal/service/config/mocks"
-	rolemocks "github.com/luoxiaojun1992/data-agent/internal/service/role/mocks"
 	repomocks "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 )
 
@@ -21,7 +20,7 @@ import (
 func TestConfigHandler_Put_ServiceError(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
 	cfgSvc.On("Upsert", mock.Anything, "models", "k", "v").Return(errStr("db down"))
-	h := NewConfigHandler(cfgSvc, nil, nil)
+	h := NewConfigHandler(cfgSvc, nil)
 	c, w := newCfgGin("PUT", "/sysconfig/models", `{"key":"k","value":"v"}`)
 	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
 	h.Put(c)
@@ -40,7 +39,7 @@ func TestConfigHandler_ChangePassword_UpdatePasswordError(t *testing.T) {
 	oldHash, _ := middleware.HashPassword("OldPass1")
 	userRepo.On("FindByID", mock.Anything, "u1").Return(&model.User{ID: "u1", PasswordHash: oldHash}, nil)
 	userRepo.On("UpdatePassword", mock.Anything, "u1", mock.Anything).Return(errStr("update failed"))
-	h := NewConfigHandler(nil, nil, userRepo)
+	h := NewConfigHandler(nil, userRepo)
 	c, w := newCfgGin("POST", "/change-password", `{"old_password":"OldPass1","new_password":"NewPass1"}`)
 	c.Set("user_id", "u1")
 	h.ChangePassword(c)
@@ -57,108 +56,12 @@ func TestConfigHandler_ChangePassword_UpdatePasswordError(t *testing.T) {
 func TestConfigHandler_ChangePassword_UserNil(t *testing.T) {
 	userRepo := repomocks.NewUserRepository(t)
 	userRepo.On("FindByID", mock.Anything, "u1").Return((*model.User)(nil), nil)
-	h := NewConfigHandler(nil, nil, userRepo)
+	h := NewConfigHandler(nil, userRepo)
 	c, w := newCfgGin("POST", "/change-password", `{"old_password":"OldPass1","new_password":"NewPass1"}`)
 	c.Set("user_id", "u1")
 	h.ChangePassword(c)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
-	}
-	if w.Body.String() == "" {
-		t.Errorf("expected non-empty error body")
-	}
-}
-
-// TestConfigHandler_ListRoles_ServiceError verifies ListRoles returns 500 when
-// the role service fails.
-func TestConfigHandler_ListRoles_ServiceError(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("List", mock.Anything).Return(([]model.Role)(nil), errStr("db down"))
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("GET", "/roles", "")
-	h.ListRoles(c)
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-	if w.Body.String() == "" {
-		t.Errorf("expected non-empty error body")
-	}
-}
-
-// TestConfigHandler_CreateRole_InvalidBody verifies CreateRole returns 400
-// for unparseable JSON.
-func TestConfigHandler_CreateRole_InvalidBody(t *testing.T) {
-	h := NewConfigHandler(nil, rolemocks.NewService(t), nil)
-	c, w := newCfgGin("POST", "/roles", "not-json")
-	h.CreateRole(c)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
-	}
-	if w.Body.String() == "" {
-		t.Errorf("expected non-empty error body")
-	}
-}
-
-// TestConfigHandler_CreateRole_ServiceError verifies CreateRole returns 500
-// when the underlying role service fails.
-func TestConfigHandler_CreateRole_ServiceError(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("Create", mock.Anything, "editor", "编辑", []string{"read"}).
-		Return((*model.Role)(nil), errStr("db down"))
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("POST", "/roles", `{"name":"editor","display_name":"编辑","permissions":["read"]}`)
-	h.CreateRole(c)
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-	if w.Body.String() == "" {
-		t.Errorf("expected non-empty error body")
-	}
-}
-
-// TestConfigHandler_UpdateRole_InvalidBody verifies UpdateRole returns 400
-// for unparseable JSON.
-func TestConfigHandler_UpdateRole_InvalidBody(t *testing.T) {
-	h := NewConfigHandler(nil, rolemocks.NewService(t), nil)
-	c, w := newCfgGin("PUT", "/roles/r1", "not-json")
-	c.Params = gin.Params{{Key: "id", Value: "r1"}}
-	h.UpdateRole(c)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
-	}
-	if w.Body.String() == "" {
-		t.Errorf("expected non-empty error body")
-	}
-}
-
-// TestConfigHandler_UpdateRole_ServiceError verifies UpdateRole returns 500
-// when the underlying role service fails.
-func TestConfigHandler_UpdateRole_ServiceError(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("Update", mock.Anything, "r1", []string{"read"}).Return(errStr("db down"))
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("PUT", "/roles/r1", `{"permissions":["read"]}`)
-	c.Params = gin.Params{{Key: "id", Value: "r1"}}
-	h.UpdateRole(c)
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-	if w.Body.String() == "" {
-		t.Errorf("expected non-empty error body")
-	}
-}
-
-// TestConfigHandler_DeleteRole_ServiceError verifies DeleteRole returns 500
-// when the underlying role service fails.
-func TestConfigHandler_DeleteRole_ServiceError(t *testing.T) {
-	roleSvc := rolemocks.NewService(t)
-	roleSvc.On("Delete", mock.Anything, "r1").Return(errStr("db down"))
-	h := NewConfigHandler(nil, roleSvc, nil)
-	c, w := newCfgGin("DELETE", "/roles/r1", "")
-	c.Params = gin.Params{{Key: "id", Value: "r1"}}
-	h.DeleteRole(c)
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
 	}
 	if w.Body.String() == "" {
 		t.Errorf("expected non-empty error body")
@@ -196,11 +99,11 @@ func TestRegisterSysConfigRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
+	cfgSvc.On("List", mock.Anything, "models", 1, 20).Return([]model.SystemConfig{{Key: "k", Value: "v"}}, int64(1), nil)
 	cfgSvc.On("Upsert", mock.Anything, "models", "k", "v").Return(nil)
-	h := NewConfigHandler(cfgSvc, nil, nil)
+	h := NewConfigHandler(cfgSvc, nil)
 	admin := r.Group("/api/v1/admin")
-	RegisterSysConfigRoutes(admin, h)
+	RegisterSysConfigRoutes(admin, h, nil)
 
 	// GET /api/v1/admin/sysconfig/models → 200
 	req := httptest.NewRequest("GET", "/api/v1/admin/sysconfig/models", nil)

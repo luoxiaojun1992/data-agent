@@ -215,6 +215,24 @@ func (_m *TaskService) ListTasks(userID string, skip int64, limit int64) ([]*tas
 	return r0, r1, r2
 }
 
+// SetScheduledEnabled provides a mock function with given fields: taskID, enabled
+func (_m *TaskService) SetScheduledEnabled(taskID string, enabled bool) error {
+	ret := _m.Called(taskID, enabled)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetScheduledEnabled")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, bool) error); ok {
+		r0 = rf(taskID, enabled)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // NewTaskService creates a new instance of TaskService. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewTaskService(t interface {

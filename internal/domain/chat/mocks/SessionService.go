@@ -72,6 +72,36 @@ func (_m *SessionService) Create(userID string, sessionType string, modelID stri
 	return r0, r1
 }
 
+// CreateFeishuSession provides a mock function with given fields: userID, modelID
+func (_m *SessionService) CreateFeishuSession(userID string, modelID string) (*chat.Session, error) {
+	ret := _m.Called(userID, modelID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateFeishuSession")
+	}
+
+	var r0 *chat.Session
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string, string) (*chat.Session, error)); ok {
+		return rf(userID, modelID)
+	}
+	if rf, ok := ret.Get(0).(func(string, string) *chat.Session); ok {
+		r0 = rf(userID, modelID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*chat.Session)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(string, string) error); ok {
+		r1 = rf(userID, modelID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateTaskSession provides a mock function with given fields: userID, modelID
 func (_m *SessionService) CreateTaskSession(userID string, modelID string) (*chat.Session, error) {
 	ret := _m.Called(userID, modelID)

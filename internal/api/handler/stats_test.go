@@ -172,7 +172,7 @@ func TestGetLLMStats_NilRecorder(t *testing.T) {
 func TestRegisterStatsRoutes_NilHandler(t *testing.T) {
 	// A nil StatsHandler must not panic and must register nothing.
 	router := gin.New()
-	RegisterStatsRoutes(router, nil, nil)
+	RegisterStatsRoutes(router, nil, nil, nil)
 	if len(router.Routes()) != 0 {
 		t.Errorf("expected no routes registered, got %d", len(router.Routes()))
 	}
@@ -183,7 +183,7 @@ func TestGetLLMStats_PermissionDenied(t *testing.T) {
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set("role", "user") })
 	router.GET("/api/v1/stats/llm",
-		middleware.RequirePermission(model.PermUserManage),
+		middleware.RequirePermission(nil, model.PermUserManage),
 		func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"should": "not reach"}) })
 
 	w := httptest.NewRecorder()
