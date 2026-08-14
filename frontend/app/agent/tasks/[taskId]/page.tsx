@@ -48,6 +48,7 @@ export default function TaskRunsPage() {
 
   const [task, setTask] = useState<TaskDef | null>(null);
   const [runs, setRuns] = useState<TaskRun[]>([]);
+  const [modelName, setModelName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -73,11 +74,21 @@ export default function TaskRunsPage() {
     try {
       const params = new URLSearchParams({ page: String(p), page_size: String(pageSize) });
       if (status !== 'all') params.set('status', status);
-      const [taskRes, runsRes] = await Promise.all([
+      const [taskRes, runsRes, modelsRes] = await Promise.all([
         apiFetch(`/tasks/${taskId}`),
         apiFetch(`/tasks/${taskId}/runs?${params.toString()}`),
+        apiFetch(`/models/list`),
       ]);
-      if (taskRes.ok) setTask(await taskRes.json());
+      if (taskRes.ok) {
+        const t = await taskRes.json();
+        setTask(t);
+        // Resolve model_id → model name once we have both.
+        if (modelsRes.ok && t.model_id) {
+          const data = await modelsRes.json();
+          const list: { id: string; name: string }[] = data.models || [];
+          setModelName(list.find((m) => m.id === t.model_id)?.name || '');
+        }
+      }
       if (runsRes.ok) {
         const data = await runsRes.json();
         setRuns(data.runs || []);
@@ -137,7 +148,7 @@ export default function TaskRunsPage() {
             <p className="text-sm text-[var(--text-secondary)] mt-1">
               任务 ID: {taskId}
               {task?.cron_expr && <span className="ml-3">⏱ 定时: {task.cron_expr}</span>}
-              {task?.model_id && <span className="ml-3">🔒 模型: {task.model_id}</span>}
+              {task?.model_id && <span className="ml-3">🔒 模型: {modelName || task.model_id}</span>}
             </p>
           </div>
           <button onClick={triggerRun} disabled={creating}
