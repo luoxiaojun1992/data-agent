@@ -26,6 +26,7 @@ interface TaskDef {
   title?: string;
   type?: string;
   status: string;
+  model_id?: string;
   cron_expr?: string;
   created_at: string;
 }
@@ -136,6 +137,7 @@ export default function TaskRunsPage() {
             <p className="text-sm text-[var(--text-secondary)] mt-1">
               任务 ID: {taskId}
               {task?.cron_expr && <span className="ml-3">⏱ 定时: {task.cron_expr}</span>}
+              {task?.model_id && <span className="ml-3">🔒 模型: {task.model_id}</span>}
             </p>
           </div>
           <button onClick={triggerRun} disabled={creating}

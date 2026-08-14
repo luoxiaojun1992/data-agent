@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
+import ModelSelector from '../components/ModelSelector';
 import { useAuth } from '@/lib/api';
 
 interface AgentTask {
@@ -32,7 +33,7 @@ export default function AgentPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
-  const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring' as 'recurring' | 'one_time', scheduledAt: '' });
+  const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring' as 'recurring' | 'one_time', scheduledAt: '', modelId: '' });
 
   // Wait for auth hydration before loading — otherwise loadTasks fires with
   // auth.token=null and the request misses the Authorization header.
@@ -74,6 +75,7 @@ export default function AgentPage() {
         title: newTask.title,
         description: newTask.description,
         type: newTask.cronEnabled ? 'scheduled_exec' : 'agent_exec',
+        model_id: newTask.modelId || undefined,
       };
       if (newTask.cronEnabled) {
         body.schedule_mode = newTask.scheduleMode;
@@ -87,7 +89,7 @@ export default function AgentPage() {
       if (res.ok) {
         await loadTasks(page);
         setShowModal(false);
-        setNewTask({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring', scheduledAt: '' });
+        setNewTask({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring', scheduledAt: '', modelId: '' });
       }
     } catch (e) { console.error('[agent] task create failed:', e); }
   };
@@ -230,6 +232,14 @@ export default function AgentPage() {
                 <textarea value={newTask.description} onChange={e => setNewTask(p => ({ ...p, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-none"
                   data-testid="agent-task-desc-input" rows={2} placeholder="描述分析目标..." />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">模型</label>
+                <ModelSelector
+                  value={newTask.modelId}
+                  onChange={(id) => setNewTask(p => ({ ...p, modelId: id }))}
+                  token={auth.token}
+                />
               </div>
               <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
                 <input type="checkbox" checked={newTask.cronEnabled} onChange={e => setNewTask(p => ({ ...p, cronEnabled: e.target.checked }))}
