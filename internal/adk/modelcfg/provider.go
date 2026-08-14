@@ -170,8 +170,12 @@ func (p *Provider) models() []ModelEntry {
 			}
 			p.applyEnvDefaults(&entries[i])
 			if err := p.resolveAPIKey(ctx, &entries[i]); err != nil {
-				// Vault decrypt failure — caller should not use this entry
-				// (models() is used by runtime; runtime will get auth error)
+				// Vault unavailable / data missing: clear the API key so the
+				// API surface never returns a Vault path string. The runtime
+				// will fail with a clear auth error at chat time, and the
+				// admin UI will show an empty key field rather than a path.
+				log.Printf("model %q: API key will be empty in API response: %v", entries[i].ID, err)
+				entries[i].APIKey = ""
 			}
 			if entries[i].BaseURL == "" && legacyBaseURL != "" {
 				entries[i].BaseURL = legacyBaseURL
@@ -189,9 +193,10 @@ func (p *Provider) models() []ModelEntry {
 
 // resolveAPIKey transparently decrypts a Vault reference into plaintext.
 // When the field already looks like plaintext (no prefix), it's left as-is
-// so legacy callers/tests keep working. When vault is unavailable but the
-// field is a Vault path, it stays as-is (will surface as an auth error at
-// chat time, which is easier to diagnose than silently dropping).
+// so legacy callers/tests keep working. When vault is unavailable or the
+// data is missing, the entry's APIKey is left unchanged and the caller
+// (models()) clears it before returning to the API surface so users never
+// see a Vault path; the runtime will fail at chat time with an auth error.
 func (p *Provider) resolveAPIKey(ctx context.Context, m *ModelEntry) error {
 	if m.APIKey == "" {
 		return nil
