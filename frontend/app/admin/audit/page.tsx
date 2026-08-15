@@ -148,7 +148,7 @@ export default function AuditPage() {
           </div>
           <div>
             <label style={{ fontSize: '11px', color: '#666', display: 'block', marginBottom: '4px' }}>操作人</label>
-            <input data-testid="audit-user-select" placeholder="用户ID" value={filterUser}
+            <input data-testid="audit-user-select" placeholder="邮箱" value={filterUser}
               onChange={(e) => setFilterUser(e.target.value)} style={inputStyle} />
           </div>
           <div>
@@ -184,7 +184,7 @@ export default function AuditPage() {
               {logs.map((log) => (
                 <tr key={log.id} data-testid={`audit-row-${log.id}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                   <td data-testid="audit-row-time" style={tdStyle}>{log.created_at ? new Date(log.created_at).toLocaleString('zh-CN') : '—'}</td>
-                  <td data-testid="audit-row-user" style={tdStyle}>{log.user_id?.slice(0, 10) || '—'}</td>
+                  <td data-testid="audit-row-user" style={tdStyle}>{log.user_id || '—'}</td>
                   <td data-testid="audit-row-type" style={tdStyle}><span style={actionPill(log.action)}>{log.action}</span></td>
                   <td data-testid="audit-row-detail" style={tdStyle}>{log.details?.slice(0, 30) || '—'}</td>
                   <td data-testid="audit-row-ip" style={tdStyle}>{log.ip || '—'}</td>

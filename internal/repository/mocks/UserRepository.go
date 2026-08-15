@@ -80,6 +80,66 @@ func (_m *UserRepository) FindByID(ctx context.Context, id string) (*model.User,
 	return r0, r1
 }
 
+// FindByIDs provides a mock function with given fields: ctx, ids
+func (_m *UserRepository) FindByIDs(ctx context.Context, ids []string) ([]model.User, error) {
+	ret := _m.Called(ctx, ids)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindByIDs")
+	}
+
+	var r0 []model.User
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, []string) ([]model.User, error)); ok {
+		return rf(ctx, ids)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, []string) []model.User); ok {
+		r0 = rf(ctx, ids)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.User)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = rf(ctx, ids)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SearchByEmail provides a mock function with given fields: ctx, email, limit
+func (_m *UserRepository) SearchByEmail(ctx context.Context, email string, limit int) ([]model.User, error) {
+	ret := _m.Called(ctx, email, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchByEmail")
+	}
+
+	var r0 []model.User
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) ([]model.User, error)); ok {
+		return rf(ctx, email, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) []model.User); ok {
+		r0 = rf(ctx, email, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.User)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, int) error); ok {
+		r1 = rf(ctx, email, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // FindByUsername provides a mock function with given fields: ctx, username
 func (_m *UserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
 	ret := _m.Called(ctx, username)

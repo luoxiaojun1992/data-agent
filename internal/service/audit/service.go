@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
@@ -11,18 +12,19 @@ import (
 
 // Service handles audit log queries.
 type Service struct {
-	repo repository.AuditRepository
+	repo     repository.AuditRepository
+	userRepo repository.UserRepository
 }
 
 // NewService creates an audit log service.
-func NewService(repo repository.AuditRepository) *Service {
-	return &Service{repo: repo}
+func NewService(repo repository.AuditRepository, userRepo repository.UserRepository) *Service {
+	return &Service{repo: repo, userRepo: userRepo}
 }
 
 // ListParams are the filter parameters for listing audit logs.
 type ListParams struct {
 	Action string
-	UserID string
+	UserID string // user search keyword — matches the user email, not the raw ID
 	Start  string
 	End    string
 	Skip   int64
@@ -36,42 +38,106 @@ type ListResult struct {
 }
 
 // List returns audit logs matching the filter params.
+//
+// The user filter (`UserID`) is treated as an email keyword: it first looks
+// up the top-10 matching users by email, then filters audit logs by their
+// IDs via $in (all other filters and pagination are unchanged). On the way
+// out, each log's raw user ID is replaced with the user's email.
 func (s *Service) List(p ListParams) (*ListResult, error) {
 	p.Limit = normalizeAuditLimit(p.Limit)
-	filterMap, err := auditFilterToMap(p)
+	ctx := context.Background()
+
+	// Resolve the email keyword to a set of user IDs (top 10 matches).
+	var userIDs []string
+	if p.UserID != "" {
+		if s.userRepo == nil {
+			return nil, fmt.Errorf("user repository not available")
+		}
+		users, err := s.userRepo.SearchByEmail(ctx, p.UserID, 10)
+		if err != nil {
+			return nil, fmt.Errorf("search users by email: %w", err)
+		}
+		if len(users) == 0 {
+			return &ListResult{Logs: []model.AuditLog{}, Total: 0}, nil
+		}
+		userIDs = make([]string, 0, len(users))
+		for _, u := range users {
+			userIDs = append(userIDs, u.ID)
+		}
+	}
+
+	filterMap, err := auditFilterToMap(p, userIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	total, err := s.repo.Count(context.Background(), filterMap)
+	total, err := s.repo.Count(ctx, filterMap)
 	if err != nil {
 		return nil, err
 	}
 
-	logs, err := s.repo.List(context.Background(), filterMap, p.Skip, p.Limit)
+	logs, err := s.repo.List(ctx, filterMap, p.Skip, p.Limit)
 	if err != nil {
 		return nil, err
 	}
+
+	s.enrichUserEmails(ctx, logs)
 
 	return &ListResult{Logs: logs, Total: total}, nil
 }
 
-func auditFilterToMap(p ListParams) (map[string]interface{}, error) {
+// enrichUserEmails replaces each log's user ID with the user's email.
+// Missing/deleted users keep their original ID, and a lookup failure is
+// non-fatal (logs are still returned with raw IDs).
+func (s *Service) enrichUserEmails(ctx context.Context, logs []model.AuditLog) {
+	if len(logs) == 0 || s.userRepo == nil {
+		return
+	}
+	idSet := make(map[string]struct{}, len(logs))
+	for _, l := range logs {
+		if l.UserID != "" {
+			idSet[l.UserID] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	users, err := s.userRepo.FindByIDs(ctx, ids)
+	if err != nil {
+		log.Printf("audit: enrich user emails: %v", err)
+		return
+	}
+	emailMap := make(map[string]string, len(users))
+	for _, u := range users {
+		if u.Username != "" {
+			emailMap[u.ID] = u.Username
+		}
+	}
+	for i := range logs {
+		if email, ok := emailMap[logs[i].UserID]; ok {
+			logs[i].UserID = email
+		}
+	}
+}
+
+func auditFilterToMap(p ListParams, userIDs []string) (map[string]interface{}, error) {
 	m := map[string]interface{}{}
 	if p.Action != "" {
 		m["action"] = p.Action
 	}
-	if p.UserID != "" {
-		m["user_id"] = p.UserID
+	if len(userIDs) > 0 {
+		m["user_id"] = map[string]interface{}{"$in": userIDs}
 	}
 	dateFilter, err := buildDateFilter(p.Start, p.End)
 	if err != nil {
 		return nil, err
 	}
 	if len(dateFilter) > 0 {
-		for k, v := range dateFilter {
-			m[k] = v
-		}
+		m["created_at"] = dateFilter
 	}
 	return m, nil
 }

@@ -340,7 +340,7 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 }
 
 func initAuditAndNotifications(deps *serverDependencies, mongoClient *mongoinfra.Client) {
-	deps.auditService = auditsvc.NewService(mongoinfra.NewAuditRepository(mongoClient.DB()))
+	deps.auditService = auditsvc.NewService(mongoinfra.NewAuditRepository(mongoClient.DB()), deps.userRepo)
 	deps.auditHandler = handler.NewAuditHandler(deps.auditService)
 	deps.notifSvc = notifsvc.NewService(mongoinfra.NewNotificationRepository(mongoClient.DB()))
 	deps.notifHandler = handler.NewNotificationHandler(deps.notifSvc)

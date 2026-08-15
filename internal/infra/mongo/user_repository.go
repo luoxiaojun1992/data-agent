@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
@@ -57,6 +58,58 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*model.User, 
 		return nil, fmt.Errorf("find user by id: %w", err)
 	}
 	return docToUser(d), nil
+}
+
+// FindByIDs looks up users by a batch of IDs (single $in query).
+func (r *UserRepository) FindByIDs(ctx context.Context, ids []string) ([]model.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	cursor, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return nil, fmt.Errorf("find users by ids: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("decode users by ids: %w", err)
+	}
+	users := make([]model.User, len(docs))
+	for i, d := range docs {
+		users[i] = *docToUser(d)
+	}
+	return users, nil
+}
+
+// SearchByEmail finds up to `limit` users whose username (the login email)
+// contains the given substring, case-insensitively.
+func (r *UserRepository) SearchByEmail(ctx context.Context, email string, limit int) ([]model.User, error) {
+	if email == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	filter := bson.M{
+		"username": bson.M{"$regex": regexp.QuoteMeta(email), "$options": "i"},
+	}
+	opts := options.Find().SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: 1}})
+	cursor, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("search users by email: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("decode users by email: %w", err)
+	}
+	users := make([]model.User, len(docs))
+	for i, d := range docs {
+		users[i] = *docToUser(d)
+	}
+	return users, nil
 }
 
 // HasSystemAdmin checks if a system_admin user exists.
