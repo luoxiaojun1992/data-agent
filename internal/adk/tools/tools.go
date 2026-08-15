@@ -15,6 +15,7 @@ import (
 
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	fsops "github.com/luoxiaojun1992/data-agent/internal/logic/fsops"
 	pptxpkg "github.com/luoxiaojun1992/data-agent/internal/logic/pptx"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
@@ -480,6 +481,50 @@ func specs(deps *Deps) []toolSpec {
 				return functiontool.New(functiontool.Config{Name: "save_artifact", Description: "Saves a file or directory from the session workspace as a persistent artifact. Packages the file/directory into a zip, uploads it, and creates an artifact record associated with the current session and user. Returns the artifact ID and download URL."}, saveArtifact(deps))
 			},
 		})
+		out = append(out,
+			toolSpec{
+				name:        "file_write",
+				description: "Writes (or overwrites) a text file inside the current session workspace. 'path' is relative to the session workspace and its parent directory must already exist (this tool does NOT create missing directories — call dir_create first if needed). 'content' is the full text to write. All file operations are strictly scoped to the session workspace; absolute paths and '..' are rejected.",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "file_write", Description: "Writes (or overwrites) a text file inside the current session workspace. 'path' is relative to the session workspace and its parent directory must already exist (this tool does NOT create missing directories — call dir_create first if needed). 'content' is the full text to write. All file operations are strictly scoped to the session workspace; absolute paths and '..' are rejected."}, fileWrite(deps))
+				},
+			},
+			toolSpec{
+				name:        "dir_create",
+				description: "Creates a directory inside the current session workspace. 'path' is relative to the session workspace; missing parent directories are created recursively.",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "dir_create", Description: "Creates a directory inside the current session workspace. 'path' is relative to the session workspace; missing parent directories are created recursively."}, dirCreate(deps))
+				},
+			},
+			toolSpec{
+				name:        "file_delete",
+				description: "Deletes a single file inside the current session workspace. 'path' is relative to the session workspace. Directories are refused (use dir_delete for those).",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "file_delete", Description: "Deletes a single file inside the current session workspace. 'path' is relative to the session workspace. Directories are refused (use dir_delete for those)."}, fileDelete(deps))
+				},
+			},
+			toolSpec{
+				name:        "dir_delete",
+				description: "Recursively deletes a directory inside the current session workspace, including all its subdirectories and files. 'path' is relative to the session workspace. The workspace root cannot be deleted.",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "dir_delete", Description: "Recursively deletes a directory inside the current session workspace, including all its subdirectories and files. 'path' is relative to the session workspace. The workspace root cannot be deleted."}, dirDelete(deps))
+				},
+			},
+			toolSpec{
+				name:        "file_read",
+				description: "Reads a line range from a text file inside the current session workspace. 'path' is relative to the session workspace. start_line/end_line are 1-based and inclusive; if omitted, the first 10 lines are returned. Never returns the entire file in one call — use total_lines to page through larger files.",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "file_read", Description: "Reads a line range from a text file inside the current session workspace. 'path' is relative to the session workspace. start_line/end_line are 1-based and inclusive; if omitted, the first 10 lines are returned. Never returns the entire file in one call — use total_lines to page through larger files."}, fileRead(deps))
+				},
+			},
+			toolSpec{
+				name:        "dir_list",
+				description: "Lists the immediate children (files and subdirectories) of a directory inside the current session workspace, non-recursively. 'path' is relative to the session workspace; omit it to list the workspace root. Use this to explore what files/directories exist before reading or writing.",
+				build: func() (tool.Tool, error) {
+					return functiontool.New(functiontool.Config{Name: "dir_list", Description: "Lists the immediate children (files and subdirectories) of a directory inside the current session workspace, non-recursively. 'path' is relative to the session workspace; omit it to list the workspace root. Use this to explore what files/directories exist before reading or writing."}, dirList(deps))
+				},
+			},
+		)
 	}
 	return out
 }
@@ -663,6 +708,193 @@ func saveArtifact(deps *Deps) functiontool.Func[SaveArtifactArgs, SaveArtifactRe
 			Name:        a.Name,
 		}, nil
 	}
+}
+
+// ---- file_write ----
+
+// FileWriteArgs are the arguments for the file_write tool.
+type FileWriteArgs struct {
+	Path    string `json:"path" jsonschema:"Relative path to the file within the session workspace. The parent directory must already exist (this tool does NOT create directories)."`
+	Content string `json:"content" jsonschema:"Full text content to write to the file."`
+}
+
+// FileWriteResult is the outcome of file_write.
+type FileWriteResult struct {
+	Path string `json:"path"`
+	Size int    `json:"size"`
+}
+
+func fileWrite(deps *Deps) functiontool.Func[FileWriteArgs, FileWriteResult] {
+	return func(tc agent.ToolContext, args FileWriteArgs) (FileWriteResult, error) {
+		if strings.TrimSpace(args.Path) == "" {
+			return FileWriteResult{}, fmt.Errorf("file_write: 'path' must not be empty")
+		}
+		ws, err := sessionWorkspace(tc)
+		if err != nil {
+			return FileWriteResult{}, err
+		}
+		if err := fsops.WriteFile(ws, args.Path, args.Content); err != nil {
+			return FileWriteResult{}, fmt.Errorf("file_write: %w", err)
+		}
+		return FileWriteResult{Path: args.Path, Size: len(args.Content)}, nil
+	}
+}
+
+// ---- dir_create ----
+
+// DirCreateArgs are the arguments for the dir_create tool.
+type DirCreateArgs struct {
+	Path string `json:"path" jsonschema:"Relative path to the directory to create within the session workspace. Missing parent directories are created recursively."`
+}
+
+// DirCreateResult is the outcome of dir_create.
+type DirCreateResult struct {
+	Path string `json:"path"`
+}
+
+func dirCreate(deps *Deps) functiontool.Func[DirCreateArgs, DirCreateResult] {
+	return func(tc agent.ToolContext, args DirCreateArgs) (DirCreateResult, error) {
+		if strings.TrimSpace(args.Path) == "" {
+			return DirCreateResult{}, fmt.Errorf("dir_create: 'path' must not be empty")
+		}
+		ws, err := sessionWorkspace(tc)
+		if err != nil {
+			return DirCreateResult{}, err
+		}
+		if err := fsops.MkdirAll(ws, args.Path); err != nil {
+			return DirCreateResult{}, fmt.Errorf("dir_create: %w", err)
+		}
+		return DirCreateResult{Path: args.Path}, nil
+	}
+}
+
+// ---- file_delete ----
+
+// FileDeleteArgs are the arguments for the file_delete tool.
+type FileDeleteArgs struct {
+	Path string `json:"path" jsonschema:"Relative path to the file to delete within the session workspace."`
+}
+
+// FileDeleteResult is the outcome of file_delete.
+type FileDeleteResult struct {
+	Path string `json:"path"`
+}
+
+func fileDelete(deps *Deps) functiontool.Func[FileDeleteArgs, FileDeleteResult] {
+	return func(tc agent.ToolContext, args FileDeleteArgs) (FileDeleteResult, error) {
+		if strings.TrimSpace(args.Path) == "" {
+			return FileDeleteResult{}, fmt.Errorf("file_delete: 'path' must not be empty")
+		}
+		ws, err := sessionWorkspace(tc)
+		if err != nil {
+			return FileDeleteResult{}, err
+		}
+		if err := fsops.RemoveFile(ws, args.Path); err != nil {
+			return FileDeleteResult{}, fmt.Errorf("file_delete: %w", err)
+		}
+		return FileDeleteResult{Path: args.Path}, nil
+	}
+}
+
+// ---- dir_delete ----
+
+// DirDeleteArgs are the arguments for the dir_delete tool.
+type DirDeleteArgs struct {
+	Path string `json:"path" jsonschema:"Relative path to the directory to delete within the session workspace. The directory and ALL its children are removed recursively."`
+}
+
+// DirDeleteResult is the outcome of dir_delete.
+type DirDeleteResult struct {
+	Path string `json:"path"`
+}
+
+func dirDelete(deps *Deps) functiontool.Func[DirDeleteArgs, DirDeleteResult] {
+	return func(tc agent.ToolContext, args DirDeleteArgs) (DirDeleteResult, error) {
+		if strings.TrimSpace(args.Path) == "" {
+			return DirDeleteResult{}, fmt.Errorf("dir_delete: 'path' must not be empty")
+		}
+		ws, err := sessionWorkspace(tc)
+		if err != nil {
+			return DirDeleteResult{}, err
+		}
+		if err := fsops.RemoveDir(ws, args.Path); err != nil {
+			return DirDeleteResult{}, fmt.Errorf("dir_delete: %w", err)
+		}
+		return DirDeleteResult{Path: args.Path}, nil
+	}
+}
+
+// ---- file_read ----
+
+// FileReadArgs are the arguments for the file_read tool.
+type FileReadArgs struct {
+	Path      string `json:"path" jsonschema:"Relative path to the file to read within the session workspace."`
+	StartLine int    `json:"start_line,omitempty" jsonschema:"1-based starting line number (default 1)."`
+	EndLine   int    `json:"end_line,omitempty" jsonschema:"1-based ending line number, inclusive. Defaults to start_line+9 (a 10-line window)."`
+}
+
+// FileReadResult is the outcome of file_read.
+type FileReadResult struct {
+	Path       string `json:"path"`
+	StartLine  int    `json:"start_line"`
+	EndLine    int    `json:"end_line"`
+	TotalLines int    `json:"total_lines"`
+	Content    string `json:"content"`
+}
+
+func fileRead(deps *Deps) functiontool.Func[FileReadArgs, FileReadResult] {
+	return func(tc agent.ToolContext, args FileReadArgs) (FileReadResult, error) {
+		if strings.TrimSpace(args.Path) == "" {
+			return FileReadResult{}, fmt.Errorf("file_read: 'path' must not be empty")
+		}
+		ws, err := sessionWorkspace(tc)
+		if err != nil {
+			return FileReadResult{}, err
+		}
+		res, err := fsops.ReadFile(ws, args.Path, args.StartLine, args.EndLine)
+		if err != nil {
+			return FileReadResult{}, fmt.Errorf("file_read: %w", err)
+		}
+		return FileReadResult(res), nil
+	}
+}
+
+// ---- dir_list ----
+
+// DirListArgs are the arguments for the dir_list tool.
+type DirListArgs struct {
+	Path string `json:"path,omitempty" jsonschema:"Relative path to the directory to list within the session workspace. Omit or use empty to list the workspace root. Only the immediate children are returned (non-recursive)."`
+}
+
+// DirListResult is the outcome of dir_list.
+type DirListResult struct {
+	Path    string        `json:"path"`
+	Entries []fsops.Entry `json:"entries"`
+}
+
+func dirList(deps *Deps) functiontool.Func[DirListArgs, DirListResult] {
+	return func(tc agent.ToolContext, args DirListArgs) (DirListResult, error) {
+		ws, err := sessionWorkspace(tc)
+		if err != nil {
+			return DirListResult{}, err
+		}
+		res, err := fsops.ListDir(ws, args.Path)
+		if err != nil {
+			return DirListResult{}, fmt.Errorf("dir_list: %w", err)
+		}
+		return DirListResult{Path: res.Path, Entries: res.Entries}, nil
+	}
+}
+
+// sessionWorkspace resolves the current session's workspace root from the
+// tool session state. The session_id is injected by the runtime, never
+// supplied by the LLM.
+func sessionWorkspace(tc agent.ToolContext) (string, error) {
+	sessionID := stateString(tc, "session_id")
+	if sessionID == "" {
+		return "", fmt.Errorf("session context not available")
+	}
+	return chatsvc.SessionWorkspace(sessionID), nil
 }
 
 // zipToWriter creates a zip archive in w from srcPath (file or directory).
