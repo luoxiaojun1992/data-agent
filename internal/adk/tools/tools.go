@@ -415,6 +415,20 @@ func specs(deps *Deps) []toolSpec {
 				return functiontool.New(functiontool.Config{Name: "memory_write", Description: "Writes a piece of information to long-term memory for later retrieval"}, memoryWrite(deps))
 			},
 		},
+		{
+			name:        "skill_search",
+			description: "Searches enabled skills by keyword, matching the skill DESCRIPTION only (not name or display name). Use SHORT single keywords (1-2 words) — long phrases will NOT match well. Returns a lightweight list of matching skills (name, display_name, description) without detailed config. Use this to discover what skills are available. You can also look up this skill itself by searching 'search' or 'skill'.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "skill_search", Description: "Searches enabled skills by keyword, matching the skill DESCRIPTION only (not name or display name). Use SHORT single keywords (1-2 words) — long phrases will NOT match well. Returns a lightweight list of matching skills (name, display_name, description) without detailed config. Use this to discover what skills are available. You can also look up this skill itself by searching 'search' or 'skill'."}, skillSearch(deps))
+			},
+		},
+		{
+			name:        "skill_detail",
+			description: "Returns the full detailed configuration of a single skill by its exact NAME (not display name), including enabled status and config_json. Use the name returned by skill_search. You can also look up this skill itself with name 'skill_detail'.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "skill_detail", Description: "Returns the full detailed configuration of a single skill by its exact NAME (not display name), including enabled status and config_json. Use the name returned by skill_search. You can also look up this skill itself with name 'skill_detail'."}, skillDetail(deps))
+			},
+		},
 	}
 	if deps.APICollections != nil {
 		out = append(out,
@@ -610,6 +624,97 @@ func truncateContent(content string, maxLen int) string {
 		return content
 	}
 	return strings.TrimSpace(content[:maxLen]) + "..."
+}
+
+// ---- skill_search ----
+
+// SkillSearchArgs are the arguments for the skill_search tool.
+type SkillSearchArgs struct {
+	Query string `json:"query" jsonschema:"Short keyword to search skill descriptions. Use 1-2 short words (e.g. '文件', '搜索', '模型') — long phrases will NOT match well."`
+	TopN  int    `json:"top_n,omitempty" jsonschema:"Maximum number of results (default 5, max 20)."`
+}
+
+// SkillSearchItem is a single lightweight skill match (no detailed config).
+type SkillSearchItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+}
+
+// SkillSearchResult is the outcome of skill_search.
+type SkillSearchResult struct {
+	Items []SkillSearchItem `json:"items"`
+}
+
+func skillSearch(deps *Deps) functiontool.Func[SkillSearchArgs, SkillSearchResult] {
+	return func(ctx agent.ToolContext, args SkillSearchArgs) (SkillSearchResult, error) {
+		if deps.SkillConfig == nil {
+			return SkillSearchResult{}, fmt.Errorf("skill_search: skill config service not available")
+		}
+		keyword := strings.TrimSpace(args.Query)
+		if keyword == "" {
+			return SkillSearchResult{Items: []SkillSearchItem{}}, nil
+		}
+		topN := args.TopN
+		if topN <= 0 {
+			topN = 5
+		}
+		if topN > 20 {
+			topN = 20
+		}
+		results, err := deps.SkillConfig.SearchByDescription(context.Background(), keyword, topN)
+		if err != nil {
+			return SkillSearchResult{}, fmt.Errorf("skill_search: %w", err)
+		}
+		items := make([]SkillSearchItem, 0, len(results))
+		for _, sk := range results {
+			items = append(items, SkillSearchItem{
+				Name:        sk.Name,
+				DisplayName: sk.DisplayName,
+				Description: sk.Description,
+			})
+		}
+		return SkillSearchResult{Items: items}, nil
+	}
+}
+
+// ---- skill_detail ----
+
+// SkillDetailArgs are the arguments for the skill_detail tool.
+type SkillDetailArgs struct {
+	Name string `json:"name" jsonschema:"Exact skill name (not display name), e.g. 'sql_executor' or 'skill_detail'."`
+}
+
+// SkillDetailResult is the full detail of one skill.
+type SkillDetailResult struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+	ConfigJSON  string `json:"config_json"`
+}
+
+func skillDetail(deps *Deps) functiontool.Func[SkillDetailArgs, SkillDetailResult] {
+	return func(ctx agent.ToolContext, args SkillDetailArgs) (SkillDetailResult, error) {
+		if deps.SkillConfig == nil {
+			return SkillDetailResult{}, fmt.Errorf("skill_detail: skill config service not available")
+		}
+		name := strings.TrimSpace(args.Name)
+		if name == "" {
+			return SkillDetailResult{}, fmt.Errorf("skill_detail: 'name' must not be empty")
+		}
+		cfg, err := deps.SkillConfig.Get(context.Background(), name)
+		if err != nil {
+			return SkillDetailResult{}, fmt.Errorf("skill_detail: %w", err)
+		}
+		return SkillDetailResult{
+			Name:        cfg.Name,
+			DisplayName: cfg.DisplayName,
+			Description: cfg.Description,
+			Enabled:     cfg.Enabled,
+			ConfigJSON:  cfg.ConfigJSON,
+		}, nil
+	}
 }
 
 // ---- pptx_generator ----

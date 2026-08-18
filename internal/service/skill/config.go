@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
@@ -166,6 +167,20 @@ func predefinedSkills() []skill.SkillConfig {
 			Enabled:     true,
 			ConfigJSON:  `{"max_chars":8000,"max_body_size":524288,"timeout_sec":10}`,
 		},
+		{
+			Name:        "skill_search",
+			DisplayName: "Skill 搜索",
+			Description: "按关键词模糊搜索已启用的 skill，只匹配描述字段，返回 skill 名字/显示名/描述的列表（不含详细配置）",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "skill_detail",
+			DisplayName: "Skill 详情",
+			Description: "根据 skill 名字（非显示名）精确获取某个 skill 的完整详细配置，含 enabled 状态和 config_json",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
 	}
 }
 
@@ -225,6 +240,22 @@ func (s *ConfigService) Get(ctx context.Context, name string) (*skill.SkillConfi
 		return nil, fmt.Errorf("unknown skill: %s", name)
 	}
 	return cfg, nil
+}
+
+// SearchByDescription returns up to `topN` enabled skills whose description
+// matches the keyword. Only the description field is matched (not name or
+// display_name).
+func (s *ConfigService) SearchByDescription(ctx context.Context, keyword string, topN int) ([]skill.SkillConfig, error) {
+	if strings.TrimSpace(keyword) == "" {
+		return []skill.SkillConfig{}, nil
+	}
+	if topN <= 0 {
+		topN = 5
+	}
+	if topN > 20 {
+		topN = 20
+	}
+	return s.repo.SearchByDescription(ctx, keyword, topN)
 }
 
 // Upsert validates and saves a skill config.

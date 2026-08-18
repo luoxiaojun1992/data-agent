@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
@@ -87,6 +88,48 @@ func (r *SkillConfigRepo) Get(ctx context.Context, name string) (*skill.SkillCon
 		Enabled:     doc.Enabled,
 		ConfigJSON:  doc.Value,
 	}, nil
+}
+
+// SearchByDescription returns up to `limit` enabled skills whose description
+// matches the keyword (case-insensitive substring). Only the description
+// field is matched — name and display_name are intentionally excluded.
+func (r *SkillConfigRepo) SearchByDescription(ctx context.Context, keyword string, limit int) ([]skill.SkillConfig, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	filter := bson.M{
+		"ns":          skillConfigNS,
+		"enabled":     true,
+		"description": bson.M{"$regex": regexp.QuoteMeta(keyword), "$options": "i"},
+	}
+	opts := options.Find().SetLimit(int64(limit))
+	cur, err := r.db.Collection("system_config").Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("skill config search: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var out []skill.SkillConfig
+	for cur.Next(ctx) {
+		var doc struct {
+			Key         string `bson:"key"`
+			Value       string `bson:"value"`
+			DisplayName string `bson:"display_name"`
+			Description string `bson:"description"`
+			Enabled     bool   `bson:"enabled"`
+		}
+		if err := cur.Decode(&doc); err != nil {
+			return nil, fmt.Errorf("skill config search decode: %w", err)
+		}
+		out = append(out, skill.SkillConfig{
+			Name:        doc.Key,
+			DisplayName: doc.DisplayName,
+			Description: doc.Description,
+			Enabled:     doc.Enabled,
+			ConfigJSON:  doc.Value,
+		})
+	}
+	return out, nil
 }
 
 func (r *SkillConfigRepo) Upsert(ctx context.Context, cfg skill.SkillConfig) error {
