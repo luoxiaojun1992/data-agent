@@ -424,9 +424,9 @@ func specs(deps *Deps) []toolSpec {
 		},
 		{
 			name:        "skill_detail",
-			description: "Returns the full detailed configuration of a single skill by its exact NAME (not display name), including enabled status and config_json. Use the name returned by skill_search. You can also look up this skill itself with name 'skill_detail'.",
+			description: "Returns the full detailed configuration of a single ENABLED skill by its exact NAME (not display name), including enabled status and config_json. Disabled skills are not returned. Use the name returned by skill_search. You can also look up this skill itself with name 'skill_detail'.",
 			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "skill_detail", Description: "Returns the full detailed configuration of a single skill by its exact NAME (not display name), including enabled status and config_json. Use the name returned by skill_search. You can also look up this skill itself with name 'skill_detail'."}, skillDetail(deps))
+				return functiontool.New(functiontool.Config{Name: "skill_detail", Description: "Returns the full detailed configuration of a single ENABLED skill by its exact NAME (not display name), including enabled status and config_json. Disabled skills are not returned. Use the name returned by skill_search. You can also look up this skill itself with name 'skill_detail'."}, skillDetail(deps))
 			},
 		},
 	}
@@ -706,6 +706,9 @@ func skillDetail(deps *Deps) functiontool.Func[SkillDetailArgs, SkillDetailResul
 		cfg, err := deps.SkillConfig.Get(context.Background(), name)
 		if err != nil {
 			return SkillDetailResult{}, fmt.Errorf("skill_detail: %w", err)
+		}
+		if !cfg.Enabled {
+			return SkillDetailResult{}, fmt.Errorf("skill %q is disabled", name)
 		}
 		return SkillDetailResult{
 			Name:        cfg.Name,
