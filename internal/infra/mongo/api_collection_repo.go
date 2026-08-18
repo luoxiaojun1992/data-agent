@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -151,8 +152,8 @@ func (r *APICollectionRepo) SearchByDescription(ctx context.Context, query strin
 		limit = 10
 	}
 	filter := bson.M{
-		"status": model.APICollectionApproved,
-		"description": bson.M{"$regex": query, "$options": "i"},
+		"status":      model.APICollectionApproved,
+		"description": bson.M{"$regex": regexp.QuoteMeta(query), "$options": "i"},
 	}
 	opts := options.Find().SetLimit(int64(limit)).SetSort(bson.D{{Key: "created_at", Value: -1}})
 	cur, err := r.coll.Find(ctx, filter, opts)
