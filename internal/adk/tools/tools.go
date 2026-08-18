@@ -202,7 +202,7 @@ func knowledgeSearch(deps *Deps) functiontool.Func[KnowledgeSearchArgs, Knowledg
 
 // MemorySearchArgs are the arguments for the memory_search tool.
 type MemorySearchArgs struct {
-	Query string `json:"query" jsonschema:"搜索关键词（用 1-2 个短小词，正则匹配，长句可能匹配不到）"`
+	Query string `json:"query" jsonschema:"搜索 query（用 1-2 个短小词，正则匹配，长句可能匹配不到）"`
 	Limit int    `json:"limit,omitempty" jsonschema:"返回结果数（默认 5）"`
 }
 
@@ -383,9 +383,9 @@ func specs(deps *Deps) []toolSpec {
 		},
 		{
 			name:        "memory_search",
-			description: "Searches long-term memory for information from past conversations. Use SHORT single keywords (1-2 words like '销售', '部署', '模型') — the search uses regex matching, so long phrases will NOT match.",
+			description: "Searches long-term memory for information from past conversations. Pass a SHORT query (the 'query' parameter) of 1-2 words like '销售', '部署', '模型' — the search uses regex matching, so long phrases will NOT match.",
 			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "memory_search", Description: "Searches long-term memory for information from past conversations. Use SHORT single keywords (1-2 words like '销售', '部署', '模型') — the search uses regex matching, so long phrases will NOT match."}, memorySearch(deps))
+				return functiontool.New(functiontool.Config{Name: "memory_search", Description: "Searches long-term memory for information from past conversations. Pass a SHORT query (the 'query' parameter) of 1-2 words like '销售', '部署', '模型' — the search uses regex matching, so long phrases will NOT match."}, memorySearch(deps))
 			},
 		},
 		{
@@ -417,9 +417,9 @@ func specs(deps *Deps) []toolSpec {
 		},
 		{
 			name:        "skill_search",
-			description: "Searches enabled skills by keyword, matching the skill DESCRIPTION only (not name or display name). Use SHORT single keywords (1-2 words) — long phrases will NOT match well. Returns a lightweight list of matching skills (name, display_name, description) without detailed config. Use this to discover what skills are available. You can also look up this skill itself by searching 'search' or 'skill'.",
+			description: "Searches enabled skills by matching the skill DESCRIPTION only (not name or display name). Pass a SHORT query (the 'query' parameter) of 1-2 words — long phrases will NOT match well. Returns a lightweight list of matching skills (name, display_name, description) without detailed config. Use this to discover what skills are available. You can also look up this skill itself by searching 'search' or 'skill'.",
 			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "skill_search", Description: "Searches enabled skills by keyword, matching the skill DESCRIPTION only (not name or display name). Use SHORT single keywords (1-2 words) — long phrases will NOT match well. Returns a lightweight list of matching skills (name, display_name, description) without detailed config. Use this to discover what skills are available. You can also look up this skill itself by searching 'search' or 'skill'."}, skillSearch(deps))
+				return functiontool.New(functiontool.Config{Name: "skill_search", Description: "Searches enabled skills by matching the skill DESCRIPTION only (not name or display name). Pass a SHORT query (the 'query' parameter) of 1-2 words — long phrases will NOT match well. Returns a lightweight list of matching skills (name, display_name, description) without detailed config. Use this to discover what skills are available. You can also look up this skill itself by searching 'search' or 'skill'."}, skillSearch(deps))
 			},
 		},
 		{
@@ -434,9 +434,9 @@ func specs(deps *Deps) []toolSpec {
 		out = append(out,
 			toolSpec{
 				name:        "external_api_search",
-				description: "Searches approved API collections by description using regex keyword matching. Use SHORT single keywords (1-2 words like 'user', 'order', 'weather') — long phrases will NOT match. Returns up to 3 top results.",
+				description: "Searches approved API collections by description using regex matching. Pass a SHORT query (the 'query' parameter) of 1-2 words like 'user', 'order', 'weather' — long phrases will NOT match. Returns up to 3 top results.",
 				build: func() (tool.Tool, error) {
-					return functiontool.New(functiontool.Config{Name: "external_api_search", Description: "Searches approved API collections by description using regex keyword matching. Use SHORT single keywords (1-2 words like 'user', 'order', 'weather') — long phrases will NOT match. Returns up to 3 top results."}, externalAPISearch(deps))
+					return functiontool.New(functiontool.Config{Name: "external_api_search", Description: "Searches approved API collections by description using regex matching. Pass a SHORT query (the 'query' parameter) of 1-2 words like 'user', 'order', 'weather' — long phrases will NOT match. Returns up to 3 top results."}, externalAPISearch(deps))
 				},
 			},
 			toolSpec{
@@ -630,7 +630,7 @@ func truncateContent(content string, maxLen int) string {
 
 // SkillSearchArgs are the arguments for the skill_search tool.
 type SkillSearchArgs struct {
-	Query string `json:"query" jsonschema:"Short keyword to search skill descriptions. Use 1-2 short words (e.g. '文件', '搜索', '模型') — long phrases will NOT match well."`
+	Query string `json:"query" jsonschema:"Short query (1-2 words) to match against skill descriptions, e.g. '文件', '搜索', '模型'. Long phrases will NOT match well."`
 	TopN  int    `json:"top_n,omitempty" jsonschema:"Maximum number of results (default 5, max 20)."`
 }
 
@@ -651,8 +651,8 @@ func skillSearch(deps *Deps) functiontool.Func[SkillSearchArgs, SkillSearchResul
 		if deps.SkillConfig == nil {
 			return SkillSearchResult{}, fmt.Errorf("skill_search: skill config service not available")
 		}
-		keyword := strings.TrimSpace(args.Query)
-		if keyword == "" {
+		query := strings.TrimSpace(args.Query)
+		if query == "" {
 			return SkillSearchResult{Items: []SkillSearchItem{}}, nil
 		}
 		topN := args.TopN
@@ -662,7 +662,7 @@ func skillSearch(deps *Deps) functiontool.Func[SkillSearchArgs, SkillSearchResul
 		if topN > 20 {
 			topN = 20
 		}
-		results, err := deps.SkillConfig.SearchByDescription(context.Background(), keyword, topN)
+		results, err := deps.SkillConfig.SearchByDescription(context.Background(), query, topN)
 		if err != nil {
 			return SkillSearchResult{}, fmt.Errorf("skill_search: %w", err)
 		}
@@ -1055,7 +1055,7 @@ func zipToWriter(srcPath string, info os.FileInfo, w io.Writer) error {
 // ---- external_api_* ----
 
 type ExternalAPISearchArgs struct {
-	Query string `json:"query" description:"Search query to match against API collection descriptions"`
+	Query string `json:"query" description:"Short query (1-2 words) to match against approved API collection descriptions"`
 }
 type ExternalAPISearchResult struct {
 	Collections []struct {
