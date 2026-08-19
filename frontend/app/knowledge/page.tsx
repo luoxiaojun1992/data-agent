@@ -114,17 +114,17 @@ export default function KnowledgePage() {
       const file = selectedFiles[i];
       try {
         if (isPdfFile(file.name)) {
-          // PDF：浏览器端解析成纯文本 + 每页图片，文件名加 -{编号} 自增
+          // PDF：浏览器端解析成纯文本 + 每页图片，标题和文件名都加 -{编号} 自增
           const { text, images } = await parsePdf(file);
           const baseName = file.name.replace(/\.pdf$/i, '');
           let counter = 1;
           if (text.trim()) {
-            await uploadTxtDoc(baseName, `${baseName}-${counter}.txt`, text);
+            await uploadTxtDoc(`${baseName}-${counter}`, `${baseName}-${counter}.txt`, text);
             uploadedCount++;
             counter++;
           }
           for (const img of images) {
-            await uploadImageDoc(baseName, `${baseName}-${counter}.${img.ext}`, img.dataUrl, img.mimeType);
+            await uploadImageDoc(`${baseName}-${counter}`, `${baseName}-${counter}.${img.ext}`, img.dataUrl, img.mimeType);
             uploadedCount++;
             counter++;
           }
