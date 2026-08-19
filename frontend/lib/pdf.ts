@@ -56,27 +56,55 @@ export async function parsePdf(file: File): Promise<PdfParseResult> {
 
 // 提取单页里所有嵌入的图片对象（去重）。
 async function extractPageImages(page: any, pdfjs: any): Promise<PdfImage[]> {
-  const images: PdfImage[] = [];
   const opList = await page.getOperatorList();
-  const seen = new Set<string>();
   const xobjOps = [pdfjs.OPS.paintImageXObject, pdfjs.OPS.paintImageXObjectRepeat];
+  console.log(`[pdf] page operator list: ${opList.fnArray.length} ops`);
 
+  const seen = new Set<string>();
+  const candidates: string[] = [];
   for (let i = 0; i < opList.fnArray.length; i++) {
     if (!xobjOps.includes(opList.fnArray[i])) continue;
     const imgName = opList.argsArray[i]?.[0];
     if (!imgName || typeof imgName !== 'string' || seen.has(imgName)) continue;
     seen.add(imgName);
+    candidates.push(imgName);
+  }
+  console.log(`[pdf] image candidates: ${candidates.length} (${candidates.join(',')})`);
 
+  const images: PdfImage[] = [];
+  const failures: string[] = [];
+  for (const imgName of candidates) {
     try {
-      const img = await new Promise<any>((resolve) => {
-        page.objs.get(imgName, (obj: any) => resolve(obj));
+      const img: any = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`page.objs.get(${imgName}) timeout 10s`)), 10000);
+        page.objs.get(imgName, (obj: any) => {
+          clearTimeout(timer);
+          resolve(obj);
+        });
       });
-      if (!img || !img.data) continue;
+      if (!img) { failures.push(`${imgName}=null`); continue; }
+      if (!img.data) { failures.push(`${imgName}=no data`); continue; }
+      console.log(`[pdf] image ${imgName}: ${img.width}x${img.height}, kind=${img.kind}, data=${img.data.byteLength || img.data.length}B`);
       const out = imageObjectToDataUrl(img, pdfjs);
-      if (out) images.push(out);
-    } catch {
-      // 跳过无法解析的图片对象
+      if (out) {
+        images.push(out);
+        console.log(`[pdf] image ${imgName}: converted to ${out.ext} (${out.dataUrl.length} chars dataUrl)`);
+      } else {
+        failures.push(`${imgName}=null conversion`);
+      }
+    } catch (e: any) {
+      console.error(`[pdf] image ${imgName} error:`, e);
+      failures.push(`${imgName}=${e?.message || e}`);
     }
+  }
+  if (candidates.length > 0 && images.length === 0) {
+    throw new Error(
+      `PDF 配图提取全部失败：找到 ${candidates.length} 张候选配图但一张都没成功。` +
+      `失败明细：${failures.join('; ')}（浏览器控制台 [pdf] 日志有更多细节）`,
+    );
+  }
+  if (failures.length > 0) {
+    console.warn(`[pdf] 部分配图失败 (${failures.length}/${candidates.length}): ${failures.join('; ')}`);
   }
   return images;
 }
@@ -98,19 +126,21 @@ function imageObjectToDataUrl(img: any, pdfjs: any): PdfImage | null {
   }
 
   // 解码后的像素数据 → canvas 重新编码为 PNG
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    const imageData = ctx.createImageData(img.width, img.height);
-    fillPixelData(imageData.data, data, img.width, img.height, img.kind, pdfjs.ImageKind);
-    ctx.putImageData(imageData, 0, 0);
-    return { dataUrl: canvas.toDataURL('image/png'), mimeType: 'image/png', ext: 'png' };
-  } catch {
-    return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error(`canvas 2d context unavailable (image ${img.width}x${img.height})`);
   }
+  const imageData = ctx.createImageData(img.width, img.height);
+  fillPixelData(imageData.data, data, img.width, img.height, img.kind, pdfjs.ImageKind);
+  ctx.putImageData(imageData, 0, 0);
+  const dataUrl = canvas.toDataURL('image/png');
+  if (!dataUrl || dataUrl === 'data:,') {
+    throw new Error(`canvas.toDataURL returned empty for image ${img.width}x${img.height} (kind=${img.kind})`);
+  }
+  return { dataUrl, mimeType: 'image/png', ext: 'png' };
 }
 
 // 把 pdf.js 的像素数据（RGBA/RGB/灰度 1bpp）填入 ImageData 的 RGBA 缓冲。
