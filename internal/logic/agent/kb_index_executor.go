@@ -110,7 +110,7 @@ func (e *KBIndexExecutor) parseImage(ctx context.Context, data []byte, fileName 
 	if e.provider == nil {
 		return "", fmt.Errorf("no LLM provider configured for image parsing")
 	}
-	llm, err := e.provider.BuildLLM(ctx, modelcfg.UseCaseKBChunking)
+	llm, err := e.provider.BuildLLM(ctx, modelcfg.UseCaseKBImage)
 	if err != nil {
 		return "", err
 	}

@@ -13,6 +13,7 @@ const USE_CASES: { value: string; label: string }[] = [
   { value: 'enhance', label: 'Enhance 增强' },
   { value: 'compaction', label: 'Compaction 压缩' },
   { value: 'kb_chunking', label: 'KB Chunking 索引' },
+  { value: 'kb_image', label: 'KB 图片解析' },
 ];
 
 type ModelEntry = {

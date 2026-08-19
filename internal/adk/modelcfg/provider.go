@@ -42,6 +42,7 @@ const (
 	UseCaseEnhance    UseCase = "enhance"
 	UseCaseCompaction UseCase = "compaction"
 	UseCaseKBChunking UseCase = "kb_chunking"
+	UseCaseKBImage    UseCase = "kb_image"
 	UseCaseEmbedding  UseCase = "embedding"
 )
 
