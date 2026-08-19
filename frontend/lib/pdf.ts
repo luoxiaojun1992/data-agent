@@ -24,17 +24,28 @@ interface RawImage {
 
 /**
  * 解析 PDF：合并的纯文本 + 提取出的嵌入配图。
- * 逐页调用 extractImages，跨页按 key 去重（同一配图被多页引用只提取一次）。
+ *
+ * 注意：unpdf 的 extractImages 底层用的是 PDF.js 的 page.objs.get。
+ * 在浏览器里，只调用 extractImages 拿到的图片对象缺少 data 字段
+ * （worker 还没跑完图片解码）。必须先渲染整页触发 worker 解码，
+ * 然后再 extractImages 才能拿到带 data 的对象（Node 环境 PDF.js
+ * 同步解码所以不需要这一步）。
  */
 export async function parsePdf(file: File): Promise<PdfParseResult> {
-  const { getDocumentProxy, extractText, extractImages } = await import('unpdf');
+  const { getDocumentProxy, extractText, extractImages, renderPageAsImage } = await import('unpdf');
   const buffer = new Uint8Array(await file.arrayBuffer());
   const pdf = await getDocumentProxy(buffer);
 
   // 1. 提取合并文本
   const { text } = await extractText(pdf, { mergePages: true });
 
-  // 2. 逐页提取嵌入配图
+  // 2. 强制渲染每页（触发 worker 异步解码图片），丢弃输出。
+  //    小尺寸（scale=0.1）足够触发解码、又快、内存少。
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    await renderPageAsImage(pdf, pageNum, { scale: 0.1 });
+  }
+
+  // 3. 现在图片对象已解码，逐页提取嵌入配图
   const seen = new Set<string>();
   const images: PdfImage[] = [];
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
