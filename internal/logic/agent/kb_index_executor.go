@@ -177,12 +177,19 @@ func (e *KBIndexExecutor) buildChunkFn(ctx context.Context) func(text string) ([
 
 		prompt := buildChunkPrompt(text)
 		temp := float32(0.3)
+		// Cap MaxOutputTokens to keep the LLM stream from spending 128K of
+		// reasoning budget on a single chunk-split call. The maxTokensLLM
+		// wrapper only sets this when the caller leaves it nil, so we own
+		// the budget here.
 		adkReq := &model.LLMRequest{
 			Contents: []*genai.Content{{
 				Role: "user",
 				Parts: []*genai.Part{genai.NewPartFromText(prompt)},
 			}},
-			Config: &genai.GenerateContentConfig{Temperature: &temp},
+			Config: &genai.GenerateContentConfig{
+				Temperature:     &temp,
+				MaxOutputTokens: 4096,
+			},
 		}
 		var output string
 		for resp, err := range llm.GenerateContent(ctx, adkReq, false) {
