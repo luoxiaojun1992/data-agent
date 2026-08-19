@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
+	knowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	kbsvc "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 )
@@ -48,14 +50,27 @@ func (e *KBIndexExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) 
 
 	log.Printf("[kb-index] starting indexing for doc=%s run=%s", docID, run.ID)
 
-	// Build the chunking function: call LLM to split text semantically.
-	chunkFn := e.buildChunkFn(ctx)
-
-	// Run the full indexing pipeline via the knowledge service.
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	if err := e.kb.IndexDocument(ctx, docID, chunkFn); err != nil {
+	// Branch on file_type: images are parsed by a multimodal LLM first, then
+	// indexed through the same TXT pipeline; documents go straight to text
+	// indexing.
+	doc, err := e.kb.GetDoc(docID)
+	if err != nil {
+		log.Printf("[kb-index] get doc failed for doc=%s: %v", docID, err)
+		e.failRun(run, err)
+		return err
+	}
+
+	if knowledge.IsImage(doc.FileType) {
+		err = e.indexImage(ctx, docID, doc)
+	} else {
+		// Build the chunking function: call LLM to split text semantically.
+		chunkFn := e.buildChunkFn(ctx)
+		err = e.kb.IndexDocument(ctx, docID, chunkFn)
+	}
+	if err != nil {
 		log.Printf("[kb-index] indexing failed for doc=%s: %v", docID, err)
 		e.failRun(run, err)
 		return err
@@ -64,6 +79,84 @@ func (e *KBIndexExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) 
 	log.Printf("[kb-index] indexing complete for doc=%s", docID)
 	e.completeRun(run)
 	return nil
+}
+
+// indexImage parses an image document via the multimodal LLM and then indexes
+// the resulting text through the standard TXT pipeline.
+func (e *KBIndexExecutor) indexImage(ctx context.Context, docID string, doc *knowledge.KnowledgeDoc) error {
+	// 1. Download the image bytes from GridFS.
+	data, err := e.kb.DownloadFile(ctx, doc.GridFSFileID)
+	if err != nil {
+		return fmt.Errorf("download image %s: %w", doc.GridFSFileID, err)
+	}
+
+	// 2. Multimodal LLM parse: image → natural-language description.
+	text, err := e.parseImage(ctx, data, doc.FileName)
+	if err != nil {
+		return fmt.Errorf("parse image %s: %w", docID, err)
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("parse image %s: empty result", docID)
+	}
+
+	// 3. Index the parsed text via the shared TXT pipeline.
+	chunkFn := e.buildChunkFn(ctx)
+	return e.kb.IndexContent(ctx, docID, text, chunkFn)
+}
+
+// parseImage sends image bytes (as base64 inline data) plus a description
+// prompt to the KB chunking LLM and returns the textual description.
+func (e *KBIndexExecutor) parseImage(ctx context.Context, data []byte, fileName string) (string, error) {
+	if e.provider == nil {
+		return "", fmt.Errorf("no LLM provider configured for image parsing")
+	}
+	llm, err := e.provider.BuildLLM(ctx, modelcfg.UseCaseKBChunking)
+	if err != nil {
+		return "", err
+	}
+
+	mimeType := inferImageMimeType(fileName)
+	adkReq := &model.LLMRequest{
+		Contents: []*genai.Content{{
+			Role: "user",
+			Parts: []*genai.Part{
+				genai.NewPartFromBytes(data, mimeType),
+				genai.NewPartFromText(imageParsePrompt),
+			},
+		}},
+	}
+
+	var output string
+	for resp, err := range llm.GenerateContent(ctx, adkReq, false) {
+		if err != nil {
+			return "", err
+		}
+		if resp.Content != nil && len(resp.Content.Parts) > 0 {
+			output += resp.Content.Parts[0].Text
+		}
+	}
+	return strings.TrimSpace(output), nil
+}
+
+// imageParsePrompt instructs the model to describe the image as indexable text.
+const imageParsePrompt = "请详细描述这张图片的内容，包括其中的文字、数据、图表、对象及其含义，输出可直接用于知识库检索的中文描述。"
+
+// inferImageMimeType maps a file extension to an image MIME type.
+func inferImageMimeType(fileName string) string {
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	default:
+		return "image/png"
+	}
 }
 
 // buildChunkFn creates a chunking function that calls the LLM for semantic

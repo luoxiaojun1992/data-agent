@@ -15,13 +15,26 @@ const (
 	StatusFailed   DocStatus = "failed"
 )
 
+// FileType values for KnowledgeDoc.FileType.
+// Documents (txt) are indexed as text; images are first parsed via
+// multimodal LLM into text, then indexed through the same pipeline.
+const (
+	FileTypeTxt   = "txt"   // text document
+	FileTypeImage = "image" // image (png/jpg/...), indexed via multimodal LLM
+)
+
+// IsImage reports whether a file type is an image (multimodal indexing path).
+func IsImage(fileType string) bool {
+	return fileType == FileTypeImage
+}
+
 // KnowledgeDoc represents a knowledge base document metadata (MongoDB).
 type KnowledgeDoc struct {
 	ID              string    `json:"id"`
 	UserID          string    `json:"user_id"`
 	Title           string    `json:"title"`
 	FileName        string    `json:"file_name"`
-	FileType        string    `json:"file_type"` // pdf, docx, xlsx, md, txt
+	FileType        string    `json:"file_type"` // txt (document) | image | legacy: pdf, docx, xlsx, md
 	SizeBytes       int64     `json:"size_bytes"`
 	Status          DocStatus `json:"status"`
 	ChunkCount      int       `json:"chunk_count"`

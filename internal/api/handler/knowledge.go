@@ -1,12 +1,16 @@
 package handler
 
 import (
-	task "github.com/luoxiaojun1992/data-agent/internal/domain/task"
-	"github.com/luoxiaojun1992/data-agent/internal/repository"
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+
+	task "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
@@ -29,6 +33,8 @@ func (h *KnowledgeHandler) SetQueueRepo(qr repository.QueueRepository) {
 }
 
 // UploadDoc creates a new knowledge document with optional file upload to GridFS.
+// Accepts either a multipart "file" (text docs) or a "file_base64" form field
+// (images), whichever is present.
 func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	title := c.PostForm("title")
@@ -39,9 +45,10 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 		_, _ = fmt.Sscanf(s, "%d", &sizeBytes)
 	}
 
-	// Upload file content to GridFS if a file was provided
-	file, header, err := c.Request.FormFile("file")
 	var gridFSFileID string
+
+	// Path 1: multipart file upload (text documents).
+	file, header, err := c.Request.FormFile("file")
 	if err == nil {
 		defer file.Close()
 		gridFSFileID, err = h.svc.UploadFile(fileName+"_"+header.Filename, header.Header.Get("Content-Type"), file)
@@ -51,6 +58,28 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 		}
 		if sizeBytes == 0 {
 			sizeBytes = header.Size
+		}
+	} else if base64Data := c.PostForm("file_base64"); base64Data != "" {
+		// Path 2: base64 image upload (data URI prefix optional).
+		if idx := strings.Index(base64Data, ";base64,"); idx >= 0 {
+			base64Data = base64Data[idx+len(";base64,"):]
+		}
+		decoded, derr := base64.StdEncoding.DecodeString(base64Data)
+		if derr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid base64 image: " + derr.Error()})
+			return
+		}
+		mimeType := c.PostForm("mime_type")
+		if mimeType == "" {
+			mimeType = "image/png"
+		}
+		gridFSFileID, derr = h.svc.UploadFile(fileName, mimeType, bytes.NewReader(decoded))
+		if derr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "GridFS upload failed: " + derr.Error()})
+			return
+		}
+		if sizeBytes == 0 {
+			sizeBytes = int64(len(decoded))
 		}
 	}
 

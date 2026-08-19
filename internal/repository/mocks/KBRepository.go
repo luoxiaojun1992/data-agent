@@ -231,9 +231,9 @@ func (_m *KBRepository) ListDocs(ctx context.Context, userID string, skip int64,
 	return r0, r1, r2
 }
 
-// SearchChunks provides a mock function with given fields: ctx, query, topK
-func (_m *KBRepository) SearchChunks(ctx context.Context, query string, topK int) ([]*knowledge.SearchResult, error) {
-	ret := _m.Called(ctx, query, topK)
+// SearchChunks provides a mock function with given fields: ctx, query, userID, isSystemAdmin, topK
+func (_m *KBRepository) SearchChunks(ctx context.Context, query string, userID string, isSystemAdmin bool, topK int) ([]*knowledge.SearchResult, error) {
+	ret := _m.Called(ctx, query, userID, isSystemAdmin, topK)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SearchChunks")
@@ -241,24 +241,97 @@ func (_m *KBRepository) SearchChunks(ctx context.Context, query string, topK int
 
 	var r0 []*knowledge.SearchResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int) ([]*knowledge.SearchResult, error)); ok {
-		return rf(ctx, query, topK)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool, int) ([]*knowledge.SearchResult, error)); ok {
+		return rf(ctx, query, userID, isSystemAdmin, topK)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int) []*knowledge.SearchResult); ok {
-		r0 = rf(ctx, query, topK)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool, int) []*knowledge.SearchResult); ok {
+		r0 = rf(ctx, query, userID, isSystemAdmin, topK)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*knowledge.SearchResult)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, int) error); ok {
-		r1 = rf(ctx, query, topK)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, bool, int) error); ok {
+		r1 = rf(ctx, query, userID, isSystemAdmin, topK)
 	} else {
 		r1 = ret.Error(1)
 	}
 
 	return r0, r1
+}
+
+// ListDocsByVisibility provides a mock function with given fields: ctx, userID, isSystemAdmin, skip, limit
+func (_m *KBRepository) ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, skip int64, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
+	ret := _m.Called(ctx, userID, isSystemAdmin, skip, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListDocsByVisibility")
+	}
+
+	var r0 []*knowledge.KnowledgeDoc
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool, int64, int64) ([]*knowledge.KnowledgeDoc, int64, error)); ok {
+		return rf(ctx, userID, isSystemAdmin, skip, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool, int64, int64) []*knowledge.KnowledgeDoc); ok {
+		r0 = rf(ctx, userID, isSystemAdmin, skip, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*knowledge.KnowledgeDoc)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, bool, int64, int64) int64); ok {
+		r1 = rf(ctx, userID, isSystemAdmin, skip, limit)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, string, bool, int64, int64) error); ok {
+		r2 = rf(ctx, userID, isSystemAdmin, skip, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// SetPublicFlag provides a mock function with given fields: ctx, id, isPublic
+func (_m *KBRepository) SetPublicFlag(ctx context.Context, id string, isPublic bool) error {
+	ret := _m.Called(ctx, id, isPublic)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetPublicFlag")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = rf(ctx, id, isPublic)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// UpdateChunkVisibility provides a mock function with given fields: ctx, docID, isPublic
+func (_m *KBRepository) UpdateChunkVisibility(ctx context.Context, docID string, isPublic bool) error {
+	ret := _m.Called(ctx, docID, isPublic)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateChunkVisibility")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = rf(ctx, docID, isPublic)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // UpdateDocStatus provides a mock function with given fields: ctx, id, status, chunkCount, progressPercent

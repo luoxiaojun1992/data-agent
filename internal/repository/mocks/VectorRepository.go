@@ -62,6 +62,24 @@ func (_m *VectorRepository) Search(ctx context.Context, collection string, vecto
 	return r0, r1
 }
 
+// SetPayload provides a mock function with given fields: ctx, collection, id, payload
+func (_m *VectorRepository) SetPayload(ctx context.Context, collection string, id string, payload map[string]interface{}) error {
+	ret := _m.Called(ctx, collection, id, payload)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetPayload")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, map[string]interface{}) error); ok {
+		r0 = rf(ctx, collection, id, payload)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Upsert provides a mock function with given fields: ctx, collection, vectors
 func (_m *VectorRepository) Upsert(ctx context.Context, collection string, vectors []repository.VectorPoint) error {
 	ret := _m.Called(ctx, collection, vectors)

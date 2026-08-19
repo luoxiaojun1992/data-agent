@@ -46,7 +46,7 @@ func TestWithVectorIndex_SetsFieldsAndChains(t *testing.T) {
 // accepts nil embed (search falls back to text path).
 func TestWithVectorIndex_NilArgsAllowsTextFallback(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("SearchChunks", mock.Anything, "q", 5).Return([]*knowledge.SearchResult{
+	kbRepo.On("SearchChunks", mock.Anything, "q", "user1", false, 5).Return([]*knowledge.SearchResult{
 		{ChunkID: "c1", Content: "hello", Score: 0.9},
 	}, nil)
 
@@ -58,7 +58,7 @@ func TestWithVectorIndex_NilArgsAllowsTextFallback(t *testing.T) {
 		t.Error("embed should be nil when nil is passed")
 	}
 	// Search should fall back to text since vector is nil.
-	results, err := svc.Search("user1", "q", 5, "user")
+	results, err := svc.Search("user1", "q", 5, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -76,6 +76,7 @@ func TestWithVectorIndex_NilArgsAllowsTextFallback(t *testing.T) {
 // doc status when no vector index is configured.
 func TestAddChunks_WithoutVectorRepo(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "doc1").Return(&knowledge.KnowledgeDoc{ID: "doc1", UserID: "user1"}, nil)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		chunks := args.Get(1).([]*knowledge.Chunk)
 		if len(chunks) != 2 {
@@ -97,6 +98,7 @@ func TestAddChunks_WithoutVectorRepo(t *testing.T) {
 // vectors when a vector index is configured.
 func TestAddChunks_WithVectorUpsert(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "doc1").Return(&knowledge.KnowledgeDoc{ID: "doc1", UserID: "user1"}, nil)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
 	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 2, 0).Return(nil)
 
@@ -125,6 +127,7 @@ func TestAddChunks_WithVectorUpsert(t *testing.T) {
 // are skipped but chunks are still stored.
 func TestAddChunks_EmbedErrorSkipsVectors(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "doc1").Return(&knowledge.KnowledgeDoc{ID: "doc1", UserID: "user1"}, nil)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
 	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 1, 0).Return(nil)
 
@@ -145,6 +148,7 @@ func TestAddChunks_EmbedErrorSkipsVectors(t *testing.T) {
 // error and does not call UpdateDocStatus.
 func TestAddChunks_KBAddChunksError(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "doc1").Return(&knowledge.KnowledgeDoc{ID: "doc1", UserID: "user1"}, nil)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(errors.New("mongo insert failed"))
 	// UpdateDocStatus must NOT be called.
 
@@ -165,6 +169,7 @@ func TestAddChunks_KBAddChunksError(t *testing.T) {
 // UpdateDocStatus error (the final return).
 func TestAddChunks_UpdateDocStatusError(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "doc1").Return(&knowledge.KnowledgeDoc{ID: "doc1", UserID: "user1"}, nil)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
 	kbRepo.On("UpdateDocStatus", mock.Anything, "doc1", knowledge.StatusIndexing, 1, 0).Return(errors.New("status update failed"))
 
@@ -182,6 +187,7 @@ func TestAddChunks_UpdateDocStatusError(t *testing.T) {
 // AddChunks (with nil slice) and UpdateDocStatus with chunk count 0.
 func TestAddChunks_EmptyTexts(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "doc1").Return(&knowledge.KnowledgeDoc{ID: "doc1", UserID: "user1"}, nil)
 	kbRepo.On("AddChunks", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		chunks := args.Get(1).([]*knowledge.Chunk)
 		if chunks != nil {
@@ -214,7 +220,7 @@ func TestSearch_VectorResults(t *testing.T) {
 	}
 	svc := NewService(kbRepo).WithVectorIndex(vecRepo, embed)
 
-	results, err := svc.Search("user1", "query", 5, "user")
+	results, err := svc.Search("user1", "query", 5, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -237,13 +243,13 @@ func TestSearch_VectorResults(t *testing.T) {
 // vector index is not configured.
 func TestSearch_TextFallback(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("SearchChunks", mock.Anything, "query", 5).Return([]*knowledge.SearchResult{
+	kbRepo.On("SearchChunks", mock.Anything, "query", "user1", false, 5).Return([]*knowledge.SearchResult{
 		{ChunkID: "t1", Content: "text result", Score: 0.7},
 		{ChunkID: "t2", Content: "another", Score: 0.4},
 	}, nil)
 
 	svc := NewService(kbRepo) // no vector index
-	results, err := svc.Search("user1", "query", 5, "user")
+	results, err := svc.Search("user1", "query", 5, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -262,10 +268,10 @@ func TestSearch_TextFallback(t *testing.T) {
 // vector and text search yield nothing.
 func TestSearch_NoResults(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("SearchChunks", mock.Anything, "query", 5).Return([]*knowledge.SearchResult{}, nil)
+	kbRepo.On("SearchChunks", mock.Anything, "query", "user1", false, 5).Return([]*knowledge.SearchResult{}, nil)
 
 	svc := NewService(kbRepo)
-	results, err := svc.Search("user1", "query", 5, "user")
+	results, err := svc.Search("user1", "query", 5, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -281,7 +287,7 @@ func TestSearch_NoResults(t *testing.T) {
 // search returns an error, Search falls back to text search.
 func TestSearch_VectorSearchErrorFallsBackToText(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("SearchChunks", mock.Anything, "query", 3).Return([]*knowledge.SearchResult{
+	kbRepo.On("SearchChunks", mock.Anything, "query", "user1", false, 3).Return([]*knowledge.SearchResult{
 		{ChunkID: "fallback1", Content: "fb", Score: 0.5},
 	}, nil)
 
@@ -293,7 +299,7 @@ func TestSearch_VectorSearchErrorFallsBackToText(t *testing.T) {
 	}
 	svc := NewService(kbRepo).WithVectorIndex(vecRepo, embed)
 
-	results, err := svc.Search("user1", "query", 3, "user")
+	results, err := svc.Search("user1", "query", 3, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -309,7 +315,7 @@ func TestSearch_VectorSearchErrorFallsBackToText(t *testing.T) {
 // Search falls back to text search.
 func TestSearch_EmbedErrorFallsBackToText(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("SearchChunks", mock.Anything, "q", 4).Return([]*knowledge.SearchResult{
+	kbRepo.On("SearchChunks", mock.Anything, "q", "user1", false, 4).Return([]*knowledge.SearchResult{
 		{ChunkID: "txt1", Score: 0.6},
 	}, nil)
 
@@ -320,7 +326,7 @@ func TestSearch_EmbedErrorFallsBackToText(t *testing.T) {
 	}
 	svc := NewService(kbRepo).WithVectorIndex(vecRepo, embed)
 
-	results, err := svc.Search("user1", "q", 4, "user")
+	results, err := svc.Search("user1", "q", 4, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -336,10 +342,10 @@ func TestSearch_EmbedErrorFallsBackToText(t *testing.T) {
 // unavailable and text search errors, Search returns an empty result set.
 func TestSearch_TextSearchErrorReturnsEmpty(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("SearchChunks", mock.Anything, "q", 5).Return(nil, errors.New("text index down"))
+	kbRepo.On("SearchChunks", mock.Anything, "q", "user1", false, 5).Return(nil, errors.New("text index down"))
 
 	svc := NewService(kbRepo)
-	results, err := svc.Search("user1", "q", 5, "user")
+	results, err := svc.Search("user1", "q", 5, false)
 	if err != nil {
 		t.Fatalf("Search should not return a hard error: %v", err)
 	}
@@ -354,14 +360,14 @@ func TestSearch_TextSearchErrorReturnsEmpty(t *testing.T) {
 // TestSearch_SortsByScoreDesc verifies Search sorts results by score descending.
 func TestSearch_SortsByScoreDesc(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("SearchChunks", mock.Anything, "q", 10).Return([]*knowledge.SearchResult{
+	kbRepo.On("SearchChunks", mock.Anything, "q", "user1", false, 10).Return([]*knowledge.SearchResult{
 		{ChunkID: "low", Score: 0.1},
 		{ChunkID: "high", Score: 0.9},
 		{ChunkID: "mid", Score: 0.5},
 	}, nil)
 
 	svc := NewService(kbRepo)
-	results, err := svc.Search("user1", "q", 10, "user")
+	results, err := svc.Search("user1", "q", 10, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}

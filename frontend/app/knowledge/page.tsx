@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../providers';
 import { useAuth } from '../../lib/api';
+import { parsePdf, isPdfFile, isTxtFile, isImageFile, imageMimeType } from '../../lib/pdf';
 
 interface Doc {
   id: string;
@@ -70,6 +71,37 @@ export default function KnowledgePage() {
   const totalPages = Math.max(1, Math.ceil((search || tagFilter ? filtered.length : total) / PAGE_SIZE));
   const paged = (search || tagFilter) ? filtered : docs;
 
+  // 上传一个 txt 文档（multipart）
+  const uploadTxtDoc = async (title: string, fileName: string, content: string) => {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('file', blob, fileName);
+    fd.append('file_name', fileName);
+    fd.append('file_type', 'txt');
+    fd.append('size_bytes', String(blob.size));
+    const res = await apiFetch('/knowledge/docs', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || `上传失败 (${res.status})`);
+    }
+  };
+
+  // 上传一个图片文档（base64）
+  const uploadImageDoc = async (title: string, fileName: string, dataUrl: string, mimeType: string) => {
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('file_name', fileName);
+    fd.append('file_type', 'image');
+    fd.append('file_base64', dataUrl);
+    fd.append('mime_type', mimeType);
+    const res = await apiFetch('/knowledge/docs', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || `上传失败 (${res.status})`);
+    }
+  };
+
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
     setUploading(true);
@@ -77,34 +109,50 @@ export default function KnowledgePage() {
     setUploadComplete(new Array(selectedFiles.length).fill(false));
     setUploadError('');
 
+    let uploadedCount = 0;
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
-      const formData = new FormData();
-      formData.append('title', file.name);
-      formData.append('file', file);
-      formData.append('file_name', file.name);
-      formData.append('file_type', file.name.split('.').pop() || 'unknown');
-      formData.append('size_bytes', String(file.size));
-
       try {
-        const res = await apiFetch('/knowledge/docs', {
-          method: 'POST',
-          body: formData,
-        });
-        if (res.ok) {
-          setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
-          setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
+        if (isPdfFile(file.name)) {
+          // PDF：浏览器端解析成纯文本 + 每页图片，文件名加 -{编号} 自增
+          const { text, images } = await parsePdf(file);
+          const baseName = file.name.replace(/\.pdf$/i, '');
+          let counter = 1;
+          if (text.trim()) {
+            await uploadTxtDoc(baseName, `${baseName}-${counter}.txt`, text);
+            uploadedCount++;
+            counter++;
+          }
+          for (const img of images) {
+            await uploadImageDoc(baseName, `${baseName}-${counter}.png`, img.dataUrl, img.mimeType);
+            uploadedCount++;
+            counter++;
+          }
+        } else if (isTxtFile(file.name)) {
+          const text = await file.text();
+          await uploadTxtDoc(file.name.replace(/\.txt$/i, ''), file.name, text);
+          uploadedCount++;
+        } else if (isImageFile(file.name)) {
+          const dataUrl = await fileToDataUrl(file);
+          await uploadImageDoc(
+            file.name.replace(/\.[^.]+$/, ''),
+            file.name,
+            dataUrl,
+            file.type || imageMimeType(file.name),
+          );
+          uploadedCount++;
         } else {
-          const d = await res.json().catch(() => ({}));
-          setUploadError(d.error || `上传失败 (${res.status})`);
+          setUploadError(`不支持的文件类型: ${file.name}（仅支持 txt、pdf、图片）`);
         }
+        setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
+        setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
       } catch (e: any) {
         setUploadError(e?.message || '网络错误');
       }
     }
     setUploading(false);
     fetchDocs();
-    showToast('上传完成', 'success');
+    showToast(`上传完成（${uploadedCount} 个文档）`, 'success');
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -218,7 +266,7 @@ export default function KnowledgePage() {
         )}
 
         <input ref={fileInputRef} type="file" multiple data-testid="kb-upload-file-input"
-          accept=".txt,.pdf,.json,.csv,.bin,.png,.jpg"
+          accept=".txt,.pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
           style={{ display: 'none' }} onChange={handleFileSelect} />
 
         {/* Tag Filter */}
@@ -330,3 +378,13 @@ const pageBtnStyle: React.CSSProperties = {
   padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: '8px', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer',
 };
+
+// File → base64 data URL（浏览器端读取图片）。
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('读取文件失败'));
+    reader.readAsDataURL(file);
+  });
+}

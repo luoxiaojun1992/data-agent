@@ -220,6 +220,11 @@ func (s *Service) UploadFile(fileName, contentType string, reader io.Reader) (st
 	return gridFSID, nil
 }
 
+// DownloadFile returns the raw bytes of a GridFS-stored file.
+func (s *Service) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	return s.kb.DownloadFile(ctx, fileID)
+}
+
 // IndexDocument performs the full indexing pipeline on a knowledge document:
 // GridFS chunked download → sentence boundary splitting → LLM semantic chunking
 // → Embedding → Qdrant + MongoDB write. llmChunkFn is called for each
@@ -236,11 +241,25 @@ func (s *Service) IndexDocument(ctx context.Context, docID string, llmChunkFn fu
 		return fmt.Errorf("download file %s: %w", doc.GridFSFileID, err)
 	}
 
-	// 2. Split into sentence-boundary segments via fixed-window reading.
-	//    Avoids loading giant files entirely into memory for LLM chunking.
-	segments := splitBySentence(string(data), chunkWindowSize)
+	// 2-5. Index the downloaded text content.
+	return s.indexContent(ctx, docID, string(data), llmChunkFn)
+}
 
-	// 3. LLM semantic chunking per segment
+// IndexContent indexes pre-parsed text content directly (skipping the GridFS
+// download). Used for images whose multimodal LLM parse already produced the
+// text; the rest of the pipeline (sentence split → semantic chunk → embed →
+// store) is identical to the TXT path.
+func (s *Service) IndexContent(ctx context.Context, docID, text string, llmChunkFn func(text string) ([]string, error)) error {
+	return s.indexContent(ctx, docID, text, llmChunkFn)
+}
+
+// indexContent runs the shared indexing pipeline over a text string.
+func (s *Service) indexContent(ctx context.Context, docID, text string, llmChunkFn func(text string) ([]string, error)) error {
+	// Split into sentence-boundary segments via fixed-window reading.
+	//    Avoids loading giant files entirely into memory for LLM chunking.
+	segments := splitBySentence(text, chunkWindowSize)
+
+	// LLM semantic chunking per segment
 	var allChunks []string
 	for _, seg := range segments {
 		chunks, err := llmChunkFn(seg)
@@ -253,12 +272,12 @@ func (s *Service) IndexDocument(ctx context.Context, docID string, llmChunkFn fu
 		return fmt.Errorf("no chunks produced for doc %s", docID)
 	}
 
-	// 4. Embedding + vector store + MongoDB chunks (sets status=indexing, progress=0)
+	// Embedding + vector store + MongoDB chunks (sets status=indexing, progress=0)
 	if err := s.AddChunks(docID, allChunks); err != nil {
 		return fmt.Errorf("add chunks: %w", err)
 	}
 
-	// 5. Mark as ready with 100% progress
+	// Mark as ready with 100% progress
 	return s.kb.UpdateDocStatus(ctx, docID, knowledge.StatusReady, len(allChunks), 100)
 }
 
