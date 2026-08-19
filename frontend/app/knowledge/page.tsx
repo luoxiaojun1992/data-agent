@@ -110,6 +110,7 @@ export default function KnowledgePage() {
     setUploadError('');
 
     let uploadedCount = 0;
+    let hadError = false;
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
       try {
@@ -142,17 +143,25 @@ export default function KnowledgePage() {
           );
           uploadedCount++;
         } else {
+          hadError = true;
           setUploadError(`不支持的文件类型: ${file.name}（仅支持 txt、pdf、图片）`);
         }
         setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
         setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
       } catch (e: any) {
+        hadError = true;
         setUploadError(e?.message || '网络错误');
       }
     }
     setUploading(false);
     fetchDocs();
-    showToast(`上传完成（${uploadedCount} 个文档）`, 'success');
+    if (hadError) {
+      showToast('上传未完全成功，请查看错误信息', 'error');
+    } else {
+      showToast(`上传完成（${uploadedCount} 个文档）`, 'success');
+      setShowUpload(false);
+      setSelectedFiles([]);
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
