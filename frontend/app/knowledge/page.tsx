@@ -124,7 +124,7 @@ export default function KnowledgePage() {
             counter++;
           }
           for (const img of images) {
-            await uploadImageDoc(baseName, `${baseName}-${counter}.png`, img.dataUrl, img.mimeType);
+            await uploadImageDoc(baseName, `${baseName}-${counter}.${img.ext}`, img.dataUrl, img.mimeType);
             uploadedCount++;
             counter++;
           }
