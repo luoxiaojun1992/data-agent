@@ -642,3 +642,23 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 - 一次性任务应只有 1 条 run；多条 run 间隔等于 scheduler tick（30s）或其整数倍 → 典型「执行后未持久化完成态」
 - `aggregate` 按 `task_id` group 计数能快速定位「重复执行」的重灾区
 - mongosh 的 `$` 聚合操作符在 bash 双引号里会被转义吃掉，正确做法：写成 `.js` 文件 `docker cp` 进容器后 `mongosh /path/file.js` 执行，避免 heredoc `$` 转义地狱
+
+---
+## 2026-08-19 新增（KB 图片解析 + kb_image use case）
+
+### 配置新模型时 name / max_tokens 不能照抄现有模型
+**日期**: 2026-08-19 | **影响**: 图片索引两次失败——先 `model_not_found`（模型名无效），后 `Range of max_tokens should be [1, 32768]`（max_tokens 超限）
+**根因**: 配的多模态模型 `qwen2.5-vl` 直接照抄了 deepseek 的 name 和 max_tokens=128000。但 `qwen2.5-vl` 在 DashScope 上根本不存在（正确名是 `qwen-vl-max`/`qwen-vl-plus`/`qwen-vl-ocr`），且 qwen-vl-max 的 max_tokens 上限是 32768。
+**解决**: 模型名改为 `qwen-vl-max`，max_tokens 改为 8192。
+**教训**: ⛔ 配新模型时 name 和 max_tokens/context_len 必须核对目标平台（DashScope/OpenAI/火山等）的**实际模型名**和**参数上限**，不能从现有模型配置复制粘贴。第三方平台的模型名（如 DashScope 的 `qwen-vl-max`）常与开源名（`Qwen2.5-VL-72B`）不同。
+
+### 图片解析与文本分片用独立 use case 解耦
+**日期**: 2026-08-19 | **影响**: 图片文档需要多模态模型，但文本分片（kb_chunking）仍用文本模型 deepseek-v4-pro
+**根因**: 原 `parseImage` 复用了 `UseCaseKBChunking`，导致图片解析也走文本模型 → deepseek-v4-pro 报 `unknown variant image_url`（纯文本模型不支持多模态）
+**解决**: 新增 `UseCaseKBImage = "kb_image"` 常量，`parseImage` 改走 `BuildLLM(UseCaseKBImage)`。多模态模型设 kb_image 默认、文本模型继续 kb_chunking，互不干扰。
+**教训**: 需要不同模型能力的进程要拆独立 use case（每 use case 恰好一个默认模型），不要复用已有 use case 塞不同能力。
+
+### 多模态在 OpenAI 兼容协议下是 image_url 格式（base64 data URL）
+**日期**: 2026-08-19 | **影响**: 无需改 LLM runtime 代码
+**根因**: adk-go-pkg 的 translate.go 会把 `genai.NewPartFromBytes` 的 InlineData 转成 OpenAI `image_url`（data URL）。DashScope 兼容端点原生支持该格式。
+**教训**: 接入 OpenAI 兼容的多模态模型（qwen-vl/gpt-4o 等）时，代码层已就绪，只需配 base_url + api_key + 正确模型名 + max_tokens 上限，无需改 runtime 多模态判断逻辑。

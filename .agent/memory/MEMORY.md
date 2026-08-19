@@ -120,3 +120,11 @@
 - 权限继承：user→admin→sysAdmin 通过 parent_id 链，GetAllRoleIDsWithAncestors 查询
 - Admin 限制：5 层防守（CRUD/角色升级/RBAC分配/邀请/前端）
 - 敏感接口权限不可共用（如 model:list ≠ model:config:view）
+
+## 2026-08-19: KB 图片解析接入多模态模型
+
+- **决策**: 新增 `kb_image` use case，图片解析（多模态）与文本分片（kb_chunking）解耦，每 use case 恰好一个默认模型
+- **模型**: `qwen-vl-max`（DashScope 兼容端点 `https://dashscope.aliyuncs.com/compatible-mode/v1`），API key 存 Vault，`max_tokens=8192`，设为 kb_image 默认
+- **理由**: deepseek-v4-pro 是纯文本模型（不支持 image_url）；文本 chunking 继续用 deepseek，图片描述用 qwen-vl-max
+- **链路**: 图片 base64 上传 → `file_type=image` → kb_index 走 `kb_image` → qwen-vl-max 多模态解析 → chunk → embed → Qdrant + MongoDB
+- **备注**: 多模态模型名在第三方平台常有别名（DashScope 叫 `qwen-vl-max`，开源叫 `Qwen2.5-VL-72B`），配模型前先查平台模型列表，不要照抄现有配置的 name/max_tokens
