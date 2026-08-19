@@ -1,10 +1,11 @@
-// PDF 解析工具：在浏览器端用 pdf.js 解析 PDF，提取纯文本 + 嵌入的配图（图片对象）。
-// 仅在客户端（浏览器）运行，通过 dynamic import 加载 pdfjs-dist。
+// PDF 解析工具：在浏览器端用 unpdf（unjs）解析 PDF，提取纯文本 + 嵌入的配图。
+// unpdf 内置 serverless 构建的 PDF.js，提供跨运行时（Node/浏览器）稳定的
+// extractText / extractImages API，无需手动 hack PDF.js 内部对象。
 
 export interface PdfImage {
   dataUrl: string; // base64 data URL
-  mimeType: string; // image/jpeg / image/png
-  ext: string;      // jpg / png
+  mimeType: string; // image/png
+  ext: string;      // png
 }
 
 export interface PdfParseResult {
@@ -12,181 +13,84 @@ export interface PdfParseResult {
   images: PdfImage[]; // 从 PDF 中提取出的嵌入配图（每张配图一个文件）
 }
 
-// pdfjs 的 worker 配置：worker 文件作为静态资源放在 public/ 下，
-// 避免被 webpack 当作模块用 Terser 压缩（.mjs 的 import/export 会报错）。
-// 懒加载，避免在服务端渲染时引入 pdfjs-dist。
-async function loadPdfjs() {
-  const pdfjs = await import('pdfjs-dist');
-  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-  }
-  return pdfjs;
+// unpdf 的 extractImages 返回的原始图片对象。
+interface RawImage {
+  data: Uint8ClampedArray; // 解码后的像素（1/3/4 通道）
+  width: number;
+  height: number;
+  channels: 1 | 3 | 4; // 1=灰度, 3=RGB, 4=RGBA
+  key: string;         // 图片对象名，用于跨页去重
 }
 
 /**
- * 解析 PDF 文件：返回合并的纯文本 + 从 PDF 中提取出的嵌入配图。
- * 配图通过操作符列表（paintImageXObject）定位图片对象，而非整页渲染，
- * 因此每一张嵌入的图片会作为一个独立的图片文件返回。
+ * 解析 PDF：合并的纯文本 + 提取出的嵌入配图。
+ * 逐页调用 extractImages，跨页按 key 去重（同一配图被多页引用只提取一次）。
  */
 export async function parsePdf(file: File): Promise<PdfParseResult> {
-  const pdfjs = await loadPdfjs();
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const { getDocumentProxy, extractText, extractImages } = await import('unpdf');
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  const pdf = await getDocumentProxy(buffer);
 
-  let text = '';
+  // 1. 提取合并文本
+  const { text } = await extractText(pdf, { mergePages: true });
+
+  // 2. 逐页提取嵌入配图
+  const seen = new Set<string>();
   const images: PdfImage[] = [];
-
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-
-    // 1. 提取文本
-    const textContent = await page.getTextContent();
-    const pageText = (textContent.items as { str?: string }[])
-      .map((item) => item.str || '')
-      .join(' ');
-    text += pageText.trim() + '\n';
-
-    // 2. 提取本页嵌入的配图（图片对象，非整页渲染）
-    const pageImages = await extractPageImages(page, pdfjs);
-    images.push(...pageImages);
+    const imgs = await extractImages(pdf, pageNum);
+    for (const img of imgs) {
+      if (seen.has(img.key)) continue;
+      seen.add(img.key);
+      const dataUrl = pixelToPngDataUrl(img);
+      if (dataUrl) {
+        images.push({ dataUrl, mimeType: 'image/png', ext: 'png' });
+      }
+    }
   }
 
   return { text, images };
 }
 
-// 提取单页里所有嵌入的图片对象（去重）。
-async function extractPageImages(page: any, pdfjs: any): Promise<PdfImage[]> {
-  const opList = await page.getOperatorList();
-  const xobjOps = [pdfjs.OPS.paintImageXObject, pdfjs.OPS.paintImageXObjectRepeat];
-  console.log(`[pdf] page operator list: ${opList.fnArray.length} ops`);
+// 把 unpdf 提取出的像素数据（1/3/4 通道）转成 PNG data URL。
+function pixelToPngDataUrl(img: RawImage): string | null {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
 
-  const seen = new Set<string>();
-  const candidates: string[] = [];
-  for (let i = 0; i < opList.fnArray.length; i++) {
-    if (!xobjOps.includes(opList.fnArray[i])) continue;
-    const imgName = opList.argsArray[i]?.[0];
-    if (!imgName || typeof imgName !== 'string' || seen.has(imgName)) continue;
-    seen.add(imgName);
-    candidates.push(imgName);
-  }
-  console.log(`[pdf] image candidates: ${candidates.length} (${candidates.join(',')})`);
+    const imageData = ctx.createImageData(img.width, img.height);
+    const src = img.data;
+    const dst = imageData.data;
 
-  const images: PdfImage[] = [];
-  const failures: string[] = [];
-  for (const imgName of candidates) {
-    try {
-      const img: any = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`page.objs.get(${imgName}) timeout 10s`)), 10000);
-        page.objs.get(imgName, (obj: any) => {
-          clearTimeout(timer);
-          resolve(obj);
-        });
-      });
-      if (!img) { failures.push(`${imgName}=null`); continue; }
-      if (!img.data) { failures.push(`${imgName}=no data`); continue; }
-      console.log(`[pdf] image ${imgName}: ${img.width}x${img.height}, kind=${img.kind}, data=${img.data.byteLength || img.data.length}B`);
-      const out = imageObjectToDataUrl(img, pdfjs);
-      if (out) {
-        images.push(out);
-        console.log(`[pdf] image ${imgName}: converted to ${out.ext} (${out.dataUrl.length} chars dataUrl)`);
-      } else {
-        failures.push(`${imgName}=null conversion`);
+    if (img.channels === 4) {
+      dst.set(src);
+    } else if (img.channels === 3) {
+      for (let i = 0, j = 0; i < src.length; i += 3, j += 4) {
+        dst[j] = src[i];
+        dst[j + 1] = src[i + 1];
+        dst[j + 2] = src[i + 2];
+        dst[j + 3] = 255;
       }
-    } catch (e: any) {
-      console.error(`[pdf] image ${imgName} error:`, e);
-      failures.push(`${imgName}=${e?.message || e}`);
-    }
-  }
-  if (candidates.length > 0 && images.length === 0) {
-    throw new Error(
-      `PDF 配图提取全部失败：找到 ${candidates.length} 张候选配图但一张都没成功。` +
-      `失败明细：${failures.join('; ')}（浏览器控制台 [pdf] 日志有更多细节）`,
-    );
-  }
-  if (failures.length > 0) {
-    console.warn(`[pdf] 部分配图失败 (${failures.length}/${candidates.length}): ${failures.join('; ')}`);
-  }
-  return images;
-}
-
-// 把 pdf.js 的图片对象转成 data URL。
-// 优先识别 JPEG/PNG 原始字节直接复用；否则当作解码后的像素数据，
-// 用 canvas 重新编码为 PNG。
-function imageObjectToDataUrl(img: any, pdfjs: any): PdfImage | null {
-  const data = img.data instanceof Uint8Array ? img.data : new Uint8Array(img.data);
-  if (data.length === 0) return null;
-
-  // JPEG: FF D8
-  if (data.length > 2 && data[0] === 0xff && data[1] === 0xd8) {
-    return { dataUrl: uint8ToDataUrl(data, 'image/jpeg'), mimeType: 'image/jpeg', ext: 'jpg' };
-  }
-  // PNG: 89 50 4E 47
-  if (data.length > 4 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
-    return { dataUrl: uint8ToDataUrl(data, 'image/png'), mimeType: 'image/png', ext: 'png' };
-  }
-
-  // 解码后的像素数据 → canvas 重新编码为 PNG
-  const canvas = document.createElement('canvas');
-  canvas.width = img.width;
-  canvas.height = img.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error(`canvas 2d context unavailable (image ${img.width}x${img.height})`);
-  }
-  const imageData = ctx.createImageData(img.width, img.height);
-  fillPixelData(imageData.data, data, img.width, img.height, img.kind, pdfjs.ImageKind);
-  ctx.putImageData(imageData, 0, 0);
-  const dataUrl = canvas.toDataURL('image/png');
-  if (!dataUrl || dataUrl === 'data:,') {
-    throw new Error(`canvas.toDataURL returned empty for image ${img.width}x${img.height} (kind=${img.kind})`);
-  }
-  return { dataUrl, mimeType: 'image/png', ext: 'png' };
-}
-
-// 把 pdf.js 的像素数据（RGBA/RGB/灰度 1bpp）填入 ImageData 的 RGBA 缓冲。
-function fillPixelData(
-  dest: Uint8ClampedArray,
-  src: Uint8Array,
-  w: number,
-  h: number,
-  kind: number,
-  ImageKind: any,
-) {
-  if (kind === ImageKind.RGBA_32BPP) {
-    dest.set(src.subarray(0, Math.min(src.length, w * h * 4)));
-  } else if (kind === ImageKind.RGB_24BPP) {
-    const n = Math.min(w * h, Math.floor(src.length / 3));
-    for (let i = 0; i < n; i++) {
-      dest[i * 4] = src[i * 3];
-      dest[i * 4 + 1] = src[i * 3 + 1];
-      dest[i * 4 + 2] = src[i * 3 + 2];
-      dest[i * 4 + 3] = 255;
-    }
-  } else if (kind === ImageKind.GRAYSCALE_1BPP) {
-    const rowBytes = (w + 7) >> 3;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const byte = src[y * rowBytes + (x >> 3)];
-        const bit = (byte >> (7 - (x & 7))) & 1;
-        const v = bit ? 255 : 0;
-        const idx = (y * w + x) * 4;
-        dest[idx] = v;
-        dest[idx + 1] = v;
-        dest[idx + 2] = v;
-        dest[idx + 3] = 255;
+    } else if (img.channels === 1) {
+      for (let i = 0, j = 0; i < src.length; i++, j += 4) {
+        dst[j] = src[i];
+        dst[j + 1] = src[i];
+        dst[j + 2] = src[i];
+        dst[j + 3] = 255;
       }
+    } else {
+      return null;
     }
-  }
-}
 
-// Uint8Array → base64 data URL（分块避免 spread 大数组栈溢出）。
-function uint8ToDataUrl(data: Uint8Array, mimeType: string): string {
-  let binary = '';
-  const chunk = 0x4000;
-  for (let i = 0; i < data.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, Array.from(data.subarray(i, i + chunk)));
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch (e) {
+    console.error('[pdf] pixelToPngDataUrl error:', e);
+    return null;
   }
-  return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
 // 支持的图片扩展名（用于文件类型判断）。
