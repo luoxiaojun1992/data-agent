@@ -11,16 +11,13 @@ export interface PdfParseResult {
   images: PdfImage[]; // 每页一张图片
 }
 
-// pdfjs 的 worker 配置：用 workerPort 方式（Next.js 兼容）。
+// pdfjs 的 worker 配置：worker 文件作为静态资源放在 public/ 下，
+// 避免被 webpack 当作模块用 Terser 压缩（.mjs 的 import/export 会报错）。
 // 懒加载，避免在服务端渲染时引入 pdfjs-dist。
 async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist');
-  const workerUrl = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url,
-  ).toString();
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   }
   return pdfjs;
 }
