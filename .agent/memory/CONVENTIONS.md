@@ -16,8 +16,9 @@
 3. 错误通过 `fmt.Errorf("context: %w", err)` 包装传递，保留错误链
 4. 所有公开函数必须有文档注释（`// FunctionName does X.`）
 5. UUID v4 主键由应用层生成，格式: `{prefix}_{uuid}`（如 `task_3f7a2b1c-...`）
-6. MongoDB 时间字段统一使用 `time.Time`，不存储 Unix 时间戳
-7. 结构体 JSON tag 使用 snake_case，BSON tag 与 MongoDB 字段名一致
+6. **主键约定（铁律）**：`_id` 一律用 uuid（或 MongoDB ObjectId），**不得**承载业务语义（key/use_case/name 等）。业务标识一律单独设字段 + 唯一索引。唯一例外：必须存在 seed 数据且存在关联数据（如 rbac 角色 id）时，业务标识可用语义化字段值，但**仍不作为 `_id`**。
+7. MongoDB 时间字段统一使用 `time.Time`，不存储 Unix 时间戳
+8. 结构体 JSON tag 使用 snake_case，BSON tag 与 MongoDB 字段名一致
 
 ### 错误处理
 - Handler 层校验失败返回 4xx，不进入 Service 层
@@ -124,6 +125,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 31 | **用户给的具体条件（含比较运算符）只做一半** | 用户说 `<= 当前时间` 就必须有 `$lte: now`，不能降级为 `$exists: true` 或 `$ne: nil`。逐字翻译，不打折扣。 |
 | 32 | **新增过滤字段只在 write 端加、漏掉 read 端的 query filter** | toggle 写入 `scheduled_enabled=false` 后，ListScheduled 也必须加 `scheduled_enabled: {$ne: false}`。write 和 read 是两次独立操作，必须同步。 |
 | 33 | **Go interface 签名变更不问全链路就声称完成** | 改 repo 接口签名 → grep 所有 implement + 所有 caller。adapter、provider interface、两个调用处一个都不能漏。 |
+| 34 | **`_id` 用业务语义字段（key/use_case/name 等）当主键** | `_id` 一律 uuid，业务字段单独设字段 + 唯一索引。唯一例外：seed 数据 + 有关联数据可用语义化字段值，但仍不作 `_id`。 |
 
 ## 开发工作流约定
 
