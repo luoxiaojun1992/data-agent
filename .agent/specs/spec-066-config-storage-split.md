@@ -1,6 +1,6 @@
 # 配置存储拆分：system_configs 去 namespace，模型配置每模型一条文档 + 独立默认配置
 
-> **SPEC-065** | Status: 设计中
+> **SPEC-066** | Status: 设计中
 
 ## 目标
 
