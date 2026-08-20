@@ -76,14 +76,25 @@
 
 ## 架构概述
 
+### 主键约定（铁律）
+
+> ⛔ `_id` 一律用 uuid（或 MongoDB ObjectId），**不得**承载业务语义（key/use_case/name 等）。业务标识一律单独设字段 + 唯一索引。唯一例外：必须存在 seed 数据且存在关联数据（如 rbac 角色 id）时，业务标识可用语义化字段值，但**仍不作为 `_id`**。
+
+| 集合 | `_id` | 业务字段 + 唯一索引 |
+|------|-------|--------------------|
+| `system_configs` | uuid | `key` 唯一索引 |
+| `skill_configs` | uuid | `name` 唯一索引（seed 按 name 幂等 upsert）|
+| `model_configs` | 模型 ID（本身即 `model_<uuid>` 语义，全局引用键）| — |
+| `model_defaults` | uuid | `use_case` 唯一索引 |
+
 ### 目标存储模型
 
 ```
 data_agent
-├── system_configs    # {_id: key, value, updated_at} 每配置一条，无 namespace
-├── skill_configs     # SkillConfig 文档（结构不变）
-├── model_configs     # ModelEntry 文档，_id = 模型 ID，每模型一条（LLM + embedding）
-├── model_defaults    # {_id: use_case, model_id} use_case 唯一索引，每 use case 一条默认
+├── system_configs    # {_id: uuid, key(唯一), value, updated_at} 每配置一条，无 namespace
+├── skill_configs     # {_id: uuid, name(唯一), display_name, description, enabled, ...}
+├── model_configs     # ModelEntry 文档，_id = 模型 ID（model_<uuid>），每模型一条（LLM + embedding）
+├── model_defaults    # {_id: uuid, use_case(唯一), model_id} 每 use case 一条默认
 ├── rbac_* / feishu_configs / api_collections / ...    # 不动
 ```
 
@@ -115,14 +126,15 @@ type ModelEntry struct {
 
 ```go
 type ModelDefault struct {
-    UseCase string `json:"use_case" bson:"_id"`   // 唯一索引（天然唯一，use case 作主键）
+    ID      string `json:"id" bson:"_id"`            // uuid（非语义）
+    UseCase string `json:"use_case" bson:"use_case"` // 业务字段，唯一索引
     ModelID string `json:"model_id" bson:"model_id"`
 }
 ```
 
-- **唯一索引**：`_id = use_case`，MongoDB 主键天然唯一，保证「每 use case 恰好一个默认」。
-- **修改默认**：先 `deleteOne({_id: use_case})` 再 `insertOne({_id: use_case, model_id})`（用户指定顺序；两步非事务，窗口内该 use case 短暂无默认，读路径 fallback 第一个模型）。
-- **取消默认**：`deleteOne({_id: use_case})`，无补偿插入。
+- **唯一索引**：`use_case` 字段建唯一索引（非 `_id`），保证「每 use case 恰好一个默认」。
+- **修改默认**：先 `deleteOne({use_case})` 再 `insertOne({use_case, model_id})`（用户指定顺序；两步非事务，窗口内该 use case 短暂无默认，读路径 fallback 第一个模型）。
+- **取消默认**：`deleteOne({use_case})`，无补偿插入。
 - **list 联动**：`ListModels` 一次 `find(model_defaults)` 取全量映射 `map[use_case]model_id`，反向组装 `is_default_for` 到每个模型响应（**响应结构不变，前端零改动**，除 embedding toggle）。
 - **use case 扩展**：新增 use case 仅 `insertOne` 一条 default record，不触碰模型文档。
 
@@ -205,10 +217,10 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 新增 `scripts/migrate_config_storage.js`（mongosh）：
 
 1. **备份**：`system_configs`、`system_config` duplicate `*_bak_20260820`
-2. **skill**：`system_config` 22 条 → `skill_configs`（映射字段，丢 `ns`）
+2. **skill**：`system_config` 22 条 → `skill_configs`（`_id` 生成 uuid，`name` 等映射字段，丢 `ns`）
 3. **model**：`system_configs[namespace=model].models` JSON 数组 → 逐条展开为 `model_configs` 文档（`_id`=模型 `id`，其余原样）；`api_key` 为 Vault path 原样保留
-4. **model_defaults**：展开时，每个模型 `is_default_for` 数组逐项 → `model_defaults{_id: use_case, model_id}`；`is_default=true` 的 LLM → `{_id: "chat", model_id}`；embedding `is_default=true` → `{_id: "embedding", model_id}`
-5. **system**：`system_configs[namespace=system]` 11 条原地 `$unset namespace` + `_id` 改 key
+4. **model_defaults**：展开时，每个模型 `is_default_for` 数组逐项 → `model_defaults{_id: <新 uuid>, use_case, model_id}`；`is_default=true` 的 LLM → `{_id: <uuid>, use_case: "chat", model_id}`；embedding `is_default=true` → `{_id: <uuid>, use_case: "embedding", model_id}`；建 `use_case` 唯一索引
+5. **system**：`system_configs[namespace=system]` 11 条原地 `$unset namespace`（`_id` 保持原 ObjectId 或统一重生成 uuid；`key` 字段独立 + 唯一索引）
 6. **死数据**：`namespace=models`（复数）2 条、`namespace=model` 的 `hermes_url`/`api_key`/`api_url`/`model_name`/`embedding` —— 丢弃
 7. 每步计数 + 日志；可重复执行（先清目标再插）
 
