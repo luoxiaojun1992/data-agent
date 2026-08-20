@@ -655,6 +655,22 @@ export default function ChatPage() {
           {/* Prompt modal button + Input */}
           <div className="glass p-4" onPaste={handlePaste}>
             <div className="flex items-center gap-2 mb-2">
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                data-testid="chat-attach-input"
+                onChange={handleAttachChange}
+              />
+              <button
+                onClick={handleAttachClick}
+                disabled={streaming || attachments.length >= MAX_CHAT_IMAGES}
+                title={attachments.length >= MAX_CHAT_IMAGES ? `最多 ${MAX_CHAT_IMAGES} 张图片` : '添加图片（最多 5 张，可粘贴）'}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
+                data-testid="chat-attach-btn"
+              >📎 附件</button>
               <button
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="prompt-btn"
@@ -692,22 +708,6 @@ export default function ChatPage() {
               <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-attach-error">{attachError}</p>
             )}
             <div className="flex gap-3">
-              <input
-                ref={attachmentInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                style={{ display: 'none' }}
-                data-testid="chat-attach-input"
-                onChange={handleAttachChange}
-              />
-              <button
-                onClick={handleAttachClick}
-                disabled={streaming || attachments.length >= MAX_CHAT_IMAGES}
-                title={attachments.length >= MAX_CHAT_IMAGES ? `最多 ${MAX_CHAT_IMAGES} 张图片` : '添加图片（最多 5 张，可粘贴）'}
-                className="px-3 py-2 rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors self-end"
-                data-testid="chat-attach-btn"
-              >📎</button>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
