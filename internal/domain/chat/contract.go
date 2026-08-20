@@ -11,10 +11,19 @@ import (
 	"time"
 )
 
+// ImagePart is a base64-encoded image attachment carried with a chat message.
+type ImagePart struct {
+	// Data is the raw base64-encoded image bytes (no data-URL prefix).
+	Data string `json:"data"`
+	// MimeType is the image MIME type, e.g. "image/png".
+	MimeType string `json:"mime_type"`
+}
+
 // Message represents a single chat message in a request payload.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string      `json:"role"`
+	Content string      `json:"content"`
+	Images  []ImagePart `json:"images,omitempty"`
 }
 
 // ChatEvent is the canonical wire representation of one persisted or streamed
@@ -28,6 +37,7 @@ type ChatEvent struct {
 	Name      string         `json:"name,omitempty"`
 	Args      map[string]any `json:"args,omitempty"`
 	Result    any            `json:"result,omitempty"`
+	Images    []string       `json:"images,omitempty"` // image data URLs, attached to the text event of the same message
 	Timestamp string         `json:"timestamp"`
 }
 
@@ -39,6 +49,9 @@ type ChatRequest struct {
 	Model     string    `json:"model,omitempty"`
 	Messages  []Message `json:"messages"`
 	Message   string    `json:"message,omitempty"` // legacy single-message field from frontend
+	// Images carries image attachments alongside the legacy single Message
+	// field. Each entry is a base64-encoded image (see ImagePart).
+	Images []ImagePart `json:"images,omitempty"`
 	Stream    bool      `json:"stream"`
 	KBID      string    `json:"kb_id,omitempty"`
 }

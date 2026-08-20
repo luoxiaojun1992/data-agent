@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,24 @@ import (
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 )
+
+// Chat image attachment limits: at most 5 images per message; each image at
+// most 2 MiB decoded; at most 5 MiB decoded in total per message. The caps
+// keep the MongoDB session document (events + raw_events both store the
+// persisted event) well below the 16 MiB BSON document limit.
+const (
+	maxChatImages      = 5
+	maxChatImageBytes  = 2 * 1024 * 1024
+	maxTotalImageBytes = 5 * 1024 * 1024
+)
+
+// allowedChatImageMimes is the whitelist of accepted image MIME types.
+var allowedChatImageMimes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/webp": true,
+	"image/gif":  true,
+}
 
 // Service handles real-time chat operations backed by the ADK runtime.
 // It implements domain/chat.ChatService and contains no gin dependency;
@@ -59,16 +78,28 @@ func (s *Service) WithMemoryWrite(hook func(ctx context.Context, sess session.Se
 
 // prepareRun validates the request, resolves/creates the session (binding the
 // model ID on creation), ensures the ADK session exists with identity injected
-// into state, and returns the resolved session ID, last user message, run
+// into state, and returns the resolved session ID, the built user content
+// (text plus optional image parts), the last user text (for titles), run
 // config, and the model-bound Runtime. Shared by Process and Stream.
 //
 // SPEC-062: On new sessions, the model is resolved from req.Model (empty →
 // default) and bound permanently. On existing sessions, req.Model is IGNORED
 // and the session's bound ModelID is used (model cannot be changed).
-func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, userID, role string) (rt *adkruntime.Runtime, sessionID, lastMsg string, runCfg adkruntime.RunConfig, err error) {
+func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, userID, role string) (rt *adkruntime.Runtime, sessionID string, content *genai.Content, lastText string, runCfg adkruntime.RunConfig, err error) {
 	messages := normalizeMessages(req)
 	if len(messages) == 0 {
 		err = domainchat.ErrMessagesRequired
+		return
+	}
+
+	lastText, images := lastUserMessage(messages)
+	if strings.TrimSpace(lastText) == "" && len(images) == 0 {
+		err = domainchat.ErrUserMessageRequired
+		return
+	}
+
+	content, err = buildUserContent(lastText, images)
+	if err != nil {
 		return
 	}
 
@@ -84,14 +115,13 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 		return
 	}
 
-	lastMsg = lastUserMessage(messages)
-	if lastMsg == "" {
-		err = domainchat.ErrUserMessageRequired
-		return
-	}
 	// Auto-set session title from the first user message. Failures are
 	// non-fatal — the session continues to work, just without a nice title.
-	if titleErr := s.sessions.SetTitle(sessionID, truncateTitle(lastMsg, 30)); titleErr != nil {
+	title := strings.TrimSpace(lastText)
+	if title == "" {
+		title = fmt.Sprintf("[图片] %d 张", len(images))
+	}
+	if titleErr := s.sessions.SetTitle(sessionID, truncateTitle(title, 30)); titleErr != nil {
 		log.Printf("[chat] set title: %v (session=%s)", titleErr, sessionID)
 	}
 
@@ -111,15 +141,62 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 }
 
 // normalizeMessages converts a legacy single-message request to the messages
-// array form.
+// array form. Top-level Images (sent alongside the legacy Message field) are
+// folded into the synthesized user message.
 func normalizeMessages(req domainchat.ChatRequest) []domainchat.Message {
 	if len(req.Messages) > 0 {
 		return req.Messages
 	}
-	if req.Message != "" {
-		return []domainchat.Message{{Role: "user", Content: req.Message}}
+	if req.Message != "" || len(req.Images) > 0 {
+		return []domainchat.Message{{Role: "user", Content: req.Message, Images: req.Images}}
 	}
 	return nil
+}
+
+// buildUserContent validates the image attachments and assembles the genai
+// user content: one text part (when non-empty) followed by one InlineData part
+// per image.
+func buildUserContent(text string, images []domainchat.ImagePart) (*genai.Content, error) {
+	decoded, err := validateImages(images)
+	if err != nil {
+		return nil, err
+	}
+	parts := make([]*genai.Part, 0, len(decoded)+1)
+	if strings.TrimSpace(text) != "" {
+		parts = append(parts, genai.NewPartFromText(text))
+	}
+	for i, img := range decoded {
+		parts = append(parts, genai.NewPartFromBytes(img, images[i].MimeType))
+	}
+	return &genai.Content{Role: "user", Parts: parts}, nil
+}
+
+// validateImages enforces the attachment limits and decodes each image's
+// base64 payload, returning the decoded byte slices in order.
+func validateImages(images []domainchat.ImagePart) ([][]byte, error) {
+	if len(images) > maxChatImages {
+		return nil, domainchat.ErrTooManyImages
+	}
+	decoded := make([][]byte, 0, len(images))
+	var total int
+	for _, img := range images {
+		if !allowedChatImageMimes[strings.ToLower(strings.TrimSpace(img.MimeType))] {
+			return nil, domainchat.ErrInvalidImage
+		}
+		data, derr := base64.StdEncoding.DecodeString(img.Data)
+		if derr != nil {
+			return nil, domainchat.ErrInvalidImage
+		}
+		if len(data) > maxChatImageBytes {
+			return nil, domainchat.ErrImageTooLarge
+		}
+		total += len(data)
+		if total > maxTotalImageBytes {
+			return nil, domainchat.ErrImageTooLarge
+		}
+		decoded = append(decoded, data)
+	}
+	return decoded, nil
 }
 
 // resolveSession validates or creates the session and returns (sessionID,
@@ -176,19 +253,19 @@ func buildState(userID, role, sessionID, kbID string) map[string]any {
 // Process handles a non-streaming chat request and returns the final
 // assistant content. Implements domain/chat.ChatService.
 func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userID, role string) (*domainchat.ChatResponse, error) {
-	rt, sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, content, _, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return nil, err
 	}
 
-	var content string
+	var assistantText string
 	cb := s.cbReg.GetOrCreate("chat")
 	if cErr := cb.Call(func() error {
-		text, rErr := s.runAndCollect(ctx, rt, userID, sessionID, lastMsg, runCfg)
+		text, rErr := s.runAndCollect(ctx, rt, userID, sessionID, content, runCfg)
 		if rErr != nil {
 			return rErr
 		}
-		content = text
+		assistantText = text
 		return nil
 	}); cErr != nil {
 		return nil, cErr
@@ -197,7 +274,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 	s.scheduleMemoryWrite(userID, sessionID)
 	return &domainchat.ChatResponse{
 		SessionID: sessionID,
-		Content:   content,
+		Content:   assistantText,
 		Usage:     map[string]int{},
 	}, nil
 }
@@ -206,7 +283,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 // Implements domain/chat.ChatService. The writer must implement
 // http.Flusher (gin and httptest.ResponseRecorder both do).
 func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID, role string, w http.ResponseWriter) error {
-	rt, sessionID, lastMsg, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, content, _, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return err
 	}
@@ -226,7 +303,7 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	fmt.Fprintf(w, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
-	for evt, rErr := range rt.Run(ctx, userID, sessionID, lastMsg, runCfg) {
+	for evt, rErr := range rt.RunContent(ctx, userID, sessionID, content, runCfg) {
 		if rErr != nil {
 			if isSessionPersistenceError(rErr) {
 				log.Printf("[chat] session persistence failed (response already delivered, ignoring): %v (session=%s)", rErr, sessionID)
@@ -291,9 +368,14 @@ func ChatEventsFromADKEvent(ev *session.Event) []domainchat.ChatEvent {
 }
 
 // ChatEventsFromParts converts ADK content parts to the canonical chat event
-// representation shared by streaming and history responses.
+// representation shared by streaming and history responses. Inline image
+// parts are converted to data URLs and grouped onto the text event of the
+// same message (or a standalone image event for image-only messages) so a
+// reloaded transcript renders the user message with its attachments intact.
 func ChatEventsFromParts(role, eventID, timestamp string, parts []*genai.Part) []domainchat.ChatEvent {
 	events := make([]domainchat.ChatEvent, 0, len(parts))
+	var imageDataURLs []string
+	var textIdx = -1
 	for _, p := range parts {
 		if p == nil {
 			continue
@@ -311,13 +393,28 @@ func ChatEventsFromParts(role, eventID, timestamp string, parts []*genai.Part) [
 				Name: p.FunctionResponse.Name, Result: p.FunctionResponse.Response,
 				Timestamp: timestamp,
 			})
+		case p.InlineData != nil && strings.HasPrefix(p.InlineData.MIMEType, "image/"):
+			b64 := base64.StdEncoding.EncodeToString(p.InlineData.Data)
+			imageDataURLs = append(imageDataURLs, fmt.Sprintf("data:%s;base64,%s", p.InlineData.MIMEType, b64))
 		case p.Text != "":
+			textIdx = len(events)
 			events = append(events, domainchat.ChatEvent{
 				EventID: eventID, Role: role, Type: "text",
 				Content: p.Text, Timestamp: timestamp,
 			})
 		}
 	}
+	if len(imageDataURLs) == 0 {
+		return events
+	}
+	if textIdx >= 0 {
+		events[textIdx].Images = imageDataURLs
+		return events
+	}
+	events = append(events, domainchat.ChatEvent{
+		EventID: eventID, Role: role, Type: "text", Content: "",
+		Images: imageDataURLs, Timestamp: timestamp,
+	})
 	return events
 }
 
@@ -340,10 +437,10 @@ func IsCompactionEvent(ev *session.Event) bool {
 
 // runAndCollect executes one ADK turn and returns the final assistant text.
 // Intermediate tool call/response events are consumed but not surfaced.
-// Delegates to Runtime.RunAndCollect (shared with the async executor, SPEC-063)
-// so real-time and async paths use identical collection semantics.
-func (s *Service) runAndCollect(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID, message string, runCfg adkruntime.RunConfig) (string, error) {
-	return rt.RunAndCollect(ctx, userID, sessionID, message, runCfg)
+// Delegates to Runtime.RunAndCollectContent (shared with the async executor,
+// SPEC-063) so real-time and async paths use identical collection semantics.
+func (s *Service) runAndCollect(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig) (string, error) {
+	return rt.RunAndCollectContent(ctx, userID, sessionID, content, runCfg)
 }
 
 // scheduleMemoryWrite invokes the memory hook asynchronously after the response.
@@ -369,14 +466,19 @@ func (s *Service) scheduleMemoryWrite(userID, sessionID string) {
 	}()
 }
 
-// lastUserMessage returns the content of the last user message.
-func lastUserMessage(messages []domainchat.Message) string {
+// lastUserMessage returns the content and image attachments of the last user
+// message. A message qualifies when its text is non-empty OR it carries
+// images (image-only messages are valid).
+func lastUserMessage(messages []domainchat.Message) (string, []domainchat.ImagePart) {
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" && strings.TrimSpace(messages[i].Content) != "" {
-			return messages[i].Content
+		if messages[i].Role != "user" {
+			continue
+		}
+		if strings.TrimSpace(messages[i].Content) != "" || len(messages[i].Images) > 0 {
+			return messages[i].Content, messages[i].Images
 		}
 	}
-	return ""
+	return "", nil
 }
 
 // isSessionPersistenceError reports whether err is a session-append failure

@@ -65,7 +65,10 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 func chatErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, domainchat.ErrMessagesRequired),
-		errors.Is(err, domainchat.ErrUserMessageRequired):
+		errors.Is(err, domainchat.ErrUserMessageRequired),
+		errors.Is(err, domainchat.ErrTooManyImages),
+		errors.Is(err, domainchat.ErrImageTooLarge),
+		errors.Is(err, domainchat.ErrInvalidImage):
 		return http.StatusBadRequest
 	case errors.Is(err, domainchat.ErrUnauthorizedSession):
 		return http.StatusUnauthorized

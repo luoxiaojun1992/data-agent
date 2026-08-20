@@ -20,7 +20,20 @@ interface Message {
   result?: unknown;
   toolCall?: { name: string; input: string; output: string };
   table?: { headers: string[]; rows: string[][] };
+  images?: string[]; // image data URLs attached to this message
 }
+
+// Image attachment pending send: base64 for the wire, dataUrl for preview.
+interface ChatAttachment {
+  name: string;
+  mimeType: string;
+  base64: string;
+  dataUrl: string;
+}
+
+// Chat image limits (mirrors backend): at most 5 images, 2MiB each.
+const MAX_CHAT_IMAGES = 5;
+const MAX_CHAT_IMAGE_BYTES = 2 * 1024 * 1024;
 
 type WireChatEvent = {
   type?: 'text' | 'tool_call' | 'tool_result';
@@ -32,8 +45,28 @@ type WireChatEvent = {
   result?: unknown;
   response?: unknown; // backwards compatibility with older servers
   timestamp?: string;
+  images?: string[];
   choices?: { delta?: { content?: string } }[];
 };
+
+// Read an image File into a pending attachment (base64 + preview data URL).
+function fileToAttachment(file: File): Promise<ChatAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const base64 = dataUrl.split(',')[1] || '';
+      resolve({
+        name: file.name || 'image',
+        mimeType: file.type || 'image/png',
+        base64,
+        dataUrl,
+      });
+    };
+    reader.onerror = () => reject(new Error('读取图片失败'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function normalizeChatMessage(raw: WireChatEvent): Message {
   const result = raw.result !== undefined ? raw.result : raw.response;
@@ -45,6 +78,7 @@ function normalizeChatMessage(raw: WireChatEvent): Message {
     name: raw.name,
     args: raw.args,
     result,
+    images: raw.images || [],
     timestamp: new Date(raw.timestamp || Date.now()),
   };
 }
@@ -52,11 +86,16 @@ function normalizeChatMessage(raw: WireChatEvent): Message {
 /** Apply one canonical event exactly as the history endpoint does. */
 function appendChatEvent(messages: Message[], raw: WireChatEvent): Message[] {
   const message = normalizeChatMessage(raw);
-  if (message.type === 'text' && !message.content) return messages;
+  const hasImages = (message.images?.length || 0) > 0;
+  if (message.type === 'text' && !message.content && !hasImages) return messages;
 
   const last = messages[messages.length - 1];
   if (message.type === 'text' && last && last.type === 'text' && last.role === message.role) {
-    return [...messages.slice(0, -1), { ...last, content: last.content + message.content }];
+    return [...messages.slice(0, -1), {
+      ...last,
+      content: last.content + message.content,
+      images: [...(last.images || []), ...(message.images || [])],
+    }];
   }
   return [...messages, message];
 }
@@ -131,6 +170,9 @@ export default function ChatPage() {
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]); // image attachments (max 5)
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const [attachError, setAttachError] = useState('');
   const pendingEventsRef = useRef<WireChatEvent[]>([]);
   const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -286,11 +328,65 @@ export default function ChatPage() {
     setEnhancing(false);
   };
 
+  // Add image attachments from a FileList, enforcing the 5-image / 2MiB limits.
+  const addAttachments = async (files: File[]) => {
+    const images = files.filter((f) => f.type.startsWith('image/'));
+    if (images.length === 0) return;
+    if (attachments.length + images.length > MAX_CHAT_IMAGES) {
+      setAttachError(`最多 ${MAX_CHAT_IMAGES} 张图片`);
+      setTimeout(() => setAttachError(''), 3000);
+      return;
+    }
+    for (const f of images) {
+      if (f.size > MAX_CHAT_IMAGE_BYTES) {
+        setAttachError(`图片 ${f.name} 超过 2MB 限制`);
+        setTimeout(() => setAttachError(''), 3000);
+        continue;
+      }
+      try {
+        const att = await fileToAttachment(f);
+        setAttachments((prev) => (prev.length >= MAX_CHAT_IMAGES ? prev : [...prev, att]));
+      } catch {
+        setAttachError('读取图片失败');
+        setTimeout(() => setAttachError(''), 3000);
+      }
+    }
+  };
+
+  const handleAttachClick = () => attachmentInputRef.current?.click();
+
+  const handleAttachChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addAttachments(Array.from(e.target.files));
+    e.target.value = ''; // allow re-selecting the same file
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.files || []);
+    if (files.length > 0) {
+      e.preventDefault();
+      addAttachments(files);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const sendMessage = async () => {
-    if (!input.trim() || streaming) return;
-    const userMsg: Message = { role: 'user', content: input, type: 'text', timestamp: new Date() };
+    const hasInput = !!input.trim();
+    if ((!hasInput && attachments.length === 0) || streaming) return;
+    const sendImages = attachments.map((a) => ({ data: a.base64, mime_type: a.mimeType }));
+    const userMsg: Message = {
+      role: 'user',
+      content: input,
+      type: 'text',
+      timestamp: new Date(),
+      images: attachments.map((a) => a.dataUrl),
+    };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setAttachments([]);
+    setAttachError('');
     setStreaming(true);
     pendingEventsRef.current = [];
 
@@ -327,7 +423,7 @@ export default function ChatPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel }),
+        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel, images: sendImages }),
       });
       if (!res.ok) throw new Error('Chat request failed');
       const reader = res.body?.getReader();
@@ -491,7 +587,22 @@ export default function ChatPage() {
                   ) : msg.role === 'assistant' ? (
                     <ChatContent content={msg.content} copyMsg={copyMsg} setCopyMsg={setCopyMsg} />
                   ) : (
-                    <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                    <>
+                      {msg.images && msg.images.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {msg.images.map((src, idx) => (
+                            <img
+                              key={idx}
+                              src={src}
+                              alt={`附件 ${idx + 1}`}
+                              className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-white/20"
+                              data-testid={`chat-msg-image-${i}-${idx}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                    </>
                   )}
                   {streaming && i === messages.length - 1 && msg.role === 'assistant' && !msg.content && (
                     <span className="text-sm text-[var(--text-secondary)]" data-testid="chat-loading-indicator">...</span>
@@ -542,7 +653,7 @@ export default function ChatPage() {
           )}
 
           {/* Prompt modal button + Input */}
-          <div className="glass p-4">
+          <div className="glass p-4" onPaste={handlePaste}>
             <div className="flex items-center gap-2 mb-2">
               <button
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
@@ -556,12 +667,52 @@ export default function ChatPage() {
                 disabled={enhancing}
               >{enhancing ? '⏳ 增强中...' : '✨ 增强'}</button>
             </div>
+
+            {/* Image attachments preview */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2" data-testid="chat-attachments">
+                {attachments.map((att, idx) => (
+                  <div key={idx} className="relative" data-testid={`chat-attachment-${idx}`}>
+                    <img
+                      src={att.dataUrl}
+                      alt={att.name}
+                      className="w-16 h-16 rounded-lg object-cover border border-white/20"
+                    />
+                    <button
+                      onClick={() => removeAttachment(idx)}
+                      title="移除图片"
+                      data-testid={`chat-attachment-remove-${idx}`}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {attachError && (
+              <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-attach-error">{attachError}</p>
+            )}
             <div className="flex gap-3">
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                data-testid="chat-attach-input"
+                onChange={handleAttachChange}
+              />
+              <button
+                onClick={handleAttachClick}
+                disabled={streaming || attachments.length >= MAX_CHAT_IMAGES}
+                title={attachments.length >= MAX_CHAT_IMAGES ? `最多 ${MAX_CHAT_IMAGES} 张图片` : '添加图片（最多 5 张，可粘贴）'}
+                className="px-3 py-2 rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors self-end"
+                data-testid="chat-attach-btn"
+              >📎</button>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入你的数据分析需求..."
+                placeholder="输入你的数据分析需求...（支持粘贴图片，最多 5 张）"
                 rows={2}
                 className="flex-1 px-4 py-3 rounded-xl bg-transparent border-0 text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none"
                 data-testid="chat-input"
@@ -569,7 +720,7 @@ export default function ChatPage() {
               />
               <button
                 onClick={sendMessage}
-                disabled={streaming || !input.trim()}
+                disabled={streaming || (!input.trim() && attachments.length === 0)}
                 className="px-6 py-2 bg-[var(--accent)] text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all self-end"
                 data-testid="chat-send-btn"
               >{streaming ? '发送中...' : '发送'}</button>

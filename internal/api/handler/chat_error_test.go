@@ -186,3 +186,24 @@ func TestRegisterChatRoutes(t *testing.T) {
 		t.Errorf("expected session id in body, got %s", w.Body.String())
 	}
 }
+
+// TestChatHandler_HandleChat_Process_ErrTooManyImages verifies that image
+// validation errors map to HTTP 400.
+func TestChatHandler_HandleChat_Process_ErrTooManyImages(t *testing.T) {
+	svc := chatmocks.NewChatService(t)
+	svc.On("Process", mock.Anything, mock.Anything, "u1", "admin").
+		Return((*domainchat.ChatResponse)(nil), domainchat.ErrTooManyImages)
+	h := NewChatHandler(svc)
+
+	c, w := newChatGinContext("POST", "/chat", `{"message":"hi","images":[{"data":"x","mime_type":"image/png"}]}`)
+	c.Set("user_id", "u1")
+	c.Set("role", "admin")
+	h.HandleChat(c)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), domainchat.ErrTooManyImages.Error()) {
+		t.Errorf("expected error body to contain %q, got %s",
+			domainchat.ErrTooManyImages.Error(), w.Body.String())
+	}
+}

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"net/http/httptest"
@@ -344,17 +345,35 @@ func TestLastUserMessage(t *testing.T) {
 		{Role: "assistant", Content: "reply"},
 		{Role: "user", Content: "second"},
 	}
-	if got := lastUserMessage(msgs); got != "second" {
+	if got, _ := lastUserMessage(msgs); got != "second" {
 		t.Errorf("lastUserMessage = %q", got)
 	}
-	if got := lastUserMessage([]domainchat.Message{{Role: "assistant", Content: "x"}}); got != "" {
+	if got, _ := lastUserMessage([]domainchat.Message{{Role: "assistant", Content: "x"}}); got != "" {
 		t.Errorf("no user message = %q", got)
 	}
-	if got := lastUserMessage([]domainchat.Message{{Role: "user", Content: "  "}}); got != "" {
+	if got, _ := lastUserMessage([]domainchat.Message{{Role: "user", Content: "  "}}); got != "" {
 		t.Errorf("blank user message = %q", got)
 	}
-	if got := lastUserMessage(nil); got != "" {
+	if got, _ := lastUserMessage(nil); got != "" {
 		t.Errorf("nil messages = %q", got)
+	}
+}
+
+func TestLastUserMessage_WithImages(t *testing.T) {
+	img := domainchat.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
+	msgs := []domainchat.Message{
+		{Role: "user", Content: "first"},
+		{Role: "user", Content: "", Images: []domainchat.ImagePart{img}},
+	}
+	text, images := lastUserMessage(msgs)
+	if text != "" || len(images) != 1 {
+		t.Fatalf("image-only message: text=%q images=%d", text, len(images))
+	}
+	// A message with text + images returns both.
+	msgs = []domainchat.Message{{Role: "user", Content: "看这张图", Images: []domainchat.ImagePart{img, img}}}
+	text, images = lastUserMessage(msgs)
+	if text != "看这张图" || len(images) != 2 {
+		t.Fatalf("text+images message: text=%q images=%d", text, len(images))
 	}
 }
 
@@ -776,5 +795,153 @@ func TestIsCompactionEvent(t *testing.T) {
 	}
 	if IsCompactionEvent(&adksession.Event{Author: "data_agent"}) {
 		t.Error("normal agent event must not be filtered")
+	}
+}
+
+// ── Chat image attachments ──
+
+func TestValidateImages(t *testing.T) {
+	small := "aGVsbG8=" // "hello" (5 bytes)
+	big := strings.Repeat("A", maxChatImageBytes*2) // decodes to >2MiB
+	tests := []struct {
+		name    string
+		images  []domainchat.ImagePart
+		wantErr error
+	}{
+		{"too many", []domainchat.ImagePart{
+			{Data: small, MimeType: "image/png"}, {Data: small, MimeType: "image/png"},
+			{Data: small, MimeType: "image/png"}, {Data: small, MimeType: "image/png"},
+			{Data: small, MimeType: "image/png"}, {Data: small, MimeType: "image/png"},
+		}, domainchat.ErrTooManyImages},
+		{"unsupported mime", []domainchat.ImagePart{{Data: small, MimeType: "image/tiff"}}, domainchat.ErrInvalidImage},
+		{"bad base64", []domainchat.ImagePart{{Data: "not-base64!!!", MimeType: "image/png"}}, domainchat.ErrInvalidImage},
+		{"single too large", []domainchat.ImagePart{{Data: big, MimeType: "image/png"}}, domainchat.ErrImageTooLarge},
+		{"total too large", nil, domainchat.ErrImageTooLarge},
+		{"ok", []domainchat.ImagePart{
+			{Data: small, MimeType: "image/png"},
+			{Data: "aGVsbG8=", MimeType: "image/jpeg"},
+		}, nil},
+	}
+	// total too large: five 1.2MiB images (each under per-image cap)
+	mid := strings.Repeat("A", 1200*1024*4/3+4) // base64 of ~1.2MiB
+	for i := 0; i < len(tests); i++ {
+		if tests[i].name == "total too large" {
+			for j := 0; j < 5; j++ {
+				tests[i].images = append(tests[i].images, domainchat.ImagePart{Data: mid, MimeType: "image/png"})
+			}
+		}
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := validateImages(tt.images)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("expected ok, got %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("expected %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestBuildUserContent(t *testing.T) {
+	img := domainchat.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
+	// text + image: parts = [text, inline image]
+	c, err := buildUserContent("看这张图", []domainchat.ImagePart{img, img})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if c.Role != "user" || len(c.Parts) != 3 {
+		t.Fatalf("role=%q parts=%d", c.Role, len(c.Parts))
+	}
+	if c.Parts[0].Text != "看这张图" || c.Parts[1].InlineData == nil || c.Parts[2].InlineData == nil {
+		t.Fatalf("unexpected parts: %+v", c.Parts)
+	}
+	if c.Parts[1].InlineData.MIMEType != "image/png" || string(c.Parts[1].InlineData.Data) != "hello" {
+		t.Fatalf("bad inline data: %+v", c.Parts[1].InlineData)
+	}
+	// image-only: parts = [inline image]
+	c, err = buildUserContent("", []domainchat.ImagePart{img})
+	if err != nil {
+		t.Fatalf("image-only build: %v", err)
+	}
+	if len(c.Parts) != 1 || c.Parts[0].InlineData == nil {
+		t.Fatalf("image-only parts: %+v", c.Parts)
+	}
+	// validation error propagates
+	if _, err := buildUserContent("x", []domainchat.ImagePart{{Data: "!!!", MimeType: "image/png"}}); !errors.Is(err, domainchat.ErrInvalidImage) {
+		t.Fatalf("expected ErrInvalidImage, got %v", err)
+	}
+}
+
+func TestChatEventsFromParts_WithImages(t *testing.T) {
+	imgPart := genai.NewPartFromBytes([]byte("pixel"), "image/png")
+	// text + image → one text event carrying the image data URL
+	events := ChatEventsFromParts("user", "e1", "2026-01-01T00:00:00Z",
+		[]*genai.Part{genai.NewPartFromText("看这张图"), imgPart})
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Type != "text" || events[0].Content != "看这张图" || len(events[0].Images) != 1 {
+		t.Fatalf("unexpected event: %+v", events[0])
+	}
+	if !strings.HasPrefix(events[0].Images[0], "data:image/png;base64,") {
+		t.Fatalf("bad data url: %s", events[0].Images[0])
+	}
+	// image-only → text event with empty content + images
+	events = ChatEventsFromParts("user", "e2", "2026-01-01T00:00:00Z", []*genai.Part{imgPart})
+	if len(events) != 1 || events[0].Content != "" || len(events[0].Images) != 1 {
+		t.Fatalf("image-only event: %+v", events)
+	}
+	// tool parts are unaffected and images still attach to the text part
+	events = ChatEventsFromParts("assistant", "e3", "2026-01-01T00:00:00Z",
+		[]*genai.Part{genai.NewPartFromText("answer"), &genai.Part{FunctionCall: &genai.FunctionCall{Name: "sql_executor", Args: map[string]any{}}}})
+	if len(events) != 2 || events[1].Type != "tool_call" {
+		t.Fatalf("tool event handling broken: %+v", events)
+	}
+}
+
+// TestProcess_ImageValidationError verifies image validation failures surface
+// as domain errors before any model call.
+func TestProcess_ImageValidationError(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "ok"})
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "m1"}, nil)
+
+	req := domainchat.ChatRequest{
+		Message: "hi",
+		Images: []domainchat.ImagePart{
+			{Data: "x", MimeType: "image/png"}, {Data: "x", MimeType: "image/png"},
+			{Data: "x", MimeType: "image/png"}, {Data: "x", MimeType: "image/png"},
+			{Data: "x", MimeType: "image/png"}, {Data: "x", MimeType: "image/png"},
+		},
+	}
+	if _, err := svc.Process(context.Background(), req, "u1", "user"); !errors.Is(err, domainchat.ErrTooManyImages) {
+		t.Fatalf("expected ErrTooManyImages, got %v", err)
+	}
+}
+
+// TestProcess_WithImages verifies a message carrying valid image attachments
+// runs end-to-end (validation → content build → runtime → response).
+func TestProcess_WithImages(t *testing.T) {
+	svc := newTestService(t, &fakeLLM{text: "收到图片"})
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patchSessionCreate(patches, svc, &domainchat.Session{ID: "s1", UserID: "u1", ModelID: "m1"}, nil)
+
+	req := domainchat.ChatRequest{
+		Message: "看这张图",
+		Images:  []domainchat.ImagePart{{Data: "aGVsbG8=", MimeType: "image/png"}},
+	}
+	resp, err := svc.Process(context.Background(), req, "u1", "user")
+	if err != nil {
+		t.Fatalf("Process with image failed: %v", err)
+	}
+	if resp.Content != "收到图片" {
+		t.Fatalf("content = %q", resp.Content)
 	}
 }

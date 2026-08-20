@@ -18,4 +18,13 @@ var (
 	ErrSessionCreateFailed = errors.New("failed to create session")
 	// ErrADKSessionInitFailed indicates the ADK session could not be initialized.
 	ErrADKSessionInitFailed = errors.New("failed to init agent session")
+	// ErrTooManyImages indicates more than the allowed number of image
+	// attachments were sent in one message (max 5).
+	ErrTooManyImages = errors.New("at most 5 images per message")
+	// ErrImageTooLarge indicates an image exceeds the per-image or per-message
+	// size limit.
+	ErrImageTooLarge = errors.New("image too large")
+	// ErrInvalidImage indicates an image failed base64 decoding or has an
+	// unsupported MIME type.
+	ErrInvalidImage = errors.New("invalid image data or unsupported image type")
 )

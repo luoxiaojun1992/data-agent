@@ -132,7 +132,13 @@ type RunConfig struct {
 
 // Run executes one conversation turn and returns the event stream.
 func (rt *Runtime) Run(ctx context.Context, userID, sessionID, message string, rc RunConfig) iter.Seq2[*session.Event, error] {
-	msg := genai.NewContentFromText(message, "user")
+	return rt.RunContent(ctx, userID, sessionID, genai.NewContentFromText(message, "user"), rc)
+}
+
+// RunContent executes one conversation turn with a caller-built user content
+// (text plus optional image parts) and returns the event stream. Chat image
+// attachments flow through this path; the string-only Run above delegates here.
+func (rt *Runtime) RunContent(ctx context.Context, userID, sessionID string, content *genai.Content, rc RunConfig) iter.Seq2[*session.Event, error] {
 	agentCfg := agent.RunConfig{StreamingMode: agent.StreamingModeNone}
 	if rc.Streaming {
 		agentCfg.StreamingMode = agent.StreamingModeSSE
@@ -142,7 +148,7 @@ func (rt *Runtime) Run(ctx context.Context, userID, sessionID, message string, r
 	if len(rc.StateDelta) > 0 {
 		opts = append(opts, runner.WithStateDelta(rc.StateDelta))
 	}
-	return rt.runner.Run(ctx, userID, sessionID, msg, agentCfg, opts...)
+	return rt.runner.Run(ctx, userID, sessionID, content, agentCfg, opts...)
 }
 
 // RunAndCollect executes one ADK turn and returns the final assistant text.
@@ -154,9 +160,15 @@ func (rt *Runtime) Run(ctx context.Context, userID, sessionID, message string, r
 // (SPEC-063) so both paths use identical collection logic — async tasks execute
 // with the same semantics as a real-time chat turn.
 func (rt *Runtime) RunAndCollect(ctx context.Context, userID, sessionID, message string, rc RunConfig) (string, error) {
+	return rt.RunAndCollectContent(ctx, userID, sessionID, genai.NewContentFromText(message, "user"), rc)
+}
+
+// RunAndCollectContent is the content-based counterpart of RunAndCollect for
+// user messages carrying image parts.
+func (rt *Runtime) RunAndCollectContent(ctx context.Context, userID, sessionID string, content *genai.Content, rc RunConfig) (string, error) {
 	var finalText strings.Builder
 	runErr := error(nil)
-	for evt, err := range rt.Run(ctx, userID, sessionID, message, rc) {
+	for evt, err := range rt.RunContent(ctx, userID, sessionID, content, rc) {
 		if err != nil {
 			runErr = err
 			break

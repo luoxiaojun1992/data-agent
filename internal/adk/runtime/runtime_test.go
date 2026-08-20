@@ -130,3 +130,21 @@ func TestRunAndCollect_StateDeltaPropagated(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ok", text)
 }
+
+// TestRunAndCollectContent_WithImagePart verifies the content-based entry
+// point accepts a caller-built user content (text + inline image) and returns
+// the final assistant text.
+func TestRunAndCollectContent_WithImagePart(t *testing.T) {
+	rt := newTestRuntime(t, &collectLLM{text: "看到了图片"})
+
+	content := &genai.Content{
+		Role: "user",
+		Parts: []*genai.Part{
+			genai.NewPartFromText("描述这张图"),
+			genai.NewPartFromBytes([]byte("fake-pixels"), "image/png"),
+		},
+	}
+	text, err := rt.RunAndCollectContent(context.Background(), "u1", "s1", content, RunConfig{})
+	require.NoError(t, err)
+	assert.Equal(t, "看到了图片", text)
+}
