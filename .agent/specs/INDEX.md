@@ -78,6 +78,7 @@
 | SPEC-062 | 多模型配置与 Session 绑定模型（per-model Runtime 注册表 + 模型选择器） | **P15** | [spec-062-multi-model-session-binding.md](spec-062-multi-model-session-binding.md) | ✅ 已实现 |
 | SPEC-063 | 异步/定时 Agent 任务执行器实现（RFC worker→AgentExecutor→Runtime.Run） | **P15** | [spec-063-async-scheduled-agent-executor.md](spec-063-async-scheduled-agent-executor.md) | 📐 设计中 |
 | SPEC-064 | RBAC 角色权限管理系统（角色层级、权限管控、用户-角色关联、侧边栏权限化） | **P20** | [spec-064-rbac-implementation.md](spec-064-rbac-implementation.md) | 📐 设计中 |
+| SPEC-065 | 配置存储拆分（system_configs 去 namespace；skill/模型配置独立集合） | **P15** | [spec-065-config-storage-split.md](spec-065-config-storage-split.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -230,4 +231,11 @@ SPEC-006│               │
                     用户关联多个 RBAC 角色(≤10)，权限三步 Go 查询;
                     侧边栏权限化; 旧 role 体系删除;
                     RequirePermission 闭包注入 rbac.Service)
+
+[P15] SPEC-065 ─── 配置存储拆分
+                   (system_configs 去 namespace 仅存系统配置;
+                    skill → skill_configs; 模型配置 → model_configs;
+                    SysConfigRepository 接口去 namespace; ModelConfigRepository 落地;
+                    迁移脚本幂等 + _bak 备份回滚;
+                    依赖 SPEC-061/062 已实现)
 ```
