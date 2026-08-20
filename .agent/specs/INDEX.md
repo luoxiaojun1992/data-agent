@@ -78,6 +78,7 @@
 | SPEC-062 | 多模型配置与 Session 绑定模型（per-model Runtime 注册表 + 模型选择器） | **P15** | [spec-062-multi-model-session-binding.md](spec-062-multi-model-session-binding.md) | ✅ 已实现 |
 | SPEC-063 | 异步/定时 Agent 任务执行器实现（RFC worker→AgentExecutor→Runtime.Run） | **P15** | [spec-063-async-scheduled-agent-executor.md](spec-063-async-scheduled-agent-executor.md) | 📐 设计中 |
 | SPEC-064 | RBAC 角色权限管理系统（角色层级、权限管控、用户-角色关联、侧边栏权限化） | **P20** | [spec-064-rbac-implementation.md](spec-064-rbac-implementation.md) | 📐 设计中 |
+| SPEC-065 | API 注册与 MCP 工具集成（OpenAPI 上传 → 注册外部 API → external_api_search/summary/method/call 工具） | **P20** | [spec-065-api-collection-mcp-tools.md](spec-065-api-collection-mcp-tools.md) | ✅ 已实现 |
 | SPEC-066 | 配置存储拆分（system_configs 去 namespace；模型配置每模型一条文档+DB分页；model_defaults 独立集合；skill 独立集合） | **P15** | [spec-066-config-storage-split.md](spec-066-config-storage-split.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
@@ -231,6 +232,11 @@ SPEC-006│               │
                     用户关联多个 RBAC 角色(≤10)，权限三步 Go 查询;
                     侧边栏权限化; 旧 role 体系删除;
                     RequirePermission 闭包注入 rbac.Service)
+
+[P20] SPEC-065 ─── API 注册与 MCP 工具集成
+                   (OpenAPI 上传注册外部 HTTP API 为工具函数;
+                    external_api_search/summary/method/call 四工具;
+                    审核流 pending/approved/rejected; 依赖 SPEC-064 RBAC 权限)
 
 [P15] SPEC-066 ─── 配置存储拆分
                    (system_configs 去 namespace 仅存系统配置;
