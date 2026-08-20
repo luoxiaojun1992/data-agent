@@ -1,13 +1,15 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/consts"
-	agentlogic "github.com/luoxiaojun1992/data-agent/internal/logic/agent"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	agentlogic "github.com/luoxiaojun1992/data-agent/internal/logic/agent"
 )
 
 // ToolLister provides the names of registered ADK tools for the skills API.
@@ -58,6 +60,12 @@ func (h *AgentHandler) CreateAgentTask(c *gin.Context) {
 	userID := c.GetString("user_id")
 	resp, err := h.orch.CreateAgentTask(c.Request.Context(), userID, req)
 	if err != nil {
+		if errors.Is(err, domainchat.ErrTooManyImages) ||
+			errors.Is(err, domainchat.ErrImageTooLarge) ||
+			errors.Is(err, domainchat.ErrInvalidImage) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -77,11 +85,11 @@ func (h *AgentHandler) GetAgentTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"task_id":    t.ID,
-		"user_id":    t.UserID,
-		"title":      t.Title,
-		"type":       t.Type,
-		"created_at": t.CreatedAt,
+		"task_id":     t.ID,
+		"user_id":     t.UserID,
+		"title":       t.Title,
+		"type":        t.Type,
+		"created_at":  t.CreatedAt,
 		"last_run_at": t.LastRunAt,
 	})
 }

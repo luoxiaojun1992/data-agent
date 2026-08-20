@@ -16,10 +16,12 @@ import (
 	"strings"
 
 	"google.golang.org/adk/session"
+	"google.golang.org/genai"
 
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
-	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/notification"
 )
 
@@ -40,11 +42,11 @@ import (
 // structurally (duck typing). The compile-time assertion lives in wire.go
 // where both packages are in scope.
 type AgentExecutor struct {
-	registry    *adkruntime.Registry                        // SPEC-062: per-model Runtime resolution
-	adkSessions  session.Service                             // create ADK session + inject identity state
-	runs        domaintask.TaskRunService                    // run status/result/error write-back
-	notif       notification.NotificationService             // completion/failure notification
-	cbReg       *security.CircuitBreakerRegistry             // protects Runtime.Run from cascading failures
+	registry    *adkruntime.Registry             // SPEC-062: per-model Runtime resolution
+	adkSessions session.Service                  // create ADK session + inject identity state
+	runs        domaintask.TaskRunService        // run status/result/error write-back
+	notif       notification.NotificationService // completion/failure notification
+	cbReg       *security.CircuitBreakerRegistry // protects Runtime.Run from cascading failures
 }
 
 // NewAgentExecutor wires the executor with its dependencies. All are required
@@ -57,11 +59,11 @@ func NewAgentExecutor(
 	cbReg *security.CircuitBreakerRegistry,
 ) *AgentExecutor {
 	return &AgentExecutor{
-		registry:   registry,
+		registry:    registry,
 		adkSessions: adkSessions,
-		runs:       runs,
-		notif:      notif,
-		cbReg:      cbReg,
+		runs:        runs,
+		notif:       notif,
+		cbReg:       cbReg,
 	}
 }
 
@@ -129,10 +131,16 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	}
 
 	// 4. First LLM run.
-	message := deriveUserMessageFromParams(run.Params)
+	message, images := deriveUserMessageFromParams(run.Params)
+	firstUserContent, cErr := buildTaskContent(message, images)
+	if cErr != nil {
+		wrapped := fmt.Errorf("invalid task image attachments: %w", cErr)
+		e.failRun(run, wrapped)
+		return wrapped
+	}
 	runCfg := adkruntime.RunConfig{StateDelta: state}
 	var firstContent string
-	firstErr := e.runProtected(ctx, rt, run, runSessionID, message, runCfg, &firstContent)
+	firstErr := e.runProtected(ctx, rt, run, runSessionID, firstUserContent, runCfg, &firstContent)
 
 	// 5. Respect cancellation.
 	if e.wasRunCancelled(run.ID) {
@@ -158,7 +166,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 		"Do NOT just write a text response — you must invoke the tool."
 
 	var retryContent string
-	retryErr := e.runProtected(ctx, rt, run, runSessionID, retryPrompt, runCfg, &retryContent)
+	retryErr := e.runProtected(ctx, rt, run, runSessionID, genai.NewContentFromText(retryPrompt, "user"), runCfg, &retryContent)
 	if e.wasRunCancelled(run.ID) {
 		return retryErr
 	}
@@ -180,13 +188,13 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	return failErr
 }
 
-// runProtected invokes Runtime.RunAndCollect inside the "agent" circuit
+// runProtected invokes Runtime.RunAndCollectContent inside the "agent" circuit
 // breaker, storing the final text in *content. When no breaker registry is
 // wired (defensive nil), the call runs unprotected.
-func (e *AgentExecutor) runProtected(ctx context.Context, rt *adkruntime.Runtime, run *domaintask.TaskRun, sessionID, message string, runCfg adkruntime.RunConfig, content *string) error {
+func (e *AgentExecutor) runProtected(ctx context.Context, rt *adkruntime.Runtime, run *domaintask.TaskRun, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, out *string) error {
 	runFn := func() error {
-		text, err := rt.RunAndCollect(ctx, run.UserID, sessionID, message, runCfg)
-		*content = text
+		text, err := rt.RunAndCollectContent(ctx, run.UserID, sessionID, content, runCfg)
+		*out = text
 		return err
 	}
 	if e.cbReg == nil {
@@ -240,17 +248,47 @@ func buildRunState(run *domaintask.TaskRun) map[string]any {
 	return state
 }
 
-// deriveUserMessageFromParams extracts the user message from Params.
-func deriveUserMessageFromParams(params map[string]interface{}) string {
+// deriveUserMessageFromParams extracts the user message (text + image
+// attachments) from Params. Images are recovered from the JSON string stored
+// under "images" (see domainchat.EncodeImages); a malformed value is ignored
+// so a corrupt task never blocks execution of its text.
+func deriveUserMessageFromParams(params map[string]interface{}) (string, []domainchat.ImagePart) {
+	var text string
 	for _, key := range []string{"query", "message", "prompt", "description"} {
 		if v, ok := params[key].(string); ok && strings.TrimSpace(v) != "" {
-			return v
+			text = v
+			break
 		}
 	}
-	if v, ok := params["title"].(string); ok && strings.TrimSpace(v) != "" {
-		return v
+	if text == "" {
+		if v, ok := params["title"].(string); ok && strings.TrimSpace(v) != "" {
+			text = v
+		}
 	}
-	return ""
+	var images []domainchat.ImagePart
+	if raw, ok := params["images"].(string); ok {
+		if decoded, dErr := domainchat.DecodeImages(raw); dErr == nil {
+			images = decoded
+		}
+	}
+	return text, images
+}
+
+// buildTaskContent assembles the genai user content (text + inline image
+// parts) for an async task turn, mirroring the chat path's content building.
+func buildTaskContent(text string, images []domainchat.ImagePart) (*genai.Content, error) {
+	decoded, err := domainchat.ValidateImages(images)
+	if err != nil {
+		return nil, err
+	}
+	parts := make([]*genai.Part, 0, len(decoded)+1)
+	if strings.TrimSpace(text) != "" {
+		parts = append(parts, genai.NewPartFromText(text))
+	}
+	for i, b := range decoded {
+		parts = append(parts, genai.NewPartFromBytes(b, images[i].MimeType))
+	}
+	return &genai.Content{Role: "user", Parts: parts}, nil
 }
 
 // truncateForError clamps text used in failure error messages.

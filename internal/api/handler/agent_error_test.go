@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
@@ -60,8 +61,8 @@ func TestAgentHandler_CreateAgentTask_TaskCreateError(t *testing.T) {
 	// SPEC-063: the orchestrator now enriches Params with the title/messages,
 	// so the params arg is matched with mock.Anything (the error path, not the
 	// params shape, is what this test verifies).
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, mock.Anything).
-		Return((*domaintask.Task)(nil), errStr("task create failed"))
+	tasks.On("CreateTask", "u1", "agent", []string{}, mock.Anything, "", "", "", (*time.Time)(nil)).
+		Return((*domaintask.Task)(nil), (*domaintask.TaskRun)(nil), errStr("task create failed"))
 	orch := agentlogic.NewOrchestrator(sessions, tasks, nil)
 	h := NewAgentHandler(orch, tasks, nil)
 

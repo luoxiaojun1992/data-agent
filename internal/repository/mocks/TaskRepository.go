@@ -168,6 +168,79 @@ func (_m *TaskRepository) UpdateLastRun(ctx context.Context, id string, runAt ti
 	return r0
 }
 
+// ListScheduled provides a mock function with given fields: ctx, skip, limit, now
+func (_m *TaskRepository) ListScheduled(ctx context.Context, skip int64, limit int64, now time.Time) ([]*task.Task, int64, error) {
+	ret := _m.Called(ctx, skip, limit, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListScheduled")
+	}
+
+	var r0 []*task.Task
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, time.Time) ([]*task.Task, int64, error)); ok {
+		return rf(ctx, skip, limit, now)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, time.Time) []*task.Task); ok {
+		r0 = rf(ctx, skip, limit, now)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*task.Task)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, time.Time) int64); ok {
+		r1 = rf(ctx, skip, limit, now)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, int64, int64, time.Time) error); ok {
+		r2 = rf(ctx, skip, limit, now)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// MarkScheduledDone provides a mock function with given fields: ctx, id
+func (_m *TaskRepository) MarkScheduledDone(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkScheduledDone")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// SetScheduledEnabled provides a mock function with given fields: ctx, id, enabled
+func (_m *TaskRepository) SetScheduledEnabled(ctx context.Context, id string, enabled bool) error {
+	ret := _m.Called(ctx, id, enabled)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetScheduledEnabled")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = rf(ctx, id, enabled)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // NewTaskRepository creates a new instance of TaskRepository. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewTaskRepository(t interface {

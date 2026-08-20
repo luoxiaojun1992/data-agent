@@ -743,7 +743,7 @@ func TestChatEventsFromADKEvent_FiltersCompaction(t *testing.T) {
 	}
 	filtered := ChatEventsFromADKEvent(&adksession.Event{Author: "data_agent", LLMResponse: model.LLMResponse{
 		CustomMetadata: map[string]any{"compaction": true},
-		Content:       genai.NewContentFromText("summary", "model"),
+		Content:        genai.NewContentFromText("summary", "model"),
 	}})
 	if filtered != nil {
 		t.Errorf("custommetadata compaction should be filtered, got %+v", filtered)
@@ -799,53 +799,6 @@ func TestIsCompactionEvent(t *testing.T) {
 }
 
 // ── Chat image attachments ──
-
-func TestValidateImages(t *testing.T) {
-	small := "aGVsbG8=" // "hello" (5 bytes)
-	big := strings.Repeat("A", maxChatImageBytes*2) // decodes to >2MiB
-	tests := []struct {
-		name    string
-		images  []domainchat.ImagePart
-		wantErr error
-	}{
-		{"too many", []domainchat.ImagePart{
-			{Data: small, MimeType: "image/png"}, {Data: small, MimeType: "image/png"},
-			{Data: small, MimeType: "image/png"}, {Data: small, MimeType: "image/png"},
-			{Data: small, MimeType: "image/png"}, {Data: small, MimeType: "image/png"},
-		}, domainchat.ErrTooManyImages},
-		{"unsupported mime", []domainchat.ImagePart{{Data: small, MimeType: "image/tiff"}}, domainchat.ErrInvalidImage},
-		{"bad base64", []domainchat.ImagePart{{Data: "not-base64!!!", MimeType: "image/png"}}, domainchat.ErrInvalidImage},
-		{"single too large", []domainchat.ImagePart{{Data: big, MimeType: "image/png"}}, domainchat.ErrImageTooLarge},
-		{"total too large", nil, domainchat.ErrImageTooLarge},
-		{"ok", []domainchat.ImagePart{
-			{Data: small, MimeType: "image/png"},
-			{Data: "aGVsbG8=", MimeType: "image/jpeg"},
-		}, nil},
-	}
-	// total too large: five 1.2MiB images (each under per-image cap)
-	mid := strings.Repeat("A", 1200*1024*4/3+4) // base64 of ~1.2MiB
-	for i := 0; i < len(tests); i++ {
-		if tests[i].name == "total too large" {
-			for j := 0; j < 5; j++ {
-				tests[i].images = append(tests[i].images, domainchat.ImagePart{Data: mid, MimeType: "image/png"})
-			}
-		}
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := validateImages(tt.images)
-			if tt.wantErr == nil {
-				if err != nil {
-					t.Fatalf("expected ok, got %v", err)
-				}
-				return
-			}
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("expected %v, got %v", tt.wantErr, err)
-			}
-		})
-	}
-}
 
 func TestBuildUserContent(t *testing.T) {
 	img := domainchat.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}

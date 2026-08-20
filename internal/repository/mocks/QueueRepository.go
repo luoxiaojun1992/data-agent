@@ -65,6 +65,24 @@ func (_m *QueueRepository) Enqueue(ctx context.Context, r *task.TaskRun) error {
 	return r0
 }
 
+// EnqueueRaw provides a mock function with given fields: ctx, jobType, payload
+func (_m *QueueRepository) EnqueueRaw(ctx context.Context, jobType string, payload interface{}) error {
+	ret := _m.Called(ctx, jobType, payload)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EnqueueRaw")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, interface{}) error); ok {
+		r0 = rf(ctx, jobType, payload)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // NewQueueRepository creates a new instance of QueueRepository. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewQueueRepository(t interface {

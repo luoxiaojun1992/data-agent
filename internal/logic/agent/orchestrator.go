@@ -36,6 +36,7 @@ type CreateAgentTaskRequest struct {
 	Title      string                 `json:"title"`
 	Model      string                 `json:"model"` // ModelEntry.ID; empty = default
 	Messages   []domainchat.Message   `json:"messages"`
+	Images     []domainchat.ImagePart `json:"images"` // image attachments (base64), max 5
 	SkillChain []string               `json:"skill_chain"`
 	Params     map[string]interface{} `json:"params"`
 }
@@ -72,6 +73,11 @@ func (o *Orchestrator) resolveModel(ctx context.Context, modelID string) string 
 // SPEC-062: The model is resolved from req.Model (empty → default) and bound
 // to the session + task so the worker (SPEC-063) can select the right Runtime.
 func (o *Orchestrator) CreateAgentTask(ctx context.Context, userID string, req CreateAgentTaskRequest) (*CreateAgentTaskResponse, error) {
+	if len(req.Images) > 0 {
+		if _, vErr := domainchat.ValidateImages(req.Images); vErr != nil {
+			return nil, vErr
+		}
+	}
 	modelID := o.resolveModel(ctx, req.Model)
 	sess, err := o.sessions.Create(userID, "agent", modelID)
 	if err != nil {
@@ -127,6 +133,14 @@ func enrichTaskParams(req CreateAgentTaskRequest) map[string]interface{} {
 	if !hasUserMessageKey(params) {
 		if msg := lastUserMessageText(req.Messages); msg != "" {
 			params["message"] = msg
+		}
+	}
+	// Inject image attachments (encoded as JSON) so the worker can recover them.
+	if len(req.Images) > 0 {
+		if _, ok := params["images"]; !ok {
+			if encoded, encErr := domainchat.EncodeImages(req.Images); encErr == nil {
+				params["images"] = encoded
+			}
 		}
 	}
 	return params

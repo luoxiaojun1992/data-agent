@@ -2,10 +2,11 @@ package handler
 
 import (
 	"net/http"
-	"time"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
@@ -32,12 +33,17 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		SkillChain   []string               `json:"skill_chain"`
 		Skills       []string               `json:"skills"`
 		Params       map[string]interface{} `json:"params"`
+		Images       []domainchat.ImagePart `json:"images"`
 		CronExpr     string                 `json:"cron_expr"`
 		ScheduledAt  *time.Time             `json:"scheduled_at"`
 		ScheduleMode string                 `json:"schedule_mode"`
 		ModelID      string                 `json:"model_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := validateRequestImages(req.Images); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -68,6 +74,11 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	}
 	if req.CronExpr != "" {
 		params["cron_expr"] = req.CronExpr
+	}
+	if len(req.Images) > 0 {
+		if encoded, encErr := domainchat.EncodeImages(req.Images); encErr == nil {
+			params["images"] = encoded
+		}
 	}
 
 	// Derive schedule_mode from input
@@ -248,11 +259,12 @@ func (h *TaskHandler) RetryTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "retried", "task_id": taskID, "run": run})
 }
 
-
 // ToggleScheduledEnabled turns scheduled task on/off. PATCH /admin/tasks/:id/scheduled-enabled
 func (h *TaskHandler) ToggleScheduledEnabled(c *gin.Context) {
 	taskID := c.Param("id")
-	var req struct{ Enabled bool `json:"enabled"` }
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -262,4 +274,14 @@ func (h *TaskHandler) ToggleScheduledEnabled(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"enabled": req.Enabled})
+}
+
+// validateRequestImages validates image attachments against the shared domain
+// rules (count/size/mime/base64). Returns nil when no images are present.
+func validateRequestImages(images []domainchat.ImagePart) error {
+	if len(images) == 0 {
+		return nil
+	}
+	_, err := domainchat.ValidateImages(images)
+	return err
 }

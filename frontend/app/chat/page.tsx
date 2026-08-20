@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
+import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, type Attachment } from '@/lib/attachment';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 
@@ -23,18 +24,6 @@ interface Message {
   images?: string[]; // image data URLs attached to this message
 }
 
-// Image attachment pending send: base64 for the wire, dataUrl for preview.
-interface ChatAttachment {
-  name: string;
-  mimeType: string;
-  base64: string;
-  dataUrl: string;
-}
-
-// Chat image limits (mirrors backend): at most 5 images, 2MiB each.
-const MAX_CHAT_IMAGES = 5;
-const MAX_CHAT_IMAGE_BYTES = 2 * 1024 * 1024;
-
 type WireChatEvent = {
   type?: 'text' | 'tool_call' | 'tool_result';
   role?: string;
@@ -48,25 +37,6 @@ type WireChatEvent = {
   images?: string[];
   choices?: { delta?: { content?: string } }[];
 };
-
-// Read an image File into a pending attachment (base64 + preview data URL).
-function fileToAttachment(file: File): Promise<ChatAttachment> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || '');
-      const base64 = dataUrl.split(',')[1] || '';
-      resolve({
-        name: file.name || 'image',
-        mimeType: file.type || 'image/png',
-        base64,
-        dataUrl,
-      });
-    };
-    reader.onerror = () => reject(new Error('读取图片失败'));
-    reader.readAsDataURL(file);
-  });
-}
 
 function normalizeChatMessage(raw: WireChatEvent): Message {
   const result = raw.result !== undefined ? raw.result : raw.response;
@@ -170,7 +140,7 @@ export default function ChatPage() {
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]); // image attachments (max 5)
+  const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [attachError, setAttachError] = useState('');
   const pendingEventsRef = useRef<WireChatEvent[]>([]);
@@ -332,20 +302,20 @@ export default function ChatPage() {
   const addAttachments = async (files: File[]) => {
     const images = files.filter((f) => f.type.startsWith('image/'));
     if (images.length === 0) return;
-    if (attachments.length + images.length > MAX_CHAT_IMAGES) {
-      setAttachError(`最多 ${MAX_CHAT_IMAGES} 张图片`);
+    if (attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
+      setAttachError(`最多 ${MAX_ATTACHMENT_IMAGES} 张图片`);
       setTimeout(() => setAttachError(''), 3000);
       return;
     }
     for (const f of images) {
-      if (f.size > MAX_CHAT_IMAGE_BYTES) {
+      if (f.size > MAX_ATTACHMENT_IMAGE_BYTES) {
         setAttachError(`图片 ${f.name} 超过 2MB 限制`);
         setTimeout(() => setAttachError(''), 3000);
         continue;
       }
       try {
         const att = await fileToAttachment(f);
-        setAttachments((prev) => (prev.length >= MAX_CHAT_IMAGES ? prev : [...prev, att]));
+        setAttachments((prev) => (prev.length >= MAX_ATTACHMENT_IMAGES ? prev : [...prev, att]));
       } catch {
         setAttachError('读取图片失败');
         setTimeout(() => setAttachError(''), 3000);
@@ -666,8 +636,8 @@ export default function ChatPage() {
               />
               <button
                 onClick={handleAttachClick}
-                disabled={streaming || attachments.length >= MAX_CHAT_IMAGES}
-                title={attachments.length >= MAX_CHAT_IMAGES ? `最多 ${MAX_CHAT_IMAGES} 张图片` : '添加图片（最多 5 张，可粘贴）'}
+                disabled={streaming || attachments.length >= MAX_ATTACHMENT_IMAGES}
+                title={attachments.length >= MAX_ATTACHMENT_IMAGES ? `最多 ${MAX_ATTACHMENT_IMAGES} 张图片` : '添加图片（最多 5 张，可粘贴）'}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-attach-btn"
               >📎 附件</button>

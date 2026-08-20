@@ -79,9 +79,9 @@ func (_m *TaskService) CreateRun(taskID string) (*task.TaskRun, error) {
 	return r0, r1
 }
 
-// CreateTask provides a mock function with given fields: userID, taskType, skillChain, params, modelID
+// CreateTask provides a mock function with given fields: userID, taskType, skillChain, params, modelID, scheduleMode, cronExpr, scheduledAt
 func (_m *TaskService) CreateTask(userID string, taskType string, skillChain []string, params map[string]interface{}, modelID string, scheduleMode string, cronExpr string, scheduledAt *time.Time) (*task.Task, *task.TaskRun, error) {
-	ret := _m.Called(userID, taskType, skillChain, params, modelID)
+	ret := _m.Called(userID, taskType, skillChain, params, modelID, scheduleMode, cronExpr, scheduledAt)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateTask")
@@ -90,27 +90,27 @@ func (_m *TaskService) CreateTask(userID string, taskType string, skillChain []s
 	var r0 *task.Task
 	var r1 *task.TaskRun
 	var r2 error
-	if rf, ok := ret.Get(0).(func(string, string, []string, map[string]interface{}, string) (*task.Task, *task.TaskRun, error)); ok {
-		return rf(userID, taskType, skillChain, params, modelID)
+	if rf, ok := ret.Get(0).(func(string, string, []string, map[string]interface{}, string, string, string, *time.Time) (*task.Task, *task.TaskRun, error)); ok {
+		return rf(userID, taskType, skillChain, params, modelID, scheduleMode, cronExpr, scheduledAt)
 	}
-	if rf, ok := ret.Get(0).(func(string, string, []string, map[string]interface{}, string) *task.Task); ok {
-		r0 = rf(userID, taskType, skillChain, params, modelID)
+	if rf, ok := ret.Get(0).(func(string, string, []string, map[string]interface{}, string, string, string, *time.Time) *task.Task); ok {
+		r0 = rf(userID, taskType, skillChain, params, modelID, scheduleMode, cronExpr, scheduledAt)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*task.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string, []string, map[string]interface{}, string) *task.TaskRun); ok {
-		r1 = rf(userID, taskType, skillChain, params, modelID)
+	if rf, ok := ret.Get(1).(func(string, string, []string, map[string]interface{}, string, string, string, *time.Time) *task.TaskRun); ok {
+		r1 = rf(userID, taskType, skillChain, params, modelID, scheduleMode, cronExpr, scheduledAt)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*task.TaskRun)
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(string, string, []string, map[string]interface{}, string) error); ok {
-		r2 = rf(userID, taskType, skillChain, params, modelID)
+	if rf, ok := ret.Get(2).(func(string, string, []string, map[string]interface{}, string, string, string, *time.Time) error); ok {
+		r2 = rf(userID, taskType, skillChain, params, modelID, scheduleMode, cronExpr, scheduledAt)
 	} else {
 		r2 = ret.Error(2)
 	}

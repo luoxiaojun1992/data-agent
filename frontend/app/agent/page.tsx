@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import ModelSelector from '../components/ModelSelector';
 import { useAuth } from '@/lib/api';
+import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, type Attachment } from '@/lib/attachment';
 
 interface AgentTask {
   task_id: string;
@@ -34,6 +35,9 @@ export default function AgentPage() {
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring' as 'recurring' | 'one_time', scheduledAt: '', modelId: '' });
+  const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
+  const [attachError, setAttachError] = useState('');
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   // Wait for auth hydration before loading — otherwise loadTasks fires with
   // auth.token=null and the request misses the Authorization header.
@@ -65,6 +69,50 @@ export default function AgentPage() {
     finally { setLoading(false); }
   };
 
+  // Add image attachments from a FileList, enforcing the 5-image / 2MiB limits.
+  const addAttachments = async (files: File[]) => {
+    const images = files.filter((f) => f.type.startsWith('image/'));
+    if (images.length === 0) return;
+    if (attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
+      setAttachError(`最多 ${MAX_ATTACHMENT_IMAGES} 张图片`);
+      setTimeout(() => setAttachError(''), 3000);
+      return;
+    }
+    for (const f of images) {
+      if (f.size > MAX_ATTACHMENT_IMAGE_BYTES) {
+        setAttachError(`图片 ${f.name} 超过 2MB 限制`);
+        setTimeout(() => setAttachError(''), 3000);
+        continue;
+      }
+      try {
+        const att = await fileToAttachment(f);
+        setAttachments((prev) => (prev.length >= MAX_ATTACHMENT_IMAGES ? prev : [...prev, att]));
+      } catch {
+        setAttachError('读取图片失败');
+        setTimeout(() => setAttachError(''), 3000);
+      }
+    }
+  };
+
+  const handleAttachClick = () => attachmentInputRef.current?.click();
+
+  const handleAttachChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addAttachments(Array.from(e.target.files));
+    e.target.value = ''; // allow re-selecting the same file
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.files || []);
+    if (files.length > 0) {
+      e.preventDefault();
+      addAttachments(files);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const createTask = async () => {
     if (!newTask.title.trim()) return;
     if (newTask.cronEnabled && ((newTask.scheduleMode === "recurring" && !newTask.cron) || (newTask.scheduleMode === "one_time" && !newTask.scheduledAt))) { alert("请填写完整的定时信息"); return; }
@@ -77,6 +125,9 @@ export default function AgentPage() {
         type: newTask.cronEnabled ? 'scheduled_exec' : 'agent_exec',
         model_id: newTask.modelId || undefined,
       };
+      if (attachments.length > 0) {
+        body.images = attachments.map((a) => ({ data: a.base64, mime_type: a.mimeType }));
+      }
       if (newTask.cronEnabled) {
         body.schedule_mode = newTask.scheduleMode;
         if (newTask.scheduleMode === 'recurring' && newTask.cron) {
@@ -90,6 +141,8 @@ export default function AgentPage() {
         await loadTasks(page);
         setShowModal(false);
         setNewTask({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring', scheduledAt: '', modelId: '' });
+        setAttachments([]);
+        setAttachError('');
       }
     } catch (e) { console.error('[agent] task create failed:', e); }
   };
@@ -215,7 +268,7 @@ export default function AgentPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="agent-task-modal">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-          <div className="relative glass p-6 rounded-2xl max-w-lg w-full mx-4">
+          <div className="relative glass p-6 rounded-2xl max-w-lg w-full mx-4" onPaste={handlePaste}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">新建分析任务</h3>
               <button onClick={() => setShowModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
@@ -232,6 +285,35 @@ export default function AgentPage() {
                 <textarea value={newTask.description} onChange={e => setNewTask(p => ({ ...p, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-none"
                   data-testid="agent-task-desc-input" rows={2} placeholder="描述分析目标..." />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">图片附件（可选，最多 5 张，可粘贴）</label>
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ display: 'none' }}
+                  data-testid="agent-task-attach-input"
+                  onChange={handleAttachChange}
+                />
+                {attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2" data-testid="agent-task-attachments">
+                    {attachments.map((att, idx) => (
+                      <div key={idx} className="relative" data-testid={`agent-task-attachment-${idx}`}>
+                        <img src={att.dataUrl} alt={att.name} className="w-14 h-14 rounded-lg object-cover border border-white/20" />
+                        <button onClick={() => removeAttachment(idx)} title="移除图片"
+                          data-testid={`agent-task-attachment-remove-${idx}`}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {attachError && <p className="text-xs text-[#ef4444] mb-1" data-testid="agent-task-attach-error">{attachError}</p>}
+                <button onClick={handleAttachClick}
+                  disabled={attachments.length >= MAX_ATTACHMENT_IMAGES}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+                  data-testid="agent-task-attach-btn">📎 添加图片</button>
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-secondary)] mb-1">模型</label>

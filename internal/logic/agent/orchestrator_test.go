@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domainchatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	domaintaskmocks "github.com/luoxiaojun1992/data-agent/internal/domain/task/mocks"
-	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
 func newTestOrchestrator(t *testing.T) (*Orchestrator, *domainchatmocks.SessionService, *domaintaskmocks.TaskService) {
@@ -29,8 +29,9 @@ func newTestOrchestrator(t *testing.T) (*Orchestrator, *domainchatmocks.SessionS
 func TestCreateAgentTask_Success(t *testing.T) {
 	orch, sessions, tasks := newTestOrchestrator(t)
 	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
-	tk := &domaintask.Task{ID: "task_1", SessionID: "s1", UserID: "u1", Status: domaintask.StatusPending, CreatedAt: time.Now()}
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{"stats_engine"}, mock.Anything, mock.Anything).Return(tk, nil)
+	tk := &domaintask.Task{ID: "task_1", CreatedAt: time.Now()}
+	run := &domaintask.TaskRun{SessionID: "s1", Status: domaintask.StatusPending}
+	tasks.On("CreateTask", "u1", "agent", []string{"stats_engine"}, mock.Anything, "", "", "", (*time.Time)(nil)).Return(tk, run, nil)
 
 	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{
 		Title:      "t",
@@ -81,8 +82,8 @@ func TestCreateAgentTask_SessionError(t *testing.T) {
 func TestCreateAgentTask_TaskError(t *testing.T) {
 	orch, sessions, tasks := newTestOrchestrator(t)
 	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
-	tasks.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return((*domaintask.Task)(nil), errQueueDown)
+	tasks.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return((*domaintask.Task)(nil), (*domaintask.TaskRun)(nil), errQueueDown)
 
 	_, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
 	if err == nil {
@@ -93,9 +94,10 @@ func TestCreateAgentTask_TaskError(t *testing.T) {
 func TestCreateAgentTask_NilSkillChainNormalized(t *testing.T) {
 	orch, sessions, tasks := newTestOrchestrator(t)
 	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
-	tk := &domaintask.Task{ID: "task_2", SessionID: "s1", UserID: "u1", Status: domaintask.StatusQueued, CreatedAt: time.Now()}
+	tk := &domaintask.Task{ID: "task_2", CreatedAt: time.Now()}
+	run := &domaintask.TaskRun{SessionID: "s1", Status: domaintask.StatusQueued}
 	// Nil skill chain should be normalized to empty slice, not nil.
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, mock.Anything).Return(tk, nil)
+	tasks.On("CreateTask", "u1", "agent", []string{}, mock.Anything, "", "", "", (*time.Time)(nil)).Return(tk, run, nil)
 
 	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
 	if err != nil {
@@ -167,6 +169,31 @@ func TestEnrichTaskParams_NilParams(t *testing.T) {
 	assert.Equal(t, "hi", params["message"])
 }
 
+func TestEnrichTaskParams_InjectsImages(t *testing.T) {
+	img := domainchat.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
+	req := CreateAgentTaskRequest{
+		Title:  "看图分析",
+		Images: []domainchat.ImagePart{img, img},
+	}
+	params := enrichTaskParams(req)
+	encoded, ok := params["images"].(string)
+	assert.True(t, ok, "images should be injected as a JSON string")
+	decoded, err := domainchat.DecodeImages(encoded)
+	assert.NoError(t, err)
+	assert.Len(t, decoded, 2)
+	assert.Equal(t, "image/png", decoded[0].MimeType)
+}
+
+func TestEnrichTaskParams_DoesNotOverwriteExistingImages(t *testing.T) {
+	req := CreateAgentTaskRequest{
+		Title:  "t",
+		Images: []domainchat.ImagePart{{Data: "aGVsbG8=", MimeType: "image/png"}},
+		Params: map[string]interface{}{"images": "already-set"},
+	}
+	params := enrichTaskParams(req)
+	assert.Equal(t, "already-set", params["images"])
+}
+
 func TestLastUserMessageText(t *testing.T) {
 	assert.Equal(t, "second", lastUserMessageText([]domainchat.Message{
 		{Role: "user", Content: "first"},
@@ -191,13 +218,14 @@ func TestHasUserMessageKey(t *testing.T) {
 func TestCreateAgentTask_ParamsEnrichedWithMessage(t *testing.T) {
 	orch, sessions, tasks := newTestOrchestrator(t)
 	sessions.On("Create", "u1", "agent", mock.Anything).Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
-	tk := &domaintask.Task{ID: "task_1", SessionID: "s1", Status: domaintask.StatusQueued, CreatedAt: time.Now()}
+	tk := &domaintask.Task{ID: "task_1", CreatedAt: time.Now()}
+	run := &domaintask.TaskRun{SessionID: "s1", Status: domaintask.StatusQueued}
 	// Capture the params passed to CreateTask.
 	var capturedParams map[string]interface{}
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.MatchedBy(func(p map[string]interface{}) bool {
+	tasks.On("CreateTask", "u1", "agent", []string{}, mock.MatchedBy(func(p map[string]interface{}) bool {
 		capturedParams = p
 		return p["message"] == "分析营收" && p["title"] == "Q3分析"
-	}), mock.Anything).Return(tk, nil)
+	}), "", "", "", (*time.Time)(nil)).Return(tk, run, nil)
 
 	_, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{
 		Title:    "Q3分析",
@@ -225,8 +253,9 @@ func TestCreateAgentTask_WithProvider(t *testing.T) {
 	orch := NewOrchestrator(sessions, tasks, provider)
 
 	sessions.On("Create", "u1", "agent", "def-model").Return(&domainchat.Session{ID: "s1", UserID: "u1", ModelID: "def-model"}, nil)
-	tk := &domaintask.Task{ID: "task_1", SessionID: "s1", Status: domaintask.StatusQueued, CreatedAt: time.Now()}
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, "def-model").Return(tk, nil)
+	tk := &domaintask.Task{ID: "task_1", CreatedAt: time.Now()}
+	run := &domaintask.TaskRun{SessionID: "s1", Status: domaintask.StatusQueued}
+	tasks.On("CreateTask", "u1", "agent", []string{}, mock.Anything, "def-model", "", "", (*time.Time)(nil)).Return(tk, run, nil)
 
 	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{Title: "t"})
 	if err != nil {
@@ -245,8 +274,8 @@ func TestResolveModel_WithExplicitModel(t *testing.T) {
 	orch := NewOrchestrator(sessions, tasks, nil) // nil provider — explicit model should still work
 
 	sessions.On("Create", "u1", "agent", "explicit-model").Return(&domainchat.Session{ID: "s1", UserID: "u1", ModelID: "explicit-model"}, nil)
-	tasks.On("CreateTask", "s1", "u1", "agent", []string{}, mock.Anything, "explicit-model").Return(
-		&domaintask.Task{ID: "t1", SessionID: "s1", Status: domaintask.StatusQueued}, nil)
+	tasks.On("CreateTask", "u1", "agent", []string{}, mock.Anything, "explicit-model", "", "", (*time.Time)(nil)).Return(
+		&domaintask.Task{ID: "t1"}, &domaintask.TaskRun{SessionID: "s1", Status: domaintask.StatusQueued}, nil)
 
 	resp, err := orch.CreateAgentTask(context.Background(), "u1", CreateAgentTaskRequest{
 		Title: "t", Model: "explicit-model",

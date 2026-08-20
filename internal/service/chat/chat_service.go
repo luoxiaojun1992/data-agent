@@ -20,24 +20,6 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 )
 
-// Chat image attachment limits: at most 5 images per message; each image at
-// most 2 MiB decoded; at most 5 MiB decoded in total per message. The caps
-// keep the MongoDB session document (events + raw_events both store the
-// persisted event) well below the 16 MiB BSON document limit.
-const (
-	maxChatImages      = 5
-	maxChatImageBytes  = 2 * 1024 * 1024
-	maxTotalImageBytes = 5 * 1024 * 1024
-)
-
-// allowedChatImageMimes is the whitelist of accepted image MIME types.
-var allowedChatImageMimes = map[string]bool{
-	"image/png":  true,
-	"image/jpeg": true,
-	"image/webp": true,
-	"image/gif":  true,
-}
-
 // Service handles real-time chat operations backed by the ADK runtime.
 // It implements domain/chat.ChatService and contains no gin dependency;
 // HTTP/SSE translation is the handler's responsibility.
@@ -157,7 +139,7 @@ func normalizeMessages(req domainchat.ChatRequest) []domainchat.Message {
 // user content: one text part (when non-empty) followed by one InlineData part
 // per image.
 func buildUserContent(text string, images []domainchat.ImagePart) (*genai.Content, error) {
-	decoded, err := validateImages(images)
+	decoded, err := domainchat.ValidateImages(images)
 	if err != nil {
 		return nil, err
 	}
@@ -169,34 +151,6 @@ func buildUserContent(text string, images []domainchat.ImagePart) (*genai.Conten
 		parts = append(parts, genai.NewPartFromBytes(img, images[i].MimeType))
 	}
 	return &genai.Content{Role: "user", Parts: parts}, nil
-}
-
-// validateImages enforces the attachment limits and decodes each image's
-// base64 payload, returning the decoded byte slices in order.
-func validateImages(images []domainchat.ImagePart) ([][]byte, error) {
-	if len(images) > maxChatImages {
-		return nil, domainchat.ErrTooManyImages
-	}
-	decoded := make([][]byte, 0, len(images))
-	var total int
-	for _, img := range images {
-		if !allowedChatImageMimes[strings.ToLower(strings.TrimSpace(img.MimeType))] {
-			return nil, domainchat.ErrInvalidImage
-		}
-		data, derr := base64.StdEncoding.DecodeString(img.Data)
-		if derr != nil {
-			return nil, domainchat.ErrInvalidImage
-		}
-		if len(data) > maxChatImageBytes {
-			return nil, domainchat.ErrImageTooLarge
-		}
-		total += len(data)
-		if total > maxTotalImageBytes {
-			return nil, domainchat.ErrImageTooLarge
-		}
-		decoded = append(decoded, data)
-	}
-	return decoded, nil
 }
 
 // resolveSession validates or creates the session and returns (sessionID,
