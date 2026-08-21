@@ -285,6 +285,25 @@ func (p *Provider) GetModelByUseCase(ctx context.Context, useCase UseCase) (*Mod
 	return nil, fmt.Errorf("no model for use case %q", useCase)
 }
 
+// defaultCompactionMaxTokens is the fallback compaction token threshold used
+// when the compaction model is unconfigured or lacks a context length.
+const defaultCompactionMaxTokens = 4000
+
+// CompactionMaxTokens derives the compaction trigger threshold from the
+// compaction model's context length (50% of the context window). When the
+// model is unconfigured or its ContextLen is missing it falls back to the
+// default, so a fresh boot without a configured model still compacts safely.
+func (p *Provider) CompactionMaxTokens(ctx context.Context) int {
+	if p == nil {
+		return defaultCompactionMaxTokens
+	}
+	m, err := p.GetModelByUseCase(ctx, UseCaseCompaction)
+	if err != nil || m == nil || m.ContextLen <= 0 {
+		return defaultCompactionMaxTokens
+	}
+	return m.ContextLen / 2
+}
+
 // getModel loads one model by ID (decrypted), with env fallback when no repo.
 func (p *Provider) getModel(ctx context.Context, id string) (*ModelEntry, error) {
 	if p.modelRepo == nil {

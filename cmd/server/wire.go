@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -202,7 +203,14 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	compactionLLM := modelcfg.NewLazyLLM(deps.modelCfg, modelcfg.UseCaseCompaction)
 
 	deps.adkSessions = adksession.NewService(mongoClient.DB()).WithCompaction(
-		adksession.CompactionConfig{MaxEvents: 100, MaxTokens: 4000, KeepRecent: 20},
+		adksession.CompactionConfig{
+			MaxEvents:  100,
+			MaxTokens:  4000, // static fallback; MaxTokensFn overrides it dynamically
+			KeepRecent: 20,
+			// SPEC-067 follow-up: derive the trigger threshold from the
+			// compaction model's context length (50%) instead of hardcoding.
+			MaxTokensFn: deps.modelCfg.CompactionMaxTokens,
+		},
 		adksession.NewLLMSummarizer(compactionLLM),
 	)
 
@@ -242,8 +250,23 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	go deps.registry.StartCleanup()
 
 	// Guard: intent classification + relevance check + bounded retry. Redis is
-	// injected later (initTaskQueue) once it connects.
+	// injected later (initTaskQueue) once it connects. The retry limit is read
+	// from system config `guard.max_retries` (cache-first) with a fallback of 2.
 	deps.guardSvc = guard.NewService(deps.modelCfg, nil, 2)
+	deps.guardSvc.SetMaxRetriesResolver(func(ctx context.Context) int {
+		if deps.sysConfigCacheRepo == nil {
+			return 0
+		}
+		cfg, err := deps.sysConfigCacheRepo.Get(ctx, "guard.max_retries")
+		if err != nil || cfg == nil {
+			return 0
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(cfg.Value))
+		if err != nil || n <= 0 {
+			return 0
+		}
+		return n
+	})
 
 	deps.chatService = chat.NewService(deps.registry, deps.modelCfg, deps.adkSessions, deps.sessionManager, deps.cbRegistry, deps.guardSvc).
 		WithMemoryWrite(func(ctx context.Context, sess adksessionIF.Session) {

@@ -58,6 +58,9 @@ type CompactionConfig struct {
 	MaxEvents  int
 	MaxTokens  int
 	KeepRecent int
+	// MaxTokensFn optionally overrides MaxTokens dynamically (e.g. derived
+	// from the compaction model's context length). nil → use MaxTokens.
+	MaxTokensFn func(ctx context.Context) int
 }
 
 func (s *Service) WithCompaction(cfg CompactionConfig, summarizer Summarizer) *Service {
@@ -341,8 +344,14 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 		return err
 	}
 	cfg := s.compact
+	maxTokens := cfg.MaxTokens
+	if cfg.MaxTokensFn != nil {
+		if v := cfg.MaxTokensFn(ctx); v > 0 {
+			maxTokens = v
+		}
+	}
 	overCount := len(doc.Events) > cfg.MaxEvents
-	overTokens := estimateEventTokens(doc.Events) > cfg.MaxTokens
+	overTokens := estimateEventTokens(doc.Events) > maxTokens
 	if !overCount && !overTokens {
 		return nil
 	}

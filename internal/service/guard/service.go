@@ -8,6 +8,7 @@ package guard
 
 import (
 	"context"
+	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
@@ -20,15 +21,40 @@ type Service struct {
 	provider   *modelcfg.Provider
 	redis      *redis.Client
 	maxRetries int
+	// maxRetriesFn optionally resolves the retry limit dynamically (e.g. from
+	// system config `guard.max_retries`). nil → use maxRetries.
+	maxRetriesFn func(ctx context.Context) int
 }
 
-// NewService creates a guard service. maxRetries is read from system config
-// (guard.max_retries, default 2) and bounds the relevance retry loop.
+// relevanceTTL bounds the retry counter lifetime so a session that dies
+// mid-retry never leaves a stale guard:relevance:{sessionID} key behind.
+const relevanceTTL = 10 * time.Minute
+
+// NewService creates a guard service. maxRetries is the fallback retry limit
+// (default 2) used when no resolver is set or the resolver returns <= 0.
 func NewService(provider *modelcfg.Provider, redisClient *redis.Client, maxRetries int) *Service {
 	if maxRetries <= 0 {
 		maxRetries = 2
 	}
 	return &Service{provider: provider, redis: redisClient, maxRetries: maxRetries}
+}
+
+// SetMaxRetriesResolver installs a resolver that supplies the retry limit per
+// call (returns <= 0 to fall back to the static default). Safe to call after
+// construction; the resolver is read on every retry decision so config changes
+// take effect without restart.
+func (s *Service) SetMaxRetriesResolver(fn func(ctx context.Context) int) {
+	s.maxRetriesFn = fn
+}
+
+// resolveMaxRetries returns the effective retry limit for the current call.
+func (s *Service) resolveMaxRetries(ctx context.Context) int {
+	if s.maxRetriesFn != nil {
+		if v := s.maxRetriesFn(ctx); v > 0 {
+			return v
+		}
+	}
+	return s.maxRetries
 }
 
 // SetRedis injects the Redis client used for the relevance retry counter.
@@ -93,7 +119,12 @@ func (s *Service) RecordAndShouldRetry(ctx context.Context, sessionID string) (b
 	if err != nil {
 		return false, err
 	}
-	if n >= int64(s.maxRetries) {
+	// First increment sets a short TTL so a session that crashes mid-retry
+	// never leaves a stale counter behind (SPEC-067 §3).
+	if n == 1 {
+		_ = s.redis.Expire(ctx, key, relevanceTTL)
+	}
+	if n >= int64(s.resolveMaxRetries(ctx)) {
 		_ = s.redis.Del(ctx, key)
 		return false, nil
 	}

@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -56,4 +57,10 @@ func (c *Client) Del(ctx context.Context, keys ...string) error {
 // new value. Used by the guard retry counter.
 func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 	return c.client.Incr(ctx, key).Result()
+}
+
+// Expire sets a TTL on a key. Used by the guard retry counter to bound its
+// lifetime (SPEC-067 §3).
+func (c *Client) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	return c.client.Expire(ctx, key, ttl).Err()
 }
