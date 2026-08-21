@@ -195,18 +195,11 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		deps.llmCache = llmcache.New(deps.redisClient.Client())
 	}
 
-	// SPEC-062: System-level compaction LLM (baked into the shared ADK
-	// SessionService). This is a single system LLM, not the per-session model
-	// — per-session Runtimes are lazily created by the Registry. compactionLLM
-	// reads config via the SPEC-061 cache so it picks up config on restart.
-	llm, llmErr := deps.modelCfg.BuildLLM(context.Background(), modelcfg.UseCaseCompaction)
-	if llmErr != nil {
-		logger.Fatal("Failed to build compaction LLM from model config", zap.Error(llmErr))
-	}
-	compactionLLM := llm
-	if cl, cErr := deps.modelCfg.BuildLLM(context.Background(), modelcfg.UseCaseCompaction); cErr == nil {
-		compactionLLM = cl
-	}
+	// SPEC-062/066/067: System-level compaction LLM (baked into the shared ADK
+	// SessionService). It is a single system LLM built lazily as a singleton:
+	// on the very first boot with no model configured it fails silently and
+	// retries on the next use — startup never aborts because of a missing model.
+	compactionLLM := modelcfg.NewLazyLLM(deps.modelCfg, modelcfg.UseCaseCompaction)
 
 	deps.adkSessions = adksession.NewService(mongoClient.DB()).WithCompaction(
 		adksession.CompactionConfig{MaxEvents: 100, MaxTokens: 4000, KeepRecent: 20},
