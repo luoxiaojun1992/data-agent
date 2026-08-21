@@ -222,7 +222,12 @@ func (e *AgentExecutor) relevanceLoop(ctx context.Context, rt *adkruntime.Runtim
 	text := firstText
 	for {
 		relevant, err := e.guard.CheckRelevance(ctx, text, base)
-		if err != nil || relevant {
+		if err != nil {
+			return text
+		}
+		if relevant {
+			// Relevance passed — reset the counter for the next turn.
+			e.guard.ClearRelevance(ctx, sessionID)
 			return text
 		}
 		retry, rErr := e.guard.RecordAndShouldRetry(ctx, sessionID)

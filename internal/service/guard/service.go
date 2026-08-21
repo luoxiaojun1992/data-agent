@@ -135,3 +135,15 @@ func (s *Service) RecordAndShouldRetry(ctx context.Context, sessionID string) (b
 func relevanceKey(sessionID string) string {
 	return "guard:relevance:" + sessionID
 }
+
+// ClearRelevance resets the relevance-failure counter for a session. Called
+// when a relevance check passes (relevant=true) so the next user turn starts
+// counting from zero (SPEC-067 §3: 用户下一次输入时计数从 0 重新开始). A
+// previous turn that retried (n≥1) but never reached the limit would otherwise
+// leak its counter into the next turn.
+func (s *Service) ClearRelevance(ctx context.Context, sessionID string) {
+	if s.redis == nil {
+		return
+	}
+	_ = s.redis.Del(ctx, relevanceKey(sessionID))
+}

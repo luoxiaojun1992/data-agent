@@ -312,7 +312,12 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	if s.guard != nil {
 		for {
 			relevant, gErr := s.guard.CheckRelevance(ctx, assistantText, base)
-			if gErr != nil || relevant {
+			if gErr != nil {
+				break
+			}
+			if relevant {
+				// Relevance passed — reset the counter for the next turn.
+				s.guard.ClearRelevance(ctx, sessionID)
 				break
 			}
 			s.appendSystemEvent(ctx, userID, sessionID, rt.AppName(), "[relevance] is_relevant=false")
@@ -484,7 +489,13 @@ func (s *Service) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, use
 	text := firstText
 	for {
 		relevant, err := s.guard.CheckRelevance(ctx, text, base)
-		if err != nil || relevant {
+		if err != nil {
+			return text
+		}
+		if relevant {
+			// Relevance passed — reset the counter so the next user turn
+			// starts counting from zero (SPEC-067 §3).
+			s.guard.ClearRelevance(ctx, sessionID)
 			return text
 		}
 		s.appendSystemEvent(ctx, userID, sessionID, rt.AppName(), "[relevance] is_relevant=false")
