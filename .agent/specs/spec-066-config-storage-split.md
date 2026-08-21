@@ -133,10 +133,11 @@ type ModelDefault struct {
 ```
 
 - **唯一索引**：`use_case` 字段建唯一索引（非 `_id`），保证「每 use case 恰好一个默认」。
-- **修改默认**：先 `deleteOne({use_case})` 再 `insertOne({use_case, model_id})`（用户指定顺序；两步非事务，窗口内该 use case 短暂无默认，读路径 fallback 第一个模型）。
+- **修改默认**：先 `deleteOne({use_case})` 再 `insertOne({use_case, model_id})`。两步非事务，窗口内该 use case 短暂无默认（读路径 fallback 第一个模型）；**并发下 `insertOne` 撞 `use_case` 唯一索引（E11000）时直接返回错误、由用户重试**（设默认是低频操作，不做 upsert/自动重试）。
 - **取消默认**：`deleteOne({use_case})`，无补偿插入。
 - **list 联动**：`ListModels` 一次 `find(model_defaults)` 取全量映射 `map[use_case]model_id`，反向组装 `is_default_for` 到每个模型响应（**响应结构不变，前端零改动**，除 embedding toggle）。
 - **use case 扩展**：新增 use case 仅 `insertOne` 一条 default record，不触碰模型文档。
+- **use_case 枚举校验（API 输入层）**：`SetDefaultModel` / 取消默认的 `use_cases` 入参在 handler 层校验**必须是合法枚举值**（`chat` / `task` / `enhance` / `compaction` / `kb_chunking` / `kb_image` / `embedding` / `intent_check` / `relevance_check`），非法值返回 400。枚举集与 `UseCase` 常量同源（`ValidUseCases()` 导出），防止前端/调用方写入任意字符串。
 
 ### 与现有模块对比
 
@@ -188,7 +189,7 @@ type ModelDefaultRepository interface {
 
 ### 类型下移解耦
 
-`ModelEntry`/`ModelType`/`UseCase`/`ModelDefault` 从 `internal/adk/modelcfg` 下移至 `internal/domain/model`（或新建 `internal/domain/modelconfig`），Provider 与 repo 共同引用，避免 repository 反向依赖 adk 包。
+`ModelEntry`/`ModelType`/`UseCase`/`ModelDefault` 从 `internal/adk/modelcfg` 下移至**新建 `internal/domain/modelconfig` 独立包**（不与 `internal/domain/model` 混放——后者承载用户/RBAC/系统配置/API集合等类型，是另一领域边界）。Provider 与 repo 共同引用该包，避免 repository 反向依赖 adk 包。
 
 ### Provider 写方法重写
 
@@ -218,11 +219,15 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 
 1. **备份**：`system_configs`、`system_config` duplicate `*_bak_20260820`
 2. **skill**：`system_config` 22 条 → `skill_configs`（`_id` 生成 uuid，`name` 等映射字段，丢 `ns`）
-3. **model**：`system_configs[namespace=model].models` JSON 数组 → 逐条展开为 `model_configs` 文档（`_id`=模型 `id`，其余原样）；`api_key` 为 Vault path 原样保留
-4. **model_defaults**：展开时，每个模型 `is_default_for` 数组逐项 → `model_defaults{_id: <新 uuid>, use_case, model_id}`；`is_default=true` 的 LLM → `{_id: <uuid>, use_case: "chat", model_id}`；embedding `is_default=true` → `{_id: <uuid>, use_case: "embedding", model_id}`；建 `use_case` 唯一索引
+3. **model**：`system_configs[namespace=model].models` JSON 数组 → 逐条展开为 `model_configs` 文档（`_id`=模型 `id`，其余原样）；**`api_key` 字段 = Vault path 字符串原样保留**（`data-agent/models/{modelID}/api_key`）。`model id` 作为全局引用键**保持稳定**（session 绑定 / Vault / Registry 均引用，不重新生成）；若遇到无 id / id 冲突的脏数据需重生成 id，则**同步替换 Vault path 中的 modelID 并在 Vault 中 `mv` 对应 key**，保证 `DecryptModelAPIKey` 仍可解密
+4. **model_defaults（完整迁移，不丢 use case）**：遍历**全部 use case 枚举值**，对每个 use case 生成一条 `model_defaults{_id: <新 uuid>, use_case, model_id}`，取值规则：
+   - 优先 `is_default_for` 显式包含该 use case 的模型；
+   - 否则回退到 `is_default=true` 的全局默认 LLM（覆盖所有 LLM use case：`chat`/`task`/`enhance`/`compaction`/`kb_chunking`/`kb_image`）；
+   - `embedding` use case 回退到 `is_default=true` 的 embedding 模型；
+   - **保证每个 use case 都有且仅有一条 default record**，杜绝「迁移后 fallback 到 first model 而非原默认模型」的行为漂移；建 `use_case` 唯一索引
 5. **system**：`system_configs[namespace=system]` 11 条原地 `$unset namespace`（`_id` 保持原 ObjectId 或统一重生成 uuid；`key` 字段独立 + 唯一索引）
 6. **死数据**：`namespace=models`（复数）2 条、`namespace=model` 的 `hermes_url`/`api_key`/`api_url`/`model_name`/`embedding` —— 丢弃
-7. 每步计数 + 日志；可重复执行（先清目标再插）
+7. 每步计数 + 日志；可重复执行（先清目标再插）；迁移后校验「model_defaults 的 use_case 覆盖全部枚举值」「Vault path 可解密」
 
 ### 部署顺序（一次性切换）
 
@@ -240,13 +245,14 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 | 分页改进 | Yes（DB skip/limit + count，替代内存切片） |
 | 性能影响 | 读：model_defaults 全量（数量=use case 数，极小）+ 模型 DB 分页；缓存仅 system 配置 |
 | 是否需要新增 Skill | No |
-| 风险点 | ① ModelEntry 下移 domain 的 import 面；② 迁移窗口 backend 重启；③ 默认语义从内嵌字段迁引用式需回归 |
+| 风险点 | ① ModelEntry 下移 modelconfig 的 import 面（~10 非 test 文件）；② 迁移窗口 backend 重启；③ 默认语义从内嵌字段迁引用式需回归 |
 
 ## 相关文件
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
-| `internal/domain/model/model.go` | SystemConfig 去 Namespace + 集合常量 + 迁入 ModelEntry/ModelType/UseCase/ModelDefault | Medium |
+| `internal/domain/model/model.go` | SystemConfig 去 Namespace + 集合常量 | Small |
+| `internal/domain/modelconfig/` | New：迁入 ModelEntry/ModelType/UseCase/ModelDefault + use_case 枚举校验 | New |
 | `internal/adk/modelcfg/provider.go` | 大 JSON 编解码删除、写方法单文档化、默认读写改 model_defaults | Large |
 | `internal/repository/config.go` | SysConfigRepository 去 namespace；ModelConfigRepository/ModelDefaultRepository 落地 | Medium |
 | `internal/infra/mongo/system_config_repository.go` | 去 namespace | Medium |
@@ -332,3 +338,6 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 5. **embedding 默认**：前端可设默认、可取消默认；取消后 `GetDefaultEmbeddingModel` fallback 首个 embedding
 6. chat / agent 任务（含图片）/ KB 索引 E2E 全链路通过；迁移脚本幂等；`*_bak` 备份存在
 7. Redis 仅出现 `syscfg:{key}` 形式 key
+8. **默认完整性**：`model_defaults` 的 `use_case` **覆盖全部枚举值**（chat/task/enhance/compaction/kb_chunking/kb_image/embedding），每个 use case 有且仅有一条；`GetModelByUseCase` 迁移前后返回同一模型（无 fallback 漂移）
+9. **api_key 完整性**：迁移后 `DecryptModelAPIKey` 对每个模型均能正常解密（Vault path 未被破坏）；`model id` 与迁移前一致（session 绑定不断链）
+10. **use_case 枚举校验**：`SetDefaultModel` / 取消默认传入非法 use_case 返回 400；合法枚举值正常通过
