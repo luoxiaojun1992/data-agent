@@ -33,11 +33,11 @@
                   │  intent check    │  ① 意图判断（仅 chat/feishu）
                   │  (UseCaseIntent) │     输入: 用户提示词(文本+图片 content)
                   └────────┬─────────┘     输出: {"is_task": bool}
-                           │               ↓ 结果写 system 事件(events)
+                           │               ↓ 结果写 system 事件(正常记录)
                            ▼
                   ┌──────────────────┐
                   │  compaction      │  ② 整体压缩旧事件(意图识别之后)
-                  │  (由 user 触发)   │     摘要角色 = system
+                  │  (由 user 触发)   │     摘要角色 = system；system/assistant 正常参与压缩
                   └────────┬─────────┘
                            ▼
                   ┌──────────────────┐
@@ -50,7 +50,7 @@
                   │  relevance check │  ④ 相关性检查（chat/feishu/agent task）
                   │  (UseCaseRelevance)│   输入: LLM 返回 vs 最近 user/tool
                   └────────┬─────────┘   输出: {"is_relevant": bool}
-                           │              ↓ 结果写 system 事件(events)
+                           │              ↓ 结果写 system 事件(正常记录)
               ┌────────────┴─────────────┐
               │ 相关                     │ 不相关
               ▼                          ▼
@@ -64,7 +64,7 @@
                                                 (等用户下一次输入)
 ```
 
-**复用现有一次性 LLM 调用模式**（`internal/service/enhance/service.go`）：`modelcfg.BuildLLM(useCase)` → `model.LLMRequest` → `GenerateContent`。intent check / relevance check 均为内部一次性调用，**不写 `raw_events`、不触发工具、不触发 compaction**（结果仅以 system 事件写入 `events`）。
+**复用现有一次性 LLM 调用模式**（`internal/service/enhance/service.go`）：`modelcfg.BuildLLM(useCase)` → `model.LLMRequest` → `GenerateContent`。intent check / relevance check 均为内部一次性调用，**不触发工具、不触发 compaction、也不被意图/相关性检查（避免套娃）**；其结果以 `system` 事件**正常写入 session**（events + raw_events，正常参与后续压缩）。
 
 ## 详细设计
 
@@ -79,7 +79,7 @@
   ```
   `true` = 任务型（分析/计算/生成报告/查库等），`false` = 聊天。
 - **健壮解析**：LLM 可能把 JSON 包在 ```` ```json ```` 代码块里，解析前 strip 掉代码围栏与前后空白；解析失败（非法 JSON/缺字段）按 **chat（false）** 兜底，不阻断主流程。
-- **结果写 session**：以 `system` 角色事件写入 `events`（LLM 上下文），**不写 `raw_events`**（内部信号，不对用户展示）。事件文本形如 `[intent] is_task=true`。写入时机在 `runner.Run` 之前（意图识别之后、compaction 之前，见「编排」）。
+- **结果写 session**：以 `system` 角色事件**正常写入 session**（`events` + `raw_events`，与 user/assistant/tool 一视同仁），事件文本形如 `[intent] is_task=true`。该事件**正常参与 compaction 压缩**（作为整体上下文的一部分），但**不作为 compaction 触发条件**（见「4. compaction」）。写入时机在 `runner.Run` 之前（意图识别之后，见「编排」）。
 - **不联动**：`is_task` 仅作为 system 提示注入，让 LLM 自知聊天/任务模式；**不**做「任务意图强制路由到 agent」等额外行为（D3）。
 - **模型**：`GetModelByUseCase(UseCaseIntentCheck)`。未显式绑定时 fallback 到 legacy default 或首个 LLM（建议前端将轻量/多模态模型绑定到该 use case）。
 
@@ -95,7 +95,7 @@
   {"is_relevant": true}
   ```
 - **健壮解析**：同意图判断，strip 代码围栏；解析失败按 **相关（true）** 兜底，不阻断主流程。
-- **结果写 session**：`system` 角色事件写入 `events`（不写 `raw_events`），文本形如 `[relevance] is_relevant=false`。
+- **结果写 session**：`system` 角色事件**正常写入 session**（`events` + `raw_events`），文本形如 `[relevance] is_relevant=false`；正常参与 compaction 压缩，但不作为触发条件。
 
 ### 3. 相关性不达标的重试与计数（Redis）
 
@@ -112,9 +112,9 @@
 ### 4. compaction 语义调整
 
 - **消息角色**：`maybeCompact` 生成的摘要事件 `Content.Role` 由 `"model"` 改为 `"system"`（与 intent/relevance 的 system 事件统一；`Author` 保留 `"compaction"` 或改用 `CustomMetadata["compaction"]` 标记，保证 `IsCompactionEvent` 仍能识别并过滤展示）。
-- **压缩方式**：**整体压缩**（保持现有 `maybeCompact` 语义：把 `events` 前段（超出 `KeepRecent` 的部分）整体替换为一个摘要），**不引入「只压缩部分事件」的过滤逻辑**（D1）。`transcriptOf` 仍按全量事件渲染（user/assistant/tool 均纳入）。
-- **触发条件（收敛为 user + tool）**：`maybeCompact` 仅在 **`user` 消息** 与 **`tool` 消息（FunctionCall / FunctionResponse）** 追加时触发；`system` 事件（intent/relevance/compaction 摘要）、`assistant` 纯文本回复**不触发**。实现上把现有 `!isTextChunk && author != "compaction"` 条件改为「`author == "user"` 或事件含 FunctionCall/FunctionResponse」。
-- **AppendEvent 对 system 事件的处理**：`author == "system"` 的事件**只 `$push events`（LLM 上下文），不写 `raw_events`、不进入流式 buffer、不触发 `maybeCompact`**。这样 system 事件「夹在中间」不会干扰 `user` 事件的识别与 compaction 触发。
+- **压缩方式**：**整体压缩**（保持现有 `maybeCompact` 语义：把 `events` 前段（超出 `KeepRecent` 的部分）整体替换为一个摘要），**不引入「只压缩部分事件」的过滤逻辑**（D1）。`transcriptOf` 按全量事件渲染，**user / assistant / tool / system 事件均纳入压缩输入**。
+- **触发条件（仅 user + tool）**：`maybeCompact` 仅在 **`user` 消息** 与 **`tool` 消息（FunctionCall / FunctionResponse）** 追加时触发；`system` 事件（intent/relevance/compaction 摘要）与 `assistant` 纯文本回复**不触发**。实现上把现有 `!isTextChunk && author != "compaction"` 条件改为「`author == "user"` 或事件含 FunctionCall/FunctionResponse」。
+- **记录口径（一视同仁）**：`system` / `assistant` 事件与 `user` / `tool` **同样正常记录**（写 `events` + `raw_events`，正常走 buffer/flush），**同样正常参与压缩**。二者与 user/tool 的唯一区别是**不作为 compaction 触发条件**，其内容本身是整体上下文的一部分，照常落库、照常被压缩。
 - **适用场景**：仅 `chat` / `feishu` / `agent task`（有 session 的对话场景）。其中：
   - chat/feishu：`user` 消息 + 过程 `tool` 消息触发。
   - agent task：**用户输入的任务标题 / 描述 / 图片（user prompt，`buildTaskContent` 构造）** 与**执行过程中的 `tool` 消息**均触发。
@@ -134,8 +134,7 @@ chat.Service.prepareRun
   6. buildState + adkSessions.Create (确保 ADK session 存在)
   7. ① 意图判断: guard.CheckIntent(content) → is_task   (内部 LLM，一次性，不写 session)
   8. 写 system 意图事件 → adkSessions.AppendEvent(system 事件)
-     —— AppendEvent 对 author=system 特殊处理：只 $push events，不写 raw_events，
-        不 buffer，不触发 maybeCompact
+     —— 正常记录（$push events + raw_events），不作为 compaction 触发条件
 chat.Service.Process / Stream
   9. ② rt.RunContent(content) → runner.Run:
        appendMessageToSession → 写 user 事件(author=user) → AppendEvent:
@@ -144,12 +143,12 @@ chat.Service.Process / Stream
        agentToRun.Run → 主 LLM（上下文 = events = [摘要][system 意图][user]，
          即「user + system(意图)」一起输入 LLM）
  10. ③ 相关性检查: guard.CheckRelevance(assistantText, 最近 user/tool) → is_relevant
-     → 写 system 相关性事件（只写 events，不触发 compaction）；不相关则 INCR + 有限重试
+     → 写 system 相关性事件（正常记录，不触发 compaction）；不相关则 INCR + 有限重试
 ```
 
 > **关键结论**：
 > 1. **user + system(意图) 一起输入 LLM**：意图 system 事件（第 8 步）与 user 事件（第 9 步 `appendMessageToSession`）都落在 session 的 `events` 数组，主 LLM 由 ADK llmagent 从 `session.Events()` 组装上下文，天然同时拿到两者（顺序 `[摘要][system 意图][user]`）。
-> 2. **system 夹在中间不影响 user 识别与 compaction**：`AppendEvent` 对 `author=system` 的事件走独立分支（只写 `events`、不 buffer、不触发 compaction），`user` 事件照常走 `author=user` 路径触发 `maybeCompact`。
+> 2. **system 事件正常记录、正常参与压缩、仅不触发**：system/assistant 事件与 user/tool 一样写 `events` + `raw_events`、一样参与整体压缩，唯一区别是**不作为 `maybeCompact` 的触发条件**——`user` 事件照常触发，不受 system 事件影响。
 > 3. **意图识别在 `runner.Run` 之前完成**（不侵入 vendor runner）；agent task 无意图判断，直接 `RunAndCollectContent`，其 user prompt（标题/描述/图片）由 executor 构造后同样走 `appendMessageToSession` 触发 compaction，过程中的 tool 消息（FunctionCall/FunctionResponse）也触发。
 
 ### 6. 两条 LLM 调用路径的区分（保证内部调用不 compaction）
@@ -188,17 +187,17 @@ UseCaseRelevanceCheck UseCase = "relevance_check"
 
 ## 数据流
 
-1. chat 请求 → `prepareRun` 内意图判断（含图片）→ system 意图事件只入 `events`（不触发 compaction）→ `runner.Run` 内 user 事件触发 compaction（整体压缩旧事件）→ LLM 主调用（上下文含 system 意图 + user）。
-2. LLM 返回 → 相关性检查（对比最近 user/tool）→ system 事件只入 `events`。
+1. chat 请求 → `prepareRun` 内意图判断（含图片）→ system 意图事件**正常记录**（events + raw_events，不触发 compaction）→ `runner.Run` 内 user 事件触发 compaction（整体压缩旧事件）→ LLM 主调用（上下文含 system 意图 + user）。
+2. LLM 返回 → 相关性检查（对比最近 user/tool）→ system 事件**正常记录**（events + raw_events）。
 3. 不相关 → Redis INCR → 未达 n 原样重跑 → 再检查；达 n → DEL + 放弃。
-4. `events` 超阈值 → `maybeCompact` 整体压缩（角色 system，仅由 user/tool 触发，system/assistant 文本不触发）。
+4. `events` 超阈值 → `maybeCompact` 整体压缩（角色 system，仅由 user/tool 触发；system/assistant 事件正常参与压缩、但不作为触发条件）。
 
 ## 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
-| 是否需要新 DB 集合 | No（计数用 Redis，system 事件复用现有 session `events` 数组；`n` 存 system config 现有集合） |
-| 是否影响现有 API | No（无新 REST 端点；system 事件不进 `raw_events`，前端无感知） |
+| 是否需要新 DB 集合 | No（计数用 Redis，system 事件复用现有 session `events`/`raw_events` 数组；`n` 存 system config 现有集合） |
+| 是否影响现有 API | No（无新 REST 端点） |
 | 性能影响 | **每次 chat 增加 1~2 次额外 LLM 调用**（意图 + 相关性）；不相关时再叠加重试次数。意图判断建议绑定轻量/多模态模型；相关性检查可与意图判断共用一个轻量模型。SSE 场景下相关性检查在流结束后执行，不阻塞首字延迟 |
 | 是否需要新增 Skill | No（纯内部 Go 逻辑） |
 | 是否新增 LLM use case | Yes（intent_check / relevance_check） |
@@ -213,8 +212,8 @@ UseCaseRelevanceCheck UseCase = "relevance_check"
 | `internal/adk/modelcfg/provider.go` | UseCase 常量 + 2 个新 use case | Small |
 | `internal/service/chat/chat_service.go` | 注入 guard；`prepareRun` 意图判断 + system 事件；`Process`/`Stream` 相关性检查 | Medium |
 | `internal/logic/agent/executor.go` | 注入 guard；`runProtected` 后相关性检查 + 重试 | Medium |
-| `internal/adk/session/mongo.go` | compaction 角色 model→system；`author=system` 事件分支（只写 events、不 buffer、不触发 compaction）；compaction 触发条件收敛为 user/tool | Medium |
-| `internal/adk/session/summarizer.go` | 无改动（整体压缩语义保持） | — |
+| `internal/adk/session/mongo.go` | compaction 角色 model→system；compaction 触发条件收敛为 user/tool（system/assistant 正常记录、正常压缩、仅不触发） | Medium |
+| `internal/adk/session/summarizer.go` | 无改动（整体压缩语义保持，user/assistant/tool/system 均纳入） | — |
 | `internal/infra/redis/client.go` | 新增 `Incr` 方法 | Small |
 | `internal/service/config/` + handler | `guard.max_retries` 读 system config（默认 2） | Small |
 | `cmd/server/wire.go` | 构造 guard.Service（注入 provider/redis/config）并注入 chat/executor | Small |
@@ -222,7 +221,7 @@ UseCaseRelevanceCheck UseCase = "relevance_check"
 
 ## 测试策略
 
-1. **Unit tests**（Go）：guard 包 L1/L2 全绿——意图/相关性 JSON 解析（含代码围栏、非法 JSON 兜底）、重试计数状态机（<n 重试 / ≥n 停止 + DEL）、LLM 失败兜底、图片 part 随意图识别 content 透传。chat/executor 用 gomonkey 注入 mock guard 验证插入点与 system 事件写入；session 层验证「system 事件只写 events 不写 raw_events / 不触发 compaction」「user 与 tool 事件触发 compaction」。
+1. **Unit tests**（Go）：guard 包 L1/L2 全绿——意图/相关性 JSON 解析（含代码围栏、非法 JSON 兜底）、重试计数状态机（<n 重试 / ≥n 停止 + DEL）、LLM 失败兜底、图片 part 随意图识别 content 透传。chat/executor 用 gomonkey 注入 mock guard 验证插入点与 system 事件写入；session 层验证「system/assistant 事件正常记录 raw+events、正常参与压缩、但**不触发** compaction」「user 与 tool 事件触发 compaction」。
 2. **Integration tests**：条件使用 Docker Compose（真实 MongoDB session + Redis INCR/DEL + system config `guard.max_retries` 读取）。
 3. **E2E tests**（前端涉及时）：模型管理页 use case chip 展示 intent_check/relevance_check（`UI-XXX`）。
 4. **审计**：`.agent/skills/go-ut-audit`。
@@ -250,15 +249,15 @@ UseCaseRelevanceCheck UseCase = "relevance_check"
 
 - [ ] **必须** 每个 Success 测试至少 **2 个行为验证断言**
 - [ ] **必须** 验证重试计数状态机：INCR 次数、达 n 后 DEL、返回「是否重试」布尔
-- [ ] **必须** 验证 system 事件写入 `events` 且**不写入** `raw_events`
+- [ ] **必须** 验证 system/assistant 事件**正常写入 `events` 与 `raw_events`**、正常参与压缩，且**不触发** compaction（触发仅 user/tool）
 - [ ] **严禁** `t.Skip()` 绕过；**严禁** Success 只验 `err == nil`
 
 ## 验证标准
 
-1. chat 发任务型指令 → session `events` 出现 `system` 意图事件 `is_task=true`；闲聊 → `is_task=false`；`raw_events` 中**不出现**该 system 事件。
+1. chat 发任务型指令 → session `events` 与 `raw_events` 都出现 `system` 意图事件 `is_task=true`；闲聊 → `is_task=false`（system/assistant 与 user 一样正常记录）。
 2. 构造答非所问（mock LLM 返回无关内容）→ 相关性检查 `false` → Redis `guard:relevance:{sid}` 递增 → 未达 n 原样重跑 → 达 n 后 key 被 DEL、返回结果。
 3. agent task 输出跑偏 → 同样触发相关性重试，达 n 放弃。
-4. `events` 超阈值 → compaction 摘要 `Content.Role=="system"`；compaction 由 **user / tool 事件**触发，system 意图事件与 assistant 文本不触发；chat 场景意图 system 事件与 user 事件处于 `KeepRecent` 内被保留、不被压缩掉。
+4. `events` 超阈值 → compaction 摘要 `Content.Role=="system"`；compaction 由 **user / tool 事件**触发；system/assistant 事件**正常参与压缩**（作为 transcript 输入）、但不触发。
 5. 图片消息（文本 + 图片）→ 图片随 content 发给意图识别 LLM，意图 system 事件正常落库。
 6. agent task：user prompt（标题/描述/图片）与执行过程中的 tool 消息均触发 compaction。
 7. 内部 LLM 调用（enhance/compaction/intent/relevance）不写 session、不触发 compaction。
@@ -266,7 +265,7 @@ UseCaseRelevanceCheck UseCase = "relevance_check"
 
 ## 设计结论（已拍板）
 
-- **D1 — compaction 方式**：**整体压缩**，保持现有 `maybeCompact` 全量压缩语义，**不做**「只压缩部分事件」的过滤。需求 5 的「只针对 tool 和 user 提示词」解读为**触发条件**——compaction 仅由 `user` 消息与 `tool` 输出触发，`system` 事件（intent/relevance/compaction 摘要）不触发。
+- **D1 — compaction 方式**：**整体压缩**，保持现有 `maybeCompact` 全量压缩语义，**不做**「只压缩部分事件」的过滤。需求 5 的「只针对 tool 和 user 提示词」解读为**触发条件**——compaction 仅由 `user` 消息与 `tool` 输出触发；`system` / `assistant` 事件**正常记录（events + raw_events）、正常参与压缩**，只是不作为触发条件。
 - **D2 — 重试上限 n**：默认 `2`，**存 system config**（key `guard.max_retries`），走 SPEC-061 Config service + Redis 缓存；读取失败回退默认值。
 - **D3 — 意图判断是否联动**：**不联动**，仅作 system 提示注入（让 LLM 自知聊天/任务模式）。编排上 `user + system(意图)` 作为主 LLM 输入；`user` 仍触发 compaction，但 compaction 编排在**意图识别之后**（见「5. 编排」）。
 - **D4 — 图片消息的意图判断**：**图片也发给 LLM 做意图识别**（复用 `buildUserContent` 的 content，含 `InlineData` part）；是否多模态模型由**用户在模型配置里选择**，后端**不判断**模型能力。
