@@ -84,7 +84,7 @@
 |------|-------|--------------------|
 | `system_configs` | uuid | `key` 唯一索引 |
 | `skill_configs` | uuid | `name` 唯一索引（seed 按 name 幂等 upsert）|
-| `model_configs` | 模型 ID（本身即 `model_<uuid>` 语义，全局引用键）| — |
+| `model_configs` | **纯 UUID**（即模型 ID，全局引用键；`modelID` 直接就是 UUID，不带 `model_` 前缀）| — |
 | `model_defaults` | uuid | `use_case` 唯一索引 |
 
 ### 目标存储模型
@@ -93,7 +93,7 @@
 data_agent
 ├── system_configs    # {_id: uuid, key(唯一), value, updated_at} 每配置一条，无 namespace
 ├── skill_configs     # {_id: uuid, name(唯一), display_name, description, enabled, ...}
-├── model_configs     # ModelEntry 文档，_id = 模型 ID（model_<uuid>），每模型一条（LLM + embedding）
+├── model_configs     # ModelEntry 文档，_id = 纯 UUID（模型 ID），每模型一条（LLM + embedding）
 ├── model_defaults    # {_id: uuid, use_case(唯一), model_id} 每 use case 一条默认
 ├── rbac_* / feishu_configs / api_collections / ...    # 不动
 ```
@@ -102,7 +102,7 @@ data_agent
 
 ```go
 type ModelEntry struct {
-    ID              string    `json:"id" bson:"_id"`
+    ID              string    `json:"id" bson:"_id"` // 纯 UUID（模型 ID，不带 model_ 前缀）
     Name            string    `json:"name" bson:"name"`
     BaseURL         string    `json:"base_url" bson:"base_url"`
     APIKey          string    `json:"api_key,omitempty" bson:"api_key,omitempty"` // Vault path（解密后仅在内存）
@@ -191,6 +191,8 @@ type ModelDefaultRepository interface {
 
 `ModelEntry`/`ModelType`/`UseCase`/`ModelDefault` 从 `internal/adk/modelcfg` 下移至**新建 `internal/domain/modelconfig` 独立包**（不与 `internal/domain/model` 混放——后者承载用户/RBAC/系统配置/API集合等类型，是另一领域边界）。Provider 与 repo 共同引用该包，避免 repository 反向依赖 adk 包。
 
+> **领域内聚方向（后续重构）**：正确的领域设计应是「一个业务领域的 logic/service/db_model 内聚在同一个 domain 包内」（垂直切片），当前水平分层（domain/service/logic/infra 分离）导致单一业务领域被拆散。本 spec 仅做类型下移（`modelconfig` 领域包承载实体/值对象 + 数据库模型结构），**不强行重构分层**——logic/service/db_model 全量内聚属于后续架构优化，另行立项。
+
 ### Provider 写方法重写
 
 ```go
@@ -219,7 +221,7 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 
 1. **备份**：`system_configs`、`system_config` duplicate `*_bak_20260820`
 2. **skill**：`system_config` 22 条 → `skill_configs`（`_id` 生成 uuid，`name` 等映射字段，丢 `ns`）
-3. **model**：`system_configs[namespace=model].models` JSON 数组 → 逐条展开为 `model_configs` 文档（`_id`=模型 `id`，其余原样）；**`api_key` 字段 = Vault path 字符串原样保留**（`data-agent/models/{modelID}/api_key`）。`model id` 作为全局引用键**保持稳定**（session 绑定 / Vault / Registry 均引用，不重新生成）；若遇到无 id / id 冲突的脏数据需重生成 id，则**同步替换 Vault path 中的 modelID 并在 Vault 中 `mv` 对应 key**，保证 `DecryptModelAPIKey` 仍可解密
+3. **model**：`system_configs[namespace=model].models` JSON 数组 → 逐条展开为 `model_configs` 文档（`_id` = **重新生成的纯 UUID**，丢弃旧 `model_<uuid>` 前缀；历史 session 绑定的旧 id 为测试数据、断链不影响）；**`api_key` 字段 = 新 Vault path**（`data-agent/models/{新UUID}/api_key`），迁移时在 Vault 中 `mv` 旧 key 到新 path，保证 `DecryptModelAPIKey` 用新 UUID 仍可解密
 4. **model_defaults（完整迁移，不丢 use case）**：遍历**全部 use case 枚举值**，对每个 use case 生成一条 `model_defaults{_id: <新 uuid>, use_case, model_id}`，取值规则：
    - 优先 `is_default_for` 显式包含该 use case 的模型；
    - 否则回退到 `is_default=true` 的全局默认 LLM（覆盖所有 LLM use case：`chat`/`task`/`enhance`/`compaction`/`kb_chunking`/`kb_image`）；
@@ -252,8 +254,8 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `internal/domain/model/model.go` | SystemConfig 去 Namespace + 集合常量 | Small |
-| `internal/domain/modelconfig/` | New：迁入 ModelEntry/ModelType/UseCase/ModelDefault + use_case 枚举校验 | New |
-| `internal/adk/modelcfg/provider.go` | 大 JSON 编解码删除、写方法单文档化、默认读写改 model_defaults | Large |
+| `internal/domain/modelconfig/` | New：迁入 ModelEntry/ModelType/UseCase/ModelDefault（含 db 模型结构）+ use_case 枚举校验 | New |
+| `internal/adk/modelcfg/provider.go` | 大 JSON 编解码删除、写方法单文档化、默认读写改 model_defaults、model id 生成去 `model_` 前缀（纯 UUID） | Large |
 | `internal/repository/config.go` | SysConfigRepository 去 namespace；ModelConfigRepository/ModelDefaultRepository 落地 | Medium |
 | `internal/infra/mongo/system_config_repository.go` | 去 namespace | Medium |
 | `internal/infra/mongo/model_config_repository.go` | New（DB 分页 CRUD） | New |
@@ -339,5 +341,5 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 6. chat / agent 任务（含图片）/ KB 索引 E2E 全链路通过；迁移脚本幂等；`*_bak` 备份存在
 7. Redis 仅出现 `syscfg:{key}` 形式 key
 8. **默认完整性**：`model_defaults` 的 `use_case` **覆盖全部枚举值**（chat/task/enhance/compaction/kb_chunking/kb_image/embedding），每个 use case 有且仅有一条；`GetModelByUseCase` 迁移前后返回同一模型（无 fallback 漂移）
-9. **api_key 完整性**：迁移后 `DecryptModelAPIKey` 对每个模型均能正常解密（Vault path 未被破坏）；`model id` 与迁移前一致（session 绑定不断链）
+9. **api_key 完整性**：迁移后 `DecryptModelAPIKey` 对每个模型均能正常解密（Vault key 已 `mv` 到新 UUID 的 path）；`model id` 为纯 UUID（无 `model_` 前缀）
 10. **use_case 枚举校验**：`SetDefaultModel` / 取消默认传入非法 use_case 返回 400；合法枚举值正常通过
