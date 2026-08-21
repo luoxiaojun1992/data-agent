@@ -15,7 +15,7 @@
 | SPEC-063 异步/定时执行器 | ✅ | agent task 相关性检查插入点基于 `runProtected` |
 | SPEC-064 RBAC | ✅ | 本 spec 不新增权限/API，RBAC 无影响 |
 
-> ⚠️ **feishu 现状**：`internal/service/im/service.go` 的 `WebhookHandler` 目前是 **MVP echo-back**（收到消息仅回「收到消息: xxx」，未接入 chat 的 LLM 链路）。因此「feishu 的意图判断 / 相关性检查 / compaction」是**预留设计**，需等 feishu 接入 chat 链路后生效。spec 中 feishu 相关能力按「复用 chat 同一 guard 逻辑」设计，接入时零改动启用。
+> ⚠️ **feishu 现状**：当前 feishu 接入走 webhook，应改为 **WebSocket 长连接模式**，该改造**另行单独处理**（独立 spec），不纳入本 spec 范围。因此「feishu 的意图判断 / 相关性检查 / compaction」是**预留设计**，需等 feishu 接入 chat 链路后生效。spec 中 feishu 相关能力按「复用 chat 同一 guard 逻辑」设计，接入时零改动启用。
 
 ## 背景
 
@@ -152,7 +152,7 @@ UseCaseRelevanceCheck UseCase = "relevance_check"
 | 是否需要新增 Skill | No（纯内部 Go 逻辑） |
 | 是否新增 LLM use case | Yes（intent_check / relevance_check） |
 | Redis 依赖 | Yes（复用 `deps.redisClient`，需补 `Incr` 方法） |
-| feishu 就绪 | ❌ 当前 feishu 为 echo-back，相关能力预留 |
+| feishu 就绪 | ❌ 当前 feishu 走 webhook，应改 WebSocket 长连接模式（另行单独处理），相关能力预留 |
 
 ## 相关文件
 
