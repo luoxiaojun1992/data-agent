@@ -215,27 +215,22 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 - 默认 → 「✓ 默认」徽标 + 「取消默认」入口（调用新增取消接口）
 - 后端 `SetDefaultEmbedding` 语义从「强制恰好一个」改为「设指定为默认」；新增取消路径（删 use_case=embedding record）
 
-### 数据迁移（一次性脚本，幂等）
+### 数据落地：改 seed + 重新部署（开发测试阶段，无 DB 增量迁移）
 
-新增 `scripts/migrate_config_storage.js`（mongosh）：
+> 当前为开发测试阶段，**无线上增量数据需保留**，因此**不写 mongosh 迁移脚本**，直接改 seed 数据 + 重新部署，旧集合/旧 Vault key 作为测试数据废弃。
 
-1. **备份**：`system_configs`、`system_config` duplicate `*_bak_20260820`
-2. **skill**：`system_config` 22 条 → `skill_configs`（`_id` 生成 uuid，`name` 等映射字段，丢 `ns`）
-3. **model**：`system_configs[namespace=model].models` JSON 数组 → 逐条展开为 `model_configs` 文档（`_id` = **重新生成的纯 UUID**，丢弃旧 `model_<uuid>` 前缀；历史 session 绑定的旧 id 为测试数据、断链不影响）；**`api_key` 字段 = 新 Vault path**（`data-agent/models/{新UUID}/api_key`），迁移时在 Vault 中 `mv` 旧 key 到新 path，保证 `DecryptModelAPIKey` 用新 UUID 仍可解密
-4. **model_defaults（完整迁移，不丢 use case）**：遍历**全部 use case 枚举值**，对每个 use case 生成一条 `model_defaults{_id: <新 uuid>, use_case, model_id}`，取值规则：
-   - 优先 `is_default_for` 显式包含该 use case 的模型；
-   - 否则回退到 `is_default=true` 的全局默认 LLM（覆盖所有 LLM use case：`chat`/`task`/`enhance`/`compaction`/`kb_chunking`/`kb_image`）；
-   - `embedding` use case 回退到 `is_default=true` 的 embedding 模型；
-   - **保证每个 use case 都有且仅有一条 default record**，杜绝「迁移后 fallback 到 first model 而非原默认模型」的行为漂移；建 `use_case` 唯一索引
-5. **system**：`system_configs[namespace=system]` 11 条原地 `$unset namespace`（`_id` 保持原 ObjectId 或统一重生成 uuid；`key` 字段独立 + 唯一索引）
-6. **死数据**：`namespace=models`（复数）2 条、`namespace=model` 的 `hermes_url`/`api_key`/`api_url`/`model_name`/`embedding` —— 丢弃
-7. 每步计数 + 日志；可重复执行（先清目标再插）；迁移后校验「model_defaults 的 use_case 覆盖全部枚举值」「Vault path 可解密」
+1. **系统配置 seed**：`internal/service/config` 的 `SeedBuiltins`（`cmd/server/wire.go initBuiltins` 调用）改写到 `system_configs`（**去 namespace**，`key` 唯一、幂等插入不覆盖）。
+2. **skill 配置 seed**：`internal/service/skill/config.go` 的 `SeedSkills` 改写到 `skill_configs` 集合（原 `system_config` 无 s 集合废弃）。
+3. **模型配置**：无 seed（admin UI 配置）。开发阶段**重新用 admin UI 配置**模型，`model id` 生成为纯 UUID，`model_defaults` 按 use case 逐条配置；Vault `api_key` 重新配置（`data-agent/models/{新UUID}/api_key`）。
+4. **旧集合废弃**：`system_config`（无 s）、旧 `system_configs` 的 `namespace=model`/`namespace=models` 数据直接删除（测试数据，不迁移）。
+5. seed 幂等：`SeedBuiltins`/`SeedSkills` 保持「只插新、不覆盖既有」，重跑安全。
 
-### 部署顺序（一次性切换）
+### 部署顺序
 
-1. 低峰期执行迁移脚本（幂等）
-2. 部署新 backend + frontend 镜像
-3. 验证；回滚 = 旧代码镜像 + `*_bak` 恢复
+1. 删除旧集合（`system_config` 无 s + 旧 `system_configs` 的 model/models namespace 数据）
+2. 部署新 backend + frontend（seed 自动写入新集合结构）
+3. 重新配置模型（admin UI）+ Vault api_key
+4. 验证；回滚 = 旧代码镜像（旧集合结构 seed 自动重建）
 
 ## 可行性分析
 
@@ -247,7 +242,7 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 | 分页改进 | Yes（DB skip/limit + count，替代内存切片） |
 | 性能影响 | 读：model_defaults 全量（数量=use case 数，极小）+ 模型 DB 分页；缓存仅 system 配置 |
 | 是否需要新增 Skill | No |
-| 风险点 | ① ModelEntry 下移 modelconfig 的 import 面（~10 非 test 文件）；② 迁移窗口 backend 重启；③ 默认语义从内嵌字段迁引用式需回归 |
+| 风险点 | ① ModelEntry 下移 modelconfig 的 import 面（~10 非 test 文件）；② 删旧集合 + 重新 seed 后模型/Vault 需重新配置（开发测试阶段可接受）；③ 默认语义从内嵌字段迁引用式需回归 |
 
 ## 相关文件
 
@@ -262,12 +257,12 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 | `internal/infra/mongo/model_default_repository.go` | New（use_case 唯一索引） | New |
 | `internal/infra/mongo/skill_config_repo.go` | 换集合 | Small |
 | `internal/infra/cache/sysconfig_cache.go` | key 去 namespace | Small |
-| `internal/service/config/` | 去 namespace | Medium |
+| `internal/service/config/` | 去 namespace + `SeedBuiltins` 改新结构 | Medium |
+| `internal/service/skill/config.go` | `SeedSkills` 换集合 skill_configs | Small |
 | `internal/api/handler/modelconfig.go` | legacy 路径清理 + 新接口 + 取消默认端点 | Medium |
 | `internal/api/handler/config.go` | 去 namespace | Small |
 | `cmd/server/wire.go` | 注入 + buildEmbedFn 单轨 | Medium |
 | `frontend/app/admin/models/page.tsx` | 移除 hermes_url 字段 + embedding 默认 toggle/取消默认 | Medium |
-| `scripts/migrate_config_storage.js` | New | New |
 | mocks 等 | mock 再生成 | Small |
 
 ## 测试策略
@@ -277,7 +272,8 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
    - model_default_repository Set/Delete（先删后插语义，L2 100%）
    - Provider 各写方法单文档原子 + 默认读写改 model_defaults（L3 98%）
    - system_config_repository 无 namespace、sysconfig_cache 新 key、skill_config_repo 换集合
-2. **Integration tests**：Docker Compose 验证迁移幂等 + 并发写不丢更新 + use_case 唯一索引约束
+   - `SeedBuiltins` / `SeedSkills` 写新集合结构 + 幂等（重跑不覆盖、不重复）
+2. **Integration tests**：Docker Compose 验证 seed 幂等 + 并发写不丢更新 + use_case 唯一索引约束
 3. **E2E tests**（条件）：admin 模型页 CRUD/设默认/**取消 embedding 默认**、设置页、skill 列表回归
 4. **审计**：`.agent/skills/go-ut-audit`
 
@@ -333,13 +329,13 @@ func (p *Provider) SetDefaultEmbedding(ctx, id) error         // defaultRepo.Set
 
 ## 验证标准
 
-1. 线上集合分布：`system_configs` 仅 11 条无 `namespace`；`skill_configs` 22 条；`model_configs` 每模型一条（3 条）；`model_defaults` 每 use case 一条；`system_config`（无 s）不再被代码引用
-2. `GET /models/list`、`/admin/models`、`/admin/models/embedding` 返回与迁移前一致（含 `is_default_for` 联动组装正确）
+1. 集合分布：`system_configs` 无 `namespace`（仅系统配置）；`skill_configs` 独立；`model_configs` 每模型一条（纯 UUID）；`model_defaults` 每 use case 一条；`system_config`（无 s）不再被代码引用
+2. `GET /models/list`、`/admin/models`、`/admin/models/embedding` 返回结构正确（含 `is_default_for` 联动组装正确）
 3. **并发回归**：并发编辑两个不同模型，两处改动均保留（不丢更新）
 4. **分页回归**：模型列表 DB 分页正确（total/page/page_size 与内存分页结果一致）
 5. **embedding 默认**：前端可设默认、可取消默认；取消后 `GetDefaultEmbeddingModel` fallback 首个 embedding
-6. chat / agent 任务（含图片）/ KB 索引 E2E 全链路通过；迁移脚本幂等；`*_bak` 备份存在
+6. chat / agent 任务（含图片）/ KB 索引 E2E 全链路通过；`SeedBuiltins`/`SeedSkills` **幂等**（重跑不覆盖、不重复）
 7. Redis 仅出现 `syscfg:{key}` 形式 key
-8. **默认完整性**：`model_defaults` 的 `use_case` **覆盖全部枚举值**（chat/task/enhance/compaction/kb_chunking/kb_image/embedding），每个 use case 有且仅有一条；`GetModelByUseCase` 迁移前后返回同一模型（无 fallback 漂移）
-9. **api_key 完整性**：迁移后 `DecryptModelAPIKey` 对每个模型均能正常解密（Vault key 已 `mv` 到新 UUID 的 path）；`model id` 为纯 UUID（无 `model_` 前缀）
+8. **默认完整性**：`model_defaults` 的 `use_case` **覆盖全部枚举值**（chat/task/enhance/compaction/kb_chunking/kb_image/embedding），每个 use case 有且仅有一条；`GetModelByUseCase` 返回配置的默认模型（无 fallback 漂移）
+9. **api_key 完整性**：`DecryptModelAPIKey` 对每个模型均能正常解密（Vault path 指向新 UUID）；`model id` 为纯 UUID（无 `model_` 前缀）
 10. **use_case 枚举校验**：`SetDefaultModel` / 取消默认传入非法 use_case 返回 400；合法枚举值正常通过
