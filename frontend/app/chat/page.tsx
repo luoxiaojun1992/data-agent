@@ -11,7 +11,7 @@ import ModelSelector from '../components/ModelSelector';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 interface Message {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
   type?: 'text' | 'tool_call' | 'tool_result';
@@ -41,7 +41,7 @@ type WireChatEvent = {
 function normalizeChatMessage(raw: WireChatEvent): Message {
   const result = raw.result !== undefined ? raw.result : raw.response;
   return {
-    role: raw.role === 'user' ? 'user' : 'assistant',
+    role: raw.role === 'user' ? 'user' : raw.role === 'system' ? 'system' : 'assistant',
     content: raw.content || '',
     type: raw.type || 'text',
     eventId: raw.event_id,
@@ -518,6 +518,13 @@ export default function ChatPage() {
             )}
 
             {messages.map((msg, i) => (
+              msg.role === 'system' ? (
+                <div key={i} className="flex justify-center my-1" data-testid={`chat-msg-system-${i}`}>
+                  <span className="text-xs text-[var(--text-secondary)] opacity-80 px-3 py-1 rounded-full bg-[var(--glass-bg)] border border-[var(--border-glass)]">
+                    {msg.content}
+                  </span>
+                </div>
+              ) : (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
                   <div className="w-8 h-8 rounded-full bg-emerald-400/20 flex items-center justify-center text-xs font-bold text-emerald-400 mr-3 flex-shrink-0" data-testid="chat-msg-avatar">DA</div>
@@ -585,6 +592,7 @@ export default function ChatPage() {
                   </p>
                 </div>
               </div>
+              )
             ))}
             <div ref={messagesEndRef} />
           </div>

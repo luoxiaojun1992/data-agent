@@ -172,7 +172,20 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 
 	for i := 0; i < events.Len(); i++ {
 		ev := events.At(i)
-		if chat.IsCompactionEvent(ev) || ev.Content == nil {
+		if ev.Content == nil {
+			continue
+		}
+		// Compaction summary is internal context; surface only a lightweight
+		// notice (no summary content) so the transcript shows a compression
+		// happened without exposing the raw summary (SPEC-067 follow-up).
+		if chat.IsCompactionEvent(ev) {
+			messages = append(messages, domainchat.ChatEvent{
+				EventID:   ev.ID,
+				Role:      "system",
+				Type:      "text",
+				Content:   "[compaction] 上下文已自动压缩",
+				Timestamp: ev.Timestamp.UTC().Format(time.RFC3339),
+			})
 			continue
 		}
 		role := ev.Author
