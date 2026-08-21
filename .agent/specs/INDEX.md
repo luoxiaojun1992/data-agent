@@ -80,6 +80,7 @@
 | SPEC-064 | RBAC 角色权限管理系统（角色层级、权限管控、用户-角色关联、侧边栏权限化） | **P20** | [spec-064-rbac-implementation.md](spec-064-rbac-implementation.md) | 📐 设计中 |
 | SPEC-065 | API 注册与 MCP 工具集成（OpenAPI 上传 → 注册外部 API → external_api_search/summary/method/call 工具） | **P20** | [spec-065-api-collection-mcp-tools.md](spec-065-api-collection-mcp-tools.md) | ✅ 已实现 |
 | SPEC-066 | 配置存储拆分（system_configs 去 namespace；模型配置每模型一条文档+DB分页；model_defaults 独立集合；skill 独立集合） | **P15** | [spec-066-config-storage-split.md](spec-066-config-storage-split.md) | 📐 设计中 |
+| SPEC-067 | 用户意图识别与 LLM 输出相关性检查（Guard：intent/relevance use case + Redis 计数重试 + compaction 角色/范围调整） | **P15** | [spec-067-intent-relevance-guard.md](spec-067-intent-relevance-guard.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -244,4 +245,11 @@ SPEC-006│               │
                     SysConfigRepository 接口去 namespace; ModelConfigRepository 落地;
                     迁移脚本幂等 + _bak 备份回滚;
                     依赖 SPEC-061/062 已实现)
+
+[P15] SPEC-067 ─── 用户意图识别与 LLM 输出相关性检查 (Guard)
+                   (chat/feishu 意图判断 is_task; chat/feishu/agent task 相关性检查
+                    is_relevant; system 事件写 events; Redis 计数有限重试;
+                    intent_check/relevance_check 两个 use case;
+                    compaction 角色 model→system、只压缩 tool/user;
+                    依赖 SPEC-061/062/063 已实现)
 ```
