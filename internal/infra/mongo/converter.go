@@ -139,6 +139,26 @@ func getBool(d bson.M, key string) bool {
 	return b
 }
 
+func getFloat(d bson.M, key string) float64 {
+	v, ok := d[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int32:
+		return float64(n)
+	case int64:
+		return float64(n)
+	}
+	return 0
+}
+
 func getStrSlice(d bson.M, key string) []string {
 	v, ok := d[key]
 	if !ok {
@@ -302,14 +322,14 @@ func docToInvite(d bson.M) *model.Invite {
 
 func roleToDoc(r *model.Role) bson.M {
 	return bson.M{
-		"_id":         r.ID,
-		"name":        r.Name,
+		"_id":          r.ID,
+		"name":         r.Name,
 		"display_name": r.DisplayName,
-		"description": r.Description,
-		"permissions": r.Permissions,
-		"type":        r.Type,
-		"created_at":  r.CreatedAt,
-		"updated_at":  r.UpdatedAt,
+		"description":  r.Description,
+		"permissions":  r.Permissions,
+		"type":         r.Type,
+		"created_at":   r.CreatedAt,
+		"updated_at":   r.UpdatedAt,
 	}
 }
 
@@ -394,7 +414,6 @@ func docToNotification(d bson.M) *model.Notification {
 func systemConfigToDoc(c *model.SystemConfig) bson.M {
 	return bson.M{
 		"_id":        c.ID,
-		"namespace":  c.Namespace,
 		"key":        c.Key,
 		"value":      c.Value,
 		"updated_at": c.UpdatedAt,
@@ -404,7 +423,6 @@ func systemConfigToDoc(c *model.SystemConfig) bson.M {
 func docToSystemConfig(d bson.M) *model.SystemConfig {
 	return &model.SystemConfig{
 		ID:        getStr(d, "_id"),
-		Namespace: getStr(d, "namespace"),
 		Key:       getStr(d, "key"),
 		Value:     getStr(d, "value"),
 		UpdatedAt: getTime(d, "updated_at"),
@@ -552,51 +570,47 @@ func docToChunk(d bson.M) *knowledge.Chunk {
 
 // ── APIReview ───────────────────────────────────────────────────────
 
-
-
-
-
 // ── TaskDef (definition) ─────────────────────────────────────────────
 
 func taskDefToDoc(t *task.Task) bson.M {
 	return bson.M{
-		"_id":              t.ID,
-		"user_id":          t.UserID,
-		"title":            t.Title,
-		"description":      t.Description,
-		"type":             t.Type,
-		"model_id":         t.ModelID,
-		"skill_chain":      t.SkillChain,
-		"params":           t.Params,
-		"cron_expr":        t.CronExpr,
-		"schedule_mode":    t.ScheduleMode,
-		"scheduled_at":     t.ScheduledAt,
+		"_id":               t.ID,
+		"user_id":           t.UserID,
+		"title":             t.Title,
+		"description":       t.Description,
+		"type":              t.Type,
+		"model_id":          t.ModelID,
+		"skill_chain":       t.SkillChain,
+		"params":            t.Params,
+		"cron_expr":         t.CronExpr,
+		"schedule_mode":     t.ScheduleMode,
+		"scheduled_at":      t.ScheduledAt,
 		"scheduled_enabled": t.ScheduledEnabled,
-		"run_count":        t.RunCount,
-		"last_run_at":      t.LastRunAt,
-		"created_at":       t.CreatedAt,
-		"updated_at":       t.UpdatedAt,
+		"run_count":         t.RunCount,
+		"last_run_at":       t.LastRunAt,
+		"created_at":        t.CreatedAt,
+		"updated_at":        t.UpdatedAt,
 	}
 }
 
 func docToTaskDef(d bson.M) *task.Task {
 	return &task.Task{
-		ID:          getStr(d, "_id"),
-		UserID:      getStr(d, "user_id"),
-		Title:       getStr(d, "title"),
-		Description: getStr(d, "description"),
-		Type:        getStr(d, "type"),
-		ModelID:     getStr(d, "model_id"),
-		SkillChain:  getStrSlice(d, "skill_chain"),
-		Params:      getSubDoc(d, "params"),
-		CronExpr:    getStr(d, "cron_expr"),
-		ScheduleMode: getStr(d, "schedule_mode"),
-		ScheduledAt: getTimePtr(d, "scheduled_at"),
+		ID:               getStr(d, "_id"),
+		UserID:           getStr(d, "user_id"),
+		Title:            getStr(d, "title"),
+		Description:      getStr(d, "description"),
+		Type:             getStr(d, "type"),
+		ModelID:          getStr(d, "model_id"),
+		SkillChain:       getStrSlice(d, "skill_chain"),
+		Params:           getSubDoc(d, "params"),
+		CronExpr:         getStr(d, "cron_expr"),
+		ScheduleMode:     getStr(d, "schedule_mode"),
+		ScheduledAt:      getTimePtr(d, "scheduled_at"),
 		ScheduledEnabled: getBool(d, "scheduled_enabled"),
-		RunCount:    int64(getInt(d, "run_count")),
-		LastRunAt:   getTimePtr(d, "last_run_at"),
-		CreatedAt:   getTime(d, "created_at"),
-		UpdatedAt:   getTime(d, "updated_at"),
+		RunCount:         int64(getInt(d, "run_count")),
+		LastRunAt:        getTimePtr(d, "last_run_at"),
+		CreatedAt:        getTime(d, "created_at"),
+		UpdatedAt:        getTime(d, "updated_at"),
 	}
 }
 

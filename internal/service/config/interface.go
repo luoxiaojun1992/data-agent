@@ -10,9 +10,9 @@ import (
 
 // Service defines the system configuration service contract.
 type Service interface {
-	GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error)
-	List(ctx context.Context, namespace string, page, pageSize int) ([]model.SystemConfig, int64, error)
-	Upsert(ctx context.Context, namespace, key, value string) error
-	Delete(ctx context.Context, namespace, key string) error
+	GetAll(ctx context.Context) ([]model.SystemConfig, error)
+	List(ctx context.Context, page, pageSize int) ([]model.SystemConfig, int64, error)
+	Upsert(ctx context.Context, key, value string) error
+	Delete(ctx context.Context, key string) error
 	SeedBuiltins(ctx context.Context) error
 }

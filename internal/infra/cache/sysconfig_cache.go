@@ -23,6 +23,9 @@ const (
 
 	// keyPrefix is the root namespace for all sysconfig cache keys.
 	keyPrefix = "syscfg"
+
+	// allKey is the aggregate cache key for the full config list.
+	allKeyName = "all"
 )
 
 // SysConfigCacheRepo is a Cache-Aside decorator implementing
@@ -70,50 +73,49 @@ func (r *SysConfigCacheRepo) getCache() repository.CacheRepository {
 	return r.cache
 }
 
-// singleKey builds the cache key for a single (namespace, key) entry.
-func singleKey(namespace, key string) string {
-	return fmt.Sprintf("%s:%s:%s", keyPrefix, namespace, key)
+// singleKey builds the cache key for a single entry.
+func singleKey(key string) string {
+	return fmt.Sprintf("%s:%s", keyPrefix, key)
 }
 
-// allKey builds the cache key for the aggregate (all entries in a namespace).
-func allKey(namespace string) string {
-	return fmt.Sprintf("%s:ns:%s:all", keyPrefix, namespace)
+// allKey builds the cache key for the aggregate (all entries).
+func allKey() string {
+	return fmt.Sprintf("%s:%s", keyPrefix, allKeyName)
 }
 
 // Get retrieves a config entry. Cache hit returns immediately; cache miss
 // falls through to mongo and backfills the cache.
-func (r *SysConfigCacheRepo) Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error) {
+func (r *SysConfigCacheRepo) Get(ctx context.Context, key string) (*model.SystemConfig, error) {
 	c := r.getCache()
 	if c != nil {
-		cached, err := c.Get(ctx, singleKey(namespace, key))
+		cached, err := c.Get(ctx, singleKey(key))
 		if err == nil && cached != "" {
 			// Cache hit — reconstruct a SystemConfig with the cached value.
 			return &model.SystemConfig{
-				Namespace: namespace,
-				Key:       key,
-				Value:     cached,
+				Key:   key,
+				Value: cached,
 			}, nil
 		}
 		// miss or cache error → fall through to mongo
 	}
 
-	cfg, err := r.mongo.Get(ctx, namespace, key)
+	cfg, err := r.mongo.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 	if cfg != nil && c != nil {
 		// Backfill cache (best-effort; failure is non-fatal, TTL self-heals).
-		_ = c.Set(ctx, singleKey(namespace, key), cfg.Value, r.ttl)
+		_ = c.Set(ctx, singleKey(key), cfg.Value, r.ttl)
 	}
 	return cfg, nil
 }
 
-// GetAll retrieves all configs in a namespace. Uses an aggregate cache key
-// storing a JSON array of SystemConfig entries.
-func (r *SysConfigCacheRepo) GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error) {
+// GetAll retrieves all configs. Uses an aggregate cache key storing a JSON
+// array of SystemConfig entries.
+func (r *SysConfigCacheRepo) GetAll(ctx context.Context) ([]model.SystemConfig, error) {
 	c := r.getCache()
 	if c != nil {
-		cached, err := c.Get(ctx, allKey(namespace))
+		cached, err := c.Get(ctx, allKey())
 		if err == nil && cached != "" {
 			var configs []model.SystemConfig
 			if json.Unmarshal([]byte(cached), &configs) == nil {
@@ -123,13 +125,13 @@ func (r *SysConfigCacheRepo) GetAll(ctx context.Context, namespace string) ([]mo
 		}
 	}
 
-	configs, err := r.mongo.GetAll(ctx, namespace)
+	configs, err := r.mongo.GetAll(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if configs != nil && c != nil {
 		if data, mErr := json.Marshal(configs); mErr == nil {
-			_ = c.Set(ctx, allKey(namespace), string(data), r.ttl)
+			_ = c.Set(ctx, allKey(), string(data), r.ttl)
 		}
 	}
 	return configs, nil
@@ -137,41 +139,41 @@ func (r *SysConfigCacheRepo) GetAll(ctx context.Context, namespace string) ([]mo
 
 // Upsert writes to DB first; on success, updates the single-entry cache and
 // invalidates the aggregate cache so the next GetAll re-fetches from DB.
-func (r *SysConfigCacheRepo) Upsert(ctx context.Context, namespace, key, value string) error {
-	if err := r.mongo.Upsert(ctx, namespace, key, value); err != nil {
+func (r *SysConfigCacheRepo) Upsert(ctx context.Context, key, value string) error {
+	if err := r.mongo.Upsert(ctx, key, value); err != nil {
 		return err // DB is SSOT — don't touch cache on DB failure
 	}
 	c := r.getCache()
 	if c != nil {
 		// Best-effort cache update; failures are non-fatal (TTL self-heals).
-		_ = c.Set(ctx, singleKey(namespace, key), value, r.ttl)
-		_ = c.Delete(ctx, allKey(namespace))
+		_ = c.Set(ctx, singleKey(key), value, r.ttl)
+		_ = c.Delete(ctx, allKey())
 	}
 	return nil
 }
 
 // Delete removes from DB first; on success, invalidates both the single-entry
 // and aggregate caches.
-func (r *SysConfigCacheRepo) Delete(ctx context.Context, namespace, key string) error {
-	if err := r.mongo.Delete(ctx, namespace, key); err != nil {
+func (r *SysConfigCacheRepo) Delete(ctx context.Context, key string) error {
+	if err := r.mongo.Delete(ctx, key); err != nil {
 		return err
 	}
 	c := r.getCache()
 	if c != nil {
-		_ = c.Delete(ctx, singleKey(namespace, key), allKey(namespace))
+		_ = c.Delete(ctx, singleKey(key), allKey())
 	}
 	return nil
 }
 
 // List returns a paginated subset of configs. Paginated queries are not cached
 // (the page offset/limit varies per request); passes through to mongo directly.
-func (r *SysConfigCacheRepo) List(ctx context.Context, namespace string, skip, limit int64) ([]model.SystemConfig, error) {
-	return r.mongo.List(ctx, namespace, skip, limit)
+func (r *SysConfigCacheRepo) List(ctx context.Context, skip, limit int64) ([]model.SystemConfig, error) {
+	return r.mongo.List(ctx, skip, limit)
 }
 
-// Count returns the number of configs in a namespace. Not cached.
-func (r *SysConfigCacheRepo) Count(ctx context.Context, namespace string) (int64, error) {
-	return r.mongo.Count(ctx, namespace)
+// Count returns the number of configs. Not cached.
+func (r *SysConfigCacheRepo) Count(ctx context.Context) (int64, error) {
+	return r.mongo.Count(ctx)
 }
 
 // Compile-time interface conformance check.

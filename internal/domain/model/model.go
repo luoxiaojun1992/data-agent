@@ -147,9 +147,9 @@ type Notification struct {
 }
 
 // SystemConfig represents a system-wide configuration entry.
+// Namespace is removed — each key is a standalone document in system_configs.
 type SystemConfig struct {
 	ID        string    `json:"id"`
-	Namespace string    `json:"namespace"`
 	Key       string    `json:"key"`
 	Value     string    `json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`

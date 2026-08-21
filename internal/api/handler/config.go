@@ -8,8 +8,8 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
-	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	"github.com/luoxiaojun1992/data-agent/internal/service/config"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // ConfigHandler handles system configuration and password management endpoints.
@@ -24,7 +24,7 @@ func NewConfigHandler(cfgSvc config.Service, userRepo repository.UserRepository)
 }
 
 // sysConfigRoutePath is the route path for system configuration endpoints.
-const sysConfigRoutePath = "/sysconfig/:namespace"
+const sysConfigRoutePath = "/sysconfig"
 
 // RegisterSysConfigRoutes registers system configuration routes.
 // Sysconfig write operations require PermSystemEdit.
@@ -36,11 +36,10 @@ func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler, rbacSvc *
 }
 
 func (h *ConfigHandler) Get(c *gin.Context) {
-	namespace := c.Param("namespace")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
-	cfgs, total, err := h.cfgSvc.List(c.Request.Context(), namespace, page, pageSize)
+	cfgs, total, err := h.cfgSvc.List(c.Request.Context(), page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -57,14 +56,14 @@ func (h *ConfigHandler) Put(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.cfgSvc.Upsert(c.Request.Context(), c.Param("namespace"), req.Key, req.Value); err != nil {
+	if err := h.cfgSvc.Upsert(c.Request.Context(), req.Key, req.Value); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已保存"})
 }
 
-// Delete removes a config entry by namespace and key. Idempotent — returns 200
+// Delete removes a config entry by key. Idempotent — returns 200
 // even if the entry does not exist.
 func (h *ConfigHandler) Delete(c *gin.Context) {
 	var req struct {
@@ -74,7 +73,7 @@ func (h *ConfigHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.cfgSvc.Delete(c.Request.Context(), c.Param("namespace"), req.Key); err != nil {
+	if err := h.cfgSvc.Delete(c.Request.Context(), req.Key); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

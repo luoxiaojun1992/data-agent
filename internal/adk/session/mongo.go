@@ -189,11 +189,32 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 
 	syncSnapshot(sess, event, isTextChunk)
 
-	// Compaction only at natural boundaries; never for compaction events themselves.
-	if s.summarizer != nil && !isTextChunk && event.Author != "compaction" {
+	// Compaction triggered only by user messages and tool messages
+	// (FunctionCall / FunctionResponse). system and assistant text events are
+	// recorded and compacted normally but never trigger compaction.
+	if s.summarizer != nil && shouldCompact(event) {
 		return s.maybeCompact(ctx, sess)
 	}
 	return nil
+}
+
+// shouldCompact reports whether appending this event should trigger a
+// compaction check. Only user messages and tool messages qualify.
+func shouldCompact(event *session.Event) bool {
+	if event == nil || event.Author == "compaction" || event.Author == "system" {
+		return false
+	}
+	if event.Author == "user" {
+		return true
+	}
+	if event.Content != nil {
+		for _, p := range event.Content.Parts {
+			if p != nil && (p.FunctionCall != nil || p.FunctionResponse != nil) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func ensurePush(update bson.M, key string, event *session.Event) bson.M {
@@ -341,7 +362,7 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 		Timestamp: time.Now(),
 		Author:    "compaction",
 		LLMResponse: model.LLMResponse{
-			Content: &genai.Content{Role: "model", Parts: []*genai.Part{{Text: "[conversation summary] " + summary}}},
+			Content: &genai.Content{Role: "system", Parts: []*genai.Part{{Text: "[conversation summary] " + summary}}},
 		},
 	}
 	newEvents := make([]*session.Event, 0, cfg.KeepRecent+1)

@@ -22,6 +22,7 @@ import (
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/notification"
 )
 
@@ -47,6 +48,7 @@ type AgentExecutor struct {
 	runs        domaintask.TaskRunService        // run status/result/error write-back
 	notif       notification.NotificationService // completion/failure notification
 	cbReg       *security.CircuitBreakerRegistry // protects Runtime.Run from cascading failures
+	guard       *guard.Service                   // optional relevance check + retry
 }
 
 // NewAgentExecutor wires the executor with its dependencies. All are required
@@ -57,6 +59,7 @@ func NewAgentExecutor(
 	runs domaintask.TaskRunService,
 	notif notification.NotificationService,
 	cbReg *security.CircuitBreakerRegistry,
+	guardSvc *guard.Service,
 ) *AgentExecutor {
 	return &AgentExecutor{
 		registry:    registry,
@@ -64,6 +67,7 @@ func NewAgentExecutor(
 		runs:        runs,
 		notif:       notif,
 		cbReg:       cbReg,
+		guard:       guardSvc,
 	}
 }
 
@@ -142,6 +146,12 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	var firstContent string
 	firstErr := e.runProtected(ctx, rt, run, runSessionID, firstUserContent, runCfg, &firstContent)
 
+	// 4b. Relevance check against the task prompt (message). Irrelevant output
+	// triggers a bounded retry (same input, no hint).
+	if firstErr == nil && e.guard != nil {
+		firstContent = e.relevanceLoop(ctx, rt, run, runSessionID, firstUserContent, runCfg, message, firstContent)
+	}
+
 	// 5. Respect cancellation.
 	if e.wasRunCancelled(run.ID) {
 		return firstErr
@@ -201,6 +211,30 @@ func (e *AgentExecutor) runProtected(ctx context.Context, rt *adkruntime.Runtime
 		return runFn()
 	}
 	return e.cbReg.GetOrCreate("agent").Call(runFn)
+}
+
+// relevanceLoop checks the LLM output against the task prompt (base) and
+// retries the same run up to the guard's max-retry limit when irrelevant.
+func (e *AgentExecutor) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, run *domaintask.TaskRun, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, base, firstText string) string {
+	if base == "" {
+		return firstText
+	}
+	text := firstText
+	for {
+		relevant, err := e.guard.CheckRelevance(ctx, text, base)
+		if err != nil || relevant {
+			return text
+		}
+		retry, rErr := e.guard.RecordAndShouldRetry(ctx, sessionID)
+		if rErr != nil || !retry {
+			return text
+		}
+		var newText string
+		if runErr := e.runProtected(ctx, rt, run, sessionID, content, runCfg, &newText); runErr != nil {
+			return text
+		}
+		text = newText
+	}
 }
 
 // failRun persists the failure error and notifies the user.

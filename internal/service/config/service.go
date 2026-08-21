@@ -48,8 +48,8 @@ func NewService(sysConfig repository.SysConfigRepository) Service {
 
 var _ Service = (*service)(nil)
 
-func (s *service) GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error) {
-	cfgs, err := s.sysConfig.GetAll(ctx, namespace)
+func (s *service) GetAll(ctx context.Context) ([]model.SystemConfig, error) {
+	cfgs, err := s.sysConfig.GetAll(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (s *service) GetAll(ctx context.Context, namespace string) ([]model.SystemC
 
 // List returns a paginated page of configs. All built-ins are seeded into DB
 // at startup so no runtime merge is needed — the response is pure DB data.
-func (s *service) List(ctx context.Context, namespace string, page, pageSize int) ([]model.SystemConfig, int64, error) {
+func (s *service) List(ctx context.Context, page, pageSize int) ([]model.SystemConfig, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -71,11 +71,11 @@ func (s *service) List(ctx context.Context, namespace string, page, pageSize int
 	skip := int64((page - 1) * pageSize)
 	limit := int64(pageSize)
 
-	cfgs, err := s.sysConfig.List(ctx, namespace, skip, limit)
+	cfgs, err := s.sysConfig.List(ctx, skip, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	total, err := s.sysConfig.Count(ctx, namespace)
+	total, err := s.sysConfig.Count(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -85,7 +85,7 @@ func (s *service) List(ctx context.Context, namespace string, page, pageSize int
 // SeedBuiltins ensures every built-in config key exists in the database
 // without overwriting any user-modified values. Safe to call on every startup.
 func (s *service) SeedBuiltins(ctx context.Context) error {
-	existing, err := s.sysConfig.GetAll(ctx, "system")
+	existing, err := s.sysConfig.GetAll(ctx)
 	if err != nil {
 		return fmt.Errorf("seed: list system configs: %w", err)
 	}
@@ -97,17 +97,17 @@ func (s *service) SeedBuiltins(ctx context.Context) error {
 		if existMap[b.Key] {
 			continue // already exists — never overwrite user-modified values
 		}
-		if err := s.sysConfig.Upsert(ctx, "system", b.Key, b.Default); err != nil {
+		if err := s.sysConfig.Upsert(ctx, b.Key, b.Default); err != nil {
 			log.Printf("[config] seed %s: %v", b.Key, err)
 		}
 	}
 	return nil
 }
 
-func (s *service) Upsert(ctx context.Context, namespace, key, value string) error {
-	return s.sysConfig.Upsert(ctx, namespace, key, value)
+func (s *service) Upsert(ctx context.Context, key, value string) error {
+	return s.sysConfig.Upsert(ctx, key, value)
 }
 
-func (s *service) Delete(ctx context.Context, namespace, key string) error {
-	return s.sysConfig.Delete(ctx, namespace, key)
+func (s *service) Delete(ctx context.Context, key string) error {
+	return s.sysConfig.Delete(ctx, key)
 }

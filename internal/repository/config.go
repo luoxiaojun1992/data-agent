@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/modelconfig"
 )
 
 //go:generate mockery --name RoleRepository --output ./mocks --outpkg mocks
@@ -20,22 +21,37 @@ type RoleRepository interface {
 //go:generate mockery --name SysConfigRepository --output ./mocks --outpkg mocks
 
 // SysConfigRepository defines the data access contract for system configuration.
+// Namespace is removed — each key is a standalone document in system_configs.
 type SysConfigRepository interface {
-	Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error)
-	GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error)
-	List(ctx context.Context, namespace string, skip, limit int64) ([]model.SystemConfig, error)
-	Count(ctx context.Context, namespace string) (int64, error)
-	Upsert(ctx context.Context, namespace, key, value string) error
-	Delete(ctx context.Context, namespace, key string) error
+	Get(ctx context.Context, key string) (*model.SystemConfig, error)
+	GetAll(ctx context.Context) ([]model.SystemConfig, error)
+	List(ctx context.Context, skip, limit int64) ([]model.SystemConfig, error)
+	Count(ctx context.Context) (int64, error)
+	Upsert(ctx context.Context, key, value string) error
+	Delete(ctx context.Context, key string) error
 }
 
 //go:generate mockery --name ModelConfigRepository --output ./mocks --outpkg mocks
 
-// ModelConfigRepository defines the data access contract for model configurations.
+// ModelConfigRepository defines structured CRUD + DB pagination for model
+// configurations (one document per model).
 type ModelConfigRepository interface {
-	GetAll(ctx context.Context) ([]map[string]interface{}, error)
-	Upsert(ctx context.Context, key string, config map[string]interface{}) error
-	Delete(ctx context.Context, key string) error
+	List(ctx context.Context, t modelconfig.ModelType, skip, limit int64) ([]modelconfig.ModelEntry, int64, error)
+	Get(ctx context.Context, id string) (*modelconfig.ModelEntry, error)
+	Insert(ctx context.Context, entry modelconfig.ModelEntry) error
+	Update(ctx context.Context, id string, entry modelconfig.ModelEntry) error
+	Delete(ctx context.Context, id string) error
+}
+
+//go:generate mockery --name ModelDefaultRepository --output ./mocks --outpkg mocks
+
+// ModelDefaultRepository maps each use case to its default model, with a
+// unique index on use_case guaranteeing at most one default per use case.
+type ModelDefaultRepository interface {
+	List(ctx context.Context) ([]modelconfig.ModelDefault, error)
+	Get(ctx context.Context, useCase string) (*modelconfig.ModelDefault, error)
+	Set(ctx context.Context, useCase, modelID string) error // deleteOne + insertOne
+	Delete(ctx context.Context, useCase string) error       // cancel default
 }
 
 //go:generate mockery --name IMBindRepository --output ./mocks --outpkg mocks

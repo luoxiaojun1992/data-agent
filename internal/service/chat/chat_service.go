@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	genai "google.golang.org/genai"
 
@@ -18,6 +19,7 @@ import (
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 )
 
 // Service handles real-time chat operations backed by the ADK runtime.
@@ -33,6 +35,7 @@ type Service struct {
 	adkSessions session.Service
 	sessions    *Manager
 	cbReg       *security.CircuitBreakerRegistry
+	guard       *guard.Service
 	memoryWrite func(ctx context.Context, sess session.Session) // optional post-run memory hook
 }
 
@@ -40,13 +43,14 @@ type Service struct {
 var _ domainchat.ChatService = (*Service)(nil)
 
 // NewService creates a new Chat Service backed by the ADK runtime registry.
-func NewService(registry *adkruntime.Registry, provider *modelcfg.Provider, adkSessions session.Service, sessions *Manager, cbReg *security.CircuitBreakerRegistry) *Service {
+func NewService(registry *adkruntime.Registry, provider *modelcfg.Provider, adkSessions session.Service, sessions *Manager, cbReg *security.CircuitBreakerRegistry, guardSvc *guard.Service) *Service {
 	return &Service{
 		registry:    registry,
 		provider:    provider,
 		adkSessions: adkSessions,
 		sessions:    sessions,
 		cbReg:       cbReg,
+		guard:       guardSvc,
 	}
 }
 
@@ -118,8 +122,50 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 		return
 	}
 
+	// ① Intent classification (chat/feishu only). One-shot internal LLM call;
+	// the result is recorded as a system event (does not trigger compaction).
+	s.recordIntent(ctx, userID, sessionID, rt.AppName(), content)
+
 	runCfg = adkruntime.RunConfig{Streaming: req.Stream, StateDelta: state}
 	return
+}
+
+// recordIntent classifies the user content as task vs chat and appends the
+// result as a system event to the session (events only; recorded normally).
+// Failures are non-fatal — the chat continues without an intent hint.
+func (s *Service) recordIntent(ctx context.Context, userID, sessionID, appName string, content *genai.Content) {
+	if s.guard == nil {
+		return
+	}
+	isTask, err := s.guard.CheckIntent(ctx, content)
+	if err != nil {
+		log.Printf("[chat] intent check: %v (session=%s)", err, sessionID)
+		return
+	}
+	s.appendSystemEvent(ctx, userID, sessionID, appName, fmt.Sprintf("[intent] is_task=%t", isTask))
+}
+
+// appendSystemEvent writes a system-role event to the session history (events
+// + raw_events, recorded normally, never triggers compaction).
+func (s *Service) appendSystemEvent(ctx context.Context, userID, sessionID, appName, text string) {
+	resp, err := s.adkSessions.Get(ctx, &session.GetRequest{
+		AppName:   appName,
+		UserID:    userID,
+		SessionID: sessionID,
+	})
+	if err != nil || resp == nil || resp.Session == nil {
+		log.Printf("[chat] append system event: load session: %v", err)
+		return
+	}
+	evt := &session.Event{
+		Author: "system",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{Role: "system", Parts: []*genai.Part{{Text: text}}},
+		},
+	}
+	if err := s.adkSessions.AppendEvent(ctx, resp.Session, evt); err != nil {
+		log.Printf("[chat] append system event: %v", err)
+	}
 }
 
 // normalizeMessages converts a legacy single-message request to the messages
@@ -207,7 +253,7 @@ func buildState(userID, role, sessionID, kbID string) map[string]any {
 // Process handles a non-streaming chat request and returns the final
 // assistant content. Implements domain/chat.ChatService.
 func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userID, role string) (*domainchat.ChatResponse, error) {
-	rt, sessionID, content, _, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, content, lastText, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +265,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 		if rErr != nil {
 			return rErr
 		}
-		assistantText = text
+		assistantText = s.relevanceLoop(ctx, rt, userID, sessionID, content, runCfg, lastText, text)
 		return nil
 	}); cErr != nil {
 		return nil, cErr
@@ -237,7 +283,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 // Implements domain/chat.ChatService. The writer must implement
 // http.Flusher (gin and httptest.ResponseRecorder both do).
 func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID, role string, w http.ResponseWriter) error {
-	rt, sessionID, content, _, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, content, lastText, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return err
 	}
@@ -257,26 +303,25 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	fmt.Fprintf(w, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
-	for evt, rErr := range rt.RunContent(ctx, userID, sessionID, content, runCfg) {
-		if rErr != nil {
-			if isSessionPersistenceError(rErr) {
-				log.Printf("[chat] session persistence failed (response already delivered, ignoring): %v (session=%s)", rErr, sessionID)
-				fmt.Fprintf(w, "data: [DONE]\n\n")
-				flusher.Flush()
-				return nil
+	// ④ Relevance check + bounded retry (retry re-streams the same run).
+	base := lastText
+	if base == "" {
+		base = "[图片]"
+	}
+	assistantText := s.streamOnce(ctx, rt, userID, sessionID, content, runCfg, w, flusher)
+	if s.guard != nil {
+		for {
+			relevant, gErr := s.guard.CheckRelevance(ctx, assistantText, base)
+			if gErr != nil || relevant {
+				break
 			}
-			log.Printf("[chat] run error: %v (session=%s)", rErr, sessionID)
-			errData, _ := json.Marshal(map[string]string{"error": rErr.Error()})
-			fmt.Fprintf(w, "data: %s\n\n", errData)
-			flusher.Flush()
-			fmt.Fprintf(w, "data: [DONE]\n\n")
-			flusher.Flush()
-			return nil
+			s.appendSystemEvent(ctx, userID, sessionID, rt.AppName(), "[relevance] is_relevant=false")
+			retry, rErr := s.guard.RecordAndShouldRetry(ctx, sessionID)
+			if rErr != nil || !retry {
+				break
+			}
+			assistantText = s.streamOnce(ctx, rt, userID, sessionID, content, runCfg, w, flusher)
 		}
-		if evt == nil || evt.Content == nil {
-			continue
-		}
-		forwardSSEEvent(w, flusher, evt)
 	}
 
 	log.Printf("[chat] stream completed normally (session=%s)", sessionID)
@@ -285,6 +330,35 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 
 	s.scheduleMemoryWrite(userID, sessionID)
 	return nil
+}
+
+// streamOnce runs one RunContent turn, forwarding SSE events and returning the
+// collected assistant text. A run error is forwarded and returns empty text.
+func (s *Service) streamOnce(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, w http.ResponseWriter, flusher http.Flusher) string {
+	var sb strings.Builder
+	for evt, rErr := range rt.RunContent(ctx, userID, sessionID, content, runCfg) {
+		if rErr != nil {
+			if isSessionPersistenceError(rErr) {
+				log.Printf("[chat] session persistence failed (response already delivered, ignoring): %v (session=%s)", rErr, sessionID)
+				continue
+			}
+			log.Printf("[chat] run error: %v (session=%s)", rErr, sessionID)
+			errData, _ := json.Marshal(map[string]string{"error": rErr.Error()})
+			fmt.Fprintf(w, "data: %s\n\n", errData)
+			flusher.Flush()
+			continue
+		}
+		if evt == nil || evt.Content == nil {
+			continue
+		}
+		for _, p := range evt.Content.Parts {
+			if p != nil && p.Text != "" {
+				sb.WriteString(p.Text)
+			}
+		}
+		forwardSSEEvent(w, flusher, evt)
+	}
+	return sb.String()
 }
 
 // forwardSSEEvent writes the same canonical event shape used by the session
@@ -395,6 +469,35 @@ func IsCompactionEvent(ev *session.Event) bool {
 // SPEC-063) so real-time and async paths use identical collection semantics.
 func (s *Service) runAndCollect(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig) (string, error) {
 	return rt.RunAndCollectContent(ctx, userID, sessionID, content, runCfg)
+}
+
+// relevanceLoop checks the assistant text against the base (the most recent
+// user message) and, when irrelevant, retries the same run up to the guard's
+// max-retry limit (no extra hint). Returns the final text.
+func (s *Service) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, base, firstText string) string {
+	if s.guard == nil {
+		return firstText
+	}
+	if base == "" {
+		base = "[图片]"
+	}
+	text := firstText
+	for {
+		relevant, err := s.guard.CheckRelevance(ctx, text, base)
+		if err != nil || relevant {
+			return text
+		}
+		s.appendSystemEvent(ctx, userID, sessionID, rt.AppName(), "[relevance] is_relevant=false")
+		retry, rErr := s.guard.RecordAndShouldRetry(ctx, sessionID)
+		if rErr != nil || !retry {
+			return text
+		}
+		newText, runErr := s.runAndCollect(ctx, rt, userID, sessionID, content, runCfg)
+		if runErr != nil {
+			return text
+		}
+		text = newText
+	}
 }
 
 // scheduleMemoryWrite invokes the memory hook asynchronously after the response.

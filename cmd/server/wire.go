@@ -19,12 +19,13 @@ import (
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	adksession "github.com/luoxiaojun1992/data-agent/internal/adk/session"
 	adktools "github.com/luoxiaojun1992/data-agent/internal/adk/tools"
-	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
@@ -35,20 +36,20 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/scheduler"
+	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
 	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	authsvc "github.com/luoxiaojun1992/data-agent/internal/service/auth"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	configsvc "github.com/luoxiaojun1992/data-agent/internal/service/config"
 	enhancesvc "github.com/luoxiaojun1992/data-agent/internal/service/enhance"
+	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
+	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
-	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
-	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
-	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/user"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
@@ -77,13 +78,14 @@ func initAuthService(deps *serverDependencies, mongoClient *mongoinfra.Client, l
 }
 
 func initADKModel(deps *serverDependencies, mongoClient *mongoinfra.Client) {
-	// Model config uses a plain MongoDB repo — no Redis cache.
+	// Model config uses plain MongoDB repos — no Redis cache.
 	// System config (sysConfigCacheRepo) is separately cached for admin settings.
-	rawRepo := mongoinfra.NewSystemConfigRepository(mongoClient.DB())
-	deps.modelCfg = modelcfg.NewProvider(rawRepo, deps.vaultClient)
+	modelRepo := mongoinfra.NewModelConfigRepository(mongoClient.DB())
+	defaultRepo := mongoinfra.NewModelDefaultRepository(mongoClient.DB())
+	deps.modelCfg = modelcfg.NewProvider(modelRepo, defaultRepo, deps.vaultClient)
 	// Wire the invite base URL resolver so admin overrides (INVITE_BASE_URL)
 	// in /admin/settings take precedence over the env var / default.
-	logic.SetSysConfigRepository(rawRepo)
+	logic.SetSysConfigRepository(mongoinfra.NewSystemConfigRepository(mongoClient.DB()))
 }
 
 func initVault(deps *serverDependencies, logger *zap.Logger) {
@@ -216,14 +218,14 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	deps.apiCollectionSvc = apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))
 
 	toolDeps := &adktools.Deps{
-		KBService:     deps.kbService,
-		SkillConfig:   deps.skillConfigSvc,
-		Memory:        deps.memoryService,
-		MemoryWriter:  deps.memoryKit,
-		AppName:       appName,
-		Tasks:         deps.taskService,
-		SessionSvc:    deps.sessionManager,
-		Artifacts:     deps.artifactStorage,
+		KBService:      deps.kbService,
+		SkillConfig:    deps.skillConfigSvc,
+		Memory:         deps.memoryService,
+		MemoryWriter:   deps.memoryKit,
+		AppName:        appName,
+		Tasks:          deps.taskService,
+		SessionSvc:     deps.sessionManager,
+		Artifacts:      deps.artifactStorage,
 		APICollections: deps.apiCollectionSvc,
 	}
 	tools, err := adktools.All(toolDeps)
@@ -246,7 +248,11 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// Evict stale Runtime entries (not accessed in 30 min) to prevent memory leaks.
 	go deps.registry.StartCleanup()
 
-	deps.chatService = chat.NewService(deps.registry, deps.modelCfg, deps.adkSessions, deps.sessionManager, deps.cbRegistry).
+	// Guard: intent classification + relevance check + bounded retry. Redis is
+	// injected later (initTaskQueue) once it connects.
+	deps.guardSvc = guard.NewService(deps.modelCfg, nil, 2)
+
+	deps.chatService = chat.NewService(deps.registry, deps.modelCfg, deps.adkSessions, deps.sessionManager, deps.cbRegistry, deps.guardSvc).
 		WithMemoryWrite(func(ctx context.Context, sess adksessionIF.Session) {
 			if err := deps.memoryService.AddSessionToMemory(ctx, sess); err != nil {
 				logger.Warn("memory write failed", zap.Error(err))
@@ -354,6 +360,11 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	}
 	deps.redisClient = redisClient
 
+	// Inject Redis into the guard (relevance retry counter) once connected.
+	if deps.guardSvc != nil {
+		deps.guardSvc.SetRedis(redisClient)
+	}
+
 	// SPEC-061: Inject Redis-backed cache into the SysConfig Cache-Aside
 	// decorator. Until this point the decorator degrades to direct mongo
 	// reads (cache==nil). After injection, all config reads go through
@@ -373,7 +384,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	// Wire Redis queue into the already-created task service (created in initTaskService).
 	if deps.taskService != nil {
 		deps.queueRepo = queue.QueueRepository(taskStream)
-	deps.taskService.SetQueueRepo(deps.queueRepo)
+		deps.taskService.SetQueueRepo(deps.queueRepo)
 	}
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService)
 	if deps.kbHandler != nil && deps.queueRepo != nil {
@@ -381,7 +392,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	} // same Service implements both contracts
 
 	// Wire task service into KB handler for async indexing.
-	
+
 	// Re-wire the orchestrator now that the task service exists.
 	if deps.orchestrator != nil {
 		deps.orchestrator = agentlogic.NewOrchestrator(deps.sessionManager, deps.taskService, deps.modelCfg)
@@ -408,6 +419,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 		deps.taskService, // run status/result/error (TaskRunService impl)
 		deps.notifSvc,    // completion/failure notification
 		deps.cbRegistry,  // circuit breaker around Runtime.Run
+		deps.guardSvc,    // relevance check + bounded retry
 	)
 	poolSize := resolveWorkerPoolSize(deps.sysConfigCacheRepo)
 	workerPool := worker.NewPool(taskStream, redisClient.Client(), poolSize, executor, deps.taskService)
@@ -484,9 +496,9 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		IMBind:        imBindHandler,
 		Stats:         handler.NewStatsHandler(deps.llmRecorder),
 		SkillConfig:   deps.skillConfigHandler,
-		FeishuConfig: handler.NewFeishuConfigHandler(deps.feishuCfgService),
+		FeishuConfig:  handler.NewFeishuConfigHandler(deps.feishuCfgService),
 		APICollection: handler.NewAPICollectionHandler(deps.apiCollectionSvc),
-		APITools:     handler.NewAPIToolsHandler(deps.apiCollectionSvc),
+		APITools:      handler.NewAPIToolsHandler(deps.apiCollectionSvc),
 		IMWebhook:     imWebhook,
 		HermesURL:     os.Getenv("HERMES_URL"),
 		AppName:       appName,
@@ -551,7 +563,7 @@ func storeEmbeddingCache(ctx context.Context, cache *llmcache.Cache, model, text
 // Falls back to 10 on any error (default pool size).
 func resolveWorkerPoolSize(cfgRepo *cache.SysConfigCacheRepo) int {
 	ctx := context.Background()
-	cfg, err := cfgRepo.Get(ctx, "system", "WORKER_POOL_SIZE")
+	cfg, err := cfgRepo.Get(ctx, "WORKER_POOL_SIZE")
 	if err != nil || cfg == nil || cfg.Value == "" {
 		log.Printf("[worker] WORKER_POOL_SIZE not found (err=%v, cfg=%v) — using default 10", err, cfg)
 		return 10

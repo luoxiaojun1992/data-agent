@@ -38,16 +38,17 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
-	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
+	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	auditsvc "github.com/luoxiaojun1992/data-agent/internal/service/audit"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	enhancesvc "github.com/luoxiaojun1992/data-agent/internal/service/enhance"
+	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
+	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
-	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"go.uber.org/zap"
 
@@ -69,16 +70,17 @@ func main() {
 
 // serverDependencies holds every constructed service, handler, and infra client.
 type serverDependencies struct {
-	mongoClient      *mongoinfra.Client
-	userRepo         *mongoinfra.UserRepository
+	mongoClient        *mongoinfra.Client
+	userRepo           *mongoinfra.UserRepository
 	sysConfigCacheRepo *cache.SysConfigCacheRepo
-	vaultClient      *vaultinfra.Client
-	authHandler      *handler.AuthHandler
-	qdrantClient     *qdrantinfra.Client
-	swClient         *seaweedfs.Client
-	jwtManager       *middleware.JWTManager
-	auditLogger      *middleware.AuditLogger
-	redisClient      *redis.Client
+	vaultClient        *vaultinfra.Client
+	authHandler        *handler.AuthHandler
+	qdrantClient       *qdrantinfra.Client
+	swClient           *seaweedfs.Client
+	jwtManager         *middleware.JWTManager
+	auditLogger        *middleware.AuditLogger
+	redisClient        *redis.Client
+	guardSvc           *guard.Service
 	// ADK + chat wiring (populated by wire.go init functions).
 	modelCfg       *modelcfg.Provider
 	registry       *adkruntime.Registry
@@ -99,22 +101,22 @@ type serverDependencies struct {
 	enhanceService *enhancesvc.Service
 	imService      *im.Service
 	// Handlers + services (populated by wire.go init functions).
-	kbService        *knowledge.Service
-	kbHandler        *handler.KnowledgeHandler
-	skillConfigSvc   *skillsvc.ConfigService
+	kbService          *knowledge.Service
+	kbHandler          *handler.KnowledgeHandler
+	skillConfigSvc     *skillsvc.ConfigService
 	skillConfigHandler *handler.SkillConfigHandler
-	feishuCfgRepo     *mongoinfra.FeishuConfigRepository
-	feishuCfgService  *feishu_svc.ConfigService
-	artifactStorage  *artifact_svc.Storage
-	workspaceMgr     *workspace.Manager
-	artifactHandler  *handler.ArtifactHandler
-	taskService      *task_svc.Service
-	taskHandler      *handler.TaskHandler
-	auditService     *auditsvc.Service
-	auditHandler     *handler.AuditHandler
-	notifSvc         *notifsvc.Service
-	notifHandler     *handler.NotificationHandler
-	apiCollectionSvc *apicollectionsvc.Service
+	feishuCfgRepo      *mongoinfra.FeishuConfigRepository
+	feishuCfgService   *feishu_svc.ConfigService
+	artifactStorage    *artifact_svc.Storage
+	workspaceMgr       *workspace.Manager
+	artifactHandler    *handler.ArtifactHandler
+	taskService        *task_svc.Service
+	taskHandler        *handler.TaskHandler
+	auditService       *auditsvc.Service
+	auditHandler       *handler.AuditHandler
+	notifSvc           *notifsvc.Service
+	notifHandler       *handler.NotificationHandler
+	apiCollectionSvc   *apicollectionsvc.Service
 }
 
 func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDependencies) {

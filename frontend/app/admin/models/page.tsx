@@ -14,6 +14,8 @@ const USE_CASES: { value: string; label: string }[] = [
   { value: 'compaction', label: 'Compaction 压缩' },
   { value: 'kb_chunking', label: 'KB Chunking 索引' },
   { value: 'kb_image', label: 'KB 图片解析' },
+  { value: 'intent_check', label: 'Intent 意图判断' },
+  { value: 'relevance_check', label: 'Relevance 相关性检查' },
 ];
 
 type ModelEntry = {
@@ -197,6 +199,22 @@ export default function ModelsPage() {
       }
       else showToast('设置失败', 'error');
     } catch { showToast('设置失败', 'error'); }
+  };
+
+  const unsetDefault = async (useCases: string[]) => {
+    try {
+      const res = await apiFetch(`/admin/models/default`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ use_cases: useCases }),
+      });
+      if (res.ok) {
+        showToast('已取消默认', 'success');
+        fetchLLMList();
+        fetchEmbeddingList();
+      }
+      else showToast('取消失败', 'error');
+    } catch { showToast('取消失败', 'error'); }
   };
 
   const openEdit = async (m: ModelEntry) => {
@@ -533,21 +551,29 @@ export default function ModelsPage() {
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         {m.is_default ? (
-                          embeddingList.filter(o => o.id !== rowId).length > 0 ? (
-                            <select
-                              data-testid={`embedding-list-switch-${i}`}
-                              defaultValue=""
-                              onChange={e => { if (e.target.value) setDefaultModel(e.target.value); e.target.value = ''; }}
-                              style={{ background: 'transparent', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '4px', padding: '2px 6px', color: '#10b981', fontSize: '11px', cursor: 'pointer' }}
-                            >
-                              <option value="" style={{ color: '#000' }}>✓ 默认 · 切换</option>
-                              {embeddingList.filter(o => o.id !== rowId).map(o => (
-                                <option key={o.id} value={o.id!} style={{ color: '#000' }}>{o.name || o.id}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span style={{ color: '#10b981', fontSize: '11px' }}>✓ 默认</span>
-                          )
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {embeddingList.filter(o => o.id !== rowId).length > 0 ? (
+                              <select
+                                data-testid={`embedding-list-switch-${i}`}
+                                defaultValue=""
+                                onChange={e => { if (e.target.value) setDefaultModel(e.target.value); e.target.value = ''; }}
+                                style={{ background: 'transparent', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '4px', padding: '2px 6px', color: '#10b981', fontSize: '11px', cursor: 'pointer' }}
+                              >
+                                <option value="" style={{ color: '#000' }}>✓ 默认 · 切换</option>
+                                {embeddingList.filter(o => o.id !== rowId).map(o => (
+                                  <option key={o.id} value={o.id!} style={{ color: '#000' }}>{o.name || o.id}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span style={{ color: '#10b981', fontSize: '11px' }}>✓ 默认</span>
+                            )}
+                            <button
+                              data-testid={`embedding-list-unset-default-${i}`}
+                              onClick={() => unsetDefault(['embedding'])}
+                              title="取消默认"
+                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px 6px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}
+                            >取消</button>
+                          </div>
                         ) : (
                           <button
                           data-testid={`embedding-list-set-default-${i}`}

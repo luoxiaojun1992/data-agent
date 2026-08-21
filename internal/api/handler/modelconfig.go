@@ -9,8 +9,8 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	"github.com/luoxiaojun1992/data-agent/internal/service/config"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // ModelConfigHandler handles model configuration HTTP endpoints.
@@ -49,6 +49,7 @@ func RegisterModelAdminRoutes(admin *gin.RouterGroup, h *ModelConfigHandler, rba
 	admin.PUT(modelRoutePath, h.Put)
 	admin.POST(modelRoutePath, h.AddModel)
 	admin.PATCH(modelRoutePath+"/:id/default", h.SetDefault)
+	admin.DELETE(modelRoutePath+"/default", h.UnsetDefault)
 	admin.PATCH(modelRoutePath+"/:id", h.UpdateModel)
 	admin.DELETE(modelRoutePath+"/:id", h.DeleteModel)
 }
@@ -96,7 +97,7 @@ func (h *ModelConfigHandler) getRaw(c *gin.Context, ctx context.Context) {
 
 // legacyGet is the pre-SPEC-062 GET path used when no Provider is wired.
 func (h *ModelConfigHandler) legacyGet(c *gin.Context) {
-	cfgs, err := h.cfgSvc.GetAll(c.Request.Context(), "model")
+	cfgs, err := h.cfgSvc.GetAll(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -116,7 +117,7 @@ func (h *ModelConfigHandler) Put(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.cfgSvc.Upsert(c.Request.Context(), "model", req.Key, req.Value); err != nil {
+	if err := h.cfgSvc.Upsert(c.Request.Context(), req.Key, req.Value); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -258,6 +259,27 @@ func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已设为默认", "id": id, "use_cases": req.UseCases})
 }
 
+// UnsetDefault cancels the default for the given use cases.
+// DELETE /models/default
+func (h *ModelConfigHandler) UnsetDefault(c *gin.Context) {
+	if h.provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	var req struct {
+		UseCases []string `json:"use_cases"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if len(req.UseCases) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "use_cases required"})
+		return
+	}
+	if err := h.provider.UnsetDefault(c.Request.Context(), req.UseCases); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已取消默认", "use_cases": req.UseCases})
+}
 
 // UpdateModel updates an existing model's fields.
 // PATCH /models/:id

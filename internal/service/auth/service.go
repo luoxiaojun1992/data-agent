@@ -14,7 +14,7 @@ import (
 
 // ConfigCache is the minimal config read interface needed by auth Service.
 type ConfigCache interface {
-	Get(ctx context.Context, namespace, key string) (*model.SystemConfig, error)
+	Get(ctx context.Context, key string) (*model.SystemConfig, error)
 }
 
 // PasswordHasher abstracts password operations for testability.
@@ -123,7 +123,7 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 
 	expiration := s.jwtManager.GetExpiration() // default 24h
 	if s.configCache != nil {
-		if cfg, err := s.configCache.Get(ctx, "system", "SESSION_TIMEOUT"); err == nil && cfg != nil && cfg.Value != "" {
+		if cfg, err := s.configCache.Get(ctx, "SESSION_TIMEOUT"); err == nil && cfg != nil && cfg.Value != "" {
 			if h, err := strconv.ParseInt(cfg.Value, 10, 64); err == nil && h > 0 {
 				expiration = time.Duration(h) * time.Hour
 			}

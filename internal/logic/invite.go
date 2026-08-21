@@ -128,7 +128,7 @@ func GetInviteBaseURL() string {
 // ResolveInviteBaseURL explicitly reads the stored override (no cache).
 func ResolveInviteBaseURL(ctx context.Context) string {
 	if sysConfigRepo != nil {
-		if cfg, err := sysConfigRepo.Get(ctx, "system", "INVITE_BASE_URL"); err == nil && cfg != nil && cfg.Value != "" {
+		if cfg, err := sysConfigRepo.Get(ctx, "INVITE_BASE_URL"); err == nil && cfg != nil && cfg.Value != "" {
 			return strings.TrimRight(cfg.Value, "/")
 		}
 	}
@@ -136,8 +136,8 @@ func ResolveInviteBaseURL(ctx context.Context) string {
 }
 
 var (
-	sysConfigRepo repository.SysConfigRepository
-	baseURLCache  string
+	sysConfigRepo  repository.SysConfigRepository
+	baseURLCache   string
 	baseURLCacheAt time.Time
 	baseURLCacheMu sync.Mutex
 )

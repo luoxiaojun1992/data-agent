@@ -12,9 +12,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const skillConfigNS = "skill"
+// skillConfigCollection is the standalone collection for skill configs
+// (migrated out of the legacy "system_config" collection).
+const skillConfigCollection = "skill_configs"
 
-// SkillConfigRepo implements SkillConfigRepository using MongoDB system_config.
+// SkillConfigRepo implements SkillConfigRepository using MongoDB skill_configs.
 type SkillConfigRepo struct {
 	db *mongo.Database
 }
@@ -26,9 +28,13 @@ func NewSkillConfigRepo(db *mongo.Database) *SkillConfigRepo {
 
 var _ repository.SkillConfigRepository = (*SkillConfigRepo)(nil)
 
+func (r *SkillConfigRepo) coll() *mongo.Collection {
+	return r.db.Collection(skillConfigCollection)
+}
+
 func (r *SkillConfigRepo) List(ctx context.Context, skip, limit int64) ([]skill.SkillConfig, error) {
-	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "key", Value: 1}})
-	cur, err := r.db.Collection("system_config").Find(ctx, bson.M{"ns": skillConfigNS}, opts)
+	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "name", Value: 1}})
+	cur, err := r.coll().Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, fmt.Errorf("skill config list: %w", err)
 	}
@@ -36,30 +42,18 @@ func (r *SkillConfigRepo) List(ctx context.Context, skip, limit int64) ([]skill.
 
 	var out []skill.SkillConfig
 	for cur.Next(ctx) {
-		var doc struct {
-			Key         string `bson:"key"`
-			Value       string `bson:"value"`
-			DisplayName string `bson:"display_name"`
-			Description string `bson:"description"`
-			Enabled     bool   `bson:"enabled"`
-		}
+		var doc skillConfigDoc
 		if err := cur.Decode(&doc); err != nil {
 			return nil, fmt.Errorf("skill config list decode: %w", err)
 		}
-		out = append(out, skill.SkillConfig{
-			Name:        doc.Key,
-			DisplayName: doc.DisplayName,
-			Description: doc.Description,
-			Enabled:     doc.Enabled,
-			ConfigJSON:  doc.Value,
-		})
+		out = append(out, doc.toSkillConfig())
 	}
 	return out, nil
 }
 
 // Count returns the total number of skill config documents.
 func (r *SkillConfigRepo) Count(ctx context.Context) (int64, error) {
-	n, err := r.db.Collection("system_config").CountDocuments(ctx, bson.M{"ns": skillConfigNS})
+	n, err := r.coll().CountDocuments(ctx, bson.M{})
 	if err != nil {
 		return 0, fmt.Errorf("skill config count: %w", err)
 	}
@@ -67,27 +61,16 @@ func (r *SkillConfigRepo) Count(ctx context.Context) (int64, error) {
 }
 
 func (r *SkillConfigRepo) Get(ctx context.Context, name string) (*skill.SkillConfig, error) {
-	var doc struct {
-		Key         string `bson:"key"`
-		Value       string `bson:"value"`
-		DisplayName string `bson:"display_name"`
-		Description string `bson:"description"`
-		Enabled     bool   `bson:"enabled"`
-	}
-	err := r.db.Collection("system_config").FindOne(ctx, bson.M{"ns": skillConfigNS, "key": name}).Decode(&doc)
+	var doc skillConfigDoc
+	err := r.coll().FindOne(ctx, bson.M{"name": name}).Decode(&doc)
 	if err == mongo.ErrNoDocuments {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("skill config get: %w", err)
 	}
-	return &skill.SkillConfig{
-		Name:        doc.Key,
-		DisplayName: doc.DisplayName,
-		Description: doc.Description,
-		Enabled:     doc.Enabled,
-		ConfigJSON:  doc.Value,
-	}, nil
+	cfg := doc.toSkillConfig()
+	return &cfg, nil
 }
 
 // SearchByDescription returns up to `limit` enabled skills whose description
@@ -98,12 +81,11 @@ func (r *SkillConfigRepo) SearchByDescription(ctx context.Context, keyword strin
 		limit = 5
 	}
 	filter := bson.M{
-		"ns":          skillConfigNS,
 		"enabled":     true,
 		"description": bson.M{"$regex": regexp.QuoteMeta(keyword), "$options": "i"},
 	}
 	opts := options.Find().SetLimit(int64(limit))
-	cur, err := r.db.Collection("system_config").Find(ctx, filter, opts)
+	cur, err := r.coll().Find(ctx, filter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("skill config search: %w", err)
 	}
@@ -111,30 +93,18 @@ func (r *SkillConfigRepo) SearchByDescription(ctx context.Context, keyword strin
 
 	var out []skill.SkillConfig
 	for cur.Next(ctx) {
-		var doc struct {
-			Key         string `bson:"key"`
-			Value       string `bson:"value"`
-			DisplayName string `bson:"display_name"`
-			Description string `bson:"description"`
-			Enabled     bool   `bson:"enabled"`
-		}
+		var doc skillConfigDoc
 		if err := cur.Decode(&doc); err != nil {
 			return nil, fmt.Errorf("skill config search decode: %w", err)
 		}
-		out = append(out, skill.SkillConfig{
-			Name:        doc.Key,
-			DisplayName: doc.DisplayName,
-			Description: doc.Description,
-			Enabled:     doc.Enabled,
-			ConfigJSON:  doc.Value,
-		})
+		out = append(out, doc.toSkillConfig())
 	}
 	return out, nil
 }
 
 func (r *SkillConfigRepo) Upsert(ctx context.Context, cfg skill.SkillConfig) error {
-	_, err := r.db.Collection("system_config").UpdateOne(ctx,
-		bson.M{"ns": skillConfigNS, "key": cfg.Name},
+	_, err := r.coll().UpdateOne(ctx,
+		bson.M{"name": cfg.Name},
 		bson.M{"$set": bson.M{"value": cfg.ConfigJSON, "display_name": cfg.DisplayName, "description": cfg.Description, "enabled": cfg.Enabled}},
 		options.Update().SetUpsert(true),
 	)
@@ -142,4 +112,23 @@ func (r *SkillConfigRepo) Upsert(ctx context.Context, cfg skill.SkillConfig) err
 		return fmt.Errorf("skill config upsert: %w", err)
 	}
 	return nil
+}
+
+// skillConfigDoc is the persisted shape of a skill config document.
+type skillConfigDoc struct {
+	Name        string `bson:"name"`
+	Value       string `bson:"value"`
+	DisplayName string `bson:"display_name"`
+	Description string `bson:"description"`
+	Enabled     bool   `bson:"enabled"`
+}
+
+func (d skillConfigDoc) toSkillConfig() skill.SkillConfig {
+	return skill.SkillConfig{
+		Name:        d.Name,
+		DisplayName: d.DisplayName,
+		Description: d.Description,
+		Enabled:     d.Enabled,
+		ConfigJSON:  d.Value,
+	}
 }
