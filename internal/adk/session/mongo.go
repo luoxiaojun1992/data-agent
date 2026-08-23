@@ -202,7 +202,9 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 }
 
 // shouldCompact reports whether appending this event should trigger a
-// compaction check. Only user messages and tool messages qualify.
+// compaction check. Only user messages and tool outputs qualify. Tool calls
+// (FunctionCall) are assistant (role=model) turns and do NOT trigger; the
+// tool result (FunctionResponse) that follows them does.
 func shouldCompact(event *session.Event) bool {
 	if event == nil || event.Author == "compaction" || event.Author == "system" {
 		return false
@@ -212,7 +214,7 @@ func shouldCompact(event *session.Event) bool {
 	}
 	if event.Content != nil {
 		for _, p := range event.Content.Parts {
-			if p != nil && (p.FunctionCall != nil || p.FunctionResponse != nil) {
+			if p != nil && p.FunctionResponse != nil {
 				return true
 			}
 		}
