@@ -522,6 +522,14 @@ func isStreamingTextChunk(ev *session.Event) bool {
 	if ev.Content == nil {
 		return false
 	}
+	// A terminal response (finish reason STOP) is the complete answer, not an
+	// intermediate streaming chunk. Non-streaming turns emit a single STOP
+	// event carrying the full text; treating it as a chunk would buffer it
+	// forever (nothing later flushes it) and drop the last reply from
+	// raw_events.
+	if string(ev.LLMResponse.FinishReason) == "STOP" {
+		return false
+	}
 	for _, p := range ev.Content.Parts {
 		if p == nil {
 			continue
