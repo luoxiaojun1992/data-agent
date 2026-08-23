@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,16 +43,13 @@ type Service struct {
 	mu         sync.Mutex
 	summarizer Summarizer
 	compact    CompactionConfig
-	// buf: per session, per author. One author's streaming text chunks for one
-	// invocation are accumulated together so the merged event keeps the right
-	// Author. Without the author split, an empty-InvocationID system event
-	// (e.g. [intent] from guard.CheckIntent) would reset the in-progress
-	// assistant buffer and lose its content.
-	buf map[string]map[string]*chunkBuffer
+	// buf accumulates the in-progress streaming text for each session (one
+	// complete message per session). Access is guarded by mu.
+	buf map[string]*chunkBuffer
 }
 
 func NewService(db *mongo.Database) *Service {
-	return &Service{coll: db.Collection(CollectionName), buf: make(map[string]map[string]*chunkBuffer)}
+	return &Service{coll: db.Collection(CollectionName), buf: make(map[string]*chunkBuffer)}
 }
 
 type Summarizer interface {
@@ -191,8 +187,11 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 		}})
 	}
 
-	// ---- raw_events: user/tool go directly; text chunks are buffered ----
-	if event.Author == "user" || event.Content == nil || !isTextChunk {
+	// ---- raw_events: user/system/tool/non-text go directly; only assistant
+	// streaming text chunks are buffered. system events (guard [intent] etc.)
+	// must NOT be buffered — they are discrete messages, and buffering them
+	// would either interleave or clobber the in-progress assistant reply. ----
+	if event.Author == "user" || event.Author == "system" || event.Content == nil || !isTextChunk {
 		s.flushBuffer(ctx, sess)
 		update["$push"] = ensurePush(update, "raw_events", event)
 	} else {
@@ -252,24 +251,15 @@ func ensurePush(update bson.M, key string, event *session.Event) bson.M {
 func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	authorBufs, ok := s.buf[sessionID]
+	b, ok := s.buf[sessionID]
 	if !ok {
-		authorBufs = make(map[string]*chunkBuffer)
-		s.buf[sessionID] = authorBufs
-	}
-	b, ok := authorBufs[event.Author]
-	// Reset the per-author buffer only when the invocation actually changes
-	// (both sides have a non-empty InvocationID). system events such as
-	// guard [intent] use an empty InvocationID and must NOT clobber the
-	// assistant buffer that's still streaming.
-	if !ok || (b.invokeID != "" && event.InvocationID != "" && b.invokeID != event.InvocationID) {
-		authorBufs[event.Author] = &chunkBuffer{
+		b = &chunkBuffer{
 			invokeID: event.InvocationID,
 			author:   event.Author,
 			eventID:  event.ID,
 			since:    event.Timestamp,
 		}
-		b = authorBufs[event.Author]
+		s.buf[sessionID] = b
 	}
 	for _, p := range event.Content.Parts {
 		if p.Text != "" {
@@ -280,50 +270,30 @@ func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 
 func (s *Service) flushBuffer(ctx context.Context, sess session.Session) {
 	s.mu.Lock()
-	authorBufs, ok := s.buf[sess.ID()]
-	if !ok || len(authorBufs) == 0 {
+	b, ok := s.buf[sess.ID()]
+	if !ok || b.text.Len() == 0 {
 		s.mu.Unlock()
 		return
 	}
 	delete(s.buf, sess.ID())
 	s.mu.Unlock()
 
-	// Deterministic order: flush authors in name-sorted order so raw_events
-	// has a stable layout (the previous single-buffer code relied on event
-	// insertion order).
-	authors := make([]string, 0, len(authorBufs))
-	for a := range authorBufs {
-		authors = append(authors, a)
-	}
-	sort.Strings(authors)
-
-	var events []*session.Event
-	for _, author := range authors {
-		b := authorBufs[author]
-		if b.text.Len() == 0 {
-			continue
-		}
-		events = append(events, &session.Event{
-			ID:           b.eventID,
-			Timestamp:    b.since,
-			InvocationID: b.invokeID,
-			Author:       b.author,
-			LLMResponse: model.LLMResponse{
-				Content: &genai.Content{
-					Role:  "model",
-					Parts: []*genai.Part{{Text: b.text.String()}},
-				},
+	event := &session.Event{
+		ID:           b.eventID,
+		Timestamp:    b.since,
+		InvocationID: b.invokeID,
+		Author:       b.author,
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Role:  "model",
+				Parts: []*genai.Part{{Text: b.text.String()}},
 			},
-		})
+		},
 	}
-	if len(events) == 0 {
-		return
-	}
-
 	_, _ = s.coll.UpdateOne(ctx,
 		bson.M{"_id": sess.ID(), "app_name": sess.AppName(), "user_id": sess.UserID()},
 		bson.M{
-			"$push": bson.M{"raw_events": bson.M{"$each": events}},
+			"$push": bson.M{"raw_events": event},
 			"$set":  bson.M{"updated_at": time.Now()},
 		},
 	)
