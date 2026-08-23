@@ -74,6 +74,12 @@ func (s *Service) Create(ctx context.Context, req *session.CreateRequest) (*sess
 	if id == "" {
 		id = "sess_" + uuid.New().String()
 	}
+	// Idempotent: if the session already exists, return it instead of erroring.
+	// chat prepareRun invokes Create on every user message; for an existing
+	// session the InsertOne below would otherwise fail with duplicate-key.
+	if existing, err := s.find(ctx, req.AppName, req.UserID, id); err == nil && existing != nil {
+		return &session.CreateResponse{Session: existing.toSession()}, nil
+	}
 	doc := &sessionDoc{
 		ID:        id,
 		AppName:   req.AppName,
@@ -88,6 +94,13 @@ func (s *Service) Create(ctx context.Context, req *session.CreateRequest) (*sess
 	}
 	_, err := s.coll.InsertOne(ctx, doc)
 	if err != nil {
+		// Race: a concurrent Create from another goroutine may have inserted
+		// between our find and InsertOne. Treat the duplicate as success.
+		if mongo.IsDuplicateKeyError(err) {
+			if existing, gErr := s.find(ctx, req.AppName, req.UserID, id); gErr == nil && existing != nil {
+				return &session.CreateResponse{Session: existing.toSession()}, nil
+			}
+		}
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 	return &session.CreateResponse{Session: doc.toSession()}, nil
