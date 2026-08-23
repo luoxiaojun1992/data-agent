@@ -167,7 +167,6 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 	isPartial := isStreamingChunk(event)
 	isContinuation := isPartial && ms != nil &&
 		len(ms.doc.Events) > 0 &&
-		ms.doc.Events[len(ms.doc.Events)-1].InvocationID == event.InvocationID &&
 		ms.doc.Events[len(ms.doc.Events)-1].Author == event.Author &&
 		isStreamingChunk(ms.doc.Events[len(ms.doc.Events)-1])
 
@@ -363,8 +362,7 @@ func syncSnapshot(sess session.Session, event *session.Event, isPartial bool) {
 	if len(ms.doc.Events) > 0 {
 		last = ms.doc.Events[len(ms.doc.Events)-1]
 	}
-	if last.InvocationID == event.InvocationID && last.Author == event.Author &&
-		isPartial && isStreamingChunk(last) {
+	if last.Author == event.Author && isPartial && isStreamingChunk(last) {
 		ms.doc.Events[len(ms.doc.Events)-1] = mergeTextIntoEvent(last, event)
 	} else {
 		ms.doc.Events = append(ms.doc.Events, event)
