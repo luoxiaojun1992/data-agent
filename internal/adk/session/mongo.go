@@ -29,14 +29,13 @@ type sessionDoc struct {
 	UpdatedAt time.Time        `bson:"updated_at"`
 }
 
-// chunkBuffer accumulates streaming text for one invocation before flushing.
+// chunkBuffer accumulates streaming text for one session before flushing.
 type chunkBuffer struct {
-	invokeID string
-	author   string
-	eventID  string
-	since    time.Time
-	text     strings.Builder
-	size     int // approximate bytes buffered, for the threshold backstop
+	author  string
+	eventID string
+	since   time.Time
+	text    strings.Builder
+	size    int // approximate bytes buffered, for the threshold backstop
 }
 
 // flushThresholdBytes is the maximum buffered streaming text before an early
@@ -265,10 +264,9 @@ func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 	b, ok := s.buf[sessionID]
 	if !ok {
 		b = &chunkBuffer{
-			invokeID: event.InvocationID,
-			author:   event.Author,
-			eventID:  event.ID,
-			since:    event.Timestamp,
+			author:  event.Author,
+			eventID: event.ID,
+			since:   event.Timestamp,
 		}
 		s.buf[sessionID] = b
 	}
@@ -304,10 +302,9 @@ func (s *Service) flushBuffer(ctx context.Context, sess session.Session) {
 	s.mu.Unlock()
 
 	event := &session.Event{
-		ID:           b.eventID,
-		Timestamp:    b.since,
-		InvocationID: b.invokeID,
-		Author:       b.author,
+		ID:        b.eventID,
+		Timestamp: b.since,
+		Author:    b.author,
 		LLMResponse: model.LLMResponse{
 			Content: &genai.Content{
 				Role:  "model",
