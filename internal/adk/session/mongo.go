@@ -36,7 +36,13 @@ type chunkBuffer struct {
 	eventID  string
 	since    time.Time
 	text     strings.Builder
+	size     int // approximate bytes buffered, for the threshold backstop
 }
+
+// flushThresholdBytes is the maximum buffered streaming text before an early
+// flush. It is a memory-safety backstop only: normal replies are far below
+// this and are flushed once the stream completes (the next non-partial event).
+const flushThresholdBytes = 128 * 1024
 
 type Service struct {
 	coll       *mongo.Collection
@@ -158,12 +164,12 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 	}
 
 	ms, _ := sess.(*mongoSession)
-	isTextChunk := isStreamingTextChunk(event)
-	isContinuation := isTextChunk && ms != nil &&
+	isPartial := isStreamingChunk(event)
+	isContinuation := isPartial && ms != nil &&
 		len(ms.doc.Events) > 0 &&
 		ms.doc.Events[len(ms.doc.Events)-1].InvocationID == event.InvocationID &&
 		ms.doc.Events[len(ms.doc.Events)-1].Author == event.Author &&
-		isStreamingTextChunk(ms.doc.Events[len(ms.doc.Events)-1])
+		isStreamingChunk(ms.doc.Events[len(ms.doc.Events)-1])
 
 	update := bson.M{"$set": bson.M{"updated_at": time.Now()}}
 	if isContinuation {
@@ -187,15 +193,18 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 		}})
 	}
 
-	// ---- raw_events: user/system/tool/non-text go directly; only assistant
-	// streaming text chunks are buffered. system events (guard [intent] etc.)
-	// must NOT be buffered — they are discrete messages, and buffering them
-	// would either interleave or clobber the in-progress assistant reply. ----
-	if event.Author == "user" || event.Author == "system" || event.Content == nil || !isTextChunk {
-		s.flushBuffer(ctx, sess)
-		update["$push"] = ensurePush(update, "raw_events", event)
-	} else {
+	// ---- raw_events: streaming partial chunks are buffered and merged into a
+	// single message; everything else (non-streaming, and the stream's final
+	// non-partial event) is written directly. This keeps one LLM turn = one
+	// DB record. ----
+	if isPartial {
 		s.bufferChunk(sess.ID(), event)
+		s.flushBufferIfLarge(ctx, sess)
+	} else {
+		s.flushBuffer(ctx, sess)
+		if event.Content != nil {
+			update["$push"] = ensurePush(update, "raw_events", event)
+		}
 	}
 
 	res, err := s.coll.UpdateOne(ctx,
@@ -208,11 +217,11 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 		return fmt.Errorf("session %q not found", sess.ID())
 	}
 
-	syncSnapshot(sess, event, isTextChunk)
+	syncSnapshot(sess, event, isPartial)
 
-	// Compaction triggered only by user messages and tool messages
-	// (FunctionCall / FunctionResponse). system and assistant text events are
-	// recorded and compacted normally but never trigger compaction.
+	// Compaction is triggered only by user messages and tool outputs
+	// (FunctionResponse). system and assistant text events are recorded and
+	// compacted normally but never trigger compaction.
 	if s.summarizer != nil && shouldCompact(event) {
 		return s.maybeCompact(ctx, sess)
 	}
@@ -249,6 +258,9 @@ func ensurePush(update bson.M, key string, event *session.Event) bson.M {
 }
 
 func (s *Service) bufferChunk(sessionID string, event *session.Event) {
+	if event.Content == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b, ok := s.buf[sessionID]
@@ -262,9 +274,23 @@ func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 		s.buf[sessionID] = b
 	}
 	for _, p := range event.Content.Parts {
-		if p.Text != "" {
+		if p != nil && p.Text != "" {
 			b.text.WriteString(p.Text)
+			b.size += len(p.Text)
 		}
+	}
+}
+
+// flushBufferIfLarge flushes the session's buffered streaming text once it
+// exceeds the threshold, as a memory-safety backstop. The normal flush path is
+// the stream completing (next non-partial event) via flushBuffer.
+func (s *Service) flushBufferIfLarge(ctx context.Context, sess session.Session) {
+	s.mu.Lock()
+	b, ok := s.buf[sess.ID()]
+	over := ok && b.size >= flushThresholdBytes
+	s.mu.Unlock()
+	if over {
+		s.flushBuffer(ctx, sess)
 	}
 }
 
@@ -328,7 +354,7 @@ func mergeTextIntoEvent(prev, next *session.Event) *session.Event {
 	return &merged
 }
 
-func syncSnapshot(sess session.Session, event *session.Event, isTextChunk bool) {
+func syncSnapshot(sess session.Session, event *session.Event, isPartial bool) {
 	ms, ok := sess.(*mongoSession)
 	if !ok {
 		return
@@ -338,12 +364,12 @@ func syncSnapshot(sess session.Session, event *session.Event, isTextChunk bool) 
 		last = ms.doc.Events[len(ms.doc.Events)-1]
 	}
 	if last.InvocationID == event.InvocationID && last.Author == event.Author &&
-		isStreamingTextChunk(event) && isStreamingTextChunk(last) {
+		isPartial && isStreamingChunk(last) {
 		ms.doc.Events[len(ms.doc.Events)-1] = mergeTextIntoEvent(last, event)
 	} else {
 		ms.doc.Events = append(ms.doc.Events, event)
 	}
-	if !isTextChunk {
+	if !isPartial {
 		ms.doc.RawEvents = append(ms.doc.RawEvents, event)
 	}
 	for k, v := range event.Actions.StateDelta {
@@ -518,27 +544,13 @@ func estimateEventTokens(events []*session.Event) int {
 	return n
 }
 
-func isStreamingTextChunk(ev *session.Event) bool {
-	if ev.Content == nil {
-		return false
-	}
-	// A terminal response (finish reason STOP) is the complete answer, not an
-	// intermediate streaming chunk. Non-streaming turns emit a single STOP
-	// event carrying the full text; treating it as a chunk would buffer it
-	// forever (nothing later flushes it) and drop the last reply from
-	// raw_events.
-	if string(ev.LLMResponse.FinishReason) == "STOP" {
-		return false
-	}
-	for _, p := range ev.Content.Parts {
-		if p == nil {
-			continue
-		}
-		if p.FunctionCall != nil || p.FunctionResponse != nil ||
-			p.ExecutableCode != nil || p.CodeExecutionResult != nil ||
-			p.InlineData != nil || p.FileData != nil {
-			return false
-		}
-	}
-	return true
+// isStreamingChunk reports whether the event is an intermediate chunk of a
+// streaming model turn. ADK sets LLMResponse.Partial=true on such chunks; the
+// final aggregated event of a turn (and every non-streaming event) is
+// Partial=false. The store keys its buffering decision solely on this flag —
+// it must not interpret LLM-specific content such as function calls, finish
+// reasons, code execution, or media parts (that would leak LLM semantics into
+// the storage layer and break single responsibility).
+func isStreamingChunk(ev *session.Event) bool {
+	return ev != nil && ev.LLMResponse.Partial
 }
