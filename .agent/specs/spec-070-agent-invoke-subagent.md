@@ -1,17 +1,18 @@
 # agent 调用子 agent（subagent invocation）
 
-> **SPEC-070** | Status: 调研中（仅立项 + 可行性调研，暂不实现）
+> **SPEC-070** | Status: 调研完成（可行性确认 + 并行委派拍板，暂不实现）
 
 ## 目标
 
-让主 agent 能调用子 agent 完成子任务。核心约束（晓军 2026-08-24 提出）：
+让主 agent 能调用子 agent 完成子任务。核心约束（晓军 2026-08-24 提出，含并行拍板）：
 
-1. 子 agent **不是 tool**——避免「tool 内启动 agent session → agent session 又调 tool」的循环依赖；
-2. 子 agent 的能力提示词**单独组装**进 LLM 系统提示词，与 tool 的声明完全无关；
-3. LLM 对子 agent 的调用**单独路由**到 agent 调用，bypass 不走 tool 的调用；
+1. 子 agent **不是 tool**（语义上）——避免「tool 内启动 agent session → agent session 又调 tool」的循环依赖；
+2. 子 agent 的能力提示词**单独组装**进 LLM 系统提示词，与普通 tool 的声明完全无关；
+3. LLM 对子 agent 的调用**单独路由**（伪 tool 触发 + 独立 agent 流程），不走普通 tool 执行；
 4. 子 agent 的 session 在子 agent 返回后**销毁**（runtime 和 DB 都销毁）；
 5. 只保留子 agent 的最终返回**写回主 agent 的 session**（同 tool response 的形态）；
-6. 子 agent 使用的 model 与主 agent 一致。
+6. 子 agent 使用的 model 与主 agent 一致；
+7. **并行委派**（拍板）：子 agent 流程与主 agent 完全一致，唯一区别是被主 agent 触发。
 
 ## 前置依赖检查
 
@@ -66,7 +67,7 @@
 
 其余需求（①②③⑤⑥）均可基于 ADK 原生机制或其扩展实现。
 
-### 并行性调研（2026-08-24 晓军追问）
+### 并行性调研（2026-08-24 晓军追问 + 拍板）
 
 **runner 切换（transfer）是串行的**，不支持同时多个子 agent：
 
@@ -82,31 +83,50 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 | session | 共享 | 共享 + branch 隔离（`parent.child` 前缀） |
 | 适用场景 | 委派一个子任务 | 多视角/多候选（多回复再评估） |
 
-**「LLM 动态 + 并行多个子 agent」（像并行 tool call 一样同时委派多个）在 ADK 原生里没有现成机制。**
+**晓军拍板（2026-08-24）：并行委派。子 agent 的流程完全和主 agent 一致，唯一区别是被主 agent 触发。**
 
-**待晓军拍板的需求边界**：
+### 可行性结论（2026-08-24 深入调研，确定可行）
 
-- **串行委派**（一次一个子 agent，返回后再委派下一个）→ ADK transfer 模型可扩展，可行性高；
-- **并行委派**（一次同时多个，像并行 tool call）→ 需自定义机制（子 agent 调用包装成异步任务并行执行、结果按 call ID 聚合），复杂度显著更高。
+关键机制：ADK `handleFunctionCalls`（`base_flow.go:1035`）用 `sync.WaitGroup` + goroutine（`:1052-1055`）**并行执行一个 LLM 响应里的多个 FunctionCall**。
 
-> 本 spec 其余设计先按「串行委派」展开；若拍板「并行委派」，需在详细设计补充并行编排章节。
+因此「子 agent 调用」实现为**伪 tool（形式上 function call 触发，Run 启动完整独立 agent 流程）**：
+
+| 需求 | 实现方式 | 可行性 |
+|------|---------|:---:|
+| 并行委派 | 多个子 agent 调用走 WaitGroup 天然并行 | ✅ |
+| 子 agent 完整流程（与主 agent 一致） | tool.Run 启动**独立 session + 独立 runner + 完整 LLM 循环**，阻塞等最终结果 | ✅ |
+| 循环依赖 | **子 agent 工具集裁剪**：不含「子 agent 调用」本身 → 子 agent 不能委派，递归斩断 | ✅ 可控 |
+| 独立 session + 返回销毁 | Run 里创建独立 session，完成后 `Delete`（runtime + DB） | ✅ |
+| 结果写回主 session | Run 返回 map → ADK 自动包装 FunctionResponse 写回（同 tool response） | ✅ |
+| model 与主 agent 一致 | Deps 注入 `modelcfg.Provider`，子 agent 复用主 model | ✅ |
+| **是否需要改 ADK vendor** | **不需要**，全部在自定义 tool + DI 层实现 | ✅ |
+
+**两个必须处理的工程点**：
+
+1. **ctx 生命周期**：子 agent 跑多轮 LLM，主请求 ctx 可能超时——tool.Run 内需用 detached ctx（`context.WithTimeout(context.Background(), …)`，同 runner.go AppendEvent 补丁做法）；
+2. **DI 扩展**：当前 `tools.Deps`（`internal/adk/tools/tools.go`）只有 KB/Skill/Memory/Tasks/SessionSvc/Artifacts/APICollections，需新增 `modelcfg.Provider`（子 agent 选模）+ adk session service（创建/销毁独立 session）+ runtime 构建能力。
+
+**「子 agent 不是 tool」的精确表述**：ADK 的 LLM 调用只有 function call 一条路，不存在「完全非 tool 的调用」。最终形态——**形式上是个伪 tool（LLM 触发用），但 Run 不执行函数，而是启动与主 agent 完全一致的独立 agent 流程**；循环依赖靠子 agent 工具集裁剪斩断。与「子 agent 不是 tool」的动机一致，实现上挂在 tool 触发形式上。
 
 ## 详细设计（方向，待实现时展开）
 
-### 1. 子 agent 注册（不是 tool）
+### 1. 子 agent 注册（伪 tool 触发 + 独立流程）
 
-- 子 agent 复用主 agent 的 model 与工具集（或按需裁剪），但**不注册进主 agent 的 tool 列表**。
-- 子 agent 的能力描述单独维护，仅用于组装系统提示词（见下）。
+- 子 agent 复用主 agent 的 model 与工具集（**工具集裁剪：不含「子 agent 调用」伪 tool**，斩断递归委派）。
+- 主 agent 侧注册「子 agent 调用」伪 tool（每个子 agent 一个，或统一的 `invoke_subagent` 带 `agent_name` 参数）。
+- 子 agent 的能力描述单独维护，用于组装系统提示词（见下）。
 
 ### 2. 能力提示词组装
 
-- 组装 LLM 系统提示词时，把「可用子 agent 及其能力描述」作为独立段落注入，与 tool 的 function declarations 完全分离。
-- 参考 ADK `AgentTransferRequestProcessor` 的 `AppendInstructions` 机制（`agent_transfer.go:91`），但提示词内容为「子任务委派」语义，而非「控制权转移」。
+- 组装 LLM 系统提示词时，把「可用子 agent 及其能力描述」作为独立段落注入，与普通 tool 的 function declarations 分开（子 agent 是完整 agent 流程，不是函数）。
+- 参考 ADK `AgentTransferRequestProcessor` 的 `AppendInstructions` 机制（`agent_transfer.go:91`），但提示词内容为「子任务委派」语义（委派后等待返回），而非「控制权转移」。
 
-### 3. 调用路由（bypass tool）
+### 3. 调用路由
 
-- LLM 发起子 agent 调用时，走**独立的 agent 调用路径**（非 tool 执行），语义为「子任务委派 + 等待返回」，而非 ADK 原生的「控制权转移」（transfer 后主 agent 不再接管）。
-- 可参考 ADK `TransferToAgent` action 机制做扩展：新增「子 agent 调用」的 action/事件类型，runner 识别后启动子 agent 执行并回写结果。
+- 形式上：子 agent 调用作为**伪 tool** 挂进主 agent 的 function declarations（LLM 通过 function call 触发），能力描述单独注入系统提示词（与普通 tool 无关）。
+- 执行上：伪 tool 的 `Run` **不执行普通函数**，而是启动子 agent 的独立完整流程（独立 session + runner + LLM 循环），阻塞等待最终返回——语义为「子任务委派 + 等待返回」。
+- 并行：多个子 agent 调用由 `handleFunctionCalls` 的 WaitGroup 天然并行执行。
+- 循环依赖防护：**子 agent 的工具集裁剪**，不含「子 agent 调用」伪 tool（子 agent 不能再委派）。
 
 ### 4. session 生命周期（独立 + 销毁）
 
@@ -114,34 +134,34 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 - 执行结束（子 agent 产出最终回复）后，**销毁 runtime 与 DB session**。
 - 最终返回写回主 session（同 tool response 的形态）。
 - 待明确：子 agent session 的 compaction 是否启用（生命周期短，可能不需要）。
+- 工程点：tool.Run 内用 **detached ctx**（`context.WithTimeout(context.Background(), …)`），避免主请求 ctx 超时中断子 agent。
 
 ### 5. 返回写回
 
-- 子 agent 的最终返回（最终 assistant 文本）作为 FunctionResponse 写回主 session，主 LLM 像看到普通 tool 结果一样继续。
+- 子 agent 的最终返回（最终 assistant 文本）作为 FunctionResponse 写回主 session，主 LLM 像看到普通 tool 结果一样继续（ADK 自动包装）。
 
 ### 6. model 复用
 
-- 子 agent 的 model 与主 agent 一致（复用同一 model 配置，不额外选模）。
+- 子 agent 的 model 与主 agent 一致（复用同一 model 配置，不额外选模）；Deps 注入 `modelcfg.Provider`。
 
 ## 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
-| 是否需要新 DB 集合 | 待定（子 agent session 可能复用 `adk_sessions`，或独立集合） |
+| 是否需要新 DB 集合 | 待定（子 agent session 复用 `adk_sessions` 独立 sessionID，完成即 Delete） |
 | 是否影响现有 API | 待定 |
 | 性能影响 | 子 agent 独立 session 的创建/销毁开销；runtime 复用主 agent 的模型连接 |
 | 是否需要新增 Skill | No（是 agent 运行时能力，非 tool skill） |
-| 是否需要改 ADK vendor | 可能（需求 ④ 独立 session + 销毁需在自定义层或 vendor 补丁实现） |
+| 是否需要改 ADK vendor | **No**（伪 tool + DI 层实现，无需 vendor 补丁） |
 
 ## 相关文件（待实现时明确）
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
-| `internal/adk/runtime/runtime.go` | Runtime 支持子 agent 执行 | 待定 |
-| `internal/adk/runtime/registry.go` | 子 agent runtime 的创建/销毁 | 待定 |
-| `internal/adk/session/mongo.go` | 子 agent session 独立 + 销毁 | 待定 |
+| `internal/adk/tools/tools.go` | 新增「子 agent 调用」伪 tool + Deps 注入 modelcfg.Provider/session service | 待定 |
+| `internal/adk/runtime/*` | 子 agent 独立 runtime 构建（复用主 model + 裁剪工具集） | 待定 |
+| `internal/adk/session/mongo.go` | 子 agent 独立 session 创建/销毁 | 待定 |
 | `internal/logic/agent/*` | 子 agent 调用编排（executor/orchestrator） | 待定 |
-| `vendor_adk_v1.5.0/...` | 可能需补丁（独立 session + 销毁） | 待定 |
 
 ## 测试策略（待展开）
 
@@ -165,12 +185,14 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 
 ## 验证标准（待展开）
 
-- [ ] 子 agent 不作为 tool 注册，无循环依赖
-- [ ] 能力提示词单独组装，与 tool 声明分离
-- [ ] 子 agent 调用 bypass tool，走独立路由
+- [ ] 子 agent 调用以伪 tool 触发，Run 启动独立 agent 流程（非普通函数执行）
+- [ ] 子 agent 工具集裁剪（不含子 agent 调用伪 tool），无循环依赖
+- [ ] 能力提示词单独组装，与普通 tool 声明分离
+- [ ] **并行委派**：多个子 agent 调用并行执行（WaitGroup），子 agent 流程与主 agent 一致
 - [ ] 子 agent 返回后 runtime 与 DB session 均销毁（无残留）
 - [ ] 最终返回写回主 session（同 tool response 形态）
 - [ ] 子 agent model 与主 agent 一致
+- [ ] detached ctx：主请求超时不中断子 agent 执行
 
 ## 提交约定
 
