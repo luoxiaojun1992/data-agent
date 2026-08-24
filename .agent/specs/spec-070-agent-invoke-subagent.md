@@ -66,6 +66,31 @@
 
 其余需求（①②③⑤⑥）均可基于 ADK 原生机制或其扩展实现。
 
+### 并行性调研（2026-08-24 晓军追问）
+
+**runner 切换（transfer）是串行的**，不支持同时多个子 agent：
+
+- `runner/runner.go:598` `findAgentToRun` 从 session events **从后往前**找「最后一个可识别 agent 的事件 author」，**一次只返回一个 agent**（控制权转移模型，返回类型是单个 `agent.Agent` 而非数组）。
+- 若两个子 agent 事件交错写入 session，「最后写入者」随机决定下一个接管 agent，另一子 agent 的任务被忽略。
+
+ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态工作流）：
+
+| 维度 | runner transfer | parallelagent |
+|------|----------------|---------------|
+| 触发方式 | LLM 动态（transfer_to_agent 伪 tool） | **静态预定义**（预先配置跑哪些 SubAgents） |
+| 并行性 | 串行，一次一个 | 并行（errgroup） |
+| session | 共享 | 共享 + branch 隔离（`parent.child` 前缀） |
+| 适用场景 | 委派一个子任务 | 多视角/多候选（多回复再评估） |
+
+**「LLM 动态 + 并行多个子 agent」（像并行 tool call 一样同时委派多个）在 ADK 原生里没有现成机制。**
+
+**待晓军拍板的需求边界**：
+
+- **串行委派**（一次一个子 agent，返回后再委派下一个）→ ADK transfer 模型可扩展，可行性高；
+- **并行委派**（一次同时多个，像并行 tool call）→ 需自定义机制（子 agent 调用包装成异步任务并行执行、结果按 call ID 聚合），复杂度显著更高。
+
+> 本 spec 其余设计先按「串行委派」展开；若拍板「并行委派」，需在详细设计补充并行编排章节。
+
 ## 详细设计（方向，待实现时展开）
 
 ### 1. 子 agent 注册（不是 tool）
