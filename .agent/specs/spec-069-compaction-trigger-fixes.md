@@ -1,13 +1,15 @@
-# compaction 触发机制缺陷修复：token 估算补全 + tool 链配对保护
+# compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构
 
-> **SPEC-069** | Status: 设计中（问题 2 已定：方案 C）
+> **SPEC-069** | Status: 设计中（问题 2 定 C，问题 3/4 已定方向）
 
 ## 目标
 
-记录并修复 compaction 在 SPEC-067 落地后的测试中暴露的两个缺陷：
+记录并修复 compaction 相关的问题与改进（SPEC-067 落地后的测试与架构审视中暴露）：
 
 1. `estimateEventTokens` 只统计文本，漏算 tool 调用内容，导致 token 阈值失真；
-2. 压缩边界可能切在 tool 链配对中间，破坏 FunctionCall/FunctionResponse 关联。
+2. 压缩边界可能切在 tool 链配对中间，破坏 FunctionCall/FunctionResponse 关联（已定方案 C）；
+3. compaction summary 语义混淆：摘要内容（LLM 用）与前端提示（UI 用）应拆分；
+4. `raw_events` 存储架构：由 session document 数组字段改为「一条 event 一个 document」，DB 层精确截取。
 
 ## 前置依赖检查
 
@@ -32,7 +34,21 @@
 - **实测证据**（2026-08-23）：`KeepRecent=1` 时稳定复现该错误；正常 `KeepRecent=20` 概率低但非零。
 - **影响**：`shouldCompact` 的「tool 输出（FunctionResponse）触发 compaction」与「tool 链配对完整性」存在边界耦合——触发时机恰在 tool 链进行中，压缩可能破坏尚未完成的配对。
 
-## 详细设计（修复方向，待拍板）
+### 问题 3：compaction summary 语义混淆
+
+- **位置**：`internal/adk/session/mongo.go` 的 `maybeCompact`（生成 summary 事件并同时写入 events + raw_events）
+- **现状**：`maybeCompact` 生成一个**含摘要内容**的 summary 事件，同时 `$set` 进 events、`$push` 进 raw_events——「前端提示」与「上下文摘要」两种语义混在同一个事件里。
+- **问题**：摘要内容（LLM 上下文）污染了 raw_events（前端展示的原始历史），前端还需靠 `IsCompactionEvent` 再转成轻提示来「遮丑」。
+- **影响**：raw_events 不再是纯「原始事件流」，混入了非原始事件。
+
+### 问题 4：raw_events 存储架构
+
+- **位置**：`internal/adk/session/mongo.go` 的 `sessionDoc.RawEvents`（数组字段）+ `DisplayEvents`（整体读 + 内存截取）
+- **现状**：raw_events 是 session document 的数组字段；`DisplayEvents` 用 `FindOne` 整体读整个 document（含全部 raw_events），再 `events[len(events)-limit:]` 内存截取最后 N 条。
+- **问题**：raw_events 只增不删、持续增长 → 整体读越来越重 + MongoDB document **16MB 上限**；既非 DB 截取也非前端截取。
+- **影响**：长 session 查询变慢，且存在写入超限风险。
+
+## 详细设计
 
 ### 问题 1：token 估算补全
 
@@ -94,27 +110,53 @@ ADK 配对是**事件粒度**的，不是单个 call 粒度：一个 call 事件
 
 例：`[call1,call2] [tool_response2] [tool_response1] [msg] [msg] [msg]`，cut 切在 call 事件与 resp2 之间 → 压缩后 `[summary][msg][msg][msg]`，resp2/resp1 被静默丢弃。
 
+### 问题 3：summary 语义拆分（已定：拆分两件事）
 
+`maybeCompact` 生成**两个**独立产物，分流到不同存储：
+
+| 产物 | 内容 | 写入 | 消费者 |
+|------|------|------|--------|
+| summary 事件 | 含摘要内容（`[conversation summary] ` + summary），`Author=compaction` | 仅 `events` | LLM 下一轮上下文 |
+| 压缩提示 | 轻量 `[compaction] 上下文已自动压缩`，`Author=compaction`，**无摘要内容** | 仅 `raw_events` | 前端展示 |
+
+- `maybeCompact`：`$set events` 写入 summary 事件（现状已有）；`$push raw_events` 改为写入**轻量提示事件**（替代现状 push 的 summary 事件）。
+- `Messages handler`：读 raw_events 时，压缩提示事件直接作为 system 消息展示，**不再需要** `IsCompactionEvent` 转轻提示（fallback 老 session 的 events 路径仍需跳过 summary 事件）。
+
+### 问题 4：raw_events 存储重构（已定：一条 event 一个 document）
+
+将 raw_events 从 session document 数组字段拆为独立 collection，实现 append-only + DB 层精确截取。
+
+- **新 collection**：`session_events`（或 `adk_session_events`）
+  - 字段：`session_id`、`app_name`、`user_id`、`seq`（递增序号）、`event`（序列化的 session.Event）、`created_at`
+  - 索引：`{session_id: 1, seq: 1}`（唯一，排序 + 去重）
+- **写入**：`AppendEvent` 时 raw_events 事件改为 `insertOne` 到独立 collection（`seq` 自增）。
+- **查询**：`DisplayEvents` 改为 `find({session_id, app_name, user_id}).sort({seq: -1}).limit(N)` 精确截取，再倒序还原。
+- **events 保留在 session document**（会被 compaction 整体 `$set` 重写，大小有界，数组字段合适）。
+- **迁移**：老 session 的 `raw_events` 数组一次性迁移到独立 collection（幂等 seed/脚本）。
+- **影响面**：`sessionDoc` / `AppendEvent` / `DisplayEvents` / `syncSnapshot` / `maybeCompact` 中 raw_events 的读写统一改为独立 collection 操作。
+
+> 详细字段 / 索引 / 迁移脚本待实现时展开。
 
 ## 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
-| 是否需要新 DB 集合 | No |
-| 是否影响现有 API | No |
-| 性能影响 | `estimateEventTokens` 增加 JSON 序列化开销，可接受（仅触发时计算） |
+| 是否需要新 DB 集合 | **Yes**（问题 4：`session_events` 独立 collection） |
+| 是否影响现有 API | No（`DisplayEvents` 返回结构不变） |
+| 性能影响 | 问题 1：`estimateEventTokens` 增加 JSON 序列化开销，可接受；问题 4：消除整体读 + 16MB 上限 |
 | 是否需要新增 Skill | No |
 
 ## 相关文件
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
-| `internal/adk/session/mongo.go` | `estimateEventTokens` / `maybeCompact` / `AppendEvent`（锁粒度统一） | Modify |
+| `internal/adk/session/mongo.go` | `estimateEventTokens` / `maybeCompact` / `AppendEvent`（锁粒度统一 + summary 拆分 + raw_events 独立 collection） | Modify |
+| `internal/api/handler/session.go` | `Messages`（压缩提示直接展示，去掉 IsCompactionEvent 转换） | Modify |
 
 ## 测试策略
 
-1. **Unit tests**（Go）: `estimateEventTokens` 补全后的行为断言（含 FunctionCall/Response 的 token 估算）；`maybeCompact` 方案 C 的「悬空 call 保护」断言（含悬空 call 不压缩、已配对可压缩、并发锁粒度）。
-2. **Integration / E2E**：临时参数（`MaxEvents`/`KeepRecent` + model `context_len`）复现 tool 链场景，验证不再出现 `no function call event found`。
+1. **Unit tests**（Go）: `estimateEventTokens` 补全后的行为断言（含 FunctionCall/Response 的 token 估算）；`maybeCompact` 方案 C 的「悬空 call 保护」断言（含悬空 call 不压缩、已配对可压缩、并发锁粒度）；summary 拆分（summary 进 events、提示进 raw_events）；raw_events 独立 collection 的 append/查询。
+2. **Integration / E2E**：临时参数（`MaxEvents`/`KeepRecent` + model `context_len`）复现 tool 链场景，验证不再出现 `no function call event found`；raw_events 迁移后老 session 兼容。
 
 ## UI Test / E2E 验收规则
 
@@ -137,6 +179,8 @@ ADK 配对是**事件粒度**的，不是单个 call 粒度：一个 call 事件
 - [ ] tool 密集场景 token 估算接近真实（单测断言）
 - [ ] `KeepRecent` 极小值下不复现 `no function call event found`
 - [ ] 现有 compaction 端到端测试仍通过
+- [ ] summary 事件只进 events，压缩提示只进 raw_events，两者解耦
+- [ ] raw_events 独立 collection：`DisplayEvents` DB 层截取最新 N 条，老 session 迁移后兼容
 
 ## 提交约定
 
