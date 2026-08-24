@@ -157,19 +157,6 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	// Detect whether this session was compacted by scanning the compacted
-	// `events` (which hold the summary). raw_events stays pristine and never
-	// receives the summary, so the notice must be derived from `events`.
-	compacted := false
-	var compactedAt time.Time
-	for e := range resp.Session.Events().All() {
-		if chat.IsCompactionEvent(e) {
-			compacted = true
-			compactedAt = e.Timestamp
-			break
-		}
-	}
-
 	var messages []domainchat.ChatEvent
 
 	// Use never-compacted display events when available; fall back to session
@@ -188,9 +175,17 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		if ev.Content == nil {
 			continue
 		}
-		// Skip synthetic summary events in the fallback path (old sessions
-		// where raw_events is empty and events still carries the summary).
+		// Compaction summary is internal context; surface only a lightweight
+		// notice (no summary content) so the transcript shows a compression
+		// happened without exposing the raw summary (SPEC-067 follow-up).
 		if chat.IsCompactionEvent(ev) {
+			messages = append(messages, domainchat.ChatEvent{
+				EventID:   ev.ID,
+				Role:      "system",
+				Type:      "text",
+				Content:   "[compaction] 上下文已自动压缩",
+				Timestamp: ev.Timestamp.UTC().Format(time.RFC3339),
+			})
 			continue
 		}
 		role := ev.Author
@@ -201,22 +196,6 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 		for _, event := range chat.ChatEventsFromParts(role, ev.ID, timestamp, ev.Content.Parts) {
 			messages = append(messages, event)
 		}
-	}
-
-	// Surface a lightweight notice when the session was compacted, without
-	// exposing the raw summary. raw_events keeps the original transcript; the
-	// notice only marks that earlier turns were compressed.
-	if compacted {
-		ts := compactedAt
-		if ts.IsZero() {
-			ts = time.Now()
-		}
-		messages = append([]domainchat.ChatEvent{{
-			Role:      "system",
-			Type:      "text",
-			Content:   "[compaction] 上下文已自动压缩",
-			Timestamp: ts.UTC().Format(time.RFC3339),
-		}}, messages...)
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }

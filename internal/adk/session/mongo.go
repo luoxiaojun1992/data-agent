@@ -426,6 +426,9 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 				"events":     newEvents,
 				"updated_at": time.Now(),
 			},
+			"$push": bson.M{
+				"raw_events": compactionEvent,
+			},
 		},
 	)
 	if err != nil {
@@ -434,6 +437,7 @@ func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error 
 
 	if ms, ok := sess.(*mongoSession); ok {
 		ms.doc.Events = newEvents
+		ms.doc.RawEvents = append(ms.doc.RawEvents, compactionEvent)
 	}
 	return nil
 }
