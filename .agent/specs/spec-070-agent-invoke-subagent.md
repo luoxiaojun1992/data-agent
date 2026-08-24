@@ -30,9 +30,22 @@
 
 但某些子任务需要**多轮 LLM + tool 编排**（如「生成一份完整分析报告」= 查数据 → 统计 → 生成 PPT → 保存产物），单个 tool 无法表达，需要能自主规划多轮的「子 agent」。
 
-### 为什么子 agent 不是 tool（循环依赖）
+### 为什么子 agent 不是 tool（Go 包 import 循环依赖）
 
-若把子 agent 实现为一个普通 tool：`tool.Run` 里需要启动子 agent 的 session（子 agent 跑多轮 LLM + tool），而子 agent 又能调用 tool（包括这个子 agent tool 自己）→ 形成 `tool → agent session → tool` 的循环依赖。因此子 agent 必须是**独立的调用路径**，不是 tool。
+> 2026-08-24 晓军澄清：这里说的「循环依赖」是 **Go 包 import 层面的循环**，不是运行时递归。
+
+子 agent 不能作为 `internal/adk/tools` 包里的 tool 实现，否则产生 Go 包 import 循环：
+
+- 若「子 agent 调用」是 tools 包的 tool，则 tools 包需 import「能启动子 agent」的包（`internal/adk/runtime` / `internal/logic/agent`）；
+- 而 runtime / logic/agent 构建 agent 时又需要 tools 包（注册基础 tool，即使当前经 `[]tool.Tool` 接口注入，概念上仍形成耦合）；
+- → `tools → runtime → tools` 循环 import，编译不过（或形成包级耦合）。
+
+因此子 agent 调用的「伪 tool」必须放在**上层包**（`internal/adk/runtime` 或 `internal/logic/agent`），import 方向为 `runtime → tools`（单向），tools 保持叶子包。
+
+### ctx 生命周期约束（2026-08-24 晓军补充）
+
+1. **父子 agent ctx 必须是继承关系**：子 agent 的 ctx 是父 agent ctx 派生的子 ctx（`context.WithCancel(parentCtx)`），父 agent ctx 取消或超时 → 子 agent ctx 一并取消。
+2. **子 agent ctx 取消必须同时销毁**：session（DB 记录）、runtime（内存），做到无残留。
 
 ## 调研结论（可行性）
 
@@ -103,10 +116,10 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 
 **两个必须处理的工程点**：
 
-1. **ctx 生命周期**：子 agent 跑多轮 LLM，主请求 ctx 可能超时——tool.Run 内需用 detached ctx（`context.WithTimeout(context.Background(), …)`，同 runner.go AppendEvent 补丁做法）；
+1. **ctx 继承（非 detached）**：子 agent 的 ctx 是父 agent ctx 的**子 ctx**（`context.WithCancel(parentCtx)`）——父 agent ctx 取消/超时，子 agent ctx 一并取消。子 agent 执行循环监听 `ctx.Done()`，取消即停止；**取消时销毁 session（DB）+ runtime（内存）**。
 2. **DI 扩展**：当前 `tools.Deps`（`internal/adk/tools/tools.go`）只有 KB/Skill/Memory/Tasks/SessionSvc/Artifacts/APICollections，需新增 `modelcfg.Provider`（子 agent 选模）+ adk session service（创建/销毁独立 session）+ runtime 构建能力。
 
-**「子 agent 不是 tool」的精确表述**：ADK 的 LLM 调用只有 function call 一条路，不存在「完全非 tool 的调用」。最终形态——**形式上是个伪 tool（LLM 触发用），但 Run 不执行函数，而是启动与主 agent 完全一致的独立 agent 流程**；循环依赖靠子 agent 工具集裁剪斩断。与「子 agent 不是 tool」的动机一致，实现上挂在 tool 触发形式上。
+**「子 agent 不是 tool」的精确表述**：ADK 的 LLM 调用只有 function call 一条路，不存在「完全非 tool 的调用」。最终形态——**形式上是个伪 tool（LLM 触发用），但 Run 不执行函数，而是启动与主 agent 完全一致的独立 agent 流程**；Go import 循环靠「伪 tool 放上层包（runtime/logic/agent），不放 tools 包」斩断。
 
 ## 详细设计（方向，待实现时展开）
 
@@ -126,15 +139,17 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 - 形式上：子 agent 调用作为**伪 tool** 挂进主 agent 的 function declarations（LLM 通过 function call 触发），能力描述单独注入系统提示词（与普通 tool 无关）。
 - 执行上：伪 tool 的 `Run` **不执行普通函数**，而是启动子 agent 的独立完整流程（独立 session + runner + LLM 循环），阻塞等待最终返回——语义为「子任务委派 + 等待返回」。
 - 并行：多个子 agent 调用由 `handleFunctionCalls` 的 WaitGroup 天然并行执行。
-- 循环依赖防护：**子 agent 的工具集裁剪**，不含「子 agent 调用」伪 tool（子 agent 不能再委派）。
+- **Go import 循环防护**：伪 tool 放**上层包**（`internal/adk/runtime` / `internal/logic/agent`），不放 tools 包 → import 方向 `runtime → tools` 单向，无循环。
+- 运行时递归防护（可选）：子 agent 工具集裁剪，不含「子 agent 调用」伪 tool（子 agent 不能再委派，限制委派深度）。
 
-### 4. session 生命周期（独立 + 销毁）
+### 4. session 生命周期（独立 + 销毁 + ctx 继承）
 
 - 子 agent 用**独立 session**（独立 sessionID / runtime）。
-- 执行结束（子 agent 产出最终回复）后，**销毁 runtime 与 DB session**。
+- **ctx 继承**：子 agent 的 ctx 由父 agent ctx 派生（`context.WithCancel(parentCtx)`），父 agent ctx 取消/超时 → 子 agent ctx 一并取消。
+- **取消清理**：子 agent ctx 取消时，同步销毁 session（DB 记录）+ runtime（内存），无残留。
+- 正常结束（子 agent 产出最终回复）后，同样销毁 runtime 与 DB session。
 - 最终返回写回主 session（同 tool response 的形态）。
 - 待明确：子 agent session 的 compaction 是否启用（生命周期短，可能不需要）。
-- 工程点：tool.Run 内用 **detached ctx**（`context.WithTimeout(context.Background(), …)`），避免主请求 ctx 超时中断子 agent。
 
 ### 5. 返回写回
 
@@ -158,8 +173,8 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
-| `internal/adk/tools/tools.go` | 新增「子 agent 调用」伪 tool + Deps 注入 modelcfg.Provider/session service | 待定 |
-| `internal/adk/runtime/*` | 子 agent 独立 runtime 构建（复用主 model + 裁剪工具集） | 待定 |
+| `internal/adk/tools/tools.go` | **不变**（基础 tool 保持叶子包，不新增子 agent 调用） | — |
+| `internal/adk/runtime/*` | **新增「子 agent 调用」伪 tool（放上层包，避免 import 循环）** + 子 agent 独立 runtime 构建（复用主 model + 裁剪工具集） | 待定 |
 | `internal/adk/session/mongo.go` | 子 agent 独立 session 创建/销毁 | 待定 |
 | `internal/logic/agent/*` | 子 agent 调用编排（executor/orchestrator） | 待定 |
 
@@ -186,13 +201,14 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 ## 验证标准（待展开）
 
 - [ ] 子 agent 调用以伪 tool 触发，Run 启动独立 agent 流程（非普通函数执行）
-- [ ] 子 agent 工具集裁剪（不含子 agent 调用伪 tool），无循环依赖
+- [ ] 子 agent 调用伪 tool 放上层包（runtime/logic/agent），tools 包保持叶子，无 Go import 循环
 - [ ] 能力提示词单独组装，与普通 tool 声明分离
 - [ ] **并行委派**：多个子 agent 调用并行执行（WaitGroup），子 agent 流程与主 agent 一致
 - [ ] 子 agent 返回后 runtime 与 DB session 均销毁（无残留）
 - [ ] 最终返回写回主 session（同 tool response 形态）
 - [ ] 子 agent model 与主 agent 一致
-- [ ] detached ctx：主请求超时不中断子 agent 执行
+- [ ] **ctx 继承**：父 agent ctx 取消/超时，子 agent ctx 一并取消
+- [ ] **取消清理**：子 agent ctx 取消时同步销毁 session + runtime + DB 记录（无残留）
 
 ## 提交约定
 
