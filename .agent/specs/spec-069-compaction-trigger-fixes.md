@@ -48,6 +48,33 @@
 - **方案 B：触发时机避开 tool 链** —— 仅在「一轮完整回复结束」（最终 assistant 文本 / user 消息）后触发，而非每个 FunctionResponse 后。
 - **方案 C：KeepRecent 动态下限** —— 保证 `KeepRecent ≥ 当前进行中 tool 链长度`，避免切在链中间。
 
+#### 配对粒度：以「call 事件」为锚点（2026-08-24 补充）
+
+ADK 配对是**事件粒度**的，不是单个 call 粒度：一个 call 事件可含多个 `FunctionCall`，其对应的多个 `FunctionResponse` 可能分散在多个事件（异步返回顺序不定）。`rearrangeEventsForFunctionResponsesInHistory`（`contents_processor.go:331`）遍历时，response 事件本身被 `continue` 跳过，必须靠它的 call 事件「认领」合并回来。
+
+因此方案 A 的精确规则：
+
+> **cut 不能落在「某个 call 事件」和「它的任何一个 response 事件」之间。**
+
+对齐锚点是那个 call 事件，而非「紧邻的单个 call/response 对」。伪代码：
+
+```go
+keptCallIDs := { 保留范围内(idx>=cut) 所有 FunctionResponse 的 ID }
+for i := cut-1; i >= 0; i-- {
+    if events[i] 含 keptCallIDs 中的任一 FunctionCall {
+        cut = i // 继续往左，收敛到最左的匹配 call 事件
+    }
+}
+```
+
+#### 隐藏风险：response 后还有 msg 时是「静默丢失」而非报错
+
+- 若「最后一个事件是 response」且 call 被压掉 → `rearrangeEventsForLatestFunctionResponse` 报 `no function call event found`（显式报错）。
+- 若「response 后面还有 msg」（如 `[call1,call2][resp2][resp1][msg][msg][msg]`）→ `rearrangeEventsForFunctionResponsesInHistory` 把孤儿 response 静默 `continue` 丢弃，**不报错但 tool 结果凭空消失**，比报错更难察觉。
+
+例：`[call1,call2] [tool_response2] [tool_response1] [msg] [msg] [msg]`，cut 切在 call 事件与 resp2 之间 → 压缩后 `[summary][msg][msg][msg]`，resp2/resp1 被静默丢弃。
+
+
 ## 可行性分析
 
 | 检查项 | 结论 |
