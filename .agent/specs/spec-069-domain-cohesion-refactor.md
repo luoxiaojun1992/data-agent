@@ -1,6 +1,6 @@
 # 领域内聚重构：业务领域 logic/service/db_model 垂直切片
 
-> **SPEC-068** | Status: 立项（不展开）
+> **SPEC-069** | Status: 立项（不展开）
 
 ## 目标
 
@@ -18,16 +18,17 @@
 |-----------|:---:|------|
 | SPEC-066 配置存储拆分 | 📐 设计中 | 先落地 modelconfig 领域包的实体/db 结构，再谈全量内聚 |
 | SPEC-067 意图识别 + 相关性检查 | 📐 设计中 | guard 模块的归属包受本重构影响 |
+| SPEC-068 compaction 机制重构 | 📐 设计中 | **先完成 compaction 重构，再做领域内聚**（晓军定序） |
 
 ## 立项说明（不展开）
 
-> 本 spec 仅**立项**，暂不展开详细设计。待 SPEC-066 / SPEC-067 落地后，再根据实际依赖关系评估垂直切片的拆分边界、迁移顺序与影响面。
+> 本 spec 仅**立项**，暂不展开详细设计。待 SPEC-066 / SPEC-067 / SPEC-068 落地后，再根据实际依赖关系评估垂直切片的拆分边界、迁移顺序与影响面。
 
 - 待展开项（后续）：① 垂直切片的目标目录结构 ② 各领域包的边界与依赖规则 ③ 现有 `internal/service` / `internal/logic` / `internal/infra` 的迁移映射 ④ wire.go 注入与 handler 归属调整 ⑤ 与 SPEC-066/067 的先后顺序。
 
 ## 提交约定
 
 ```bash
-git add .agent/specs/spec-068-domain-cohesion-refactor.md .agent/specs/INDEX.md
-git commit -m "docs: add SPEC-068 domain cohesion refactor (立项)"
+git add .agent/specs/spec-069-domain-cohesion-refactor.md .agent/specs/INDEX.md
+git commit -m "docs: add SPEC-069 domain cohesion refactor (立项)"
 ```

@@ -81,8 +81,8 @@
 | SPEC-065 | API 注册与 MCP 工具集成（OpenAPI 上传 → 注册外部 API → external_api_search/summary/method/call 工具） | **P20** | [spec-065-api-collection-mcp-tools.md](spec-065-api-collection-mcp-tools.md) | ✅ 已实现 |
 | SPEC-066 | 配置存储拆分（system_configs 去 namespace；模型配置每模型一条文档+DB分页；model_defaults 独立集合；skill 独立集合） | **P15** | [spec-066-config-storage-split.md](spec-066-config-storage-split.md) | 📐 设计中 |
 | SPEC-067 | 用户意图识别与 LLM 输出相关性检查（Guard：intent/relevance use case + Redis 计数重试 + compaction 角色/范围调整） | **P15** | [spec-067-intent-relevance-guard.md](spec-067-intent-relevance-guard.md) | 📐 设计中 |
-| SPEC-068 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-068-domain-cohesion-refactor.md](spec-068-domain-cohesion-refactor.md) | 📐 立项（不展开） |
-| SPEC-069 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-069-compaction-trigger-fixes.md](spec-069-compaction-trigger-fixes.md) | 📐 设计中 |
+| SPEC-068 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-068-compaction-trigger-fixes.md](spec-068-compaction-trigger-fixes.md) | 📐 设计中 |
+| SPEC-069 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-069-domain-cohesion-refactor.md](spec-069-domain-cohesion-refactor.md) | 📐 立项（不展开） |
 
 ## Phase 对应与依赖
 
@@ -255,15 +255,15 @@ SPEC-006│               │
                     compaction 角色 model→system、只压缩 tool/user;
                     依赖 SPEC-061/062/063 已实现)
 
-[P15] SPEC-068 ─── 领域内聚重构 (立项，不展开)
-                   (业务领域 logic/service/db_model 垂直切片;
-                    替换水平分层 domain/service/logic/infra;
-                    依赖 SPEC-066/067 落地后再展开)
-
-[P15] SPEC-069 ─── compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构
+[P15] SPEC-068 ─── compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构
                    (1) estimateEventTokens 补全 FunctionCall.Args/FunctionResponse.Response;
                    2) 压缩边界保护 tool 链配对(方案C:悬空 call 保护);
                    3) summary 只进 events、压缩提示只进 raw_events;
                    4) raw_events 拆独立 collection 一条 event 一个 document;
                     依赖 SPEC-066/067 已实现)
+
+[P15] SPEC-069 ─── 领域内聚重构 (立项，不展开)
+                   (业务领域 logic/service/db_model 垂直切片;
+                    替换水平分层 domain/service/logic/infra;
+                    依赖 SPEC-066/067/068 落地后再展开)
 ```

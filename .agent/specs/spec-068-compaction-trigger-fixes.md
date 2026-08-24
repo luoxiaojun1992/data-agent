@@ -1,6 +1,6 @@
 # compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构
 
-> **SPEC-069** | Status: 设计中（问题 2 定 C，问题 3/4 已定方向）
+> **SPEC-068** | Status: 设计中（问题 2 定 C，问题 3/4 已定方向）
 
 ## 目标
 
@@ -185,6 +185,6 @@ ADK 配对是**事件粒度**的，不是单个 call 粒度：一个 call 事件
 ## 提交约定
 
 ```bash
-git add .agent/specs/spec-069-compaction-trigger-fixes.md .agent/specs/INDEX.md
-git commit -m "docs: add SPEC-069 compaction trigger fixes (token 估算 + tool 链配对)"
+git add .agent/specs/spec-068-compaction-trigger-fixes.md .agent/specs/INDEX.md
+git commit -m "docs: add SPEC-068 compaction trigger fixes (token 估算 + tool 链配对)"
 ```
