@@ -83,7 +83,7 @@
 | SPEC-067 | 用户意图识别与 LLM 输出相关性检查（Guard：intent/relevance use case + Redis 计数重试 + compaction 角色/范围调整） | **P15** | [spec-067-intent-relevance-guard.md](spec-067-intent-relevance-guard.md) | 📐 设计中 |
 | SPEC-068 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-068-compaction-trigger-fixes.md](spec-068-compaction-trigger-fixes.md) | 📐 设计中 |
 | SPEC-069 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-069-domain-cohesion-refactor.md](spec-069-domain-cohesion-refactor.md) | 📐 立项（不展开） |
-| SPEC-070 | agent 调用子 agent（子 agent 非 tool、能力提示词单独组装、bypass tool 路由、独立 session 返回即销毁、最终返回同 tool response、model 与主 agent 一致） | **P15** | [spec-070-agent-invoke-subagent.md](spec-070-agent-invoke-subagent.md) | 🔍 调研中 |
+| SPEC-070 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-070-agent-invoke-subagent.md](spec-070-agent-invoke-subagent.md) | 📐 调研完成（方案已定，待实现） |
 
 ## Phase 对应与依赖
 
@@ -268,10 +268,11 @@ SPEC-006│               │
                     替换水平分层 domain/service/logic/infra;
                     依赖 SPEC-066/067/068 落地后再展开)
 
-[P15] SPEC-070 ─── agent 调用子 agent (调研中，暂不实现)
-                   (子 agent 非 tool 避免循环依赖; 能力提示词单独组装;
-                    bypass tool 独立路由; 独立 session 返回即销毁;
+[P15] SPEC-070 ─── agent 调用子 agent (调研完成，方案已定，待实现)
+                   (sub agent tool + interface 解耦，无 import 循环;
+                    能力提示词单独组装; 独立 session 父绑定 + 返回即硬删;
                     最终返回同 tool response 写回主 session;
-                    model 与主 agent 一致;
+                    model 与主 agent 一致; 并行委派;
+                    ctx 继承 + 取消销毁 session/runtime/DB;
                     依赖 SPEC-066/067/068)
 ```
