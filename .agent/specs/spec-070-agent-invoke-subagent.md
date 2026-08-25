@@ -156,6 +156,8 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 - sub agent tool 的 `Run` 启动子 agent 完整独立流程（独立 session + runner + LLM 循环），阻塞等最终返回。
 - 子 agent 的能力描述单独维护，用于组装系统提示词（见下）。
 
+> **限制「子 agent 不能再调子 agent」是硬限制（默认禁止）**：子 agent 构建 runtime 时，`Tools` 列表 = 基础工具集（sql_executor/knowledge_search/…），**排除 sub agent tool**。sub agent tool 不在子 agent 的 function declarations 里，子 agent 的 LLM 根本看不到 `invoke_subagent` 函数，无从调用——比提示词「别调子 agent」可靠（函数不可见 = 绝对无法调用）。若将来需要多级委派，可改为按 `max_depth` 配置是否注入 sub agent tool。
+
 ### 2. 能力提示词组装
 
 - 组装 LLM 系统提示词时，把「可用子 agent 及其能力描述」作为独立段落注入，与普通 tool 的 function declarations 分开（子 agent 是完整 agent 流程，不是函数）。
@@ -185,8 +187,9 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 
 #### 4.3 删除策略（硬删除，无软删除/恢复）
 
-- **子 session 实时删**：子 agent 返回（产出最终回复）即 `Delete` 独立 session，硬删（`DeleteOne`），不留软删除标记。
-- **主 session 级联删**：删除主 session DB 记录时，先查 `parent_session_id == 主sessionID` 的关联子 session，若有则一并**硬删除**（`DeleteMany`）。
+- **子 session 实时删（主路径）**：子 agent 返回（产出最终回复）即 `Delete` 独立 session，硬删（`DeleteOne`），不留软删除标记。
+- **主 session 级联删（防御性兜底）**：删除主 session DB 记录时，先查 `parent_session_id == 主sessionID` 的关联子 session，若有则一并**硬删除**（`DeleteMany`）。
+  - ⚠️ **现状澄清（2026-08-25）**：当前**主 agent 的 ADK session 本身也不删**——`SessionHandler.Delete` 只调业务层 `mgr.Delete`（软删 `sessions` collection），`adkSessions.Delete` 全仓零调用，`adk_sessions` 无 Cleanup/TTL。因此「随主删」路径现状**不会触发**，子 session 清理实际以「实时删」为主；「级联删」是为将来主 ADK session 也做硬删清理时预留的兜底。
 - **取消清理**：子 agent ctx 取消/超时时，同步硬删子 session（DB）+ runtime（内存），无残留。
 - ⛔ **全程硬删除，不用软删除、不用恢复**：子 session 与主 session 的删除都不写 `deleted_at` 标记、不进恢复列表，`DeleteOne`/`DeleteMany` 直接物理删除。
   - 注意区分：chat 业务层 session（`internal/service/chat/session.go` 的 `Manager`，`repository.SessionRepository`）有软删除（`Restore`/`ListDeleted`）；但**子 agent session 只落在 ADK session 层（`adk_sessions`），不落 chat 业务层 session**，故天然无软删除。子 agent session 走 ADK session service 的 `Delete`（本就是 `DeleteOne` 硬删）。
