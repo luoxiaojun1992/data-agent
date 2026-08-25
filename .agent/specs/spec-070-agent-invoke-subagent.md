@@ -169,12 +169,30 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 - **Go import 循环防护**：不存在循环——`runtime.Config.Tools` 是 `tool.Tool` interface（ADK vendor），runtime 不 import 任何 tool 实现包，sub agent tool 依赖 agent/runtime 是单向的。
 - 运行时递归防护：子 agent 工具集裁剪，不含 sub agent tool（子 agent 不能再委派，限制委派深度）。
 
-### 4. session 生命周期（独立 + 销毁 + ctx 继承）
+### 4. session 生命周期（独立 + 父绑定 + 销毁 + ctx 继承）
 
-- 子 agent 用**独立 session**（独立 sessionID / runtime）。
-- **ctx 继承**：子 agent 的 ctx 由父 agent ctx 派生（`context.WithCancel(parentCtx)`），父 agent ctx 取消/超时 → 子 agent ctx 一并取消。
-- **取消清理**：子 agent ctx 取消时，同步销毁 session（DB 记录）+ runtime（内存），无残留。
-- 正常结束（子 agent 产出最终回复）后，同样销毁 runtime 与 DB session。
+#### 4.1 session 存储结构（加父 sessionID）
+
+- `sessionDoc`（`internal/adk/session/mongo.go`，ADK 底层 session 存储）新增字段 **`parent_session_id`**（`bson:"parent_session_id"`，可空）：
+  - 主 agent session：`parent_session_id` 为空；
+  - 子 agent session：`parent_session_id` = 主 agent sessionID，绑定父子关系。
+- 加索引 `{parent_session_id: 1}` 支撑级联删除查询。
+
+#### 4.2 sub agent 调用 session 方式（同 chat session）
+
+- sub agent tool 的 `Run` 里**复用与 chat session 相同的 ADK session service 流程**创建独立 session（独立 sessionID / runtime），`parent_session_id` 设为主 agent sessionID。
+- **接收主 agent 的 ctx**：子 agent 执行循环直接用父 agent 传入的 ctx（或其派生子 ctx `context.WithCancel`），监听 `ctx.Done()` 处理 cancel。
+
+#### 4.3 删除策略（硬删除，无软删除/恢复）
+
+- **子 session 实时删**：子 agent 返回（产出最终回复）即 `Delete` 独立 session，硬删（`DeleteOne`），不留软删除标记。
+- **主 session 级联删**：删除主 session DB 记录时，先查 `parent_session_id == 主sessionID` 的关联子 session，若有则一并**硬删除**（`DeleteMany`）。
+- **取消清理**：子 agent ctx 取消/超时时，同步硬删子 session（DB）+ runtime（内存），无残留。
+- ⛔ **全程硬删除，不用软删除、不用恢复**：子 session 与主 session 的删除都不写 `deleted_at` 标记、不进恢复列表，`DeleteOne`/`DeleteMany` 直接物理删除。
+  - 注意区分：chat 业务层 session（`internal/service/chat/session.go` 的 `Manager`，`repository.SessionRepository`）有软删除（`Restore`/`ListDeleted`）；但**子 agent session 只落在 ADK session 层（`adk_sessions`），不落 chat 业务层 session**，故天然无软删除。子 agent session 走 ADK session service 的 `Delete`（本就是 `DeleteOne` 硬删）。
+
+#### 4.4 其余
+
 - 最终返回写回主 session（同 tool response 的形态）。
 - 待明确：子 agent session 的 compaction 是否启用（生命周期短，可能不需要）。
 
@@ -190,7 +208,7 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 
 | 检查项 | 结论 |
 |--------|------|
-| 是否需要新 DB 集合 | 待定（子 agent session 复用 `adk_sessions` 独立 sessionID，完成即 Delete） |
+| 是否需要新 DB 集合 | No（子 agent session 复用 `adk_sessions`，加 `parent_session_id` 字段 + 索引，完成即硬删） |
 | 是否影响现有 API | 待定 |
 | 性能影响 | 子 agent 独立 session 的创建/销毁开销；runtime 复用主 agent 的模型连接 |
 | 是否需要新增 Skill | No（是 agent 运行时能力，非 tool skill） |
@@ -202,7 +220,7 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 |------|------|-----------------|
 | `internal/adk/tools/` 或新建 `internal/adk/subagent/` | **新增 sub agent tool**（实现 `tool.Tool`，依赖 agent/runtime，无 import 循环） | 待定 |
 | `internal/adk/runtime/*` | 子 agent 独立 runtime 构建（复用主 model + 裁剪工具集） | 待定 |
-| `internal/adk/session/mongo.go` | 子 agent 独立 session 创建/销毁 | 待定 |
+| `internal/adk/session/mongo.go` | `sessionDoc` 加 `parent_session_id` + 索引；`Delete` 改为级联硬删子 session；子 agent session 创建/销毁 | 待定 |
 | `internal/logic/agent/*` | 子 agent 调用编排（executor/orchestrator） | 待定 |
 
 ## 测试策略（待展开）
@@ -232,6 +250,9 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 - [ ] 能力提示词单独组装，与普通 tool 声明分离
 - [ ] **并行委派**：多个子 agent 调用并行执行（WaitGroup），子 agent 流程与主 agent 一致
 - [ ] 子 agent 返回后 runtime 与 DB session 均销毁（无残留）
+- [ ] **父绑定**：`sessionDoc` 加 `parent_session_id`，子 session 绑定主 sessionID
+- [ ] **级联硬删**：删除主 session 时查 `parent_session_id == 主sessionID` 并硬删全部子 session
+- [ ] **硬删除（无软删除/恢复）**：子 session 实时删或随主删，均为 `DeleteOne`/`DeleteMany` 物理删除，不写 `deleted_at`、不进恢复列表
 - [ ] 最终返回写回主 session（同 tool response 形态）
 - [ ] 子 agent model 与主 agent 一致
 - [ ] **ctx 继承**：父 agent ctx 取消/超时，子 agent ctx 一并取消
