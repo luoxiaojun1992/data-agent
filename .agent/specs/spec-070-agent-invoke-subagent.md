@@ -151,12 +151,17 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 
 ### 1. 子 agent 注册（sub agent tool + 独立流程）
 
-- 子 agent 复用主 agent 的 model 与工具集（**工具集裁剪：不含 sub agent tool 本身**，斩断递归委派）。
+- 子 agent 复用主 agent 的 model（**工具集裁剪：不含 sub agent tool 本身**，斩断递归委派）。
 - 主 agent 侧注册 sub agent tool（每个子 agent 一个，或统一的 `invoke_subagent` 带 `agent_name` 参数），实现 ADK `tool.Tool` 接口。
 - sub agent tool 的 `Run` 启动子 agent 完整独立流程（独立 session + runner + LLM 循环），阻塞等最终返回。
 - 子 agent 的能力描述单独维护，用于组装系统提示词（见下）。
 
-> **限制「子 agent 不能再调子 agent」是硬限制（默认禁止）**：子 agent 构建 runtime 时，`Tools` 列表 = 基础工具集（sql_executor/knowledge_search/…），**排除 sub agent tool**。sub agent tool 不在子 agent 的 function declarations 里，子 agent 的 LLM 根本看不到 `invoke_subagent` 函数，无从调用——比提示词「别调子 agent」可靠（函数不可见 = 绝对无法调用）。若将来需要多级委派，可改为按 `max_depth` 配置是否注入 sub agent tool。
+> **限制「子 agent 不能再调子 agent」是硬限制（默认禁止）**：子 agent 的 `Tools` 列表 = 基础工具集（sql_executor/knowledge_search/…），**排除 sub agent tool**。sub agent tool 不在子 agent 的 function declarations 里，子 agent 的 LLM 根本看不到 `invoke_subagent` 函数，无从调用——比提示词「别调子 agent」可靠（函数不可见 = 绝对无法调用）。若将来需要多级委派，可改为按 `max_depth` 配置是否注入 sub agent tool。
+
+> **复用 Registry + 扩展裁剪路径（2026-08-25 晓军确认）**：子 agent 应**复用 Registry**（享受 model 解析 + fingerprint 热更新 + LLM 实例复用），但当前 `RegistryConfig.Tools` 是**共享切片**（`registry.go:247` `buildRuntime` 用 `r.cfg.Tools`），直接复用会让子 agent 拿到含 sub agent tool 的全量工具 → 裁剪失效。正确方案：
+> - `RegistryConfig` 新增 **`SubAgentTools []tool.Tool`**（基础工具集，不含 sub agent tool）；
+> - `Registry` 新增 **`GetOrCreateSubAgent(ctx, modelID)`**（或 `buildRuntime` 加 tools 参数），`Tools` 用 `r.cfg.SubAgentTools`，其余复用；
+> - 子 agent runtime 单独进缓存（独立 map 或复用 sessions map + 工具集指纹），指纹变化同样热更新。
 
 ### 2. 能力提示词组装
 
@@ -222,7 +227,7 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `internal/adk/tools/` 或新建 `internal/adk/subagent/` | **新增 sub agent tool**（实现 `tool.Tool`，依赖 agent/runtime，无 import 循环） | 待定 |
-| `internal/adk/runtime/*` | 子 agent 独立 runtime 构建（复用主 model + 裁剪工具集） | 待定 |
+| `internal/adk/runtime/registry.go` | `RegistryConfig` 加 `SubAgentTools`；`Registry` 加 `GetOrCreateSubAgent`（复用 model 解析/缓存/热更新，Tools 用裁剪后） | 待定 |
 | `internal/adk/session/mongo.go` | `sessionDoc` 加 `parent_session_id` + 索引；`Delete` 改为级联硬删子 session；子 agent session 创建/销毁 | 待定 |
 | `internal/logic/agent/*` | 子 agent 调用编排（executor/orchestrator） | 待定 |
 
