@@ -167,6 +167,7 @@ type PIIRedactor interface {
 - 知识库上传逻辑**先判断该开关**：`false` 则跳过脱敏（管理员主动关闭），`true` 则执行脱敏。
 - 读取走现有 Config service + Redis 缓存机制（复用 SPEC-061 配置缓存 + SPEC-067 guard.max_retries 的读取模式），热更新无需重启。
 - **不降级**：开关开启时，脱敏服务出错 → **直接返回错误中止落库（fail-closed）**，不跳过脱敏、不 fallback。内部服务（同 compose 内网）故障概率低，无需降级设计。
+- **同步到原始 seed 数据**：在 `internal/service/config/service.go` 的 `SystemBuiltins()` 增加一条 `{Key: "pii_redaction_enabled", Description: "...", Default: "true"}`。`SeedBuiltins`（wire.go 启动时调用）是**幂等插入**——已存在的 key 跳过、不覆盖用户修改值，因此开发测试阶段**直接改原始 seed 脚本即可**，无需迁移脚本；重启后端即自动插入新配置。若 seed 因某种原因未幂等写入，再用临时 mongosh 脚本补数据。
 
 #### 3.2 插入点 1（主）：文件上传时脱敏 → GridFS 存脱敏文件
 
@@ -240,7 +241,7 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 | `internal/service/pii/*` | pii-redaction 客户端封装（analyze + anonymize） | New |
 | `internal/api/handler/knowledge.go` | `UploadDoc` Path 1 文件上传时脱敏（读文件→脱敏→存 GridFS） | Modify |
 | `internal/service/knowledge/service.go` | 注入 redactor + `AddChunks` 脱敏 + 开关判断 | Modify |
-| `internal/service/config/*`（复用） | 读取 `pii_redaction_enabled` 开关（SPEC-061 缓存机制） | — |
+| `internal/service/config/service.go` | `SystemBuiltins()` seed 数据加 `pii_redaction_enabled`（幂等 seed）+ 读取开关 | Modify |
 | `cmd/server/wire.go` | 组装 pii redactor + config 注入 knowledge service | Modify |
 
 ## 测试策略
@@ -269,6 +270,7 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 - [ ] 自定义 recognizer 配置纯规则（禁用 NER 识别器，含中文 PII 规则）
 - [ ] 后端 `PIIRedactor` 封装 analyze + anonymize，可脱敏 PII
 - [ ] **开关**：`pii_redaction_enabled`（system_configs，默认 true），KB 上传逻辑判断开关；false 跳过、true 脱敏
+- [ ] **seed 同步**：`SystemBuiltins()` 含 `pii_redaction_enabled`，启动时 `SeedBuiltins` 幂等插入（不覆盖已存在的用户修改值）
 - [ ] **GridFS 原始文件脱敏**：纯文本文件上传时先脱敏再存 GridFS，后续切片自然脱敏
 - [ ] `AddChunks` 直接传纯文本 chunks 也经脱敏
 - [ ] **不降级**：开关开启时脱敏失败直接返回错误中止落库（fail-closed）
