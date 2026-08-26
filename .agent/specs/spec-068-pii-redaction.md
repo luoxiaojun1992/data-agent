@@ -10,7 +10,7 @@
 2. **后端封装服务**，调用 pii-redaction 服务完成脱敏。
 3. **知识库上传逻辑**：纯文本（非图片 base64）只保存 pii-redaction 脱敏返回后的文本，不保存原始可能含隐私信息的文本。
 4. **测试**：故意在知识库上传中放置隐私信息，检查数据库保存的文本是否仍残留隐私信息。
-5. **模型输出审计接入**（补充）：现有模型输出审计（`security.Auditor.AuditOutput`）也走 pii-redaction 服务（开关打开时）；报错或开关关闭则**降级到现有规则校验**（regex id_card/phone/api_key，安全性要求没那么高）。
+5. **模型输入/输出审计接入**（补充）：现有模型审计也走 pii-redaction 服务（开关打开时）；报错或开关关闭则**降级到现有规则校验**（regex id_card/phone/api_key，安全性要求没那么高）。**输入侧现无 PII 审计，需补上**；输入/输出都做 PII 审计，且**不破坏现有的非隐私审计**（SQL/XSS block、工具敏感路径 block）。
 
 ## 前置依赖检查
 
@@ -210,56 +210,106 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 - 脱敏结果同时影响 MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content`（embedding 也基于脱敏文本，避免 PII 进入向量空间）。
 - 服务依赖通过 `knowledge.Service` 构造函数注入（`WithRedactor`），wire.go 组装。
 
-### 4. 适配层：模型输出审计接入（降级到现有规则校验）
+### 4. 适配层：模型输入/输出审计接入（降级到现有规则校验）
 
-#### 4.1 现状：现有输出审计的规则校验
+#### 4.1 现状：现有输入/输出审计
 
-`security.Auditor.AuditOutput`（`internal/domain/security/auditor.go`）现用一组 regex 规则对 LLM 输出做脱敏（`sanitize` action）：
+`security.Auditor`（`internal/domain/security/auditor.go`）现有两组规则：
 
-| 规则 | 正则 | 处理 |
+**输入侧 `AuditInput`（`DefaultRules().InputRules`）** —— **无 PII 脱敏**，只有 SQL/XSS 安全规则（非隐私审计）：
+
+| 规则 | 类型 | 动作 |
 |------|------|------|
-| `id_card` | `\d{17}[\dXx]` | 掩码（`110***********1234`） |
-| `phone` | `1[3-9]\d{9}` | 掩码（`138****8000`） |
-| `api_key` | `sk-[a-zA-Z0-9]{32,}` | 掩码（`sk-a****`） |
+| sql_drop / sql_delete / sql_update / sql_alter | keyword | block |
+| sql_insert | keyword | alert |
+| xss_script | keyword | block |
 
-这就是「现有的规则校验」。Auditor 通过 `runtime.Config.Auditor` 注入（`wire.go:120` `security.NewAuditor(nil)` → `registry.go:248` → `runtime.go` 的 `auditOutputCallback`），对每次 LLM 输出调用 `AuditOutput`。
+**输出侧 `AuditOutput`（`DefaultRules().OutputRules`）** —— 有 PII 脱敏：
 
-#### 4.2 适配：优先 pii-redaction，失败/开关关降级现有规则
+| 规则 | 正则 | 动作 |
+|------|------|------|
+| `id_card` | `\d{17}[\dXx]` | sanitize（掩码） |
+| `phone` | `1[3-9]\d{9}` | sanitize（掩码） |
+| `api_key` | `sk-[a-zA-Z0-9]{32,}` | sanitize（掩码） |
 
-让 `AuditOutput` **优先走 pii-redaction 服务**（开关打开时），报错或开关关闭则**降级到现有 regex 规则**（安全性要求没那么高）。
+Auditor 通过 `runtime.Config.Auditor` 注入（`wire.go:120` `security.NewAuditor(nil)` → `registry.go:248` → `runtime.go` 的 `auditInputCallback`/`auditOutputCallback`），每次 LLM 输入/输出调用对应审计。
+
+> **结论**：现有**输入侧没有 PII 隐私审计**（只有 SQL/XSS block/alert），需补上；输出侧有 PII 脱敏（id_card/phone/api_key），可被 pii-redaction 增强。
+
+#### 4.2 适配：输入/输出都优先 pii-redaction，失败/开关关降级
+
+**输入侧 `AuditInput`**：保留 SQL/XSS block/alert（非隐私审计，不破坏）+ **新增 PII 脱敏**。
+
+**输出侧 `AuditOutput`**：保留 id_card/phone/api_key sanitize（作为降级）+ **优先 pii-redaction**。
 
 **分层设计**（domain 层不引 infra/service，用接口注入）：
 
-- `security.Auditor` 新增可选注入的 `OutputRedactor` 接口（domain 内定义）：
+- `security.Auditor` 新增可选注入的 `Redactor` 接口（domain 内定义）：
   ```go
-  type OutputRedactor interface {
+  type Redactor interface {
       Redact(ctx context.Context, text string) (string, error)
   }
   ```
-- `AuditOutput` 逻辑：
+- 输入/输出都走同一套「优先 redactor → 失败降级 regex」逻辑：
   ```go
-  func (a *Auditor) AuditOutput(output string) (string, error) {
+  func (a *Auditor) redact(ctx context.Context, text string, rules []Rule) string {
       // 优先 pii-redaction（开关开 + 成功）
       if a.redactor != nil {
-          if r, err := a.redactor.Redact(ctx, output); err == nil {
-              return r, nil
+          if r, err := a.redactor.Redact(ctx, text); err == nil {
+              return r
           }
-          // err（开关关 / presidio 报错）→ 降级现有 regex 规则
+          // err（开关关 / presidio 报错）→ 降级 regex 规则
       }
-      // 现有 regex 规则（id_card/phone/api_key sanitize）—— 保持不变
-      ...
+      // 降级：regex 规则 sanitize（输入侧新增 id_card/phone/api_key；输出侧现有）
+      return sanitizeByRules(text, rules)
   }
   ```
-- `PIIRedactor`（`internal/service/pii`，实现 `OutputRedactor`）内部判断开关（`pii_redaction_enabled`）+ 调 presidio；开关关或 presidio 报错 → 返回 error（触发 Auditor 降级）。
+- `PIIRedactor`（`internal/service/pii`，实现 `Redactor`）内部判断开关（`pii_redaction_enabled`）+ 调 presidio；开关关或 presidio 报错 → 返回 error（触发 Auditor 降级）。
 
-#### 4.3 两个场景的语义对比（关键差异）
+**输入侧降级兜底**：现有 `InputRules` 无 PII sanitize 规则，需**新增** `id_card`/`phone`/`api_key`（sanitize，与输出侧一致）作为降级兜底，使输入侧在 pii-redaction 不可用时仍有基础 PII 掩码。
+
+#### 4.3 输入侧签名变更（AuditInput 需返回脱敏文本）
+
+现有 `AuditInput(input string) error` 只校验不修改（`auditPart` 仅判 error，不回写）。要让输入侧脱敏，需改签名并回写：
+
+```go
+// runtime.go Auditor 接口
+type Auditor interface {
+    AuditInput(input string) (string, error)   // 改：返回脱敏后的文本
+    AuditOutput(output string) (string, error)
+    AuditToolCall(toolName string, params map[string]any) error
+}
+```
+
+```go
+// runtime.go auditPart 改为回写脱敏文本（对齐 auditOutputCallback 的做法）
+func auditPart(a Auditor, p *genai.Part) error {
+    if p == nil || p.Text == "" { return nil }
+    sanitized, err := a.AuditInput(p.Text)
+    if err != nil { return fmt.Errorf("input audit failed: %w", err) }
+    p.Text = sanitized   // 回写脱敏后的输入
+    return nil
+}
+```
+
+**签名变更影响面**：`runtime.go` 的 `Auditor` 接口 + `auditPart` + `security.Auditor.AuditInput` + 相关测试 mock。
+
+#### 4.4 不破坏现有非隐私审计（关键约束）
+
+- ✅ 输入侧 SQL/XSS `block`/`alert` 规则**保留**（先做 block 校验，再做 PII 脱敏）。
+- ✅ `AuditToolCall` 敏感路径 `block` **保留**（不受本 spec 影响）。
+- ✅ 输出侧 id_card/phone/api_key sanitize **保留**（作为 pii-redaction 的降级兜底）。
+- 只新增「输入/输出 PII 脱敏」能力，不删改现有安全规则。
+
+#### 4.5 三个场景的语义对比（关键差异）
 
 | 场景 | 开关开 + presidio 报错 | 开关关 |
 |------|----------------------|--------|
 | **KB 上传（落库）** | fail-closed 报错中止 | 跳过脱敏（落原始文本） |
-| **模型输出审计** | **降级现有 regex 规则** | **降级现有 regex 规则** |
+| **模型输出审计** | 降级现有 regex（id_card/phone/api_key） | 降级现有 regex |
+| **模型输入审计** | 降级新增 regex（id_card/phone/api_key） | 降级新增 regex |
 
-> 原因：KB 落库是持久化数据，PII 一旦写入难清除，必须 fail-closed；模型输出审计是实时 LLM 输出，现有 regex 规则（id_card/phone/api_key）已覆盖基础 PII，安全性要求没那么高，降级可接受。两者共用 `pii_redaction_enabled` 开关，但降级行为不同。
+> 原因：KB 落库是持久化数据，PII 写入难清除，必须 fail-closed；模型输入/输出审计是实时 LLM 交互，regex 规则已覆盖基础 PII，安全性要求没那么高，降级可接受。三者共用 `pii_redaction_enabled` 开关，但降级行为不同。
 
 ### 5. 测试：故意放置隐私信息验证脱敏
 
@@ -269,8 +319,8 @@ func (s *Service) AddChunks(docID string, texts []string) error {
   - 查 Qdrant 向量 `metadata.content`，断言同样已脱敏；
   - 调 `Search`，断言返回文本无原始 PII。
 - **开关验证**：`pii_redaction_enabled=false` 时上传含 PII 文本，验证跳过脱敏（管理员主动关闭）；恢复 `true` 后重新验证脱敏生效。
-- **模型输出审计降级验证**：开关开启 + pii-redaction 正常 → `AuditOutput` 走 presidio 脱敏；模拟 pii-redaction 报错或开关关闭 → `AuditOutput` 降级现有 regex 规则（id_card/phone/api_key 掩码仍生效）。
-- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）；`Auditor.AuditOutput` 优先 redactor / 降级 regex 分支的单测。
+- **模型输入/输出审计降级验证**：开关开启 + pii-redaction 正常 → `AuditInput`/`AuditOutput` 走 presidio 脱敏；模拟 pii-redaction 报错或开关关闭 → 降级 regex 规则（id_card/phone/api_key 掩码仍生效）；同时验证 SQL/XSS `block`、工具敏感路径 `block` 等非隐私审计**仍生效**（不被破坏）。
+- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）；`Auditor.AuditInput`/`AuditOutput` 优先 redactor / 降级 regex 分支的单测。
 
 ## 可行性分析
 
@@ -295,7 +345,8 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 | `internal/api/handler/knowledge.go` | `UploadDoc` Path 1 文件上传时脱敏（读文件→脱敏→存 GridFS） | Modify |
 | `internal/service/knowledge/service.go` | 注入 redactor + `AddChunks` 脱敏 + 开关判断 | Modify |
 | `internal/service/config/service.go` | `SystemBuiltins()` seed 数据加 `pii_redaction_enabled`（幂等 seed）+ 读取开关 | Modify |
-| `internal/domain/security/auditor.go` | 新增 `OutputRedactor` 接口（可选注入）+ `AuditOutput` 优先 redactor、失败降级 regex 规则 | Modify |
+| `internal/domain/security/auditor.go` | 新增 `Redactor` 接口（可选注入）+ `AuditInput`/`AuditOutput` 优先 redactor、失败降级 regex；`InputRules` 补 id_card/phone/api_key sanitize 规则 | Modify |
+| `internal/adk/runtime/runtime.go` | `Auditor` 接口 `AuditInput` 签名变更（error → (string, error)）+ `auditPart` 回写脱敏文本 | Modify |
 | `cmd/server/wire.go` | 组装 pii redactor 注入 knowledge service + security auditor | Modify |
 
 ## 测试策略
@@ -328,7 +379,9 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 - [ ] **GridFS 原始文件脱敏**：纯文本文件上传时先脱敏再存 GridFS，后续切片自然脱敏
 - [ ] `AddChunks` 直接传纯文本 chunks 也经脱敏
 - [ ] **不降级**：开关开启时脱敏失败直接返回错误中止落库（fail-closed）
-- [ ] **模型输出审计适配**：`AuditOutput` 优先走 pii-redaction（开关开）；报错/开关关降级现有 regex 规则（id_card/phone/api_key）
+- [ ] **模型输入/输出审计适配**：`AuditInput`/`AuditOutput` 优先走 pii-redaction（开关开）；报错/开关关降级 regex 规则（id_card/phone/api_key）
+- [ ] **输入侧补 PII 审计**：`AuditInput` 签名改为返回脱敏文本，`auditPart` 回写
+- [ ] **不破坏非隐私审计**：SQL/XSS `block`、工具敏感路径 `block` 等现有审计仍生效
 - [ ] MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content` 均无原始 PII
 - [ ] 测试：故意放置身份证/手机号/银行卡/邮箱，验证 GridFS + DB 无残留
 
