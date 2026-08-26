@@ -11,6 +11,7 @@
 3. **知识库上传逻辑**：纯文本（非图片 base64）只保存 pii-redaction 脱敏返回后的文本，不保存原始可能含隐私信息的文本。
 4. **测试**：故意在知识库上传中放置隐私信息，检查数据库保存的文本是否仍残留隐私信息。
 5. **模型输入/输出审计接入**（补充）：现有模型审计也走 pii-redaction 服务（开关打开时）；报错或开关关闭则**降级到现有规则校验**（regex id_card/phone/api_key，安全性要求没那么高）。**输入侧现无 PII 审计，需补上**；输入/输出都做 PII 审计，且**不破坏现有的非隐私审计**（SQL/XSS block、工具敏感路径 block）。
+6. **输入 token 长度校验**（补充）：输入进入 LLM 前校验 token 数，超过实际模型 cfg 的 `context_len`（最大输入 token）则拒绝，避免无效调用 LLM。
 
 ## 前置依赖检查
 
@@ -145,20 +146,33 @@ curl -X POST http://localhost:3000/anonymize -H "Content-Type: application/json"
 
 ### 2. 后端封装 pii-redaction 服务
 
-新增 `internal/service/pii`（或 `internal/infra/pii`）：
+**唯一的脱敏接口**定义在 domain 层 `internal/domain/security`（供 `Auditor` 依赖，输入/输出共用同一个方法，不做 Input/Output 两套接口）：
 
 ```go
-// PIIRedactor 封装 analyzer + anonymizer 两个服务
-type PIIRedactor interface {
+// domain/security 内定义的唯一脱敏接口
+type Redactor interface {
     // Redact 对文本做 PII 脱敏，返回脱敏后的文本。
-    // 失败即返回错误（不降级），由调用方决定是否中止落库。
+    // 失败即返回错误，由调用方决定降级还是中止。
     Redact(ctx context.Context, text string) (string, error)
 }
+```
+
+新增 `internal/service/pii`（或 `internal/infra/pii`），提供 **`PIIRedactor` 具体实现**（struct，实现 `security.Redactor` 接口），封装 analyzer + anonymizer 两个服务：
+
+```go
+// PIIRedactor 是 security.Redactor 的具体实现
+type PIIRedactor struct {
+    analyzerURL, anonymizerURL string
+    httpClient                 *http.Client
+    enabled                    func() bool // 读 pii_redaction_enabled 开关
+}
+func (r *PIIRedactor) Redact(ctx context.Context, text string) (string, error) { ... }
 ```
 
 - 客户端用 `net/http` 依次调用 `POST /analyze` → `POST /anonymize`（`DEFAULT` 匿名器用 `replace`，统一替换为 `<PII>` 或配置的占位符）。
 - 服务地址通过环境变量注入（`PRESIDIO_ANALYZER_URL` / `PRESIDIO_ANONYMIZER_URL`）。
 - 复用项目现有 HTTP 客户端约定（超时、重试、日志）。
+- `PIIRedactor` 同时供 **KB 上传**（`knowledge.Service`）与 **输入/输出审计**（`security.Auditor`）使用——一个实现、一个方法，输入/输出只是调用方的不同场景。
 
 ### 3. 知识库上传接入脱敏（纯文本，非图片 base64）
 
@@ -244,12 +258,7 @@ Auditor 通过 `runtime.Config.Auditor` 注入（`wire.go:120` `security.NewAudi
 
 **分层设计**（domain 层不引 infra/service，用接口注入）：
 
-- `security.Auditor` 新增可选注入的 `Redactor` 接口（domain 内定义）：
-  ```go
-  type Redactor interface {
-      Redact(ctx context.Context, text string) (string, error)
-  }
-  ```
+- `security.Auditor` 新增可选注入的 **`Redactor` 接口**——即 §2 定义的 `security.Redactor`（**唯一脱敏接口，输入/输出共用，不另建 Input/Output 两套**）。
 - 输入/输出都走同一套「优先 redactor → 失败降级 regex」逻辑：
   ```go
   func (a *Auditor) redact(ctx context.Context, text string, rules []Rule) string {
@@ -294,14 +303,49 @@ func auditPart(a Auditor, p *genai.Part) error {
 
 **签名变更影响面**：`runtime.go` 的 `Auditor` 接口 + `auditPart` + `security.Auditor.AuditInput` + 相关测试 mock。
 
-#### 4.4 不破坏现有非隐私审计（关键约束）
+#### 4.4 输入 token 长度校验（避免无效调用 LLM）
+
+输入进入 LLM 前，校验输入 token 数是否超过模型最大输入 token，超限直接拒绝，避免无效调用。
+
+- **依据**：`ModelEntry.ContextLen`（`context_len` = 模型上下文窗口/最大输入 token，见 `internal/domain/modelconfig/modelconfig.go:78`）。
+- **位置（架构考量）**：`ContextLen` 是 **per-model** 的，而 `security.Auditor` 是**跨 model 共享**的（`RegistryConfig.Auditor` 全局一个，`wire.go:120`）。因此 token 校验**不放进共享的 Auditor**，而是放在 **runtime 层**（每个 model 的 runtime 构建时闭包捕获自己的 `ContextLen`）：
+
+```go
+// runtime.Config 新增
+MaxInputTokens int   // 0 = 不校验
+
+// registry.buildRuntime 从 ModelEntry.ContextLen 注入
+rt, err := New(Config{
+    ...
+    MaxInputTokens: entry.ContextLen,   // buildRuntime 需额外 GetModelByID 拿 entry
+})
+
+// runtime.New 内：MaxInputTokens > 0 时追加一个 BeforeModelCallback
+func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
+    return func(ctx agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
+        for _, c := range req.Contents {
+            for _, p := range c.Parts {
+                if est := estimateTokens(p.Text); est > limit {
+                    return nil, fmt.Errorf("input exceeds model max input tokens (%d > %d)", est, limit)
+                }
+            }
+        }
+        return nil, nil
+    }
+}
+```
+
+- **token 估算**：`estimateTokens` 采用轻量近似（如 `len([]rune(text)) / 4` 或字符数比例，避免引入重量 tokenizer）；实现时按模型类型校准比例。估算值允许略保守（宁可提前拒，不让超长输入打到 LLM 报错）。
+- **执行顺序**：token 校验（`maxInputTokensCallback`）在 `auditInputCallback` **之前**执行，超限即拒绝，不再做 PII 脱敏（省一次 presidio 调用）。
+
+#### 4.5 不破坏现有非隐私审计（关键约束）
 
 - ✅ 输入侧 SQL/XSS `block`/`alert` 规则**保留**（先做 block 校验，再做 PII 脱敏）。
 - ✅ `AuditToolCall` 敏感路径 `block` **保留**（不受本 spec 影响）。
 - ✅ 输出侧 id_card/phone/api_key sanitize **保留**（作为 pii-redaction 的降级兜底）。
-- 只新增「输入/输出 PII 脱敏」能力，不删改现有安全规则。
+- 只新增「输入/输出 PII 脱敏 + 输入 token 校验」能力，不删改现有安全规则。
 
-#### 4.5 三个场景的语义对比（关键差异）
+#### 4.6 三个场景的语义对比（关键差异）
 
 | 场景 | 开关开 + presidio 报错 | 开关关 |
 |------|----------------------|--------|
@@ -320,7 +364,8 @@ func auditPart(a Auditor, p *genai.Part) error {
   - 调 `Search`，断言返回文本无原始 PII。
 - **开关验证**：`pii_redaction_enabled=false` 时上传含 PII 文本，验证跳过脱敏（管理员主动关闭）；恢复 `true` 后重新验证脱敏生效。
 - **模型输入/输出审计降级验证**：开关开启 + pii-redaction 正常 → `AuditInput`/`AuditOutput` 走 presidio 脱敏；模拟 pii-redaction 报错或开关关闭 → 降级 regex 规则（id_card/phone/api_key 掩码仍生效）；同时验证 SQL/XSS `block`、工具敏感路径 `block` 等非隐私审计**仍生效**（不被破坏）。
-- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）；`Auditor.AuditInput`/`AuditOutput` 优先 redactor / 降级 regex 分支的单测。
+- **输入 token 校验验证**：构造超过 `context_len` 的输入，断言在进入 LLM 前被拒绝（不发起模型调用）；构造临界输入断言放行。
+- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）；`Auditor.AuditInput`/`AuditOutput` 优先 redactor / 降级 regex 分支的单测；`maxInputTokensCallback` token 估算与拒绝的单测。
 
 ## 可行性分析
 
@@ -346,7 +391,8 @@ func auditPart(a Auditor, p *genai.Part) error {
 | `internal/service/knowledge/service.go` | 注入 redactor + `AddChunks` 脱敏 + 开关判断 | Modify |
 | `internal/service/config/service.go` | `SystemBuiltins()` seed 数据加 `pii_redaction_enabled`（幂等 seed）+ 读取开关 | Modify |
 | `internal/domain/security/auditor.go` | 新增 `Redactor` 接口（可选注入）+ `AuditInput`/`AuditOutput` 优先 redactor、失败降级 regex；`InputRules` 补 id_card/phone/api_key sanitize 规则 | Modify |
-| `internal/adk/runtime/runtime.go` | `Auditor` 接口 `AuditInput` 签名变更（error → (string, error)）+ `auditPart` 回写脱敏文本 | Modify |
+| `internal/adk/runtime/runtime.go` | `Auditor` 接口 `AuditInput` 签名变更（error → (string, error)）+ `auditPart` 回写脱敏文本 + `Config.MaxInputTokens` + `maxInputTokensCallback` token 校验 | Modify |
+| `internal/adk/runtime/registry.go` | `buildRuntime` 额外 `GetModelByID` 拿 `ContextLen` 注入 `MaxInputTokens` | Modify |
 | `cmd/server/wire.go` | 组装 pii redactor 注入 knowledge service + security auditor | Modify |
 
 ## 测试策略
@@ -381,6 +427,7 @@ func auditPart(a Auditor, p *genai.Part) error {
 - [ ] **不降级**：开关开启时脱敏失败直接返回错误中止落库（fail-closed）
 - [ ] **模型输入/输出审计适配**：`AuditInput`/`AuditOutput` 优先走 pii-redaction（开关开）；报错/开关关降级 regex 规则（id_card/phone/api_key）
 - [ ] **输入侧补 PII 审计**：`AuditInput` 签名改为返回脱敏文本，`auditPart` 回写
+- [ ] **输入 token 校验**：超过 `ModelEntry.ContextLen` 的输入在进入 LLM 前被拒绝（`maxInputTokensCallback`）
 - [ ] **不破坏非隐私审计**：SQL/XSS `block`、工具敏感路径 `block` 等现有审计仍生效
 - [ ] MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content` 均无原始 PII
 - [ ] 测试：故意放置身份证/手机号/银行卡/邮箱，验证 GridFS + DB 无残留
