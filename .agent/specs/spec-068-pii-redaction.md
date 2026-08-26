@@ -150,51 +150,73 @@ curl -X POST http://localhost:3000/anonymize -H "Content-Type: application/json"
 // PIIRedactor 封装 analyzer + anonymizer 两个服务
 type PIIRedactor interface {
     // Redact 对文本做 PII 脱敏，返回脱敏后的文本。
-    // 服务不可用/超时时的降级策略见下。
+    // 失败即返回错误（不降级），由调用方决定是否中止落库。
     Redact(ctx context.Context, text string) (string, error)
 }
 ```
 
 - 客户端用 `net/http` 依次调用 `POST /analyze` → `POST /anonymize`（`DEFAULT` 匿名器用 `replace`，统一替换为 `<PII>` 或配置的占位符）。
-- 服务地址通过环境变量注入（`PRESIDIO_ANALYZER_URL` / `PRESIDIO_ANONYMIZER_URL`），未配置或调用失败时**降级策略**（见可行性分析）。
+- 服务地址通过环境变量注入（`PRESIDIO_ANALYZER_URL` / `PRESIDIO_ANONYMIZER_URL`）。
 - 复用项目现有 HTTP 客户端约定（超时、重试、日志）。
 
 ### 3. 知识库上传接入脱敏（纯文本，非图片 base64）
 
-**插入点**：`knowledge.Service.AddChunks` 是所有文本落库的统一入口（文件索引 `IndexDocument`→`indexContent`→`AddChunks`，与手动 `AddChunks` 均经此处）。
+#### 3.1 开关控制（system_configs，默认开启）
+
+- 新增系统配置项 **`pii_redaction_enabled`**（布尔，默认 `true`）。
+- 知识库上传逻辑**先判断该开关**：`false` 则跳过脱敏（管理员主动关闭），`true` 则执行脱敏。
+- 读取走现有 Config service + Redis 缓存机制（复用 SPEC-061 配置缓存 + SPEC-067 guard.max_retries 的读取模式），热更新无需重启。
+- **不降级**：开关开启时，脱敏服务出错 → **直接返回错误中止落库（fail-closed）**，不跳过脱敏、不 fallback。内部服务（同 compose 内网）故障概率低，无需降级设计。
+
+#### 3.2 插入点 1（主）：文件上传时脱敏 → GridFS 存脱敏文件
+
+脱敏发生在**纯文本文件进入 GridFS 之前**，保证 GridFS 原始文件即脱敏后，后续切片自然脱敏。
+
+`UploadDoc` Path 1（multipart 纯文本文件）：
+
+```go
+// Path 1: multipart file upload (text documents).
+file, header, err := c.Request.FormFile("file")
+if err == nil {
+    defer file.Close()
+    // 判断开关 → 读取文件内容 → 脱敏 → 脱敏后的内容存 GridFS
+    data, _ := io.ReadAll(file)
+    redacted, rErr := redactor.Redact(ctx, string(data)) // 开关关闭或失败按 3.1 处理
+    gridFSFileID = svc.UploadFile(name, contentType, bytes.NewReader([]byte(redacted)))
+}
+```
+
+- **GridFS 存的是脱敏后的文件**，`IndexDocument`（下载 → 切片 → `AddChunks`）全程处理的都是脱敏文本，chunk 自然脱敏。
+- 图片 base64（Path 2）不经过文本脱敏（图片二进制 + 多模态 LLM 解析，图片内 PII 属 image-redactor 范畴，超出本 spec）。
+
+#### 3.3 插入点 2（补充）：AddChunks 直接传纯文本 chunks
+
+手动 `AddChunks`（`POST /knowledge/docs/:id/chunks`）直接传纯文本 chunks、不经过 GridFS，同样需脱敏（判断开关后逐条 `Redact`）。
 
 ```go
 func (s *Service) AddChunks(docID string, texts []string) error {
     // ...
     for idx, text := range texts {
-        redacted := text
-        if s.redactor != nil {
-            if r, err := s.redactor.Redact(context.Background(), text); err == nil {
-                redacted = r   // 只保存脱敏后的文本
-            } else {
-                log.Printf("[kb] pii redact failed for chunk=%s: %v", docID, err)
-                // 降级策略见可行性分析
-            }
-        }
+        redacted, err := s.maybeRedact(ctx, text) // 内部判断开关 + 失败即报错
+        if err != nil { return err }
         chunk.Content = redacted
         // embedding 与 Qdrant metadata.content 均用 redacted
     }
 }
 ```
 
-- **只脱敏纯文本**：图片 base64（Path 2）走 GridFS 二进制 + 多模态 LLM 解析，其解析出的文本（`IndexContent`）同样经 `AddChunks` 脱敏；图片二进制本身不经过文本脱敏（图片内 PII 属于 image-redactor 范畴，超出本 spec）。
 - 脱敏结果同时影响 MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content`（embedding 也基于脱敏文本，避免 PII 进入向量空间）。
 - 服务依赖通过 `knowledge.Service` 构造函数注入（`WithRedactor`），wire.go 组装。
 
-**待明确（开放问题）**：GridFS 里的原始文本文件（Path 1 上传的原始文件）是否也需处理。本 spec 核心范围是「chunk 落库脱敏」，原始文件仍存 GridFS；若要求原始文件也不落盘，需单独决策（可选：纯文本上传时不存 GridFS，直接把脱敏文本作为内容源）。
-
 ### 4. 测试：故意放置隐私信息验证脱敏
 
-- **集成/E2E**：调用知识库上传接口（`POST /knowledge/docs` 或 `POST /knowledge/docs/:id/chunks`），文本中故意放置身份证号、手机号、银行卡号、邮箱；随后：
+- **集成/E2E**：调用知识库上传接口，文本/文件中故意放置身份证号、手机号、银行卡号、邮箱；随后：
+  - 查 **GridFS 原始文件**，断言已脱敏（下载后不含原始 PII）；
   - 查 MongoDB `kb_chunks` 的 `Content`，断言**不再包含**原始 PII（含 `<PII>` 占位符或空）；
   - 查 Qdrant 向量 `metadata.content`，断言同样已脱敏；
   - 调 `Search`，断言返回文本无原始 PII。
-- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`AddChunks` 脱敏分支的单测（mock redactor）。
+- **开关验证**：`pii_redaction_enabled=false` 时上传含 PII 文本，验证跳过脱敏（管理员主动关闭）；恢复 `true` 后重新验证脱敏生效。
+- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）。
 
 ## 可行性分析
 
@@ -207,7 +229,7 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 | 是否需要改 ADK vendor | No（与 agent 运行时无关） |
 | 镜像来源 | `mcr.microsoft.com`（官方） |
 
-**降级策略（需明确）**：pii-redaction 服务不可用/超时时的处理——方案 A：**fail-closed**（脱敏失败则拒绝该 chunk 落库，宁可少存不漏存）；方案 B：**fail-open**（失败则跳过脱敏照常落库，但记录告警）。数据安全场景建议 fail-closed，待晓军拍板。
+**开关 + 不降级（已拍板）**：`pii_redaction_enabled`（system_configs，默认 `true`）控制脱敏开关。开关关闭 = 管理员主动跳过脱敏；开关开启时脱敏服务出错 = **直接返回错误中止落库（fail-closed）**，不降级 fallback（内部服务故障概率低，无需降级）。
 
 ## 相关文件
 
@@ -216,8 +238,10 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 | `docker-compose.yml` / `docker-compose.ui-test.yml` | 新增 presidio-analyzer / presidio-anonymizer 服务 + data-agent 环境变量 | Modify |
 | `docker/presidio/custom_recognizers.yaml` | 纯规则识别器配置（禁用 NER，扩展中文 PII 规则） | New |
 | `internal/service/pii/*` | pii-redaction 客户端封装（analyze + anonymize） | New |
-| `internal/service/knowledge/service.go` | `AddChunks` 接入脱敏（注入 redactor） | Modify |
-| `cmd/server/wire.go` | 组装 pii redactor 注入 knowledge service | Modify |
+| `internal/api/handler/knowledge.go` | `UploadDoc` Path 1 文件上传时脱敏（读文件→脱敏→存 GridFS） | Modify |
+| `internal/service/knowledge/service.go` | 注入 redactor + `AddChunks` 脱敏 + 开关判断 | Modify |
+| `internal/service/config/*`（复用） | 读取 `pii_redaction_enabled` 开关（SPEC-061 缓存机制） | — |
+| `cmd/server/wire.go` | 组装 pii redactor + config 注入 knowledge service | Modify |
 
 ## 测试策略
 
@@ -244,9 +268,12 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 - [ ] docker-compose.yml + docker-compose.ui-test.yml 均部署 presidio-analyzer + presidio-anonymizer（sm 模型纯 CPU）
 - [ ] 自定义 recognizer 配置纯规则（禁用 NER 识别器，含中文 PII 规则）
 - [ ] 后端 `PIIRedactor` 封装 analyze + anonymize，可脱敏 PII
-- [ ] 知识库纯文本落库前经脱敏（`AddChunks` 统一入口）
+- [ ] **开关**：`pii_redaction_enabled`（system_configs，默认 true），KB 上传逻辑判断开关；false 跳过、true 脱敏
+- [ ] **GridFS 原始文件脱敏**：纯文本文件上传时先脱敏再存 GridFS，后续切片自然脱敏
+- [ ] `AddChunks` 直接传纯文本 chunks 也经脱敏
+- [ ] **不降级**：开关开启时脱敏失败直接返回错误中止落库（fail-closed）
 - [ ] MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content` 均无原始 PII
-- [ ] 测试：故意放置身份证/手机号/银行卡/邮箱，验证 DB 无残留
+- [ ] 测试：故意放置身份证/手机号/银行卡/邮箱，验证 GridFS + DB 无残留
 
 ## 提交约定
 
