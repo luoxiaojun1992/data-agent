@@ -23,7 +23,7 @@ import (
 
 // Auditor abstracts the security auditor used by the runtime callbacks.
 type Auditor interface {
-	AuditInput(input string) error
+	AuditInput(input string) (string, error)
 	AuditOutput(output string) (string, error)
 	AuditToolCall(toolName string, params map[string]any) error
 }
@@ -44,6 +44,9 @@ type Config struct {
 	Auditor Auditor
 	// Instruction is the system prompt for the agent.
 	Instruction string
+	// MaxInputTokens is the model's max input token limit (context_len). When
+	// > 0, input exceeding it is rejected before the model call (SPEC-068).
+	MaxInputTokens int
 }
 
 // Runtime wraps an ADK runner bound to one agent.
@@ -98,8 +101,11 @@ func New(cfg Config) (*Runtime, error) {
 		Instruction: cfg.Instruction,
 		Tools:       cfg.Tools,
 	}
+	if cfg.MaxInputTokens > 0 {
+		agentCfg.BeforeModelCallbacks = []llmagent.BeforeModelCallback{maxInputTokensCallback(cfg.MaxInputTokens)}
+	}
 	if cfg.Auditor != nil {
-		agentCfg.BeforeModelCallbacks = []llmagent.BeforeModelCallback{auditInputCallback(cfg.Auditor)}
+		agentCfg.BeforeModelCallbacks = append(agentCfg.BeforeModelCallbacks, auditInputCallback(cfg.Auditor))
 		agentCfg.AfterModelCallbacks = []llmagent.AfterModelCallback{auditOutputCallback(cfg.Auditor)}
 		agentCfg.BeforeToolCallbacks = []llmagent.BeforeToolCallback{auditToolCallCallback(cfg.Auditor)}
 	}
@@ -221,15 +227,56 @@ func auditContent(a Auditor, c *genai.Content) error {
 	return nil
 }
 
-// auditPart audits a single text part.
+// auditPart audits a single text part, writing the redacted text back.
 func auditPart(a Auditor, p *genai.Part) error {
 	if p == nil || p.Text == "" {
 		return nil
 	}
-	if err := a.AuditInput(p.Text); err != nil {
+	sanitized, err := a.AuditInput(p.Text)
+	if err != nil {
 		return fmt.Errorf("input audit failed: %w", err)
 	}
+	p.Text = sanitized
 	return nil
+}
+
+// maxInputTokensCallback rejects inputs whose estimated token count exceeds
+// the model's context_len (SPEC-068), avoiding a wasted model call. It runs
+// before auditInputCallback so over-long input is rejected without redaction.
+func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
+	return func(ctx agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
+		if req == nil || limit <= 0 {
+			return nil, nil
+		}
+		for _, c := range req.Contents {
+			if c == nil {
+				continue
+			}
+			for _, p := range c.Parts {
+				if p == nil {
+					continue
+				}
+				if est := estimateTokens(p.Text); est > limit {
+					return nil, fmt.Errorf("input exceeds model max input tokens (%d > %d)", est, limit)
+				}
+			}
+		}
+		return nil, nil
+	}
+}
+
+// estimateTokens approximates the token count of text (SPEC-068). It uses a
+// lightweight rune-based heuristic (≈4 chars/token) to avoid a heavy tokenizer;
+// the estimate is allowed to be slightly conservative (reject early).
+func estimateTokens(text string) int {
+	if text == "" {
+		return 0
+	}
+	n := len([]rune(text))
+	if n < 4 {
+		return 1
+	}
+	return (n + 3) / 4
 }
 
 // auditOutputCallback sanitizes model output text in place.

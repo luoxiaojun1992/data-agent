@@ -21,6 +21,7 @@ type KnowledgeService interface {
 	Search(userID, query string, topK int, isSystemAdmin bool) ([]knowledge.SearchResult, error)
 	SetPublicFlag(ctx context.Context, docID string, isPublic bool) error
 	UploadFile(fileName, contentType string, reader io.Reader) (string, error)
+	RedactText(ctx context.Context, text string) (string, error)
 }
 
 var _ KnowledgeService = (*Service)(nil)

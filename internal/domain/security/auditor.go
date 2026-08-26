@@ -1,8 +1,8 @@
 package security
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -27,9 +27,20 @@ type Config struct {
 // Auditor is the security audit engine.
 // It sanitizes inputs, sanitizes outputs, and audits tool calls.
 type Auditor struct {
-	mu     sync.RWMutex
-	config *Config
-	alerts AlertLogger
+	mu       sync.RWMutex
+	config   *Config
+	alerts   AlertLogger
+	redactor Redactor // optional PII redactor (pii-redaction service); nil = 降级 regex 规则
+}
+
+// Redactor is the single PII-redaction interface shared by input and output
+// auditing (SPEC-068). The concrete implementation lives in the service layer
+// (internal/service/pii) and is injected via SetRedactor; the domain layer
+// never imports infra/service packages.
+type Redactor interface {
+	// Redact returns the PII-redacted text, or an error (switch off / service
+	// failure) that signals the caller to fall back to regex rules.
+	Redact(ctx context.Context, text string) (string, error)
 }
 
 // AlertLogger logs security alerts.
@@ -47,6 +58,14 @@ func NewAuditor(alerts AlertLogger) *Auditor {
 	}
 }
 
+// SetRedactor injects the optional PII redactor. Safe to call before the
+// auditor is shared across runtimes; the auditor itself is immutable at runtime.
+func (a *Auditor) SetRedactor(r Redactor) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.redactor = r
+}
+
 // DefaultRules returns the default security rules.
 func DefaultRules() *Config {
 	return &Config{
@@ -57,11 +76,19 @@ func DefaultRules() *Config {
 			{Name: "sql_update", Type: "keyword", Pattern: "UPDATE .* SET", Action: "block", Priority: 100, compiled: regexp.MustCompile("UPDATE .* SET")},
 			{Name: "sql_alter", Type: "keyword", Pattern: "ALTER TABLE", Action: "block", Priority: 100},
 			{Name: "xss_script", Type: "keyword", Pattern: "<script", Action: "block", Priority: 100},
+			// SPEC-068: input-side PII sanitize rules — fallback when the
+			// pii-redaction service is off or errors (输入侧降级兜底).
+			{Name: "id_card", Type: "regex", Pattern: `\d{17}[\dXx]`, Action: "sanitize", Priority: 90},
+			{Name: "phone", Type: "regex", Pattern: `1[3-9]\d{9}`, Action: "sanitize", Priority: 80},
+			{Name: "api_key", Type: "regex", Pattern: `sk-[a-zA-Z0-9]{32,}`, Action: "sanitize", Priority: 90},
 		},
 		OutputRules: []Rule{
 			{Name: "id_card", Type: "regex", Pattern: `\d{17}[\dXx]`, Action: "sanitize", Priority: 90},
 			{Name: "phone", Type: "regex", Pattern: `1[3-9]\d{9}`, Action: "sanitize", Priority: 80},
 			{Name: "api_key", Type: "regex", Pattern: `sk-[a-zA-Z0-9]{32,}`, Action: "sanitize", Priority: 90},
+			// SPEC-068: output-side XSS check (sanitize). SQL is NOT checked on
+			// output — SQL injection risk is input-side only.
+			{Name: "xss", Type: "regex", Pattern: `(?i)<\s*script`, Action: "sanitize", Priority: 100},
 		},
 	}
 }
@@ -80,63 +107,59 @@ func (c *Config) Compile() {
 	}
 }
 
-// AuditInput validates input content against security rules.
-func (a *Auditor) AuditInput(input string) error {
+// AuditInput validates input content against security rules and returns the
+// PII-redacted input. Non-privacy rules (SQL/XSS block/alert) run first and
+// may return an error; then PII redaction is applied (pii-redaction service
+// first, falling back to regex sanitize rules).
+func (a *Auditor) AuditInput(input string) (string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	for _, rule := range a.config.InputRules {
 		matched, match := a.matchRule(rule, input)
-		if matched {
-			switch rule.Action {
-			case "block":
-				a.logAlert("error", "input_blocked", fmt.Sprintf("Input blocked by rule %q", rule.Name), map[string]interface{}{
-					"rule":    rule.Name,
-					"pattern": rule.Pattern,
-					"match":   match,
-				})
-				return fmt.Errorf("input blocked by security rule: %s", rule.Name)
-			case "alert":
-				a.logAlert("warn", "input_alert", fmt.Sprintf("Input triggered alert rule %q", rule.Name), map[string]interface{}{
-					"rule":  rule.Name,
-					"match": match,
-				})
-			}
+		if !matched {
+			continue
+		}
+		switch rule.Action {
+		case "block":
+			a.logAlert("error", "input_blocked", fmt.Sprintf("Input blocked by rule %q", rule.Name), map[string]interface{}{
+				"rule":    rule.Name,
+				"pattern": rule.Pattern,
+				"match":   match,
+			})
+			return "", fmt.Errorf("input blocked by security rule: %s", rule.Name)
+		case "alert":
+			a.logAlert("warn", "input_alert", fmt.Sprintf("Input triggered alert rule %q", rule.Name), map[string]interface{}{
+				"rule":  rule.Name,
+				"match": match,
+			})
 		}
 	}
-	return nil
+
+	// PII redaction: pii-redaction service first, fall back to regex sanitize.
+	if a.redactor != nil {
+		if redacted, err := a.redactor.Redact(context.Background(), input); err == nil {
+			return redacted, nil
+		}
+		// switch off / service error → fall through to regex sanitize rules
+	}
+	return sanitizeByRules(input, a.config.InputRules), nil
 }
 
-// AuditOutput sanitizes output content.
+// AuditOutput sanitizes output content: pii-redaction service first (PII),
+// falling back to regex sanitize rules (PII id_card/phone/api_key + XSS).
+// SQL is intentionally NOT checked on output.
 func (a *Auditor) AuditOutput(output string) (string, error) {
-	log.Printf("[DEBUG security] AuditOutput: acquiring RLock, len=%d", len(output))
 	a.mu.RLock()
-	log.Printf("[DEBUG security] AuditOutput: RLock acquired, rules=%d", len(a.config.OutputRules))
 	defer a.mu.RUnlock()
 
-	result := output
-	for i, rule := range a.config.OutputRules {
-		log.Printf("[DEBUG security] AuditOutput: processing rule %d name=%q type=%q action=%q compiled=%v",
-			i, rule.Name, rule.Type, rule.Action, rule.compiled != nil)
-		matched, _ := a.matchRule(rule, result)
-		log.Printf("[DEBUG security] AuditOutput: rule %d matched=%v", i, matched)
-		if matched && rule.Action == "sanitize" {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("[DEBUG security] AuditOutput: PANIC in rule %d: %v, input_len=%d",
-							i, r, len(result))
-					}
-				}()
-				result = rule.compiled.ReplaceAllStringFunc(result, func(s string) string {
-					return sanitizeByType(rule.Name, s)
-				})
-			}()
-			log.Printf("[DEBUG security] AuditOutput: rule %d sanitized", i)
+	if a.redactor != nil {
+		if redacted, err := a.redactor.Redact(context.Background(), output); err == nil {
+			return redacted, nil
 		}
+		// switch off / service error → fall through to regex sanitize rules
 	}
-	log.Printf("[DEBUG security] AuditOutput: done, len=%d", len(result))
-	return result, nil
+	return sanitizeByRules(output, a.config.OutputRules), nil
 }
 
 // AuditToolCall validates a tool/skill call.
@@ -197,6 +220,28 @@ func (a *Auditor) logAlert(level, category, message string, details map[string]i
 	}
 }
 
+// sanitizeByRules applies all sanitize-action rules in order, replacing each
+// regex match via sanitizeByType. Shared by input and output fallback paths.
+// Each rule is wrapped in a recover so a single buggy rule can't crash the
+// audit path.
+func sanitizeByRules(text string, rules []Rule) string {
+	result := text
+	for _, rule := range rules {
+		if rule.Action != "sanitize" || rule.compiled == nil {
+			continue
+		}
+		func() {
+			defer func() {
+				_ = recover() // one bad rule must not fail the whole audit
+			}()
+			result = rule.compiled.ReplaceAllStringFunc(result, func(s string) string {
+				return sanitizeByType(rule.Name, s)
+			})
+		}()
+	}
+	return result
+}
+
 func sanitizeByType(ruleName, s string) string {
 	switch ruleName {
 	case "phone":
@@ -211,6 +256,9 @@ func sanitizeByType(ruleName, s string) string {
 		if len(s) > 8 {
 			return s[:4] + "****"
 		}
+	case "xss":
+		// Escape angle brackets so the content renders inert (no script execution).
+		return strings.ReplaceAll(strings.ReplaceAll(s, "<", "&lt;"), ">", "&gt;")
 	}
 	return "***"
 }

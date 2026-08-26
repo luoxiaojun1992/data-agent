@@ -132,6 +132,40 @@ services:
       start_period: 120s
     restart: unless-stopped
 
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - PORT=3000
+      - WORKERS=1
+      # SPEC-068: pure rule mode — no NER model (no_op NLP engine), only regex
+      # PatternRecognizer (predefined + Chinese PII rules).
+      - NLP_CONF_FILE=/app/nlp.yaml
+      - RECOGNIZER_REGISTRY_CONF_FILE=/app/custom_recognizers.yaml
+    volumes:
+      - ./docker/presidio/nlp.yaml:/app/nlp.yaml:ro
+      - ./docker/presidio/custom_recognizers.yaml:/app/custom_recognizers.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+    ports:
+      - "3002:3000"
+    environment:
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   data-agent:
     build:
       context: .
@@ -155,6 +189,8 @@ services:
       - VAULT_TOKEN=dev-root-token
       - VAULT_MOUNT_PATH=secret
       - INVITE_HMAC_SECRET=dev-invite-secret-key
+      - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:3000
+      - PRESIDIO_ANONYMIZER_URL=http://presidio-anonymizer:3000
     depends_on:
       mongodb:
         condition: service_healthy
@@ -169,6 +205,10 @@ services:
       mockllm:
         condition: service_healthy
       mysql:
+        condition: service_healthy
+      presidio-analyzer:
+        condition: service_healthy
+      presidio-anonymizer:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

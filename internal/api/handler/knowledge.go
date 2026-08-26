@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -51,13 +52,25 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
 	if err == nil {
 		defer file.Close()
-		gridFSFileID, err = h.svc.UploadFile(fileName+"_"+header.Filename, header.Header.Get("Content-Type"), file)
+		// SPEC-068: redact PII from the text file before storing it to GridFS,
+		// so the raw file (and downstream chunks) never contain PII.
+		data, rErr := io.ReadAll(file)
+		if rErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "read file failed: " + rErr.Error()})
+			return
+		}
+		redacted, redactErr := h.svc.RedactText(c.Request.Context(), string(data))
+		if redactErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "PII redaction failed: " + redactErr.Error()})
+			return
+		}
+		gridFSFileID, err = h.svc.UploadFile(fileName+"_"+header.Filename, header.Header.Get("Content-Type"), bytes.NewReader([]byte(redacted)))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "GridFS upload failed: " + err.Error()})
 			return
 		}
 		if sizeBytes == 0 {
-			sizeBytes = header.Size
+			sizeBytes = int64(len(redacted))
 		}
 	} else if base64Data := c.PostForm("file_base64"); base64Data != "" {
 		// Path 2: base64 image upload (data URI prefix optional).

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
@@ -21,6 +22,10 @@ type Service struct {
 	vector repository.VectorRepository
 	embed  EmbeddingFunc
 	vecCol string
+	// redactor is the optional PII redactor (SPEC-068). redactionEnabled reads
+	// the `pii_redaction_enabled` switch; nil redactor = no redaction.
+	redactor         security.Redactor
+	redactionEnabled func() bool
 }
 
 func NewService(kb repository.KBRepository) *Service {
@@ -31,6 +36,36 @@ func (s *Service) WithVectorIndex(repo repository.VectorRepository, embed Embedd
 	s.vector = repo
 	s.embed = embed
 	return s
+}
+
+// WithRedactor injects the PII redactor and the switch reader. enabled==nil
+// means "always on" when a redactor is present.
+func (s *Service) WithRedactor(r security.Redactor, enabled func() bool) *Service {
+	s.redactor = r
+	s.redactionEnabled = enabled
+	return s
+}
+
+// maybeRedact redacts pure text before it lands in the knowledge base.
+// Semantics (SPEC-068 §4.6): switch off → skip (keep original); switch on +
+// redactor error → fail-closed (return error); switch on + success → redacted.
+func (s *Service) maybeRedact(ctx context.Context, text string) (string, error) {
+	if s.redactor == nil {
+		return text, nil
+	}
+	if s.redactionEnabled != nil && !s.redactionEnabled() {
+		return text, nil // switch off → skip redaction
+	}
+	redacted, err := s.redactor.Redact(ctx, text)
+	if err != nil {
+		return "", fmt.Errorf("pii redact: %w", err) // fail-closed
+	}
+	return redacted, nil
+}
+
+// RedactText redacts a plain-text body (used by file upload before GridFS).
+func (s *Service) RedactText(ctx context.Context, text string) (string, error) {
+	return s.maybeRedact(ctx, text)
 }
 
 func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes int64, gridFSFileID string) (*knowledge.KnowledgeDoc, error) {
@@ -110,18 +145,22 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 	var chunks []*knowledge.Chunk
 	var vectors []repository.VectorPoint
 	for idx, text := range texts {
+		redacted, rErr := s.maybeRedact(context.Background(), text)
+		if rErr != nil {
+			return fmt.Errorf("pii redact chunk %d: %w", idx, rErr)
+		}
 		chunk := &knowledge.Chunk{
 			ID:        "chunk_" + uuid.New().String(),
 			DocID:     docID,
 			CreatorID: doc.UserID,
 			IsPublic:  doc.IsPublic,
-			Content:   text,
+			Content:   redacted,
 			ChunkIdx:  idx,
-			CharCount: len([]rune(text)),
+			CharCount: len([]rune(redacted)),
 		}
 		chunks = append(chunks, chunk)
 		if s.embed != nil && s.vector != nil {
-			vec, err := s.embed(context.Background(), text)
+			vec, err := s.embed(context.Background(), redacted)
 			if err != nil {
 				log.Printf("[kb] embed failed for chunk=%s: %v", chunk.ID, err)
 				continue
@@ -135,7 +174,7 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 				Vector: vec,
 				Metadata: map[string]interface{}{
 					"doc_id":     docID,
-					"content":    text,
+					"content":    redacted,
 					"creator_id": doc.UserID,
 					"is_public":  doc.IsPublic,
 				},

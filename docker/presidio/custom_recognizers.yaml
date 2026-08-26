@@ -1,0 +1,70 @@
+# Presidio recognizer registry — pure rule mode (SPEC-068).
+# No NER model recognizers (SpacyRecognizer etc.); only regex PatternRecognizer
+# (predefined + custom Chinese PII rules). All recognizers declare
+# supported_language "en" so they are loaded for the analyzer's "en" requests;
+# regex matching itself is language-agnostic.
+supported_languages:
+  - en
+global_regex_flags: 26
+
+recognizers:
+  # ---- built-in predefined pattern recognizers (regex only) ----
+  - name: EmailRecognizer
+    type: predefined
+  - name: PhoneRecognizer
+    type: predefined
+  - name: CreditCardRecognizer
+    type: predefined
+  - name: IpRecognizer
+    type: predefined
+  - name: UrlRecognizer
+    type: predefined
+  - name: IbanRecognizer
+    type: predefined
+  - name: CryptoRecognizer
+    type: predefined
+  - name: DateRecognizer
+    type: predefined
+  - name: UuidRecognizer
+    type: predefined
+
+  # ---- custom Chinese PII rules (regex) ----
+  - name: CnIdCardRecognizer
+    supported_language: "en"
+    type: custom
+    patterns:
+      - name: "cn_id_card"
+        regex: "\\b\\d{17}[\\dXx]\\b"
+        score: 0.9
+    supported_entity: "CN_ID_CARD"
+    context: ["身份证", "ID card", "idcard", "身份证号"]
+
+  - name: CnPhoneRecognizer
+    supported_language: "en"
+    type: custom
+    patterns:
+      - name: "cn_phone"
+        regex: "\\b1[3-9]\\d{9}\\b"
+        score: 0.9
+    supported_entity: "CN_PHONE"
+    context: ["手机", "电话", "mobile", "phone"]
+
+  - name: CnBankCardRecognizer
+    supported_language: "en"
+    type: custom
+    patterns:
+      - name: "cn_bank_card"
+        regex: "\\b\\d{16,19}\\b"
+        score: 0.7
+    supported_entity: "CN_BANK_CARD"
+    context: ["银行卡", "卡号", "bank", "card"]
+
+  - name: CnUsccRecognizer
+    supported_language: "en"
+    type: custom
+    patterns:
+      - name: "cn_uscc"
+        regex: "\\b[0-9A-HJ-NPQRTUWXY]{18}\\b"
+        score: 0.8
+    supported_entity: "CN_USCC"
+    context: ["统一社会信用代码", "信用代码", "USCC"]

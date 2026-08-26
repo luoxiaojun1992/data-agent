@@ -18,11 +18,14 @@ func (m *mockAlertLogger) LogAlert(level, category, message string, details map[
 
 func TestDefaultRules(t *testing.T) {
 	rules := DefaultRules()
-	if len(rules.InputRules) != 6 {
-		t.Errorf("InputRules length: got %d, want 6", len(rules.InputRules))
+	// SPEC-068: InputRules now includes 3 PII sanitize fallback rules
+	// (id_card/phone/api_key) on top of the 6 SQL/XSS block/alert rules.
+	if len(rules.InputRules) != 9 {
+		t.Errorf("InputRules length: got %d, want 9", len(rules.InputRules))
 	}
-	if len(rules.OutputRules) != 3 {
-		t.Errorf("OutputRules length: got %d, want 3", len(rules.OutputRules))
+	// SPEC-068: OutputRules adds an xss sanitize rule on top of the 3 PII rules.
+	if len(rules.OutputRules) != 4 {
+		t.Errorf("OutputRules length: got %d, want 4", len(rules.OutputRules))
 	}
 }
 
@@ -62,7 +65,7 @@ func TestAuditor_AuditInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := a.AuditInput(tt.input)
+			_, err := a.AuditInput(tt.input)
 			if tt.wantErr && err == nil {
 				t.Errorf("AuditInput(%q) should return error", tt.input)
 			}
@@ -176,7 +179,7 @@ func TestAuditor_UpdateRules(t *testing.T) {
 	}
 	a.UpdateRules(newRules)
 
-	err := a.AuditInput("CUSTOM_BLOCK this text")
+	_, err := a.AuditInput("CUSTOM_BLOCK this text")
 	if err == nil {
 		t.Error("should block CUSTOM_BLOCK after UpdateRules")
 	}

@@ -299,6 +299,34 @@ func (_m *KnowledgeService) UploadFile(fileName string, contentType string, read
 	return r0, r1
 }
 
+// RedactText provides a mock function with given fields: ctx, text
+func (_m *KnowledgeService) RedactText(ctx context.Context, text string) (string, error) {
+	ret := _m.Called(ctx, text)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RedactText")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+		return rf(ctx, text)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = rf(ctx, text)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, text)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // NewKnowledgeService creates a new instance of KnowledgeService. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewKnowledgeService(t interface {

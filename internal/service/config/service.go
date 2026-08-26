@@ -33,6 +33,7 @@ func SystemBuiltins() []BuiltinConfig {
 		{Key: "SERVER_READ_TIMEOUT", Description: "HTTP 读超时（秒）", Default: "600"},
 		{Key: "SERVER_WRITE_TIMEOUT", Description: "HTTP 写超时（秒）", Default: "600"},
 		{Key: "WORKER_POOL_SIZE", Description: "Worker 协程池大小", Default: "10"},
+		{Key: "pii_redaction_enabled", Description: "PII 脱敏开关（Presidio，知识库/模型输入输出）", Default: "true"},
 	}
 }
 

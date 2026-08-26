@@ -48,7 +48,8 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
-	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
+	notifsvc 	"github.com/luoxiaojun1992/data-agent/internal/service/notification"
+	"github.com/luoxiaojun1992/data-agent/internal/service/pii"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
@@ -116,8 +117,33 @@ func initTaskService(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	)
 }
 
+// initPII constructs the PII redactor (SPEC-068) before the auditor and KB
+// service so both can be injected. enabled reads the `pii_redaction_enabled`
+// switch (cache→DB, default true).
+func initPII(deps *serverDependencies) {
+	enabled := func() bool {
+		if deps.sysConfigCacheRepo == nil {
+			return true
+		}
+		cfg, err := deps.sysConfigCacheRepo.Get(context.Background(), "pii_redaction_enabled")
+		if err != nil || cfg == nil {
+			return true
+		}
+		return !strings.EqualFold(strings.TrimSpace(cfg.Value), "false")
+	}
+	deps.piiEnabled = enabled
+	deps.piiRedactor = pii.New(pii.Config{
+		AnalyzerURL:   os.Getenv("PRESIDIO_ANALYZER_URL"),
+		AnonymizerURL: os.Getenv("PRESIDIO_ANONYMIZER_URL"),
+		Enabled:       enabled,
+	})
+}
+
 func initAgentEngine(deps *serverDependencies) {
 	deps.secAuditor = security.NewAuditor(nil)
+	if deps.piiRedactor != nil {
+		deps.secAuditor.SetRedactor(deps.piiRedactor)
+	}
 	deps.cbRegistry = security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
 }
 
@@ -331,6 +357,7 @@ func initArtifacts(deps *serverDependencies, mongoClient *mongoinfra.Client, cfg
 
 func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.kbService = knowledge.NewService(mongoinfra.NewKBRepository(mongoClient.DB()))
+	deps.kbService.WithRedactor(deps.piiRedactor, deps.piiEnabled)
 	// SPEC-061: Use on-demand embed function (reads cache→DB per call) instead
 	// of preloading embedding config at startup. Vector index is set up whenever
 	// Qdrant is available; the embed function returns (nil, nil) if config is

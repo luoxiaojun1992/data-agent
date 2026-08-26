@@ -48,6 +48,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
+	"github.com/luoxiaojun1992/data-agent/internal/service/pii"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"go.uber.org/zap"
@@ -94,6 +95,8 @@ type serverDependencies struct {
 	chatService    *chat.Service
 	secAuditor     *security.Auditor
 	cbRegistry     *security.CircuitBreakerRegistry
+	piiRedactor    *pii.PIIRedactor
+	piiEnabled     func() bool
 	llmRecorder    *llmstats.Recorder
 	llmCache       *llmcache.Cache
 	taskStream     *queue.Stream
@@ -170,6 +173,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initVault(&deps, logger)
 	initADKModel(&deps, mongoClient)
 	initTaskService(&deps, mongoClient) // must run before initAgentEngine — tool deps need TaskRunService
+	initPII(&deps)                      // SPEC-068: pii redactor before auditor + KB service
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initSkillConfig(&deps, mongoClient)

@@ -119,7 +119,7 @@ func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, e
 		cached.touch()
 		return cached.rt, nil
 	}
-	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction)
+	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction, entry.ContextLen)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func (r *Registry) GetOrCreateWithInstruction(ctx context.Context, modelID, inst
 		cached.touch()
 		return cached.rt, nil
 	}
-	rt, err := r.buildRuntime(ctx, entry.ID, instruction)
+	rt, err := r.buildRuntime(ctx, entry.ID, instruction, entry.ContextLen)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +218,7 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 		cached.touch()
 		return cached.rt, nil
 	}
-	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction)
+	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction, entry.ContextLen)
 	if err != nil {
 		return nil, err
 	}
@@ -230,8 +230,8 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 
 // buildRuntime constructs a new Runtime for the given model ID. Shared
 // dependencies (tools, auditor, session/memory services) come from the
-// registry config; only Model and Instruction are model-specific.
-func (r *Registry) buildRuntime(ctx context.Context, modelID, instruction string) (*Runtime, error) {
+// registry config; Model, Instruction and MaxInputTokens are model-specific.
+func (r *Registry) buildRuntime(ctx context.Context, modelID, instruction string, maxInputTokens int) (*Runtime, error) {
 	llm, err := r.cfg.Provider.BuildLLMByID(ctx, modelID)
 	if err != nil {
 		return nil, fmt.Errorf("build LLM for %q: %w", modelID, err)
@@ -247,6 +247,7 @@ func (r *Registry) buildRuntime(ctx context.Context, modelID, instruction string
 		Tools:          r.cfg.Tools,
 		Auditor:        r.cfg.Auditor,
 		Instruction:    instruction,
+		MaxInputTokens: maxInputTokens,
 	})
 }
 

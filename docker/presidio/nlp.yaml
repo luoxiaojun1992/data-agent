@@ -1,0 +1,8 @@
+# Presidio NLP engine config — pure rule mode (SPEC-068).
+# no_op = NoOpNlpEngine: loads no NER model (no en_core_web_sm, no transformers,
+# no stanza), pure CPU + pure regex rules only. This keeps the analyzer small
+# and rule-only; PII detection relies entirely on PatternRecognizer regexes.
+nlp_engine_name: no_op
+models:
+  - lang_code: en
+    model_name: en_core_web_sm
