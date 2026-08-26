@@ -1,10 +1,12 @@
 # Presidio recognizer registry (SPEC-068).
-# Enable the NER recognizer (SpacyRecognizer) so named entities (PERSON /
-# LOCATION / ORGANIZATION / DATE_TIME ...) are also detected, on top of the
-# regex PatternRecognizers (predefined + custom Chinese rules). The spacy
-# en_core_web_lg engine already runs the full pipeline (NER included) and holds
-# ~730MB regardless of this flag, so enabling the recognizer only adds the
-# entity-mapping step at negligible cost — better coverage for the same cost.
+# Disable the NER recognizer (SpacyRecognizer): the bundled en_core_web_lg is an
+# ENGLISH model that mis-recognizes Chinese text containing digits/PII as a
+# whole-string entity (e.g. ORGANIZATION [0:59] over the entire sentence). With
+# NER on, anonymize replaces the ENTIRE Chinese sentence with <PII> instead of
+# masking just the PII spans. PII detection stays regex-only (predefined +
+# custom Chinese rules), which is precise and language-agnostic. The spacy
+# engine still runs its NER pipeline internally (resource cost), but the
+# entity-mapping step is disabled.
 #
 # NOTE on \b: Python's \b treats CJK as word chars, so there is no boundary
 # between a Chinese char and an adjacent digit — \b never matches inside CJK
@@ -15,9 +17,10 @@ supported_languages:
 global_regex_flags: 26
 
 recognizers:
-  # ---- NER recognizer (enabled: better entity coverage, same resource cost) ----
+  # ---- disable NER recognizer (English model mis-recognizes Chinese PII text) ----
   - name: SpacyRecognizer
     type: predefined
+    enabled: false
 
   # ---- built-in predefined pattern recognizers (regex) ----
   - name: EmailRecognizer
