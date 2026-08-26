@@ -4,12 +4,13 @@
 
 ## 目标
 
-在知识库上传链路引入 PII 脱敏，确保纯文本内容进入知识库（MongoDB `kb_chunks` + Qdrant 向量）前完成脱敏，原始含隐私信息的文本不落库。四点需求（晓军 2026-08-26 提出）：
+在知识库上传链路引入 PII 脱敏，确保纯文本内容进入知识库（MongoDB `kb_chunks` + Qdrant 向量）前完成脱敏，原始含隐私信息的文本不落库。五点需求（晓军 2026-08-26 提出）：
 
 1. **调研微软开源 Presidio**，用官方 docker 在 `docker-compose.yml` 与 `docker-compose.ui-test.yml` 部署 pii-redaction 服务；通过环境变量配置，**只使用 sm 模型（纯 CPU）**，不引入其他 NER 模型（transformers/stanza），**纯基于规则**识别。
 2. **后端封装服务**，调用 pii-redaction 服务完成脱敏。
 3. **知识库上传逻辑**：纯文本（非图片 base64）只保存 pii-redaction 脱敏返回后的文本，不保存原始可能含隐私信息的文本。
 4. **测试**：故意在知识库上传中放置隐私信息，检查数据库保存的文本是否仍残留隐私信息。
+5. **模型输出审计接入**（补充）：现有模型输出审计（`security.Auditor.AuditOutput`）也走 pii-redaction 服务（开关打开时）；报错或开关关闭则**降级到现有规则校验**（regex id_card/phone/api_key，安全性要求没那么高）。
 
 ## 前置依赖检查
 
@@ -209,7 +210,58 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 - 脱敏结果同时影响 MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content`（embedding 也基于脱敏文本，避免 PII 进入向量空间）。
 - 服务依赖通过 `knowledge.Service` 构造函数注入（`WithRedactor`），wire.go 组装。
 
-### 4. 测试：故意放置隐私信息验证脱敏
+### 4. 适配层：模型输出审计接入（降级到现有规则校验）
+
+#### 4.1 现状：现有输出审计的规则校验
+
+`security.Auditor.AuditOutput`（`internal/domain/security/auditor.go`）现用一组 regex 规则对 LLM 输出做脱敏（`sanitize` action）：
+
+| 规则 | 正则 | 处理 |
+|------|------|------|
+| `id_card` | `\d{17}[\dXx]` | 掩码（`110***********1234`） |
+| `phone` | `1[3-9]\d{9}` | 掩码（`138****8000`） |
+| `api_key` | `sk-[a-zA-Z0-9]{32,}` | 掩码（`sk-a****`） |
+
+这就是「现有的规则校验」。Auditor 通过 `runtime.Config.Auditor` 注入（`wire.go:120` `security.NewAuditor(nil)` → `registry.go:248` → `runtime.go` 的 `auditOutputCallback`），对每次 LLM 输出调用 `AuditOutput`。
+
+#### 4.2 适配：优先 pii-redaction，失败/开关关降级现有规则
+
+让 `AuditOutput` **优先走 pii-redaction 服务**（开关打开时），报错或开关关闭则**降级到现有 regex 规则**（安全性要求没那么高）。
+
+**分层设计**（domain 层不引 infra/service，用接口注入）：
+
+- `security.Auditor` 新增可选注入的 `OutputRedactor` 接口（domain 内定义）：
+  ```go
+  type OutputRedactor interface {
+      Redact(ctx context.Context, text string) (string, error)
+  }
+  ```
+- `AuditOutput` 逻辑：
+  ```go
+  func (a *Auditor) AuditOutput(output string) (string, error) {
+      // 优先 pii-redaction（开关开 + 成功）
+      if a.redactor != nil {
+          if r, err := a.redactor.Redact(ctx, output); err == nil {
+              return r, nil
+          }
+          // err（开关关 / presidio 报错）→ 降级现有 regex 规则
+      }
+      // 现有 regex 规则（id_card/phone/api_key sanitize）—— 保持不变
+      ...
+  }
+  ```
+- `PIIRedactor`（`internal/service/pii`，实现 `OutputRedactor`）内部判断开关（`pii_redaction_enabled`）+ 调 presidio；开关关或 presidio 报错 → 返回 error（触发 Auditor 降级）。
+
+#### 4.3 两个场景的语义对比（关键差异）
+
+| 场景 | 开关开 + presidio 报错 | 开关关 |
+|------|----------------------|--------|
+| **KB 上传（落库）** | fail-closed 报错中止 | 跳过脱敏（落原始文本） |
+| **模型输出审计** | **降级现有 regex 规则** | **降级现有 regex 规则** |
+
+> 原因：KB 落库是持久化数据，PII 一旦写入难清除，必须 fail-closed；模型输出审计是实时 LLM 输出，现有 regex 规则（id_card/phone/api_key）已覆盖基础 PII，安全性要求没那么高，降级可接受。两者共用 `pii_redaction_enabled` 开关，但降级行为不同。
+
+### 5. 测试：故意放置隐私信息验证脱敏
 
 - **集成/E2E**：调用知识库上传接口，文本/文件中故意放置身份证号、手机号、银行卡号、邮箱；随后：
   - 查 **GridFS 原始文件**，断言已脱敏（下载后不含原始 PII）；
@@ -217,7 +269,8 @@ func (s *Service) AddChunks(docID string, texts []string) error {
   - 查 Qdrant 向量 `metadata.content`，断言同样已脱敏；
   - 调 `Search`，断言返回文本无原始 PII。
 - **开关验证**：`pii_redaction_enabled=false` 时上传含 PII 文本，验证跳过脱敏（管理员主动关闭）；恢复 `true` 后重新验证脱敏生效。
-- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）。
+- **模型输出审计降级验证**：开关开启 + pii-redaction 正常 → `AuditOutput` 走 presidio 脱敏；模拟 pii-redaction 报错或开关关闭 → `AuditOutput` 降级现有 regex 规则（id_card/phone/api_key 掩码仍生效）。
+- **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）；`Auditor.AuditOutput` 优先 redactor / 降级 regex 分支的单测。
 
 ## 可行性分析
 
@@ -242,7 +295,8 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 | `internal/api/handler/knowledge.go` | `UploadDoc` Path 1 文件上传时脱敏（读文件→脱敏→存 GridFS） | Modify |
 | `internal/service/knowledge/service.go` | 注入 redactor + `AddChunks` 脱敏 + 开关判断 | Modify |
 | `internal/service/config/service.go` | `SystemBuiltins()` seed 数据加 `pii_redaction_enabled`（幂等 seed）+ 读取开关 | Modify |
-| `cmd/server/wire.go` | 组装 pii redactor + config 注入 knowledge service | Modify |
+| `internal/domain/security/auditor.go` | 新增 `OutputRedactor` 接口（可选注入）+ `AuditOutput` 优先 redactor、失败降级 regex 规则 | Modify |
+| `cmd/server/wire.go` | 组装 pii redactor 注入 knowledge service + security auditor | Modify |
 
 ## 测试策略
 
@@ -274,6 +328,7 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 - [ ] **GridFS 原始文件脱敏**：纯文本文件上传时先脱敏再存 GridFS，后续切片自然脱敏
 - [ ] `AddChunks` 直接传纯文本 chunks 也经脱敏
 - [ ] **不降级**：开关开启时脱敏失败直接返回错误中止落库（fail-closed）
+- [ ] **模型输出审计适配**：`AuditOutput` 优先走 pii-redaction（开关开）；报错/开关关降级现有 regex 规则（id_card/phone/api_key）
 - [ ] MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content` 均无原始 PII
 - [ ] 测试：故意放置身份证/手机号/银行卡/邮箱，验证 GridFS + DB 无残留
 
