@@ -3,6 +3,11 @@
 # regex PatternRecognizer (predefined + custom Chinese rules). The spacy engine
 # (en_core_web_lg) is still loaded for tokenization, but does not drive entity
 # detection. All recognizers run for "en"; regex matching is language-agnostic.
+#
+# NOTE on \b: Python's \b treats CJK as word chars, so there is no boundary
+# between a Chinese char and an adjacent digit — \b never matches inside CJK
+# text. Use (?<!\d)...(?!\d) lookarounds instead so Chinese PII (ID card /
+# phone) is actually detected.
 supported_languages:
   - en
 global_regex_flags: 26
@@ -31,13 +36,13 @@ recognizers:
   - name: DateRecognizer
     type: predefined
 
-  # ---- custom Chinese PII rules (regex) ----
+  # ---- custom Chinese PII rules (regex, lookaround instead of \b) ----
   - name: CnIdCardRecognizer
     supported_language: "en"
     type: custom
     patterns:
       - name: "cn_id_card"
-        regex: "\\b\\d{17}[\\dXx]\\b"
+        regex: "(?<!\\d)\\d{17}[\\dXx](?!\\d)"
         score: 0.9
     supported_entity: "CN_ID_CARD"
     context: ["身份证", "ID card", "idcard", "身份证号"]
@@ -47,7 +52,7 @@ recognizers:
     type: custom
     patterns:
       - name: "cn_phone"
-        regex: "\\b1[3-9]\\d{9}\\b"
+        regex: "(?<!\\d)1[3-9]\\d{9}(?!\\d)"
         score: 0.9
     supported_entity: "CN_PHONE"
     context: ["手机", "电话", "mobile", "phone"]
@@ -57,7 +62,7 @@ recognizers:
     type: custom
     patterns:
       - name: "cn_bank_card"
-        regex: "\\b\\d{16,19}\\b"
+        regex: "(?<!\\d)\\d{16,19}(?!\\d)"
         score: 0.7
     supported_entity: "CN_BANK_CARD"
     context: ["银行卡", "卡号", "bank", "card"]
@@ -67,7 +72,7 @@ recognizers:
     type: custom
     patterns:
       - name: "cn_uscc"
-        regex: "\\b[0-9A-HJ-NPQRTUWXY]{18}\\b"
+        regex: "(?<![0-9A-HJ-NPQRTUWXY])[0-9A-HJ-NPQRTUWXY]{18}(?![0-9A-HJ-NPQRTUWXY])"
         score: 0.8
     supported_entity: "CN_USCC"
     context: ["统一社会信用代码", "信用代码", "USCC"]
