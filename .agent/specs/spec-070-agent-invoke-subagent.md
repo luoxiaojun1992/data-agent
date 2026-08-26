@@ -1,6 +1,6 @@
 # agent 调用子 agent（subagent invocation）
 
-> **SPEC-069** | Status: 调研完成（方案定为 sub agent tool + interface 解耦，暂不实现）
+> **SPEC-070** | Status: 调研完成（方案定为 sub agent tool + interface 解耦，暂不实现）
 
 ## 目标
 
@@ -20,7 +20,7 @@
 |-----------|:---:|------|
 | SPEC-066 配置存储拆分 | 📐 设计中 | 子 agent 的 model 复用主 agent 的 model 配置 |
 | SPEC-067 意图识别 + 相关性检查 | 📐 设计中 | 子 agent 是否走 guard（intent/relevance）需明确 |
-| SPEC-068 compaction 机制重构 | 📐 设计中 | 子 agent session 的 compaction 与「返回即销毁」的交互 |
+| SPEC-069 compaction 机制重构 | 📐 设计中 | 子 agent session 的 compaction 与「返回即销毁」的交互 |
 
 ## 背景 / 动机
 
@@ -270,6 +270,6 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 ## 提交约定
 
 ```bash
-git add .agent/specs/spec-069-agent-invoke-subagent.md .agent/specs/INDEX.md
-git commit -m "docs: add SPEC-069 agent invoke subagent (调研)"
+git add .agent/specs/spec-070-agent-invoke-subagent.md .agent/specs/INDEX.md
+git commit -m "docs: add SPEC-070 agent invoke subagent (调研)"
 ```
