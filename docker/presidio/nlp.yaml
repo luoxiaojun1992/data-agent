@@ -1,8 +1,11 @@
 # Presidio NLP engine config — pure rule mode (SPEC-068).
-# no_op = NoOpNlpEngine: loads no NER model (no en_core_web_sm, no transformers,
-# no stanza), pure CPU + pure regex rules only. This keeps the analyzer small
-# and rule-only; PII detection relies entirely on PatternRecognizer regexes.
-nlp_engine_name: no_op
+# NOTE: the presidio-analyzer:latest image only ships the spacy engine with the
+# en_core_web_lg model pre-installed (no no_op engine, no sm model). We use
+# spacy + lg for the tokenization base, but disable the SpacyRecognizer via
+# custom_recognizers.yaml so PII detection is still rule-only (regex
+# PatternRecognizer). Swapping to en_core_web_sm requires a custom Dockerfile
+# (python -m spacy download en_core_web_sm) — tracked as a follow-up.
+nlp_engine_name: spacy
 models:
   - lang_code: en
-    model_name: en_core_web_sm
+    model_name: en_core_web_lg

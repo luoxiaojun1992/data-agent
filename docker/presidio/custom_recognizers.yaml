@@ -1,13 +1,18 @@
 # Presidio recognizer registry — pure rule mode (SPEC-068).
-# No NER model recognizers (SpacyRecognizer etc.); only regex PatternRecognizer
-# (predefined + custom Chinese PII rules). All recognizers declare
-# supported_language "en" so they are loaded for the analyzer's "en" requests;
-# regex matching itself is language-agnostic.
+# Disable the NER recognizer (SpacyRecognizer) so PII detection relies only on
+# regex PatternRecognizer (predefined + custom Chinese rules). The spacy engine
+# (en_core_web_lg) is still loaded for tokenization, but does not drive entity
+# detection. All recognizers run for "en"; regex matching is language-agnostic.
 supported_languages:
   - en
 global_regex_flags: 26
 
 recognizers:
+  # ---- disable NER recognizer (pure rule mode) ----
+  - name: SpacyRecognizer
+    type: predefined
+    enabled: false
+
   # ---- built-in predefined pattern recognizers (regex only) ----
   - name: EmailRecognizer
     type: predefined
@@ -24,8 +29,6 @@ recognizers:
   - name: CryptoRecognizer
     type: predefined
   - name: DateRecognizer
-    type: predefined
-  - name: UuidRecognizer
     type: predefined
 
   # ---- custom Chinese PII rules (regex) ----
