@@ -144,6 +144,13 @@ func initAgentEngine(deps *serverDependencies) {
 	if deps.piiRedactor != nil {
 		deps.secAuditor.SetRedactor(deps.piiRedactor)
 	}
+	// Wire the text auditor into the model provider so every internal
+	// (non-runtime) LLM call — compaction/enhance/intent/relevance/kb — gets
+	// input/output text auditing (SPEC-068). Tool-call audit is intentionally
+	// not wired here: internal LLM calls expose no tools.
+	if deps.modelCfg != nil {
+		deps.modelCfg.SetAuditor(deps.secAuditor)
+	}
 	deps.cbRegistry = security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
 }
 

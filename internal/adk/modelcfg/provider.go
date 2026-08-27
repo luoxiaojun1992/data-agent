@@ -116,6 +116,15 @@ type Provider struct {
 	modelRepo   repository.ModelConfigRepository
 	defaultRepo repository.ModelDefaultRepository
 	vault       VaultStore // optional; per-model API keys stored/retrieved via Vault
+	auditor     TextAuditor // optional; wraps internal (non-runtime) LLM calls with input/output text audit
+}
+
+// SetAuditor injects the text auditor used to wrap internal LLM calls built
+// via BuildLLM (compaction/enhance/intent/relevance/kb). It does NOT affect
+// BuildLLMByID (runtime path), which applies its own audit callbacks. Safe to
+// call after construction; nil clears auditing.
+func (p *Provider) SetAuditor(a TextAuditor) {
+	p.auditor = a
 }
 
 // NewProvider creates a config provider. Passing nil repos means "env only".
@@ -262,7 +271,14 @@ func (p *Provider) BuildLLM(ctx context.Context, useCase UseCase) (model.LLM, er
 	if len(backends) == 0 {
 		return nil, fmt.Errorf("failed to build LLM for use case %q", useCase)
 	}
-	return backends[0], nil
+	backend := backends[0]
+	// Internal (non-runtime) LLM calls get input/output text auditing here.
+	// BuildLLMByID (runtime path) is intentionally left unwrapped — the runtime
+	// applies its own audit callbacks via llmagent.
+	if p.auditor != nil {
+		backend = NewAuditedLLM(backend, p.auditor)
+	}
+	return backend, nil
 }
 
 // GetModelByUseCase returns the model designated as default for the given use
