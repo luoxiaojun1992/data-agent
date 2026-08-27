@@ -81,7 +81,7 @@
 | SPEC-065 | API 注册与 MCP 工具集成（OpenAPI 上传 → 注册外部 API → external_api_search/summary/method/call 工具） | **P20** | [spec-065-api-collection-mcp-tools.md](spec-065-api-collection-mcp-tools.md) | ✅ 已实现 |
 | SPEC-066 | 配置存储拆分（system_configs 去 namespace；模型配置每模型一条文档+DB分页；model_defaults 独立集合；skill 独立集合） | **P15** | [spec-066-config-storage-split.md](spec-066-config-storage-split.md) | 📐 设计中 |
 | SPEC-067 | 用户意图识别与 LLM 输出相关性检查（Guard：intent/relevance use case + Redis 计数重试 + compaction 角色/范围调整） | **P15** | [spec-067-intent-relevance-guard.md](spec-067-intent-relevance-guard.md) | 📐 设计中 |
-| SPEC-068 | 知识库文本 PII 脱敏（Presidio pii-redaction：sm 模型纯 CPU + 纯规则；后端封装 + KB 上传纯文本脱敏落库） | **P15** | [spec-068-pii-redaction.md](spec-068-pii-redaction.md) | 📐 设计中 |
+| SPEC-068 | 知识库文本 PII 脱敏（Presidio pii-redaction：spacy+纯规则；后端封装 + KB 上传纯文本脱敏落库 + 模型输入/输出审计 + 内置 LLM 审计接入 + 输入 token 校验） | **P15** | [spec-068-pii-redaction.md](spec-068-pii-redaction.md) | ✅ 已实现 |
 | SPEC-069 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-069-compaction-trigger-fixes.md](spec-069-compaction-trigger-fixes.md) | 📐 设计中 |
 | SPEC-070 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-070-agent-invoke-subagent.md](spec-070-agent-invoke-subagent.md) | 📐 调研完成（方案已定，待实现） |
 | SPEC-071 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-071-domain-cohesion-refactor.md](spec-071-domain-cohesion-refactor.md) | 📐 立项（不展开） |
@@ -257,11 +257,14 @@ SPEC-006│               │
                     compaction 角色 model→system、只压缩 tool/user;
                     依赖 SPEC-061/062/063 已实现)
 
-[P15] SPEC-068 ─── 知识库文本 PII 脱敏 (Presidio pii-redaction)
+[P15] SPEC-068 ─── 知识库文本 PII 脱敏 (Presidio pii-redaction) [✅ 已实现]
                    (官方 docker 部署 presidio-analyzer/anonymizer，
-                    sm 模型纯 CPU + 纯规则 recognizer;
+                    spacy 引擎 + 纯规则 recognizer（禁用 NER）;
                     后端封装 pii-redaction 服务;
                     KB 上传纯文本脱敏后落库 kb_chunks/Qdrant;
+                    模型输入/输出审计 + 内置 LLM(compaction/enhance/
+                    intent/relevance/kb) 经 AuditedLLM 统一接入审计;
+                    输入 token 长度校验;
                     无硬依赖)
 
 [P15] SPEC-069 ─── compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构

@@ -1,6 +1,6 @@
 # 知识库文本 PII 脱敏（Presidio pii-redaction）
 
-> **SPEC-068** | Status: 设计中（调研完成，待实现）
+> **SPEC-068** | Status: 已实现（含内置 LLM 审计接入）
 
 ## 目标
 
@@ -12,6 +12,7 @@
 4. **测试**：故意在知识库上传中放置隐私信息，检查数据库保存的文本是否仍残留隐私信息。
 5. **模型输入/输出审计接入**（补充）：现有模型审计也走 pii-redaction 服务（开关打开时）；报错或开关关闭则**降级到现有规则校验**（regex id_card/phone/api_key，安全性要求没那么高）。**输入侧现无 PII 审计，需补上**；输入/输出都做 PII 审计；**输出侧新增 XSS 校验、不做 SQL 校验**；且**不破坏现有的非隐私审计**（SQL/XSS block、工具敏感路径 block）。
 6. **输入 token 长度校验**（补充）：输入进入 LLM 前校验 token 数，超过实际模型 cfg 的 `context_len`（最大输入 token）则拒绝，避免无效调用 LLM。
+7. **内置 LLM 调用统一接入审计**（补充，2026-08-27）：`compaction` / `enhance` / `intent` / `relevance` / `kb`（图片解析 + 语义分块）等**非 runtime** LLM 调用也要挂上相同的输入/输出审计。约束：**不挂 tool**（无 `AuditToolCall`）、**无副作用/不增加不必要功能**、**只对文本生效**、**图片 url 或 base64（InlineData/FileData）不审计**。
 
 ## 前置依赖检查
 
@@ -88,6 +89,8 @@ curl -X POST http://localhost:3000/anonymize -H "Content-Type: application/json"
 2. **仅保留 + 扩展 PatternRecognizer**：内置（`EMAIL_ADDRESS`/`PHONE_NUMBER`/`CREDIT_CARD`/`IBAN_CODE`/`IP_ADDRESS` 等）+ 自定义中文规则（身份证、手机号、银行卡 Luhn、统一社会信用代码等）。
 
 > 结论：`sm 模型 + 纯 CPU + 纯规则` 三者一致 —— 用默认 spaCy 镜像（sm 模型纯 CPU），但通过自定义 recognizer 注册表**只用规则识别器**，不启用 NER 模型识别器。
+>
+> ⚠️ **实测纠正（2026-08-27）**：`presidio-analyzer:latest`(2.2.362) 镜像仅内置 `en_core_web_lg`（无 sm），且禁用 SpacyRecognizer 后 spacy 引擎仍内部跑 NER。实际实现为 `spacy + lg + 禁用 SpacyRecognizer`，详见「实现记录」。
 
 ### 中文 PII 规则（自定义 PatternRecognizer，实现时细化）
 
@@ -421,7 +424,7 @@ func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
 
 ## 验证标准
 
-- [ ] docker-compose.yml + docker-compose.ui-test.yml 均部署 presidio-analyzer + presidio-anonymizer（sm 模型纯 CPU）
+- [ ] docker-compose.yml + docker-compose.ui-test.yml 均部署 presidio-analyzer + presidio-anonymizer（spacy 引擎 + en_core_web_lg，禁用 NER 识别器，纯规则）
 - [ ] 自定义 recognizer 配置纯规则（禁用 NER 识别器，含中文 PII 规则）
 - [ ] 后端 `PIIRedactor` 封装 analyze + anonymize，可脱敏 PII
 - [ ] **开关**：`pii_redaction_enabled`（system_configs，默认 true），KB 上传逻辑判断开关；false 跳过、true 脱敏
@@ -433,9 +436,34 @@ func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
 - [ ] **输入侧补 PII 审计**：`AuditInput` 签名改为返回脱敏文本，`auditPart` 回写
 - [ ] **输入 token 校验**：超过 `ModelEntry.ContextLen` 的输入在进入 LLM 前被拒绝（`maxInputTokensCallback`）
 - [ ] **输出 XSS 校验**：`AuditOutput` 校验 `<script` 等 XSS 危险内容（sanitize）；**不做 SQL 校验**
+- [ ] **内置 LLM 审计接入**：compaction/enhance/intent/relevance/kb 等非 runtime LLM 调用经 `AuditedLLM` 做输入/输出文本审计；不挂 tool；图片 url/base64 不审计
 - [ ] **不破坏非隐私审计**：SQL/XSS `block`、工具敏感路径 `block` 等现有审计仍生效
 - [ ] MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content` 均无原始 PII
 - [ ] 测试：故意放置身份证/手机号/银行卡/邮箱，验证 GridFS + DB 无残留
+
+## 实现记录（2026-08-27 更新）
+
+### 内置 LLM 审计接入方案
+
+核心：新增 `modelcfg.AuditedLLM` + `TextAuditor` 最小接口，在 `Provider.BuildLLM`（useCase 版）返回前统一包一层，使所有非 runtime LLM 调用自动获得输入/输出文本审计。
+
+| 项 | 说明 |
+|----|------|
+| `TextAuditor` 接口 | 只含 `AuditInput` / `AuditOutput`，**无 `AuditToolCall`**（内置 LLM 无 tool） |
+| `AuditedLLM.GenerateContent` | 输入脱敏（Text part，SQL/XSS block 返 error 中止）；输出脱敏（best-effort，失败降级）；**跳过 InlineData/FileData**（图片 url/base64 不审计） |
+| `Provider.BuildLLM` | 返回前包 `AuditedLLM` → compaction（经 LazyLLM）/ enhance / intent / relevance / kb_image / kb_chunking / memory 全覆盖 |
+| `Provider.BuildLLMByID` | **不包**（runtime 路径），避免与 chat/agent task 的 llmagent 审计 callback 重复 |
+
+### 部署实测发现（偏离原调研假设）
+
+1. **presidio-analyzer:latest = 2.2.362**：只有 `spacy` 引擎（无 `no_op`），内置模型仅 `en_core_web_lg`（无 sm）。→ 用 `spacy + lg` 适配。
+2. **中文 `\b` 不匹配**：Python `\b` 把 CJK 视为 word 字符，中文与数字间无 boundary，导致中文身份证/手机号规则失效。→ 改 `(?<!\d)...(?!\d)` lookaround。
+3. **英文 NER 误识别中文**：`en_core_web_lg` 对含数字/PII 的中文文本误识别为整段 `ORGANIZATION [0:N]`，anonymize 会整段替换成 `<PII>`。→ 最终**禁用 SpacyRecognizer**，纯 regex 规则识别中文 PII。
+
+### 实测结论
+
+- KB 脱敏、chat/agent task 输入输出审计、内置 LLM（intent/relevance）输入审计均已端到端验证通过。
+- 审计降级：presidio 失败/开关关 → regex 规则兜底；KB 落库场景 fail-closed，审计场景 fail-open 降级。
 
 ## 提交约定
 
