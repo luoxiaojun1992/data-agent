@@ -126,6 +126,8 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 32 | **新增过滤字段只在 write 端加、漏掉 read 端的 query filter** | toggle 写入 `scheduled_enabled=false` 后，ListScheduled 也必须加 `scheduled_enabled: {$ne: false}`。write 和 read 是两次独立操作，必须同步。 |
 | 33 | **Go interface 签名变更不问全链路就声称完成** | 改 repo 接口签名 → grep 所有 implement + 所有 caller。adapter、provider interface、两个调用处一个都不能漏。 |
 | 34 | **`_id` 用业务语义字段（key/use_case/name 等）当主键** | `_id` 一律 uuid，业务字段单独设字段 + 唯一索引。唯一例外：seed 数据 + 有关联数据可用语义化字段值，但仍不作 `_id`。 |
+| 35 | **前端判断状态不先确认后端 DTO 实际字段** | 写前端条件判断前，先看后端 struct 的 json tag + `curl` 实测，确认字段名/语义（如 `is_default_for []string` 而非 `is_default bool`）。字段契约不一致时 JSON 缺字段不报错、静默失效，状态永不刷新。 |
+| 36 | **改实现不同步更新代码注释** | 注释里声明的行为（如 "masked / decrypt endpoint"）必须与代码一致。改实现必须同步注释，否则过时注释成为「假约束」，误导后续排查（把符合预期的行为误判成 bug）。 |
 
 ## 开发工作流约定
 

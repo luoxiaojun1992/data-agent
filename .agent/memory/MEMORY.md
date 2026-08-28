@@ -128,3 +128,17 @@
 - **理由**: deepseek-v4-pro 是纯文本模型（不支持 image_url）；文本 chunking 继续用 deepseek，图片描述用 qwen-vl-max
 - **链路**: 图片 base64 上传 → `file_type=image` → kb_index 走 `kb_image` → qwen-vl-max 多模态解析 → chunk → embed → Qdrant + MongoDB
 - **备注**: 多模态模型名在第三方平台常有别名（DashScope 叫 `qwen-vl-max`，开源叫 `Qwen2.5-VL-72B`），配模型前先查平台模型列表，不要照抄现有配置的 name/max_tokens
+
+## 2026-08-28: 模型配置页 UI 优化 + 运维 502 排查确认
+
+### 三个设计确认（晓军：实现符合预期，不改）
+1. **nginx 502 不需要改**：单容器重启换 IP 后 nginx 缓存旧 IP 导致 502，`nginx -s reload` 即可修复。晓军明确不加固定 IP / resolver——正常部署整集群重建，生产可能用 k8s 而非 docker compose，此为测试环境单容器重启的临时现象。
+2. **API key 明文返回符合预期（admin UI trusted）**：`/models/list` + `/models/embedding` 后端返回明文 key，mask 由前端视觉层做（`keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置'`），**无**单独 decrypt 接口、**无** `api_key_exists` 字段。`modelconfig.go` 注释里「masked/decrypt endpoint」是历史遗留未更新，勿据此误判。
+3. **默认模型 fallback 非随机**：`GetModelByUseCase` / `GetDefaultEmbeddingModel` 无 `model_defaults` 记录时 fallback 到「第一个」该类型模型（Type==llm / Type==embedding）；完全没有该类型才报错。compaction 另有 `defaultCompactionMaxTokens=4000` 兜底。
+
+### 前端两个修复
+- **Use Case 下拉框 Portal**：`.glass` 的 `backdrop-filter: blur(20px)` 会创建 containing block，`position:fixed` 实际相对 glass 容器定位导致错位。改用 React Portal 渲染到 `document.body`（见 REUSABLE_PATTERNS.md）。
+- **Embedding 默认状态判断**：后端 `ModelEntry` 只有 `IsDefaultFor []string` 无 `IsDefault bool`，前端用 `m.is_default` 判断导致永远显示「设为默认」。改 `!!m.is_default || (m.is_default_for || []).includes('embedding')`。
+
+### commit 时间线
+538661e（UI 首次优化）→ 9ba0f85（Portal + 列宽压缩）→ 080b168（列宽再压缩 + nowrap）→ a51b1c0（embedding 默认判断修复）。

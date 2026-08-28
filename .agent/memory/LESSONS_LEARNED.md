@@ -662,3 +662,35 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **日期**: 2026-08-19 | **影响**: 无需改 LLM runtime 代码
 **根因**: adk-go-pkg 的 translate.go 会把 `genai.NewPartFromBytes` 的 InlineData 转成 OpenAI `image_url`（data URL）。DashScope 兼容端点原生支持该格式。
 **教训**: 接入 OpenAI 兼容的多模态模型（qwen-vl/gpt-4o 等）时，代码层已就绪，只需配 base_url + api_key + 正确模型名 + max_tokens 上限，无需改 runtime 多模态判断逻辑。
+
+---
+
+## 2026-08-28 新增（模型配置页 UI + 运维 502 排查）
+
+### CSS `backdrop-filter`/`filter`/`transform` 会成为 `position:fixed` 的 containing block
+**日期**: 2026-08-28 | **影响**: Use Case 下拉框 `position:fixed + getBoundingClientRect()` 定位跑到视窗右下角，与触发按钮严重错位
+**根因**: 下拉框写在 `.glass` 卡片（`backdrop-filter: blur(20px)`）内部。CSS 规范规定：`backdrop-filter`（以及 `filter`/`transform`/`will-change`/`contain`）非 none 时，该元素会成为 `position:fixed` 后代的 containing block。于是 `fixed` 不再相对视窗，而是相对 `.glass` 容器定位，而 `getBoundingClientRect()` 返回的是视窗坐标 → 两套坐标系错位。
+**解决**: 用 React `createPortal` 把下拉框渲染到 `document.body`，脱离 glass 容器的 containing block。加 `mounted` flag 防 SSR mismatch，加 scroll/resize listener 跟随按钮位置，onClickOutside 同时判 wrapRef + panelRef。
+**教训**: ⛔ 在带 `backdrop-filter`（玻璃拟态玻璃卡片）的容器内做 `position:fixed` 弹层，必错位。通用解法：Portal 到 body（见 REUSABLE_PATTERNS.md）。
+
+### 前端判断状态前，先确认后端 DTO 实际返回的字段
+**日期**: 2026-08-28 | **影响**: 后端 PATCH 已成功、DB 已写入，但前端 Embedding「默认」列永远显示「设为默认」，点多次都弹「已设为默认」却无状态变化
+**根因**: 后端 `ModelEntry` struct 只有 `IsDefaultFor []string`（response-only，由 `attachDefaults` 从 `model_defaults` 表组装），**没有** `IsDefault bool` 字段。前端 embedding 默认列却用 `m.is_default` 判断（永远 `undefined`），一直渲染「设为默认」按钮；而 LLM 列表用 `m.is_default_for` 数组，所以 LLM 正常、只有 embedding 出问题。
+**解决**: embedding 默认判断改为 `!!m.is_default || (m.is_default_for || []).includes('embedding')`。
+**教训**: 前后端字段契约不一致时，Go zero value / JSON 缺字段不报错、静默失效。写前端判断前先 `curl` 或看后端 struct 的 json tag，确认字段名和语义（`is_default_for` vs `is_default`）。
+
+### nginx 无 resolver 时启动只解析一次 upstream 主机名 → 单容器重启后 502
+**日期**: 2026-08-28 | **影响**: data-agent 后端容器单独重启换了 IP（172.18.0.10 → 172.18.0.14），nginx 仍转发到旧 IP，全站 `/api/*` 502
+**根因**: nginx 配置 `proxy_pass http://data-agent:8080`，但没有 `resolver` 指令。nginx 启动/配置加载时只把 upstream 主机名解析成 IP 一次并缓存，之后不主动重新解析。docker compose 默认 bridge 网络下容器重启会换 IP，旧 IP 已死 → `connect() failed (111: Connection refused)`。
+**解决**: `docker exec data-agent-nginx-1 nginx -s reload`（触发重新解析）。晓军明确：**不需要改**（固定 IP / resolver 都多余），正常部署整集群重建，生产可能用 k8s，此为测试环境单容器重启的临时现象。
+**教训**: 单容器重启后 nginx 502，先 `docker logs <nginx> | grep upstream` 看转发 IP 是否过期，`nginx -s reload` 即可。这是运维排查，非代码 bug。
+
+### 「密码被改」误判 —— `password_changed=false` 语义
+**日期**: 2026-08-28 | **影响**: 用户报告「admin 密码又被改掉了」，实际密码从没变过
+**根因**: seed 初始 `password_changed: false` → 登录响应 `need_change_pw: !user.PasswordChanged = true` → 前端强制跳「修改密码」页。用户看到强制改密界面，误以为密码被改。DB 里 `password_hash`、`updated_at` 均未变。
+**教训**: 排查「密码/配置被改」类问题，先查 DB 实际记录（hash、updated_at）确认是否真的变了，再下结论。`need_change_pw` 只是「首次登录需改密」提示，不等于密码失效。
+
+### 代码注释与实现不符会误导后续排查
+**日期**: 2026-08-28 | **影响**: 误判「API 明文 key 泄漏违反红线」
+**根因**: `modelconfig.go` 的 `getPaginated`/`ListLLM` 注释写「API key is masked」「api_key_exists flag」「decrypt endpoint」，但代码里既没有 mask、没有 api_key_exists、也没有单独 decrypt 接口。实际设计是**后端返回明文 + 前端视觉 mask**（admin UI trusted），晓军确认「实现符合预期」。
+**教训**: 改实现必须同步更新注释，否则注释成为「过时约束」，误导后续排查（包括把符合预期的行为误判成 bug）。注释里声明了「masked / endpoint」但代码没有时，先问设计者实际意图，不要拿注释当事实。

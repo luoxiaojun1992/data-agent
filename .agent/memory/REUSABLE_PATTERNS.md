@@ -218,4 +218,66 @@ Playwright `page.route()` 在 `test.describe` 内跨 `beforeEach` 残留。
 await page.unrouteAll({ behavior: 'ignoreErrors' });
 ```
 
+## 玻璃拟态卡片内的 fixed 弹层 → React Portal 到 body
+
+当弹层/下拉框写在带 `backdrop-filter`（`.glass`）、`filter`、`transform`、`will-change`、`contain` 的容器内时，`position:fixed` 会相对该容器定位（这些属性会创建 containing block），导致 `getBoundingClientRect()` 视窗坐标错位。
+
+**标准解法**：`createPortal` 渲染到 `document.body`：
+
+```tsx
+import { createPortal } from 'react-dom';
+
+function Dropdown() {
+  const [mounted, setMounted] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => { setMounted(true); }, []); // SSR mismatch 防护
+
+  // 打开时跟随按钮位置（表格横向滚动 / 窗口 resize）
+  useEffect(() => {
+    if (!anchor) return;
+    const reposition = () => {
+      const r = wrapRef.current?.getBoundingClientRect();
+      if (r) setAnchor({ top: r.bottom + 4, left: r.left });
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [anchor]);
+
+  // onClickOutside 需同时判 wrapRef + panelRef（panel 在 body 下）
+  useEffect(() => {
+    if (!anchor) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setAnchor(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [anchor]);
+
+  return (
+    <>
+      <div ref={wrapRef}>
+        <button onClick={() => { /* setAnchor(getBoundingClientRect) */ }}>触发</button>
+      </div>
+      {mounted && anchor && createPortal(
+        <div ref={panelRef} style={{ position: 'fixed', top: anchor.top, left: anchor.left, zIndex: 9999 }}>
+          {/* panel 内容 */}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+```
+
+关键点：`zIndex` 用大值（如 9999，因为 Portal 脱离了原 stacking context）、`mounted` flag 防 SSR 与 client 渲染不一致、`onClickOutside` 必须同时排除触发器与 panel 两个 ref。
+
 > **调试方法论和 CI 排错流程** → 见 [LESSONS_LEARNED.md §调试](./LESSONS_LEARNED.md)
