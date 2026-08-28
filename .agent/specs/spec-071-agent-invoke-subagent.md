@@ -1,6 +1,6 @@
 # agent 调用子 agent（subagent invocation）
 
-> **SPEC-070** | Status: 调研完成（方案定为 sub agent tool + interface 解耦，暂不实现）
+> **SPEC-071** | Status: 调研完成（方案定为 sub agent tool + interface 解耦，暂不实现）
 
 ## 目标
 
@@ -270,6 +270,6 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 ## 提交约定
 
 ```bash
-git add .agent/specs/spec-070-agent-invoke-subagent.md .agent/specs/INDEX.md
-git commit -m "docs: add SPEC-070 agent invoke subagent (调研)"
+git add .agent/specs/spec-071-agent-invoke-subagent.md .agent/specs/INDEX.md
+git commit -m "docs: add SPEC-071 agent invoke subagent (调研)"
 ```
