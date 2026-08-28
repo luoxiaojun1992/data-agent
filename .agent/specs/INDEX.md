@@ -85,6 +85,7 @@
 | SPEC-069 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-069-compaction-trigger-fixes.md](spec-069-compaction-trigger-fixes.md) | 📐 设计中 |
 | SPEC-070 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-070-agent-invoke-subagent.md](spec-070-agent-invoke-subagent.md) | 📐 调研完成（方案已定，待实现） |
 | SPEC-071 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-071-domain-cohesion-refactor.md](spec-071-domain-cohesion-refactor.md) | 📐 立项（不展开） |
+| SPEC-072 | KB 切片图数据库索引（Neo4j）（Qdrant 之后同时写图库；docker-compose 新增 neo4j 服务） | **P15** | [spec-072-kb-graph-index.md](spec-072-kb-graph-index.md) | 📐 立项（不展开） |
 
 ## Phase 对应与依赖
 
@@ -286,4 +287,10 @@ SPEC-006│               │
                    (业务领域 logic/service/db_model 垂直切片;
                     替换水平分层 domain/service/logic/infra;
                     依赖 SPEC-066/067/069/070 落地后再展开)
+
+[P15] SPEC-072 ─── KB 切片图数据库索引 (Neo4j) (立项，不展开)
+                   (AddChunks 在 Qdrant Upsert 之后同步写图库;
+                    docker-compose 新增 neo4j 服务;
+                    Document/Chunk 节点 + BELONGS_TO/NEXT_CHUNK 边;
+                    依赖 SPEC-006/068 已实现; SPEC-066 配置归属待定)
 ```
