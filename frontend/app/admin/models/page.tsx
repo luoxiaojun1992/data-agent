@@ -403,17 +403,17 @@ export default function ModelsPage() {
         <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 mt-4">LLM 模型</h3>
         <div className="glass mb-6" style={{ padding: 0 }} data-testid="model-list-card">
           <div style={{ overflowX: 'auto' }} data-testid="model-list-table">
-            <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>模型</th>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>接口地址</th>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>密钥</th>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>系统提示词</th>
-                  <th style={{ textAlign: 'right', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>上下文</th>
-                  <th style={{ textAlign: 'right', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>最大输出</th>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>默认 Use Case</th>
-                  <th style={{ textAlign: 'right', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>模型</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>接口地址</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>密钥</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>系统提示词</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>上下文</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>最大输出</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>默认 Use Case</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -429,16 +429,16 @@ export default function ModelsPage() {
                   const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
-                      <td style={{ padding: '8px 10px' }}>
-                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
-                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
+                      <td style={{ padding: '6px 8px' }}>
+                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
                       </td>
-                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
-                        <div style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
+                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
+                        <div style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
                       </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '6px 8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {keyDisplay}
                           </code>
                           {m.api_key && (
@@ -451,19 +451,19 @@ export default function ModelsPage() {
                                 return next;
                               })}
                               title={isRevealed ? '隐藏' : '查看明文'}
-                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
                             ><EyeIcon open={isRevealed} /></button>
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                        <div style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.instruction || ''}>
+                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        <div style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.instruction || ''}>
                           {m.instruction || '-'}
                         </div>
                       </td>
-                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.context_len?.toLocaleString() || '-'}</td>
-                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.max_tokens?.toLocaleString() || '-'}</td>
-                      <td style={{ padding: '8px 10px' }}>
+                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{m.context_len?.toLocaleString() || '-'}</td>
+                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{m.max_tokens?.toLocaleString() || '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>
                         <UseCaseChips
                           current={(m.is_default_for || []) as string[]}
                           isGlobal={!!m.is_default}
@@ -476,16 +476,16 @@ export default function ModelsPage() {
                           }}
                         />
                       </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
                           data-testid={`model-list-edit-${i}`}
                           onClick={() => openEdit(m)}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', marginRight: '8px' }}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', marginRight: '6px', padding: 0 }}
                         >编辑</button>
                         <button
                           data-testid={`model-list-delete-${i}`}
                           onClick={() => deleteModel(m.id)}
-                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}
+                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: 0 }}
                         >删除</button>
                       </td>
                     </tr>
@@ -510,14 +510,14 @@ export default function ModelsPage() {
         <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 mt-6">Embedding 模型</h3>
         <div className="glass mb-6" style={{ padding: 0 }} data-testid="embedding-list-card">
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>模型</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>接口地址</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>密钥</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>默认</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>模型</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>接口地址</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>密钥</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>默认</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -531,16 +531,16 @@ export default function ModelsPage() {
                   const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`embedding-list-row-${i}`}>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
-                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
+                      <td style={{ padding: '6px 8px' }}>
+                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
-                        <div style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
+                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
+                        <div style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
                       </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
+                      <td style={{ padding: '6px 8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
                           {m.api_key && (
                             <button
                               data-testid={`embedding-list-key-eye-${i}`}
@@ -551,12 +551,12 @@ export default function ModelsPage() {
                                 return next;
                               })}
                               title={isRevealed ? '隐藏' : '查看明文'}
-                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
                             ><EyeIcon open={isRevealed} /></button>
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '10px 12px' }}>
+                      <td style={{ padding: '6px 8px' }}>
                         {m.is_default ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {embeddingList.filter(o => o.id !== rowId).length > 0 ? (
@@ -589,16 +589,16 @@ export default function ModelsPage() {
                           >设为默认</button>
                         )}
                       </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
                           data-testid={`embedding-list-edit-${i}`}
                           onClick={() => openEdit(m)}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', marginRight: '8px' }}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', marginRight: '6px', padding: 0 }}
                         >编辑</button>
                         <button
                           data-testid={`embedding-list-delete-${i}`}
                           onClick={() => deleteModel(m.id)}
-                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}
+                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: 0 }}
                         >删除</button>
                       </td>
                     </tr>
@@ -937,9 +937,9 @@ function UseCaseChips({
         }}
         title="选择默认 Use Case"
         style={{
-          fontSize: '11px',
-          padding: '3px 8px',
-          borderRadius: '6px',
+          fontSize: '10px',
+          padding: '2px 6px',
+          borderRadius: '4px',
           border: '1px solid',
           borderColor: count > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
           background: 'transparent',
@@ -947,12 +947,13 @@ function UseCaseChips({
           cursor: 'pointer',
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '4px',
+          gap: '3px',
           whiteSpace: 'nowrap',
+          lineHeight: 1.4,
         }}
       >
         Use Case{count > 0 ? ` (${count})` : ''}
-        <span style={{ fontSize: '9px' }}>▾</span>
+        <span style={{ fontSize: '8px' }}>▾</span>
       </button>
       {mounted && panel ? createPortal(panel, document.body) : null}
     </div>
