@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 
@@ -405,14 +406,14 @@ export default function ModelsPage() {
             <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>模型</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>接口地址</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>密钥</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>系统提示词</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>上下文</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>最大输出</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>默认 Use Case</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>模型</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>接口地址</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>密钥</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>系统提示词</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>上下文</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>最大输出</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>默认 Use Case</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 500 }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -428,16 +429,16 @@ export default function ModelsPage() {
                   const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
-                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
-                        <div style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
+                        <div style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
                       </td>
-                      <td style={{ padding: '10px 12px' }}>
+                      <td style={{ padding: '8px 10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {keyDisplay}
                           </code>
                           {m.api_key && (
@@ -455,14 +456,14 @@ export default function ModelsPage() {
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                        <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.instruction || ''}>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        <div style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.instruction || ''}>
                           {m.instruction || '-'}
                         </div>
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.context_len?.toLocaleString() || '-'}</td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.max_tokens?.toLocaleString() || '-'}</td>
-                      <td style={{ padding: '10px 12px' }}>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.context_len?.toLocaleString() || '-'}</td>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.max_tokens?.toLocaleString() || '-'}</td>
+                      <td style={{ padding: '8px 10px' }}>
                         <UseCaseChips
                           current={(m.is_default_for || []) as string[]}
                           isGlobal={!!m.is_default}
@@ -475,7 +476,7 @@ export default function ModelsPage() {
                           }}
                         />
                       </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
                           data-testid={`model-list-edit-${i}`}
                           onClick={() => openEdit(m)}
@@ -828,29 +829,108 @@ function UseCaseChips({
 }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const selected = new Set(current || []);
   const count = isGlobal ? USE_CASES.length : selected.size;
 
-  // Close the dropdown when clicking outside.
+  // Mount flag — only render portal after hydration to avoid SSR mismatch.
+  useEffect(() => { setMounted(true); }, []);
+
+  // Recompute anchor on scroll/resize so the panel stays glued to the button.
+  useEffect(() => {
+    if (!open) return;
+    const reposition = () => {
+      if (!wrapRef.current) return;
+      const r = wrapRef.current.getBoundingClientRect();
+      setAnchor({ top: r.bottom + 4, left: r.left });
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [open]);
+
+  // Close the dropdown when clicking outside (covers both trigger and portal).
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (wrapRef.current && wrapRef.current.contains(t)) return;
+      if (panelRef.current && panelRef.current.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
+
+  const panel = open && anchor ? (
+    <div ref={panelRef} style={{
+      position: 'fixed',
+      top: anchor.top,
+      left: anchor.left,
+      zIndex: 9999,
+      padding: '8px',
+      borderRadius: '8px',
+      border: '1px solid var(--border-glass)',
+      background: 'var(--bg-secondary)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+      minWidth: '180px',
+      maxHeight: '60vh',
+      overflowY: 'auto',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '2px',
+    }}>
+      {USE_CASES.map((uc) => {
+        const active = selected.has(uc.value);
+        return (
+          <label
+            key={uc.value}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '4px 6px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: active ? 'var(--accent)' : 'var(--text-primary)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={() => onToggle(uc.value)}
+              data-testid={`model-list-uc-${modelId || ''}-${uc.value}`}
+            />
+            {uc.label}
+          </label>
+        );
+      })}
+      {(isGlobal || selected.size > 0) && (
+        <button
+          type="button"
+          data-testid={`model-list-uc-clear-${modelId || ''}`}
+          onClick={onClear}
+          style={{ marginTop: '4px', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+          title="全选全部 use case"
+        >全选</button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }} data-testid={`model-list-usecases-${modelId || ''}`}>
       <button
         type="button"
         onClick={(e) => {
-          if (!open) {
-            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          if (!open && wrapRef.current) {
+            const r = wrapRef.current.getBoundingClientRect();
             setAnchor({ top: r.bottom + 4, left: r.left });
           }
           setOpen(o => !o);
@@ -874,62 +954,7 @@ function UseCaseChips({
         Use Case{count > 0 ? ` (${count})` : ''}
         <span style={{ fontSize: '9px' }}>▾</span>
       </button>
-      {open && anchor && (
-        <div style={{
-          position: 'fixed',
-          top: anchor.top,
-          left: anchor.left,
-          zIndex: 300,
-          padding: '8px',
-          borderRadius: '8px',
-          border: '1px solid var(--border-glass)',
-          background: 'var(--bg-secondary)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
-          minWidth: '180px',
-          maxHeight: '60vh',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '2px',
-        }}>
-          {USE_CASES.map((uc) => {
-            const active = selected.has(uc.value);
-            return (
-              <label
-                key={uc.value}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '4px 6px',
-                  borderRadius: '4px',
-                  fontSize: '12px',
-                  color: active ? 'var(--accent)' : 'var(--text-primary)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={active}
-                  onChange={() => onToggle(uc.value)}
-                  data-testid={`model-list-uc-${modelId || ''}-${uc.value}`}
-                />
-                {uc.label}
-              </label>
-            );
-          })}
-          {(isGlobal || selected.size > 0) && (
-            <button
-              type="button"
-              data-testid={`model-list-uc-clear-${modelId || ''}`}
-              onClick={onClear}
-              style={{ marginTop: '4px', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: 'var(--text-secondary)', cursor: 'pointer' }}
-              title="全选全部 use case"
-            >全选</button>
-          )}
-        </div>
-      )}
+      {mounted && panel ? createPortal(panel, document.body) : null}
     </div>
   );
 }
