@@ -281,7 +281,9 @@ SPEC-006│               │
                     AddChunks 复用向量检索找同 creator 切片，topN=5 写图;
                     Chunk 节点含 creator_id/is_public，查询按 system_admin 策略过滤;
                     seed 仅 EnsureSchema DDL + skill 配置(无存量回填);
-                    前置修复: Qdrant Client.Search 支持 filter(现存权限过滤失效 bug);
+                    文档删除三处级联清理(Mongo+Qdrant DeletePoints+Neo4j DETACH DELETE);
+                    neo4j-go-driver/v5(Apache-2.0) + Neo4j CE(GPLv3 待确认);
+                    前置修复: Qdrant Search filter ✅ 已完成(9911090);
                     依赖 SPEC-006/068 已实现)
 
 [P15] SPEC-071 ─── agent 调用子 agent (调研完成，方案已定，待实现)

@@ -22,7 +22,7 @@
 | SPEC-006 知识库系统 | ✅ 已实现 | `AddChunks` 索引流程已就绪 |
 | SPEC-068 知识库 PII 脱敏 | ✅ 已实现 | 切片脱敏后落库，图索引接在脱敏之后 |
 | SPEC-065 external_api_* tools | ✅ 已实现 | Skill 三步注册范式（Seed + specs() + wire）可复用 |
-| ⚠️ Qdrant Search filter 扩展（本 spec 前置修复项） | 🐛 现存 bug | `Client.Search` 不支持 filter，`VectorStore.Search` 静默丢弃 filter 参数 → 向量检索权限过滤从未生效。本 spec 的"只关联同 creator 切片"依赖 filter，必须一并修复 |
+| ⚠️ Qdrant Search filter 扩展（本 spec 前置修复项） | ✅ 已完成（commit 9911090） | `Client.Search` 已支持 filter + `VectorStore.Search` 透传，`vectorSearch` 权限过滤已回归验证生效。剩余前置：Qdrant 按 doc_id 删点能力（`DeletePoints`）随本 spec 实现 |
 
 ## 架构概述
 
@@ -59,6 +59,8 @@ type GraphRepository interface {
     LinkRelated(ctx context.Context, chunkID string, refs []RelatedRef) error
     // DeleteChunk 删除切片节点及其边（幂等）
     DeleteChunk(ctx context.Context, chunkID string) error
+    // DeleteByDocID 删除文档下所有切片节点及其边（幂等，DETACH DELETE）
+    DeleteByDocID(ctx context.Context, docID string) error
     // QueryTopN 图查询：从锚点切片出发返回 topN 相关节点（按可见性过滤）
     QueryTopN(ctx context.Context, anchorID string, topN int, filter GraphFilter) ([]GraphNode, error)
 }
@@ -184,11 +186,56 @@ ORDER BY r.score DESC LIMIT $topN
 
 - `system_admin`：全局不过滤；普通用户：仅返回自己切片或公开切片。
 
+### 技术选型与 License 检查（2026-08-28 调研确认）
+
+| 组件 | 选型 | License | 结论 |
+|------|------|---------|------|
+| Go 驱动 | `github.com/neo4j/neo4j-go-driver/v5`（官方，Bolt 协议） | **Apache-2.0** | ✅ 无传染风险。项目 Go 1.26 满足 v5 要求（Go 1.18+）；驱动全局单例复用（内置连接池），勿每次请求新建 |
+| Neo4j 服务端 | `neo4j:5` 官方镜像 = **Community Edition** | **GPLv3** | ⚠️ 需晓军确认可接受（见下） |
+
+**Neo4j Community Edition（GPLv3）合规分析**：
+
+- 项目红线只禁 **AGPL**；Neo4j CE 是 **GPLv3**（非 AGPL）。
+- GPLv3 传染性仅在**分发软件**时触发。本方案中 Neo4j 作为独立 docker 容器运行、data-agent 通过 Bolt 协议（网络）调用 → **不构成分发/链接**，GPLv3 不传染 data-agent 代码。Go driver（Apache-2.0）与服务端相互独立。
+- 若团队 FOSS policy 对 copyleft（GPLv3）有更严限制 → 备选：**ArcadeDB**（Apache-2.0，多模型，支持 Cypher + Bolt，生态较新）或 **Memgraph**（BSL）。MVP 建议先用 Neo4j CE，正式商用前由法务确认。
+- CE 功能限制（可接受）：单机无集群、无在线备份、无企业级 RBAC —— MVP 够用。
+
+**driver 使用要点**：
+- `neo4j.NewDriverWithContext(uri, neo4j.BasicAuth(user, pass, ""))` 全局单例
+- 写操作用 `ExecuteWrite`（managed transaction，自动重试瞬时错误）
+- driver 线程安全；session/transaction 非线程安全
+
+### 文档删除关联清理（MongoDB + Qdrant + Neo4j 三处级联）
+
+**现存缺口**（本 spec 一并修复）：`DeleteDoc`（`service.go:95-101`）目前**只删 MongoDB doc + chunks**：
+- Qdrant 向量**从未清理**（`VectorStore.DeleteCollection` 是 no-op，Client 无按 doc_id 删点能力）→ 文档删除后仍能被搜索命中（孤儿向量）
+- Neo4j 图数据同理需级联清理
+
+**删除时序（幂等，三处失败均 log 降级）**：
+
+```
+DeleteDoc(docID):
+  ① kb.DeleteDoc(docID) + kb.DeleteChunks(docID)        ← 现有（MongoDB）
+  ② vector.DeletePoints(ctx, collection, filter{doc_id}) ← 新增：Qdrant 按 doc_id 删点
+  ③ graph.DeleteByDocID(ctx, docID)                     ← 新增：Neo4j 级联删节点+边
+```
+
+配套新增能力：
+
+1. **Qdrant**：`Client.DeletePoints(collection, filter)`（REST `POST /points/delete`，body `{filter}`）；`VectorRepository` 增加 `DeletePoints(ctx, collection, filter)`，`VectorStore` 实现。
+2. **Neo4j**：`GraphRepository.DeleteByDocID` 实现为单条 Cypher：
+
+```cypher
+MATCH (c:Chunk {doc_id: $docID}) DETACH DELETE c
+```
+
+`DETACH DELETE` 连带删除该节点所有 `RELATED_TO` 边，无孤儿边残留；`DeleteChunk(chunkID)` 同理单节点 `DETACH DELETE`。
+
 ### Neo4j 服务（docker-compose）
 
 ```yaml
 neo4j:
-  image: neo4j:5
+  image: neo4j:5                                  # Community Edition (GPLv3)
   ports: ["7687:7687", "7474:7474"]
   environment:
     - NEO4J_AUTH=neo4j/<password>          # 凭据走 env / Vault
@@ -203,9 +250,10 @@ neo4j:
 | 检查项 | 结论 |
 |--------|------|
 | 是否需要新 DB 集合 | Yes — Neo4j 图数据库（新基础设施） |
-| 是否影响现有 API | No — 仅 `AddChunks` 新增图写入 + 新增 Skill；前置修复项不改 API 语义 |
+| 是否影响现有 API | No — 仅 `AddChunks` 新增图写入 + `DeleteDoc` 补级联清理 + 新增 Skill；前置修复项不改 API 语义 |
 | 性能影响 | 每 chunk 多一次 Qdrant `Search(topN)` + 一次 Neo4j 写入；可异步/批量，待压测 |
 | 是否需要新增 Skill | Yes — `knowledge_graph_search` |
+| License 合规 | Go driver Apache-2.0 ✅；Neo4j CE GPLv3（非 AGPL，服务端使用不传染）⚠️ 待最终确认 |
 | 复用现有能力 | 复用 embedding + Qdrant `Search` + skill 三步注册范式 |
 
 ## 相关文件
@@ -213,21 +261,23 @@ neo4j:
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `docker-compose.yml` / `docker-compose.ui-test.yml` | 新增 neo4j 服务 + volume | New |
-| `internal/infra/qdrant/client.go` + `vector_store.go` | **前置修复**：`Client.Search` 支持 filter + `VectorStore.Search` 透传 | Modify |
+| `internal/infra/qdrant/client.go` + `vector_store.go` | **前置修复**：`Client.Search` 支持 filter + `VectorStore.Search` 透传；**新增** `Client.DeletePoints` + `VectorStore.DeletePoints`（按 doc_id 删点） | Modify |
+| `internal/repository/knowledge.go` | `VectorRepository` 接口增 `DeletePoints` | Modify |
 | `internal/repository/graph.go` | `GraphRepository` 接口 + 类型 | New |
-| `internal/infra/neo4j/client.go` + `graph_store.go` | neo4j-go-driver 客户端 + 实现 | New |
-| `internal/service/knowledge/service.go` | `AddChunks` hook 图写入 + `WithGraphIndex` | Modify |
+| `internal/infra/neo4j/client.go` + `graph_store.go` | neo4j-go-driver/v5 客户端 + 实现（含 `DeleteByDocID` DETACH DELETE） | New |
+| `internal/service/knowledge/service.go` | `AddChunks` hook 图写入 + `WithGraphIndex` + `DeleteDoc` 级联清理 Qdrant/Neo4j | Modify |
 | `internal/adk/tools/tools.go` | `knowledge_graph_search` tool | Modify |
 | `internal/service/skill/config.go` | `predefinedSkills` 增 seed 配置 | Modify |
 | `cmd/server/wire.go` | neo4j 客户端初始化 + `EnsureSchema` + `Deps.GraphRepo` 注入 | Modify |
-| `go.mod` / `go.sum` | 引入 `github.com/neo4j/neo4j-go-driver/v5` | Modify |
+| `go.mod` / `go.sum` | 引入 `github.com/neo4j/neo4j-go-driver/v5`（Apache-2.0） | Modify |
 
 ## 测试策略
 
 1. **Unit tests（Go）**：L2 `GraphRepository` mock（`repository/mocks`）；L3 neo4j 适配器走真实 Neo4j（`go test -tags=integration`）。覆盖率 gate 见 SPEC-045。
-2. **Integration**：Docker Compose 起 Neo4j，验证 `EnsureSchema` 幂等、`UpsertChunk`/`LinkRelated`/`QueryTopN` 端到端。
+2. **Integration**：Docker Compose 起 Neo4j，验证 `EnsureSchema` 幂等、`UpsertChunk`/`LinkRelated`/`QueryTopN`/`DeleteByDocID` 端到端。
 3. **E2E**：`knowledge_graph_search` 工具走真实图库返回 topN（用例编号 `UI-XXX`）。
 4. **前置修复回归**：Qdrant filter 修复后，补 UT 验证 `vectorSearch` 权限过滤生效（普通用户搜不到他人私有切片）。
+5. **删除清理回归**：删除文档后验证 Qdrant 无残留 points（搜索不命中）+ Neo4j 无残留节点/边（`MATCH (c:Chunk {doc_id})` 为空）。
 
 ## UI Test / E2E 验收规则
 
@@ -261,7 +311,8 @@ neo4j:
 - [ ] 单 chunk 的 `RELATED_TO` 边数 ≤ topN，且边两端 `creator_id` 相同
 - [ ] 普通用户 `knowledge_graph_search` 仅返回自己或公开切片；system_admin 返回全局
 - [ ] Qdrant filter 修复后，`vectorSearch` 权限过滤生效（回归验证）
-- [ ] 文档删除/重建后，Neo4j 图数据正确清理（幂等对齐）
+- [ ] **文档删除三处级联清理**：MongoDB doc/chunks 删除 → Qdrant 按 doc_id 删点（搜索不再命中）→ Neo4j `DETACH DELETE` 节点+边（`MATCH (c:Chunk {doc_id})` 为空）
+- [ ] License 确认：neo4j-go-driver（Apache-2.0）✅；Neo4j CE（GPLv3）需晓军最终确认可接受
 
 ## 拍板记录（2026-08-28 晓军确认）
 
@@ -272,4 +323,7 @@ neo4j:
 | 3 | topN | 默认 5 |
 | 4 | seed | 仅 Neo4j schema DDL + skill 配置；**无存量回填**（测试数据不迁移） |
 | 5 | 节点属性与查询过滤 | Chunk 节点存 `creator_id`/`is_public`；查询时 system_admin 全局、普通用户按 creator_id 或 is_public 过滤（与 KB 可见性一致） |
-| 6 | 附带发现 | Qdrant `Client.Search` 不支持 filter → 现有 `vectorSearch` 权限过滤失效，列为前置修复项 |
+| 6 | 附带发现 | Qdrant `Client.Search` 不支持 filter → 现有 `vectorSearch` 权限过滤失效，列为前置修复项（已完成 9911090） |
+| 7 | Go 驱动选型 | `neo4j-go-driver/v5`（官方，Apache-2.0，全局单例 + managed transaction） |
+| 8 | Neo4j license | CE = GPLv3（非 AGPL），docker 容器服务端使用不构成分发、不传染代码；待法务最终确认 |
+| 9 | 文档删除清理 | 三处级联：MongoDB + Qdrant `DeletePoints`（按 doc_id）+ Neo4j `DeleteByDocID`（DETACH DELETE）；修复现有 Qdrant 孤儿向量缺口 |
