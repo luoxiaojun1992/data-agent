@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 
@@ -429,13 +429,15 @@ export default function ModelsPage() {
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
                       <td style={{ padding: '10px 12px' }}>
-                        <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{m.name}</div>
-                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px' }}>{rowId}</div>
+                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>{m.base_url || '-'}</td>
+                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
+                        <div style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
+                      </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {keyDisplay}
                           </code>
                           {m.api_key && (
@@ -453,8 +455,10 @@ export default function ModelsPage() {
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '12px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {m.instruction || '-'}
+                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.instruction || ''}>
+                          {m.instruction || '-'}
+                        </div>
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.context_len?.toLocaleString() || '-'}</td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', textAlign: 'right' }}>{m.max_tokens?.toLocaleString() || '-'}</td>
@@ -527,13 +531,15 @@ export default function ModelsPage() {
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`embedding-list-row-${i}`}>
                       <td style={{ padding: '10px 12px' }}>
-                        <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{m.name}</div>
-                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px' }}>{rowId}</div>
+                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>{m.base_url || '-'}</td>
+                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
+                        <div style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.base_url || ''}>{m.base_url || '-'}</div>
+                      </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
+                          <code title={keyDisplay} style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{keyDisplay}</code>
                           {m.api_key && (
                             <button
                               data-testid={`embedding-list-key-eye-${i}`}
@@ -820,40 +826,109 @@ function UseCaseChips({
   onToggle: (uc: string) => void;
   onClear: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const selected = new Set(current || []);
+  const count = isGlobal ? USE_CASES.length : selected.size;
+
+  // Close the dropdown when clicking outside.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
   return (
-    <div className="flex flex-wrap gap-1" data-testid={`model-list-usecases-${modelId || ''}`}>
-      {USE_CASES.map((uc) => {
-        const active = selected.has(uc.value);
-        return (
-          <button
-            key={uc.value}
-            type="button"
-            data-testid={`model-list-uc-${modelId || ''}-${uc.value}`}
-            onClick={() => onToggle(uc.value)}
-            style={{
-              fontSize: '10px',
-              padding: '2px 8px',
-              borderRadius: '999px',
-              border: '1px solid',
-              borderColor: active ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
-              background: active ? 'var(--accent)' : 'transparent',
-              color: active ? '#fff' : 'var(--text-secondary)',
-              cursor: 'pointer',
-            }}
-          >
-            {uc.label}
-          </button>
-        );
-      })}
-      {(isGlobal || selected.size > 0) && (
-        <button
-          type="button"
-          data-testid={`model-list-uc-clear-${modelId || ''}`}
-          onClick={onClear}
-          style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '999px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: 'var(--text-secondary)', cursor: 'pointer' }}
-          title="全选全部 use case"
-        >全选</button>
+    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }} data-testid={`model-list-usecases-${modelId || ''}`}>
+      <button
+        type="button"
+        onClick={(e) => {
+          if (!open) {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setAnchor({ top: r.bottom + 4, left: r.left });
+          }
+          setOpen(o => !o);
+        }}
+        title="选择默认 Use Case"
+        style={{
+          fontSize: '11px',
+          padding: '3px 8px',
+          borderRadius: '6px',
+          border: '1px solid',
+          borderColor: count > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+          background: 'transparent',
+          color: count > 0 ? 'var(--accent)' : 'var(--text-secondary)',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Use Case{count > 0 ? ` (${count})` : ''}
+        <span style={{ fontSize: '9px' }}>▾</span>
+      </button>
+      {open && anchor && (
+        <div style={{
+          position: 'fixed',
+          top: anchor.top,
+          left: anchor.left,
+          zIndex: 300,
+          padding: '8px',
+          borderRadius: '8px',
+          border: '1px solid var(--border-glass)',
+          background: 'var(--bg-secondary)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+          minWidth: '180px',
+          maxHeight: '60vh',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '2px',
+        }}>
+          {USE_CASES.map((uc) => {
+            const active = selected.has(uc.value);
+            return (
+              <label
+                key={uc.value}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '4px 6px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  color: active ? 'var(--accent)' : 'var(--text-primary)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={() => onToggle(uc.value)}
+                  data-testid={`model-list-uc-${modelId || ''}-${uc.value}`}
+                />
+                {uc.label}
+              </label>
+            );
+          })}
+          {(isGlobal || selected.size > 0) && (
+            <button
+              type="button"
+              data-testid={`model-list-uc-clear-${modelId || ''}`}
+              onClick={onClear}
+              style={{ marginTop: '4px', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              title="全选全部 use case"
+            >全选</button>
+          )}
+        </div>
       )}
     </div>
   );
