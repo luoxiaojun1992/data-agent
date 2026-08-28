@@ -1,70 +1,275 @@
-# KB 切片图数据库索引（Neo4j）
+# KB 切片图数据库索引（Neo4j）+ 图访问共用组件 + 图谱搜索 Skill
 
-> **SPEC-072** | Status: 立项（不展开）
+> **SPEC-072** | Status: 详细设计（2026-08-28 晓军拍板定稿）
 
 ## 目标
 
-在 KB 切片索引进向量数据库（Qdrant）之后，**同时把切片索引进图数据库（Neo4j）**，用于表达切片之间的结构化关系（文档归属、切片顺序、潜在引用/语义关联），为后续基于图的检索与推理（如 GraphRAG）打基础。同时在 `docker-compose` 中新增 `neo4j` 服务。
+1. 在 KB 切片索引进 Qdrant 之后，**同时把切片索引进 Neo4j 图数据库**：仅 `Chunk` 节点 + `RELATED_TO` 相似边（最小化图模型）。
+2. 图数据库访问**抽象成共用组件**（`GraphRepository` 接口 + Neo4j infra 适配器），供 KB 索引写入与图谱搜索 Skill 共同复用。
+3. **新增 `knowledge_graph_search` Skill**：Agent 通过该工具查询图数据库，返回 topN 相关节点；查询按 `system_admin` 策略过滤（与 KB 可见性一致）。
+4. `docker-compose` 新增 `neo4j` 服务；seed 仅两项：**Neo4j schema（约束/索引 DDL）+ skill 配置（predefinedSkills）**，无存量数据回填。
 
 ## 背景 / 动机
 
-- 现状：KB 切片索引流程 `AddChunks(docID, texts)` 只做「PII 脱敏 → embedding → MongoDB `kb_chunks` + Qdrant 向量」（`internal/service/knowledge/service.go:139-193`）。
-- 缺口：向量检索只能表达**语义相似度**，无法表达切片之间的**显式结构化关系**——同一文档内切片的先后顺序、切片与文档的归属、跨文档的引用等，这些关系在纯向量存储里丢失。
-- 图数据库（Neo4j）可用节点/边显式存储「切片-文档」归属边、「切片-切片」顺序边/引用边，支撑后续图遍历查询与 GraphRAG 增强检索。
+- 现状：KB 切片索引 `AddChunks(docID, texts)` 只做「PII 脱敏 → embedding → MongoDB `kb_chunks` + Qdrant 向量」（`internal/service/knowledge/service.go:139-193`）。
+- 缺口：向量检索只能表达语义相似度，无法表达切片间的显式关系。图数据库用 `Chunk` 节点 + `RELATED_TO` 边显式存储"相关"关系，支撑图遍历与后续 GraphRAG。
+- 找相关节点最简机制：**复用现有 embedding + Qdrant 向量检索**——每个 chunk 索引时已算出向量 `vec`，用它在 Qdrant `Search(topN)` 检索最相似的已索引 chunk 即"相关节点"，零新增相似度算法。
 
 ## 前置依赖检查
 
 | 前置 Spec | 状态 | 备注 |
 |-----------|:---:|------|
-| SPEC-006 知识库系统 | ✅ 已实现 | KB 切片索引流程已就绪（`AddChunks` → Qdrant + kb_chunks） |
+| SPEC-006 知识库系统 | ✅ 已实现 | `AddChunks` 索引流程已就绪 |
 | SPEC-068 知识库 PII 脱敏 | ✅ 已实现 | 切片脱敏后落库，图索引接在脱敏之后 |
-| SPEC-066 配置存储拆分 | 📐 设计中 | Neo4j 连接配置的归属待定（system_configs vs 独立） |
+| SPEC-065 external_api_* tools | ✅ 已实现 | Skill 三步注册范式（Seed + specs() + wire）可复用 |
+| ⚠️ Qdrant Search filter 扩展（本 spec 前置修复项） | 🐛 现存 bug | `Client.Search` 不支持 filter，`VectorStore.Search` 静默丢弃 filter 参数 → 向量检索权限过滤从未生效。本 spec 的"只关联同 creator 切片"依赖 filter，必须一并修复 |
 
-## 立项说明（不展开）
+## 架构概述
 
-> 本 spec 仅**立项**，暂不展开详细设计。核心动作与基础设施范围先定，图模型 schema、检索 API、容错策略等留待后续展开。
+图数据库访问抽象为**独立共用组件**（对齐 Qdrant 的 `internal/infra/qdrant` + `VectorRepository` 组织）：
 
-### 核心动作（已明确）
+```
+internal/repository/graph.go        ← GraphRepository 接口（共用层，与 VectorRepository 平级）
+internal/infra/neo4j/               ← Neo4j 实现（client.go + graph_store.go）
+internal/service/knowledge/         ← KB 索引写入调用 GraphRepository（AddChunks hook）
+internal/adk/tools/tools.go         ← knowledge_graph_search tool（调用 GraphRepository 查询）
+```
 
-1. `docker-compose.yml` / `docker-compose.ui-test.yml` 新增 `neo4j` 服务（官方镜像 `neo4j:5`，默认端口 bolt `7687` / http `7474`，数据卷持久化 + 认证配置 + healthcheck）。
-2. `AddChunks` 在 `s.vector.Upsert(...)`（Qdrant 写入）**之后**，新增图索引写入步骤，把切片节点及关系写入 Neo4j。
+## 详细设计
 
-### 待展开项（后续）
+### 图模型（最小化：仅 Chunk 节点 + RELATED_TO 边）
 
-1. **图模型 schema**：`Document` / `Chunk` 节点 + `BELONGS_TO`（切片→文档）边 + `NEXT_CHUNK`（切片顺序）边，是否引入跨文档引用/实体关系边。
-2. **Go 客户端选型**：`neo4j-go-driver` 及其在分层架构中的位置（`internal/infra/graph` repo 适配器）。
-3. **容错策略**：图索引写入失败是降级（log 不阻断，与现有 Qdrant `log.Printf` 一致）还是 fail-closed，需与 Qdrant 语义对齐。
-4. **图检索查询 API**：是否暴露图遍历/GraphRAG 检索接口，还是仅作存储留后续。
-5. **幂等与生命周期对齐**：文档删除/重建时 Neo4j 图数据（节点+边）的清理，与 `kb_chunks`/Qdrant 的删除语义一致。
-6. **Neo4j 运维**：认证凭据（Vault 还是 env）、数据卷持久化、内存配置（heap/off-heap）、healthcheck 与依赖顺序。
+| 元素 | 属性 | 说明 |
+|------|------|------|
+| 节点 `Chunk` | `chunk_id`(唯一), `doc_id`, `chunk_idx`, `creator_id`, `is_public`, `char_count` | 切片节点；**含 creator_id/is_public**，供查询过滤 |
+| 边 `RELATED_TO` | `score` | Chunk → Chunk，向量 topN 相似，**唯一边类型** |
+
+> 拍板：不做 Document 节点、不做 BELONGS_TO/NEXT_CHUNK 边。图只表达"切片相似关系"，归属/顺序仍以 `doc_id`/`chunk_idx` 属性承载。
+
+### 图访问共用组件接口
+
+```go
+// internal/repository/graph.go
+type GraphRepository interface {
+    // EnsureSchema 幂等创建约束/索引（启动 seed，对齐 Qdrant EnsureCollection）
+    EnsureSchema(ctx context.Context) error
+    // UpsertChunk 写入/更新切片节点（MERGE 幂等）
+    UpsertChunk(ctx context.Context, c GraphChunk) error
+    // LinkRelated 建立切片与 topN 相关切片的 RELATED_TO 边（边两端同 creator）
+    LinkRelated(ctx context.Context, chunkID string, refs []RelatedRef) error
+    // DeleteChunk 删除切片节点及其边（幂等）
+    DeleteChunk(ctx context.Context, chunkID string) error
+    // QueryTopN 图查询：从锚点切片出发返回 topN 相关节点（按可见性过滤）
+    QueryTopN(ctx context.Context, anchorID string, topN int, filter GraphFilter) ([]GraphNode, error)
+}
+
+type GraphChunk struct {
+    ChunkID   string
+    DocID     string
+    ChunkIdx  int
+    CreatorID string
+    IsPublic  bool
+    CharCount int
+}
+type RelatedRef struct {
+    ChunkID string
+    Score   float64
+}
+// GraphFilter 可见性过滤，与 KB 可见性规则一致
+type GraphFilter struct {
+    CreatorID     string
+    IsSystemAdmin bool
+}
+type GraphNode struct {
+    ChunkID string
+    DocID   string
+    Score   float64
+}
+```
+
+### 前置修复：Qdrant `Client.Search` 支持 filter
+
+**现存 bug**（本 spec 开发前必须修复）：
+
+- `internal/infra/qdrant/client.go:122` 的 `Search` payload 只有 `vector`/`limit`/`with_payload`，**无 `filter` 字段**；
+- `internal/infra/qdrant/vector_store.go:47` 的 `Search` 签收了 `filter` 参数但**从未传递**给 client；
+- 结果：`vectorSearch`（`service.go:206`）里普通用户的 `creator_id`/`is_public` 权限过滤**从未生效**，向量检索可能返回他人私有切片（权限隐患）。
+
+修复：`Client.Search` 增加 `filter` 参数并写入 payload（Qdrant REST `/points/search` 原生支持 `filter`），`VectorStore.Search` 透传。
+
+### 索引时找相关节点（时序）
+
+`AddChunks` 在「embed → Qdrant」基础上，图索引步骤**先搜后写**（天然排除自己）：
+
+```
+对每个 chunk:
+  redacted = maybeRedact(text)
+  vec = embed(redacted)
+  ① hits = vector.Search(collection, vec, topN, filter{creator_id: chunk.CreatorID})  ← 新增：仅检索同 creator 的相似切片
+  ② 取前 topN 条作为 RelatedRef（score 存边属性）
+  vectors.append(vec)                                                               ← 现有
+  kb.AddChunks(chunks) → vector.Upsert(vectors)                                     ← 现有
+  ③ graph.UpsertChunk(chunk) + graph.LinkRelated(chunkID, topN refs)                ← 新增：Upsert 之后写图
+```
+
+- **拍板约束**：找相关节点**只关联同 `creator_id` 的切片**（Qdrant filter 精确匹配），`RELATED_TO` 边两端必然同 creator。
+- **topN**：默认 **5**（system_configs 可配，上限 20）。
+- 图写入失败与 Qdrant 一致：`log.Printf` 降级不阻断（`AddChunks` 主链路不因 Neo4j 故障失败）。
+
+### Neo4j 初始化 + seed（仅 schema，无数据回填）
+
+`wire.go` 的 `initKnowledgeBase` 中，与 Qdrant `EnsureCollection` 同层：
+
+```go
+if deps.neo4jClient != nil {
+    graphStore := neo4jinfra.NewGraphStore(deps.neo4jClient)
+    deps.kbService.WithGraphIndex(graphStore)
+    if err := graphStore.EnsureSchema(context.Background()); err != nil {
+        log.Printf("[kb] WARNING: failed to ensure Neo4j schema: %v", err)
+    }
+}
+```
+
+`EnsureSchema`（约束/索引 DDL，幂等，**唯一数据侧 seed**）：
+
+```cypher
+CREATE CONSTRAINT chunk_id_unique IF NOT EXISTS FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE;
+CREATE INDEX chunk_creator_id IF NOT EXISTS FOR (c:Chunk) ON (c.creator_id);
+```
+
+> 拍板：**不做存量 chunks 回填**（当前都是测试数据）。skill 配置走现有 `predefinedSkills()` seed（见下）。
+
+### 图谱搜索 Skill：`knowledge_graph_search`
+
+三步注册（对齐现有 `knowledge_search` 范式）：
+
+**① Seed 配置**（`internal/service/skill/config.go` `predefinedSkills()`）：
+```go
+{
+    Name:        "knowledge_graph_search",
+    DisplayName: "知识图谱搜索",
+    Description: "查询知识图谱中与某切片/概念最相关的 topN 节点及关系",
+    Enabled:     true,
+    ConfigJSON:  `{"top_n":5,"max_top_n":20}`,
+}
+```
+
+**② ADK tool 注册**（`internal/adk/tools/tools.go`，仿 `knowledgeSearch`）：
+```go
+type GraphSearchArgs struct {
+    Query string `json:"query" jsonschema:"切片 ID 或查询文本"`
+    TopN  int    `json:"top_n,omitempty" jsonschema:"返回节点数（默认5，最大20）"`
+}
+type GraphSearchResult struct {
+    Query string      `json:"query"`
+    Nodes []GraphNode `json:"nodes"`
+    Count int         `json:"count"`
+}
+// handler：
+//   1. 文本 → embed → Qdrant Search 定位锚点 chunk_id（走修复后的 filter 能力）
+//   2. chunk_id → graph.QueryTopN(anchorID, topN, GraphFilter{CreatorID, IsSystemAdmin})
+// user_id / role / is_system_admin 从 session state 取（stateString），绝不由 LLM 传参。
+```
+
+**③ 依赖注入**（`wire.go`）：`tools.Deps` 增加 `GraphRepo repository.GraphRepository`，注册到 `specs()`。
+
+**查询过滤语义（拍板）**：`QueryTopN` 内部 Cypher 过滤，与 KB 可见性一致：
+
+```cypher
+MATCH (a:Chunk {chunk_id: $anchorID})-[r:RELATED_TO]-(n:Chunk)
+WHERE $isSystemAdmin OR n.creator_id = $creatorID OR n.is_public = true
+RETURN n.chunk_id, n.doc_id, r.score
+ORDER BY r.score DESC LIMIT $topN
+```
+
+- `system_admin`：全局不过滤；普通用户：仅返回自己切片或公开切片。
+
+### Neo4j 服务（docker-compose）
+
+```yaml
+neo4j:
+  image: neo4j:5
+  ports: ["7687:7687", "7474:7474"]
+  environment:
+    - NEO4J_AUTH=neo4j/<password>          # 凭据走 env / Vault
+    - NEO4J_server_memory_heap_max__size=512m
+  volumes: [neo4j-data:/data]
+  healthcheck:
+    test: ["CMD-SHELL", "cypher-shell -u neo4j -p <password> 'RETURN 1' || exit 1"]
+```
 
 ## 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
-| 是否需要新 DB 集合 | Yes — Neo4j 图数据库（**新基础设施**，非 MongoDB collection） |
-| 是否影响现有 API | No — 仅新增索引写入步骤，不改变现有 KB API 语义 |
-| 性能影响 | 每切片多一次 Neo4j 写入，需评估延迟（后续可异步/批量） |
-| 是否需要新增 Skill | 待定 — 图检索能力留后续，本 spec 仅做索引写入 |
+| 是否需要新 DB 集合 | Yes — Neo4j 图数据库（新基础设施） |
+| 是否影响现有 API | No — 仅 `AddChunks` 新增图写入 + 新增 Skill；前置修复项不改 API 语义 |
+| 性能影响 | 每 chunk 多一次 Qdrant `Search(topN)` + 一次 Neo4j 写入；可异步/批量，待压测 |
+| 是否需要新增 Skill | Yes — `knowledge_graph_search` |
+| 复用现有能力 | 复用 embedding + Qdrant `Search` + skill 三步注册范式 |
 
-## 相关文件（预判）
+## 相关文件
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
-| `docker-compose.yml` / `docker-compose.ui-test.yml` | 新增 neo4j 服务 | New |
-| `internal/service/knowledge/service.go` | `AddChunks` 后 hook 图索引写入 | Modify |
-| `internal/infra/graph`（或 `internal/repository/graph`） | Neo4j 客户端 / repository 适配器 | New |
-| `internal/adk/modelcfg` 或 `internal/service/config` | Neo4j 连接配置（待 SPEC-066 定归属） | Modify |
+| `docker-compose.yml` / `docker-compose.ui-test.yml` | 新增 neo4j 服务 + volume | New |
+| `internal/infra/qdrant/client.go` + `vector_store.go` | **前置修复**：`Client.Search` 支持 filter + `VectorStore.Search` 透传 | Modify |
+| `internal/repository/graph.go` | `GraphRepository` 接口 + 类型 | New |
+| `internal/infra/neo4j/client.go` + `graph_store.go` | neo4j-go-driver 客户端 + 实现 | New |
+| `internal/service/knowledge/service.go` | `AddChunks` hook 图写入 + `WithGraphIndex` | Modify |
+| `internal/adk/tools/tools.go` | `knowledge_graph_search` tool | Modify |
+| `internal/service/skill/config.go` | `predefinedSkills` 增 seed 配置 | Modify |
+| `cmd/server/wire.go` | neo4j 客户端初始化 + `EnsureSchema` + `Deps.GraphRepo` 注入 | Modify |
+| `go.mod` / `go.sum` | 引入 `github.com/neo4j/neo4j-go-driver/v5` | Modify |
 
-## 验证标准（占位，后续展开）
+## 测试策略
 
-- [ ] `docker compose up -d` 后 neo4j 容器 healthy（bolt/http 端口可达）
-- [ ] KB 上传文档后，切片除写入 Qdrant 外，Neo4j 中出现对应 Chunk 节点 + BELONGS_TO / NEXT_CHUNK 边
+1. **Unit tests（Go）**：L2 `GraphRepository` mock（`repository/mocks`）；L3 neo4j 适配器走真实 Neo4j（`go test -tags=integration`）。覆盖率 gate 见 SPEC-045。
+2. **Integration**：Docker Compose 起 Neo4j，验证 `EnsureSchema` 幂等、`UpsertChunk`/`LinkRelated`/`QueryTopN` 端到端。
+3. **E2E**：`knowledge_graph_search` 工具走真实图库返回 topN（用例编号 `UI-XXX`）。
+4. **前置修复回归**：Qdrant filter 修复后，补 UT 验证 `vectorSearch` 权限过滤生效（普通用户搜不到他人私有切片）。
+
+## UI Test / E2E 验收规则
+
+> 开发完成后必须编写真实 E2E 用例并通过 CI（sonar-check + ui-tests）。
+
+- [ ] **必须** 新增 `knowledge_graph_search` Skill 时同步编写 E2E 用例（`tests/ui/`，编号 `UI-XXX`）
+- [ ] **必须** CI Pipeline 中 sonar-check 和 ui-tests 均通过才可合并
+- [ ] **严禁** 删除/降级测试用例、修改业务逻辑绕过测试
+
+参考: `.agent/memory/E2E_TESTING.md`
+
+## Go Unit Test 验收规则
+
+| Tier | 特征 | 目标 |
+|:---:|------|:---:|
+| L2 | `GraphRepository` 接口 mock | 100% |
+| L3 | neo4j 适配器 / KB service 图写入 / Qdrant filter | 98% |
+| Overall | 全量 | ≥98% |
+
+- [ ] 每个 Success 测试 ≥2 个行为验证断言
+- [ ] `EnsureSchema` 幂等性验证（重复调用不报错不重复建）
+- [ ] `QueryTopN` 验证 topN 截断 + score 排序 + system_admin/普通用户过滤分支
+- [ ] Qdrant `Client.Search` filter 参数正确写入 payload
+- [ ] **严禁** `t.Skip()` 绕过不可测场景
+
+## 验证标准
+
+- [ ] `docker compose up -d` 后 neo4j 容器 healthy（bolt/http 可达）
+- [ ] 启动后 `EnsureSchema` 幂等执行，约束/索引存在
+- [ ] KB 上传文档后，切片除 Qdrant 外，Neo4j 出现 Chunk 节点 + `RELATED_TO` 边
+- [ ] 单 chunk 的 `RELATED_TO` 边数 ≤ topN，且边两端 `creator_id` 相同
+- [ ] 普通用户 `knowledge_graph_search` 仅返回自己或公开切片；system_admin 返回全局
+- [ ] Qdrant filter 修复后，`vectorSearch` 权限过滤生效（回归验证）
 - [ ] 文档删除/重建后，Neo4j 图数据正确清理（幂等对齐）
 
-## 提交约定
+## 拍板记录（2026-08-28 晓军确认）
 
-```bash
-git add .agent/specs/spec-072-kb-graph-index.md .agent/specs/INDEX.md
-git commit -m "docs: add SPEC-072 kb graph index (立项)"
-```
+| # | 决策点 | 结论 |
+|---|---|---|
+| 1 | 图模型 | 仅 `Chunk` 节点 + `RELATED_TO` 边（无 Document 节点/归属边/顺序边） |
+| 2 | 索引时找相关节点 | 只关联同 `creator_id` 的切片（Qdrant filter 精确匹配） |
+| 3 | topN | 默认 5 |
+| 4 | seed | 仅 Neo4j schema DDL + skill 配置；**无存量回填**（测试数据不迁移） |
+| 5 | 节点属性与查询过滤 | Chunk 节点存 `creator_id`/`is_public`；查询时 system_admin 全局、普通用户按 creator_id 或 is_public 过滤（与 KB 可见性一致） |
+| 6 | 附带发现 | Qdrant `Client.Search` 不支持 filter → 现有 `vectorSearch` 权限过滤失效，列为前置修复项 |
