@@ -529,6 +529,11 @@ export default function ModelsPage() {
                   const rowId = m.id;
                   const isRevealed = revealedKeys.has(rowId);
                   const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
+                  // Backend ModelEntry only exposes IsDefaultFor ([]string), not a
+                  // legacy IsDefault bool. For embedding entries the single
+                  // "default" concept maps to membership of "embedding" in that
+                  // slice — fall back to m.is_default for forward-compat.
+                  const isEmbeddingDefault = !!m.is_default || (m.is_default_for || []).includes('embedding');
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`embedding-list-row-${i}`}>
                       <td style={{ padding: '6px 8px' }}>
@@ -557,7 +562,7 @@ export default function ModelsPage() {
                         </div>
                       </td>
                       <td style={{ padding: '6px 8px' }}>
-                        {m.is_default ? (
+                        {isEmbeddingDefault ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {embeddingList.filter(o => o.id !== rowId).length > 0 ? (
                               <select
