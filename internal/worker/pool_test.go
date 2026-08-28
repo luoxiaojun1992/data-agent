@@ -38,38 +38,40 @@ func (m *mockQueue) MoveToDLQ(_ context.Context, msgID string, _ []byte) error {
 type mockExecutor struct {
 	err   error
 	calls int
-	last  *domaintask.Task
+	last  *domaintask.TaskRun
 }
 
-func (m *mockExecutor) Execute(_ context.Context, t *domaintask.Task) error {
+func (m *mockExecutor) Execute(_ context.Context, run *domaintask.TaskRun) error {
 	m.calls++
-	m.last = t
+	m.last = run
 	return m.err
 }
 
 // ── Harness ──
 
-// newTestPool wires a Pool with mocked queue + executor + task service. The
-// GetTask expectation matches any ID; tests assert on the specific ID called.
-func newTestPool(t *testing.T, execErr error, task *domaintask.Task, taskErr error) (*Pool, *mockQueue, *mockExecutor, *domaintaskmocks.TaskService) {
+// newTestPool wires a Pool with mocked queue + executor + run service. The
+// GetRun expectation matches any ID; tests assert on the specific ID called.
+func newTestPool(t *testing.T, execErr error, run *domaintask.TaskRun, runErr error) (*Pool, *mockQueue, *mockExecutor, *domaintaskmocks.TaskRunService) {
 	t.Helper()
 	q := &mockQueue{}
 	exec := &mockExecutor{err: execErr}
-	tasks := domaintaskmocks.NewTaskService(t)
-	if taskErr != nil {
-		tasks.On("GetTask", mock.Anything).Return((*domaintask.Task)(nil), taskErr)
+	runs := domaintaskmocks.NewTaskRunService(t)
+	if runErr != nil {
+		runs.On("GetRun", mock.Anything).Return((*domaintask.TaskRun)(nil), runErr)
 	} else {
-		tasks.On("GetTask", mock.Anything).Return(task, nil)
+		runs.On("GetRun", mock.Anything).Return(run, nil)
 	}
-	pool := NewPool(q, nil, 1, exec, tasks)
-	return pool, q, exec, tasks
+	pool := NewPool(q, nil, 1, exec, runs)
+	return pool, q, exec, runs
 }
 
 // queueMsg builds a Redis XMessage whose "data" field is the JSON-encoded
-// QueueMessage for the given task ID.
-func queueMsg(t *testing.T, taskID string) redis.XMessage {
+// QueueMessage envelope ({type, payload}) carrying an AgentTaskPayload.
+func queueMsg(t *testing.T, runID string) redis.XMessage {
 	t.Helper()
-	data, err := json.Marshal(domaintask.QueueMessage{TaskID: taskID, UserID: "u1", Type: "agent"})
+	payload, err := json.Marshal(domaintask.AgentTaskPayload{RunID: runID, TaskID: "task_1", UserID: "u1"})
+	require.NoError(t, err)
+	data, err := json.Marshal(domaintask.QueueMessage{Type: "agent_task", Payload: payload})
 	require.NoError(t, err)
 	return redis.XMessage{ID: "msg-1", Values: map[string]interface{}{"data": string(data)}}
 }
@@ -77,28 +79,28 @@ func queueMsg(t *testing.T, taskID string) redis.XMessage {
 // ── Tests ──
 
 func TestProcessWorkerMessage_Success_LoadsFromDBAndExecutes(t *testing.T) {
-	tk := &domaintask.Task{ID: "task_1", UserID: "u1", Status: domaintask.StatusQueued, MaxRetries: 3}
-	pool, q, exec, tasks := newTestPool(t, nil, tk, nil)
+	run := &domaintask.TaskRun{ID: "run_1", TaskID: "task_1", UserID: "u1", Status: domaintask.StatusPending, MaxRetries: 3}
+	pool, q, exec, runs := newTestPool(t, nil, run, nil)
 
-	pool.processWorkerMessage(context.Background(), queueMsg(t, "task_1"))
+	pool.processWorkerMessage(context.Background(), queueMsg(t, "run_1"))
 
-	// SPEC-063: task loaded from DB (GetTask called), executor invoked with the
-	// DB-loaded task, message acknowledged.
-	tasks.AssertCalled(t, "GetTask", "task_1")
+	// SPEC-063: run loaded from DB (GetRun called), executor invoked with the
+	// DB-loaded run, message acknowledged.
+	runs.AssertCalled(t, "GetRun", "run_1")
 	require.Equal(t, 1, exec.calls)
-	assert.Equal(t, "task_1", exec.last.ID)
+	assert.Equal(t, "run_1", exec.last.ID)
 	assert.Equal(t, []string{"msg-1"}, q.ackIDs)
 	assert.Empty(t, q.dlqIDs, "no DLQ on success")
 }
 
 func TestProcessWorkerMessage_MissingDataKey_NoAck(t *testing.T) {
-	// No GetTask expectation: the malformed message must short-circuit before
-	// any DB load. (If a bug called GetTask, the default nil return would still
+	// No GetRun expectation: the malformed message must short-circuit before
+	// any DB load. (If a bug called GetRun, the default nil return would still
 	// trigger an Ack and fail the assertion below.)
 	q := &mockQueue{}
 	exec := &mockExecutor{}
-	tasks := domaintaskmocks.NewTaskService(t)
-	pool := NewPool(q, nil, 1, exec, tasks)
+	runs := domaintaskmocks.NewTaskRunService(t)
+	pool := NewPool(q, nil, 1, exec, runs)
 
 	pool.processWorkerMessage(context.Background(), redis.XMessage{ID: "msg-1", Values: map[string]interface{}{}})
 
@@ -109,8 +111,8 @@ func TestProcessWorkerMessage_MissingDataKey_NoAck(t *testing.T) {
 func TestProcessWorkerMessage_InvalidJSON_NoAck(t *testing.T) {
 	q := &mockQueue{}
 	exec := &mockExecutor{}
-	tasks := domaintaskmocks.NewTaskService(t)
-	pool := NewPool(q, nil, 1, exec, tasks)
+	runs := domaintaskmocks.NewTaskRunService(t)
+	pool := NewPool(q, nil, 1, exec, runs)
 
 	msg := redis.XMessage{ID: "msg-1", Values: map[string]interface{}{"data": "not-json"}}
 	pool.processWorkerMessage(context.Background(), msg)
@@ -119,31 +121,31 @@ func TestProcessWorkerMessage_InvalidJSON_NoAck(t *testing.T) {
 	assert.Equal(t, 0, exec.calls)
 }
 
-func TestProcessWorkerMessage_GetTaskFails_AcksToDrop(t *testing.T) {
-	// When the task can't be loaded (deleted/expired), the message is acked so
+func TestProcessWorkerMessage_GetRunFails_AcksToDrop(t *testing.T) {
+	// When the run can't be loaded (deleted/expired), the message is acked so
 	// the stream doesn't stall on a poison message.
 	pool, q, exec, _ := newTestPool(t, nil, nil, errors.New("not found"))
 
 	pool.processWorkerMessage(context.Background(), queueMsg(t, "missing"))
 
 	assert.Equal(t, []string{"msg-1"}, q.ackIDs, "unrecoverable message should be acked")
-	assert.Equal(t, 0, exec.calls, "executor must not run when task load fails")
+	assert.Equal(t, 0, exec.calls, "executor must not run when run load fails")
 }
 
-func TestProcessWorkerMessage_GetTaskNil_AcksToDrop(t *testing.T) {
+func TestProcessWorkerMessage_GetRunNil_AcksToDrop(t *testing.T) {
 	pool, q, exec, _ := newTestPool(t, nil, nil, nil)
 
-	pool.processWorkerMessage(context.Background(), queueMsg(t, "nil-task"))
+	pool.processWorkerMessage(context.Background(), queueMsg(t, "nil-run"))
 
 	assert.Equal(t, []string{"msg-1"}, q.ackIDs)
 	assert.Equal(t, 0, exec.calls)
 }
 
 func TestProcessWorkerMessage_ExecuteFails_RetriesBelowMax_AcksNoDLQ(t *testing.T) {
-	tk := &domaintask.Task{ID: "task_1", UserID: "u1", RetryCount: 0, MaxRetries: 3}
-	pool, q, exec, _ := newTestPool(t, errors.New("boom"), tk, nil)
+	run := &domaintask.TaskRun{ID: "run_1", TaskID: "task_1", UserID: "u1", RetryCount: 0, MaxRetries: 3}
+	pool, q, exec, _ := newTestPool(t, errors.New("boom"), run, nil)
 
-	pool.processWorkerMessage(context.Background(), queueMsg(t, "task_1"))
+	pool.processWorkerMessage(context.Background(), queueMsg(t, "run_1"))
 
 	require.Equal(t, 1, exec.calls)
 	assert.Equal(t, []string{"msg-1"}, q.ackIDs)
@@ -152,10 +154,10 @@ func TestProcessWorkerMessage_ExecuteFails_RetriesBelowMax_AcksNoDLQ(t *testing.
 
 func TestProcessWorkerMessage_ExecuteFails_AtMaxRetries_MovesToDLQ(t *testing.T) {
 	// RetryCount starts at max-1; the pool increments to max → DLQ.
-	tk := &domaintask.Task{ID: "task_1", UserID: "u1", RetryCount: 2, MaxRetries: 3}
-	pool, q, exec, _ := newTestPool(t, errors.New("persistent failure"), tk, nil)
+	run := &domaintask.TaskRun{ID: "run_1", TaskID: "task_1", UserID: "u1", RetryCount: 2, MaxRetries: 3}
+	pool, q, exec, _ := newTestPool(t, errors.New("persistent failure"), run, nil)
 
-	pool.processWorkerMessage(context.Background(), queueMsg(t, "task_1"))
+	pool.processWorkerMessage(context.Background(), queueMsg(t, "run_1"))
 
 	require.Equal(t, 1, exec.calls)
 	assert.Equal(t, []string{"msg-1"}, q.dlqIDs, "exhausted retries should DLQ")
@@ -165,11 +167,11 @@ func TestProcessWorkerMessage_ExecuteFails_AtMaxRetries_MovesToDLQ(t *testing.T)
 func TestNewPool_WiresDependencies(t *testing.T) {
 	q := &mockQueue{}
 	exec := &mockExecutor{}
-	tasks := domaintaskmocks.NewTaskService(t)
-	pool := NewPool(q, nil, 4, exec, tasks)
+	runs := domaintaskmocks.NewTaskRunService(t)
+	pool := NewPool(q, nil, 4, exec, runs)
 
 	assert.Equal(t, 4, pool.workers)
 	assert.Same(t, q, pool.queue)
 	assert.Same(t, exec, pool.executor)
-	assert.Same(t, tasks, pool.taskSvc)
+	assert.Same(t, runs, pool.runSvc)
 }

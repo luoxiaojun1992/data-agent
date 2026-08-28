@@ -45,7 +45,7 @@ func (v *VectorStore) Upsert(ctx context.Context, collection string, vectors []r
 
 // Search implements repository.VectorRepository.
 func (v *VectorStore) Search(ctx context.Context, collection string, vector []float32, topK int, filter map[string]interface{}) ([]repository.VectorSearchHit, error) {
-	results, err := v.client.Search(collection, vector, topK)
+	results, err := v.client.Search(collection, vector, topK, filter)
 	if err != nil {
 		return nil, err
 	}

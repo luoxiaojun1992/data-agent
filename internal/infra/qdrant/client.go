@@ -118,12 +118,17 @@ func (c *Client) HasCollection(collection string) (bool, error) {
 	return resp.StatusCode == http.StatusOK, nil
 }
 
-// Search performs a vector similarity search (REST POST).
-func (c *Client) Search(collection string, vector []float32, topK int) ([]SearchHit, error) {
+// Search performs a vector similarity search (REST POST). The optional
+// filter is forwarded to Qdrant's /points/search so permission scoping
+// (e.g. creator_id / is_public) is enforced server-side.
+func (c *Client) Search(collection string, vector []float32, topK int, filter map[string]any) ([]SearchHit, error) {
 	payload := map[string]any{
 		"vector":       vector,
 		"limit":        topK,
 		"with_payload": true,
+	}
+	if len(filter) > 0 {
+		payload["filter"] = filter
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

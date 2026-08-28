@@ -489,14 +489,13 @@ func TestSystemConfigRoundtrip(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	orig := &model.SystemConfig{
 		ID:        "cfg1",
-		Namespace: "feature_flags",
 		Key:       "enable_beta",
 		Value:     "true",
 		UpdatedAt: now,
 	}
 	doc := systemConfigToDoc(orig)
 	got := docToSystemConfig(doc)
-	if got.ID != orig.ID || got.Namespace != orig.Namespace || got.Key != orig.Key {
+	if got.ID != orig.ID || got.Key != orig.Key {
 		t.Errorf("basic fields mismatch: got %+v", got)
 	}
 	if got.Value != orig.Value {
