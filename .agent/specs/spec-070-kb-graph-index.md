@@ -56,10 +56,11 @@ ArcadeDB 是**原生属性图模型**（节点 + 边 + 属性），与最初 Neo
 
 | 元素 | 属性 | 说明 |
 |------|------|------|
-| 节点 `Chunk` | `chunk_id`(唯一), `doc_id`, `chunk_idx`, `creator_id`, `is_public`, `char_count` | 切片节点；**含 creator_id/is_public**，供查询过滤 |
+| 节点 `Chunk` | `chunk_id`(唯一), `doc_id`, `chunk_idx`, `creator_id`, `is_public`, `char_count`, **自定义字段（任意键值对）** | 切片节点；**含 creator_id/is_public**，供查询过滤；支持自定义字段 |
 | 边 `RELATED_TO` | `score` | Chunk → Chunk，向量 topN 相似，**唯一边类型** |
 
 > 拍板：不做 Document 节点、不做 BELONGS_TO/NEXT_CHUNK 边。图只表达"切片相似关系"，归属/顺序仍以 `doc_id`/`chunk_idx` 属性承载。
+> **自定义字段**：Chunk 节点除固定字段外，支持额外的自定义键值对属性（如标签、分类、来源等元数据），以 `Extra map[string]string` 形式写入节点属性，供后续查询过滤/展示。属性图模型天然支持动态属性，无需预定义 schema。
 
 ### 图访问共用组件接口
 
@@ -68,7 +69,7 @@ ArcadeDB 是**原生属性图模型**（节点 + 边 + 属性），与最初 Neo
 type GraphRepository interface {
     // EnsureSchema 幂等创建约束/索引（启动 seed，对齐 Qdrant EnsureCollection）
     EnsureSchema(ctx context.Context) error
-    // UpsertChunk 写入/更新切片节点（MERGE 幂等）
+    // UpsertChunk 写入/更新切片节点（MERGE 幂等，含自定义字段）
     UpsertChunk(ctx context.Context, c GraphChunk) error
     // LinkRelated 建立切片与 topN 相关切片的 RELATED_TO 边（边两端同 creator）
     LinkRelated(ctx context.Context, chunkID string, refs []RelatedRef) error
@@ -87,6 +88,8 @@ type GraphChunk struct {
     CreatorID string
     IsPublic  bool
     CharCount int
+    // Extra 自定义字段（可选），写入节点属性，如标签/分类/来源等
+    Extra     map[string]string
 }
 type RelatedRef struct {
     ChunkID string
@@ -347,3 +350,4 @@ arcadedb:
 | 7 | 图数据库选型 | **ArcadeDB（Apache-2.0）替代 Neo4j（GPLv3）/ Cayley（quad 模型）**；独立部署 |
 | 8 | Go client | `neo4j-go-driver/v5`（Apache-2.0），经 Bolt 协议连 ArcadeDB（官方符合性认证），Cypher 零改动 |
 | 9 | 文档删除清理 | 三处级联：MongoDB + Qdrant `DeletePoints`（按 doc_id）+ ArcadeDB `DeleteByDocID`（DETACH DELETE）；修复现有 Qdrant 孤儿向量缺口 |
+| 10 | 自定义字段 | Chunk 节点支持自定义键值对（`Extra map[string]string`，如标签/分类/来源），写入节点属性；属性图模型天然支持动态属性，无需预定义 schema |
