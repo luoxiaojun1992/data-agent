@@ -201,23 +201,53 @@ type Bucket struct {
 
 - **token 不细分**：全局 5 个 metric，**不按 model / call_point 拆分**（废弃原 `llmstats.Aggregate` 的 call_point 维度，保持简单）。若未来需要细分，另立 spec 扩展 metric 维度。
 
-### 埋点批量合并（内存缓冲 + 定时刷盘）
+### 埋点批量合并（内存缓冲 + 定时刷盘，并发安全）
 
-API 调用量埋点频率高（每请求一次），为降低 MongoDB 写压力，`Counter` 实现**内存缓冲 + 定时刷盘**：
+API 调用量埋点频率高（每请求一次），为降低 MongoDB 写压力，`Counter` 实现**内存缓冲 + 定时刷盘**，且**必须并发安全**（多个业务 goroutine 同时埋点）：
 
 ```go
 // Counter 内部：按 (metric, hourBucket) 聚合 delta 到内存 map，定时 flush 批量 upsert
 type mongoCounter struct {
     mu     sync.Mutex
-    buffer map[bucketKey]int64   // key = {metric}:{hour}
+    buffer map[bucketKey]int64   // key = {metric}:{hour}，仅锁内读写
     client *mongo.Collection
     flushInterval time.Duration  // 默认 5s
     stop   chan struct{}
 }
+
+// Incr 并发安全：锁内仅做一次 map 累加（O(1)，无 IO），不阻塞其他埋点
+func (c *mongoCounter) Incr(ctx context.Context, m Metric, at time.Time, delta int64) error {
+    key := bucketKey{m, hourBucket(at)}
+    c.mu.Lock()
+    c.buffer[key] += delta
+    c.mu.Unlock()
+    return nil
+}
+
+// flush 用 swap 模式：锁内换出旧 buffer（O(1)），批量 upsert 在锁外执行，不阻塞埋点
+func (c *mongoCounter) flush(ctx context.Context) {
+    c.mu.Lock()
+    old := c.buffer
+    c.buffer = make(map[bucketKey]int64)   // 换入新空 map
+    c.mu.Unlock()
+    for key, delta := range old {          // 锁外批量 upsert
+        upsertHourly(ctx, c.client, key, delta)
+    }
+}
 ```
 
-- 埋点 `Incr` 只写内存 buffer（O(1)，无 IO）；后台 goroutine 每 `flushInterval`（默认 5s）把 buffer 批量 upsert 到 `stats_hourly` 后清空。
-- 进程退出时（`Stop()`）强制 flush 一次，避免丢失最后几秒计数。
+**并发安全要点（必须遵守）**：
+
+| 要点 | 说明 |
+|------|------|
+| `Incr` 锁内 O(1) | 互斥锁仅保护 map 累加（纳秒级），无 IO/网络调用在锁内 → 高频埋点不构成锁竞争瓶颈 |
+| **swap 模式 flush** | flush 时锁内只做「换出旧 buffer + 换入新空 map」（O(1)），批量 upsert 在**锁外**执行 → flush 期间埋点不阻塞、不丢失 |
+| 禁止锁内 IO | ⛔ 严禁在持锁状态下执行 MongoDB 操作（会阻塞所有埋点 goroutine） |
+| 竞态防护 | buffer map 的所有读写都必须在 `mu` 保护下（`go test -race` 语义验证，UT 覆盖并发 `Incr` + `flush` 交错） |
+| flush 失败处理 | 单条 upsert 失败 `log.Printf` + 丢弃该条增量（统计口径，容忍 ≤5s 增量丢失），不重试不阻塞 |
+| 退出 flush | `Stop()` 持锁换出最后 buffer 后锁外 flush 完再退出，避免丢失最后几秒计数 |
+
+- 埋点 `Incr` 只写内存 buffer（O(1)，无 IO）；后台 goroutine 每 `flushInterval`（默认 5s）flush 一次。
 - 低频埋点（artifact/task/token）走同一 buffer，无需特殊处理。
 - 计数是统计口径，**容忍进程崩溃丢失 ≤5s 的增量**（可接受）。
 
@@ -323,6 +353,7 @@ type mongoCounter struct {
 
 - [ ] 每个 Success 测试 ≥2 个行为验证断言
 - [ ] `Incr` 验证 upsert 到同小时 document（多次累加同一条）+ `$inc` 正确
+- [ ] **并发安全**：多 goroutine 并发 `Incr` + `flush` 交错，验证无 data race（`-race` 语义）、计数不丢不重
 - [ ] `Sum`/`Series` 验证小时聚合、粒度分桶（day/week/month/year）、一年范围限制
 - [ ] ROI 验证 token=0 边界
 - [ ] **严禁** `t.Skip()` 绕过不可测场景
