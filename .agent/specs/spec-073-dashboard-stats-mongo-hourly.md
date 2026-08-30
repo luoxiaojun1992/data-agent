@@ -62,17 +62,30 @@ internal/api/handler/dashboard.go   ← 重写：查询走 metrics.Reader
 ```go
 // collection: stats_hourly
 type HourlyStat struct {
-    ID        string    `bson:"_id"`      // "{metric}:{YYYYMMDDHH}"，如 "token_tokens:2026083014"
-    Metric    string    `bson:"metric"`    // metric 名
-    Hour      time.Time `bson:"hour"`      // 小时桶起点（truncate to hour，UTC）
+    ID        string    `bson:"_id"`      // 纯 UUID（应用层生成，不承载业务语义）
+    Metric    string    `bson:"metric"`    // metric 名（业务字段）
+    Hour      time.Time `bson:"hour"`      // 小时桶起点（时间维度，单独字段，truncate to hour，UTC）
     Value     int64     `bson:"value"`     // 该小时累计计数（只增不减）
     UpdatedAt time.Time `bson:"updated_at"`
 }
 ```
 
-- **索引**：`{metric: 1, hour: 1}`（唯一，用于 upsert + 范围查询）；`{hour: 1}`（TTL）。
+- **主键约定（铁律）**：`_id` 用**纯 UUID**（应用层生成），不承载业务语义。`metric` + `hour` 是业务字段，靠**唯一索引** `{metric, hour}` 保证同一 metric+hour 只有一条 document。
+- **索引**：`{metric: 1, hour: 1}`（唯一，用于 upsert 定位 + 范围查询）；`{hour: 1}`（TTL）。
 - **TTL 保留一年**：`hour` 字段建 TTL index `expireAfterSeconds: 31536000`（365 天），MongoDB 自动删除一年前 document。数据最多保留一年。
-- **写入**：`Incr` 用 `upsert + $inc`（`_id` 唯一），一小时内多次埋点累加进同一条 document，无需按 user 拆分。
+- **写入（upsert by 唯一索引，非 `_id`）**：`Incr` 用 `filter{metric, hour}` 定位 + `$inc value` + `$setOnInsert {_id: newUUID()}`：
+
+```go
+filter := bson.M{"metric": m, "hour": hourBucket}          // 靠唯一索引定位同小时
+update := bson.M{
+    "$inc":         bson.M{"value": delta},
+    "$set":         bson.M{"updated_at": now},
+    "$setOnInsert": bson.M{"_id": newUUID()},              // 仅首次插入时生成 UUID
+}
+coll.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+```
+
+  一小时内多次埋点：首次插入（生成 UUID），后续命中唯一索引累加 `value`，无需按 user 拆分。
 
 ### Seed 初始化（幂等，无迁移/无历史数据回填）
 
@@ -86,7 +99,7 @@ package migration
 // 无业务数据预置：计数从 0 开始，全部由埋点动态累加。
 func SeedStats(ctx context.Context, db *mongo.Database) error {
     coll := db.Collection("stats_hourly")
-    // 唯一索引 {metric, hour}：用于 upsert（$inc 按 _id 定位）
+    // 唯一索引 {metric, hour}：用于 upsert（filter 按 metric+hour 定位同小时 document）
     if _, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
         Keys:    bson.D{{Key: "metric", Value: 1}, {Key: "hour", Value: 1}},
         Options: options.Index().SetUnique(true).SetName("uniq_metric_hour"),
