@@ -74,6 +74,41 @@ type HourlyStat struct {
 - **TTL 保留一年**：`hour` 字段建 TTL index `expireAfterSeconds: 31536000`（365 天），MongoDB 自动删除一年前 document。数据最多保留一年。
 - **写入**：`Incr` 用 `upsert + $inc`（`_id` 唯一），一小时内多次埋点累加进同一条 document，无需按 user 拆分。
 
+### Seed 初始化（幂等，无迁移/无历史数据回填）
+
+新表 `stats_hourly` 通过 **seed 机制**幂等初始化索引（对齐现有 `migration.SeedRBAC` / Qdrant `EnsureCollection` 模式），**不做数据迁移、不回填历史数据**：
+
+```go
+// cmd/server/migration/stats_seed.go
+package migration
+
+// SeedStats 幂等初始化 stats_hourly collection 的索引。
+// 无业务数据预置：计数从 0 开始，全部由埋点动态累加。
+func SeedStats(ctx context.Context, db *mongo.Database) error {
+    coll := db.Collection("stats_hourly")
+    // 唯一索引 {metric, hour}：用于 upsert（$inc 按 _id 定位）
+    if _, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+        Keys:    bson.D{{Key: "metric", Value: 1}, {Key: "hour", Value: 1}},
+        Options: options.Index().SetUnique(true).SetName("uniq_metric_hour"),
+    }); err != nil {
+        return err
+    }
+    // TTL index {hour}：365 天自动清理
+    if _, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+        Keys:    bson.D{{Key: "hour", Value: 1}},
+        Options: options.Index().SetExpireAfterSeconds(31536000).SetName("ttl_hour"),
+    }); err != nil {
+        return err
+    }
+    return nil
+}
+```
+
+- 调用点：`cmd/server/main.go` 启动时（与 `migration.SeedRBAC` 同处）`migration.SeedStats(ctx, mongoClient.DB())`，失败 `WARN` 不阻断启动。
+- **幂等**：MongoDB 索引创建幂等（同 spec 索引重复创建不报错，重复启动安全）。
+- **无 seed 业务数据**：5 个 metric 是代码常量（非 DB 配置），无需预置；计数从 0 靠埋点累加。
+- **不迁移历史数据**：旧 `llm_usage` 等历史数据不回填进 `stats_hourly`。
+
 ### 指标定义（5 类计数 + 1 派生，全局）
 
 | Metric | 含义 | 埋点位置 | 备注 |
@@ -207,6 +242,8 @@ type Bucket struct {
 | `internal/service/monitor/trends.go` | 删除（ComputeTrends 废弃） | Delete |
 | `internal/api/handler/stats.go` | 删除或改造（GetLLMStats 明细聚合） | Modify |
 | `cmd/server/wire.go` | 初始化 metrics 组件 + 注入各埋点 | Modify |
+| `cmd/server/migration/stats_seed.go` | **新增** `SeedStats`（幂等初始化索引：唯一 {metric,hour} + TTL {hour}） | New |
+| `cmd/server/main.go` | 启动时调用 `migration.SeedStats` | Modify |
 | `frontend/app/page.tsx` | dashboard 前端适配新 API（summary + granularity 趋势） | Modify |
 
 ## 测试策略
@@ -243,14 +280,17 @@ type Bucket struct {
 
 ## 验证标准
 
+- [ ] 启动后 `SeedStats` 幂等执行，`stats_hourly` 唯一索引 `{metric,hour}` + TTL index `{hour}` 存在
+- [ ] `SeedStats` 重复调用不报错（幂等），无 seed 业务数据预置
 - [ ] 埋点后 `stats_hourly` 出现对应小时 document，同一小时多次埋点累加进同一条
-- [ ] `stats_hourly` 有 TTL index（365 天），一年前数据自动删除
+- [ ] `stats_hourly` TTL index（365 天）生效，一年前数据自动删除
 - [ ] `GET /api/v1/dashboard` 返回完整 KPI（含 task_stats、token、llm_calls、api_calls、artifact、task_completed、roi）
 - [ ] `GET /api/v1/dashboard/trends?granularity=day|week|month|year` 各返回正确分桶序列
 - [ ] 查询不触发旧 `llm_usage` 明细聚合（旧聚合代码已删除）
 - [ ] 查询范围超过一年被拒绝或 clamp
 - [ ] 所有登录用户（user/admin/system_admin）均可访问 dashboard
 - [ ] 旧代码（ComputeTrends、AggregateByTime、llm_usage 明细写入）已废弃删除
+- [ ] 无历史数据迁移/回填（`stats_hourly` 仅含上线后埋点数据）
 - [ ] ROI = (artifact + task_completed) / token_tokens，token=0 时 ROI=0
 
 ## 待深化项（后续）
