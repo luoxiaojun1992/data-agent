@@ -199,21 +199,57 @@ type Bucket struct {
 | 产出物 | artifact 创建成功后 | `Incr(artifact_created, 1)` |
 | task run | task executor 完成（成功）后 | `Incr(task_completed, 1)` |
 
+- **token 不细分**：全局 5 个 metric，**不按 model / call_point 拆分**（废弃原 `llmstats.Aggregate` 的 call_point 维度，保持简单）。若未来需要细分，另立 spec 扩展 metric 维度。
+
+### 埋点批量合并（内存缓冲 + 定时刷盘）
+
+API 调用量埋点频率高（每请求一次），为降低 MongoDB 写压力，`Counter` 实现**内存缓冲 + 定时刷盘**：
+
+```go
+// Counter 内部：按 (metric, hourBucket) 聚合 delta 到内存 map，定时 flush 批量 upsert
+type mongoCounter struct {
+    mu     sync.Mutex
+    buffer map[bucketKey]int64   // key = {metric}:{hour}
+    client *mongo.Collection
+    flushInterval time.Duration  // 默认 5s
+    stop   chan struct{}
+}
+```
+
+- 埋点 `Incr` 只写内存 buffer（O(1)，无 IO）；后台 goroutine 每 `flushInterval`（默认 5s）把 buffer 批量 upsert 到 `stats_hourly` 后清空。
+- 进程退出时（`Stop()`）强制 flush 一次，避免丢失最后几秒计数。
+- 低频埋点（artifact/task/token）走同一 buffer，无需特殊处理。
+- 计数是统计口径，**容忍进程崩溃丢失 ≤5s 的增量**（可接受）。
+
 ### 查询 API 设计
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/dashboard` | KPI 汇总：`kb_docs`、`task_stats`、`token_tokens`、`llm_calls`、`api_calls`、`artifact_created`、`task_completed`、`roi`（近一年累计） |
+| GET | `/api/v1/dashboard` | KPI 汇总（近一年累计）：`kb_docs`、`token_tokens`、`llm_calls`、`api_calls`、`artifact_created`、`task_completed`、`roi` |
 | GET | `/api/v1/dashboard/trends?granularity=day\|week\|month\|year&since=&until=` | 按粒度返回各指标时间序列（默认近一年，最多一年） |
 
 - 所有计数指标从 `metrics.Reader`（`stats_hourly`）读，sum/分桶聚合。
-- `kb_docs` / `task_stats`（count by status）是**非计数型快照**，仍从 Mongo 业务表查（数据量小）。
+- `kb_docs` 是**非计数型快照**，从 Mongo 业务表查（数据量小，一次 count）。
+- **task_stats 口径简化**：dashboard **不做** task 状态分布（pending/running/failed 快照，废弃原 `TaskStats` 结构）；task 维度仅展示 `task_completed`（埋点累计数）。若后续需要状态分布，另立 spec。
 - ROI 由 `(artifact_created + task_completed) / token_tokens` 实时计算（token=0 时 ROI=0）。
+- **时区口径**：`hour` 桶统一 **UTC** 截断存储；查询参数 `since`/`until` 由前端转 UTC 传入，返回的 bucket 时间为 UTC，**前端展示时转本地时区**。
 
 ### 权限检查（所有登录用户可看）
 
 - 现有 dashboard 路由 `RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), ...)` 仅 JWT 认证，**无 RBAC 权限限制** → 所有登录用户已可访问（需确认前端 Sidebar 未按角色隐藏 dashboard 入口）。
 - 统计全局不区分用户，所有角色看到同一份全局统计。
+
+### 前端 Dashboard 布局（`frontend/app/page.tsx`）
+
+| 区域 | 内容 |
+|------|------|
+| KPI 汇总卡片（8 个） | `kb_docs`、`token_tokens`、`llm_calls`、`api_calls`、`artifact_created`、`task_completed`、`roi`（7 个指标卡片，近一年累计） |
+| 粒度切换器 | `day / week / month / year` 单选（默认 day），切换后趋势图按该粒度重查 |
+| 趋势图（6 条） | token_tokens、llm_calls、api_calls、artifact_created、task_completed、roi 各一条时间序列曲线（复用现有图表组件，废弃旧 `token_trend`/`call_trend` 等 7 系列结构） |
+
+- 前端调 `GET /api/v1/dashboard` 渲染 KPI 卡片，调 `GET /api/v1/dashboard/trends?granularity=...` 渲染趋势图。
+- bucket 时间为 UTC，前端展示时转本地时区。
+- data-testid 沿用现有 dashboard 相关 testid 或按新组件命名（实现时定）。
 
 ### 废弃代码清单（现有设计删除）
 
@@ -251,7 +287,7 @@ type Bucket struct {
 | `internal/api/middleware/metrics.go` | API 调用量埋点 middleware（api_calls） | New |
 | `internal/service/artifact/*` | 产出物创建埋点（artifact_created） | Modify |
 | `internal/worker/pool.go`（或 task executor） | task run 完成埋点（task_completed） | Modify |
-| `internal/api/handler/dashboard.go` | 重写：查询走 `metrics.Reader`，补 task_stats，加 granularity | Rewrite |
+| `internal/api/handler/dashboard.go` | 重写：查询走 `metrics.Reader`，补 KPI 指标 + granularity | Rewrite |
 | `internal/service/monitor/trends.go` | 删除（ComputeTrends 废弃） | Delete |
 | `internal/api/handler/stats.go` | 删除或改造（GetLLMStats 明细聚合） | Modify |
 | `cmd/server/wire.go` | 初始化 metrics 组件 + 注入各埋点 | Modify |
@@ -280,7 +316,7 @@ type Bucket struct {
 
 | Tier | 特征 | 目标 |
 |:---:|------|:---:|
-| L1 | 纯函数（ROI、小时桶/ID 生成、粒度分桶） | 100% |
+| L1 | 纯函数（ROI、小时桶生成、粒度分桶） | 100% |
 | L2 | `Counter`/`Reader` 接口 mock | 100% |
 | L3 | MongoDB 实现 / dashboard handler / middleware / 埋点 | 98% |
 | Overall | 全量 | ≥98% |
@@ -297,7 +333,7 @@ type Bucket struct {
 - [ ] `SeedStats` 重复调用不报错（幂等），无 seed 业务数据预置
 - [ ] 埋点后 `stats_hourly` 出现对应小时 document，同一小时多次埋点累加进同一条
 - [ ] `stats_hourly` TTL index（365 天）生效，一年前数据自动删除
-- [ ] `GET /api/v1/dashboard` 返回完整 KPI（含 task_stats、token、llm_calls、api_calls、artifact、task_completed、roi）
+- [ ] `GET /api/v1/dashboard` 返回完整 KPI（kb_docs、token、llm_calls、api_calls、artifact、task_completed、roi 七指标）
 - [ ] `GET /api/v1/dashboard/trends?granularity=day|week|month|year` 各返回正确分桶序列
 - [ ] 查询不触发旧 `llm_usage` 明细聚合（旧聚合代码已删除）
 - [ ] 查询范围超过一年被拒绝或 clamp
@@ -306,10 +342,12 @@ type Bucket struct {
 - [ ] 无历史数据迁移/回填（`stats_hourly` 仅含上线后埋点数据）
 - [ ] ROI = (artifact + task_completed) / token_tokens，token=0 时 ROI=0
 
-## 待深化项（后续）
+## 深化记录（2026-08-30）
 
-1. `task_stats`（count by status）数据源与展示口径。
-2. 前端 dashboard 图表布局（summary 卡片 + granularity 切换器 + 各指标趋势图）。
-3. token 统计是否按 model / call_point 细分（现有 `llmstats.Aggregate` 的 call_point 维度是否保留到埋点 key）。
-4. 埋点写入是否批量合并（高频 API 调用场景下 upsert 频率优化）。
-5. 小时桶的时区口径（UTC vs 本地时区）统一。
+| # | 深化点 | 结论 |
+|---|--------|------|
+| 1 | task_stats 口径 | **简化为 `task_completed` 埋点累计数**，不做状态分布（废弃 `TaskStats` 的 pending/running/failed 快照） |
+| 2 | 前端布局 | KPI 卡片（7 指标）+ granularity 切换器 + 6 条趋势曲线（见「前端 Dashboard 布局」章节） |
+| 3 | token 细分 | **不按 model / call_point 细分**（保持 5 个全局 metric 简单，未来另立 spec） |
+| 4 | 埋点批量 | **内存缓冲 + 定时刷盘（默认 5s）**，进程退出强制 flush，容忍 ≤5s 增量丢失 |
+| 5 | 时区口径 | `hour` 桶统一 **UTC** 存储；前端查询传 UTC、展示转本地时区 |
