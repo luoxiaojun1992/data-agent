@@ -86,6 +86,7 @@
 | SPEC-070 | KB 切片图数据库索引（ArcadeDB）+ 图访问共用组件 + 图谱搜索 Skill（GraphRepository 接口 + knowledge_graph_search tool + seed） | **P15** | [spec-070-kb-graph-index.md](spec-070-kb-graph-index.md) | 📐 详细设计 |
 | SPEC-071 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-071-agent-invoke-subagent.md](spec-071-agent-invoke-subagent.md) | 📐 调研完成（方案已定，待实现） |
 | SPEC-072 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-072-domain-cohesion-refactor.md](spec-072-domain-cohesion-refactor.md) | 📐 立项（不展开） |
+| SPEC-073 | Dashboard 统计重构（Redis 多维计数 + 统一统计组件：日/周/月/年 TTL、token/LLM调用/API调用/产出物/task run/ROI 六指标、埋点+查询共用组件） | **P15** | [spec-073-dashboard-stats-redis.md](spec-073-dashboard-stats-redis.md) | 📐 详细设计 |
 
 ## Phase 对应与依赖
 
@@ -298,4 +299,15 @@ SPEC-006│               │
                    (业务领域 logic/service/db_model 垂直切片;
                     替换水平分层 domain/service/logic/infra;
                     依赖 SPEC-066/067/069/071 落地后再展开)
+
+[P15] SPEC-073 ─── Dashboard 统计重构 (Redis 多维计数 + 统一统计组件)
+                   (统一 metrics.Counter/Reader 组件(Redis 后端);
+                    日/周/月/年四维分开存储 + TTL(31天/12周/12月/2年);
+                    token/llm_calls/api_calls/artifact/task_completed 五计数指标;
+                    ROI=(artifact+task)/token 派生;
+                    埋点: llmstats.Record / gin middleware / artifact / task;
+                    查询走 Redis 不再聚合 MongoDB; 修 task_stats 缺失+6趋势空;
+                    清理 ComputeTrends nil 依赖 + AggregateByTime 旧调用;
+                    所有登录用户可看(现有 JWT 无 RBAC 限制);
+                    依赖 SPEC-003/051/059/060/064 已实现)
 ```
