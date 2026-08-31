@@ -170,7 +170,6 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	}
 	if deps.Knowledge != nil {
 		registerKnowledgeRoutes(router, deps.JWTManager, deps.Knowledge)
-		registerAdminKBRoutes(router, deps.JWTManager, deps.Knowledge, deps.RBACService)
 	}
 	if deps.Audit != nil {
 		registerAuditRoutes(router, deps.JWTManager, deps.Audit, deps.RBACService)
@@ -198,13 +197,6 @@ func registerWorkspaceRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *
 	wsRoutes.GET("/files", h.ListWorkspace)
 	wsRoutes.GET("/files/:filename", h.ReadWorkspaceFile)
 	wsRoutes.PUT("/files/:filename", h.WriteWorkspaceFile)
-}
-
-// registerAdminKBRoutes registers admin KB management routes.
-func registerAdminKBRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *KnowledgeHandler, rbacSvc *rbacsvc.Service) {
-	adminKB := router.Group("/api/v1/admin/knowledge")
-	adminKB.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermKBDelete))
-	adminKB.GET("/docs", h.ListAllDocs)
 }
 
 func registerAuthRoutes(authGroup *gin.RouterGroup, authHandler *AuthHandler) {
@@ -262,7 +254,6 @@ func registerKnowledgeRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *
 	kbRoutes.GET("/docs/:id", h.GetDoc)
 	kbRoutes.PUT("/docs/:id/public", h.SetPublicFlag)
 	kbRoutes.DELETE("/docs/:id", h.DeleteDoc)
-	kbRoutes.POST("/docs/:id/chunks", h.AddChunks)
 	kbRoutes.GET("/search", h.Search)
 }
 

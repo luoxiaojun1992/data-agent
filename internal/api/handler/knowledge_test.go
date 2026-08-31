@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	mocksvc "github.com/luoxiaojun1992/data-agent/internal/service/knowledge/mocks"
+	"github.com/stretchr/testify/mock"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -374,121 +374,6 @@ func TestSearch_NoResults(t *testing.T) {
 	c.Set("user_id", "user-1")
 	c.Set("role", "user")
 	h.Search(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-// ── AddChunks ──
-
-func TestAddChunks_Success(t *testing.T) {
-	svc := mocksvc.NewKnowledgeService(t)
-	h := NewKnowledgeHandler(svc)
-
-	svc.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
-
-	body := `{"chunks":["chunk 1 content","chunk 2 content","chunk 3 content"]}`
-	c, w := newGinContext("POST", "/knowledge/docs/kbdoc_1/chunks", body)
-	c.Params = gin.Params{{Key: "id", Value: "kbdoc_1"}}
-	h.AddChunks(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "indexed") {
-		t.Errorf("body should contain indexed: %s", w.Body.String())
-	}
-}
-
-func TestAddChunks_InvalidJSON(t *testing.T) {
-	svc := mocksvc.NewKnowledgeService(t)
-	h := NewKnowledgeHandler(svc)
-
-	c, w := newGinContext("POST", "/knowledge/docs/kbdoc_1/chunks", "bad")
-	c.Params = gin.Params{{Key: "id", Value: "kbdoc_1"}}
-	h.AddChunks(c)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
-	}
-}
-
-func TestAddChunks_ServiceError(t *testing.T) {
-	svc := mocksvc.NewKnowledgeService(t)
-	h := NewKnowledgeHandler(svc)
-
-	svc.On("AddChunks", mock.Anything, mock.Anything).Return(fmt.Errorf("chunk insert failed"))
-
-	body := `{"chunks":["chunk 1"]}`
-	c, w := newGinContext("POST", "/knowledge/docs/kbdoc_1/chunks", body)
-	c.Params = gin.Params{{Key: "id", Value: "kbdoc_1"}}
-	h.AddChunks(c)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-}
-
-func TestAddChunks_EmptyChunks(t *testing.T) {
-	svc := mocksvc.NewKnowledgeService(t)
-	h := NewKnowledgeHandler(svc)
-
-	svc.On("AddChunks", mock.Anything, mock.Anything).Return(nil)
-
-	body := `{"chunks":[]}`
-	c, w := newGinContext("POST", "/knowledge/docs/kbdoc_1/chunks", body)
-	c.Params = gin.Params{{Key: "id", Value: "kbdoc_1"}}
-	h.AddChunks(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-// ── ListAllDocs ──
-
-func TestListAllDocs_Success(t *testing.T) {
-	svc := mocksvc.NewKnowledgeService(t)
-	h := NewKnowledgeHandler(svc)
-
-	docs := []*knowledge.KnowledgeDoc{
-		{ID: "kbdoc_1", Title: "Doc 1", UserID: "user-1"},
-		{ID: "kbdoc_2", Title: "Doc 2", UserID: "user-2"},
-	}
-
-	svc.On("ListAllDocs", 1, 20).Return(docs, int64(3), nil)
-
-	c, w := newGinContext("GET", "/knowledge/admin/docs", "")
-	h.ListAllDocs(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestListAllDocs_Error(t *testing.T) {
-	svc := mocksvc.NewKnowledgeService(t)
-	h := NewKnowledgeHandler(svc)
-
-	svc.On("ListAllDocs", 1, 20).Return(nil, int64(0), fmt.Errorf("db error"))
-
-	c, w := newGinContext("GET", "/knowledge/admin/docs", "")
-	h.ListAllDocs(c)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-}
-
-func TestListAllDocs_Empty(t *testing.T) {
-	svc := mocksvc.NewKnowledgeService(t)
-	h := NewKnowledgeHandler(svc)
-
-	svc.On("ListAllDocs", 1, 20).Return([]*knowledge.KnowledgeDoc{}, int64(0), nil)
-
-	c, w := newGinContext("GET", "/knowledge/admin/docs", "")
-	h.ListAllDocs(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())

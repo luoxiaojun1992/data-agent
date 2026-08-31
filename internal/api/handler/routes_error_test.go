@@ -23,10 +23,10 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 	jwt := middleware.NewJWTManager("secret", 3600)
 
 	deps := &RouteDeps{
-		JWTManager:  jwt,
-		AuditLogger: nil,
-		HermesURL:   "",
-		AppName:     "data-agent",
+		JWTManager:   jwt,
+		AuditLogger:  nil,
+		HermesURL:    "",
+		AppName:      "data-agent",
 		Auth:         NewAuthHandler(nil),
 		User:         NewUserHandler(nil),
 		ModelConfig:  NewModelConfigHandler(nil, nil),
@@ -82,7 +82,6 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		"/api/v1/workspace/:session_id/files",
 		"/api/v1/knowledge/docs",
 		"/api/v1/knowledge/search",
-		"/api/v1/admin/knowledge/docs",
 		"/api/v1/admin/audit/logs",
 		"/api/v1/notifications",
 		"/api/v1/notifications/broadcast",

@@ -170,35 +170,6 @@ func (h *KnowledgeHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"query": query, "results": results})
 }
 
-// AddChunks adds semantic chunks to a document.
-func (h *KnowledgeHandler) AddChunks(c *gin.Context) {
-	docID := c.Param("id")
-	var req struct {
-		Chunks []string `json:"chunks"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.svc.AddChunks(docID, req.Chunks); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "indexed", "doc_id": docID, "chunk_count": len(req.Chunks)})
-}
-
-// ListAllDocs returns knowledge documents globally with pagination (admin view).
-func (h *KnowledgeHandler) ListAllDocs(c *gin.Context) {
-	page, pageSize := parsePage(c)
-	docs, total, err := h.svc.ListAllDocs(page, pageSize)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"docs": docs, "total": total, "page": page, "page_size": pageSize})
-}
-
 // SetPublicFlag toggles the is_public flag on a knowledge document.
 func (h *KnowledgeHandler) SetPublicFlag(c *gin.Context) {
 	docID := c.Param("id")
