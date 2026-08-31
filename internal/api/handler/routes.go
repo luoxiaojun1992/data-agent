@@ -9,8 +9,9 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/consts"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // RouteDeps bundles every handler and helper needed to register the full
@@ -21,29 +22,28 @@ type RouteDeps struct {
 	JWTManager  *middleware.JWTManager
 	AuditLogger *middleware.AuditLogger
 
-	Auth         *AuthHandler
-	User         *UserHandler
-	ModelConfig  *ModelConfigHandler
-	SysConfig    *ConfigHandler
-	Memory       *MemoryHandler
-	Chat         *ChatHandler
-	Enhance      *EnhanceHandler
-	Agent        *AgentHandler
-	Session      *SessionHandler
-	Artifact     *ArtifactHandler
-	Knowledge    *KnowledgeHandler
-	Audit        *AuditHandler
-	Notification *NotificationHandler
-	Task         *TaskHandler
-	Dashboard    *DashboardHandler
-	IMBind       *IMBindHandler
-	Stats        *StatsHandler
-	SkillConfig  *SkillConfigHandler
-	FeishuConfig *FeishuConfigHandler
-	RBAC         *RBACHandler
+	Auth          *AuthHandler
+	User          *UserHandler
+	ModelConfig   *ModelConfigHandler
+	SysConfig     *ConfigHandler
+	Memory        *MemoryHandler
+	Chat          *ChatHandler
+	Enhance       *EnhanceHandler
+	Agent         *AgentHandler
+	Session       *SessionHandler
+	Artifact      *ArtifactHandler
+	Knowledge     *KnowledgeHandler
+	Audit         *AuditHandler
+	Notification  *NotificationHandler
+	Task          *TaskHandler
+	Dashboard     *DashboardHandler
+	IMBind        *IMBindHandler
+	SkillConfig   *SkillConfigHandler
+	FeishuConfig  *FeishuConfigHandler
+	RBAC          *RBACHandler
 	APICollection *APICollectionHandler
-	APITools     *APIToolsHandler
-	RBACService  *rbacsvc.Service // for RequirePermission middleware
+	APITools      *APIToolsHandler
+	RBACService   *rbacsvc.Service // for RequirePermission middleware
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
 	IMWebhook http.HandlerFunc
@@ -53,6 +53,8 @@ type RouteDeps struct {
 	AppName string
 	// MemoryService is the ADK memory service for /memory/search.
 	MemoryService memory.Service
+	// MetricsCounter increments api_calls for /api/v1/* requests (SPEC-072).
+	MetricsCounter metrics.Counter
 }
 
 // RegisterAllRoutes wires the complete HTTP route table onto the router.
@@ -62,6 +64,8 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.RequestIDMiddleware())
 	router.Use(gin.Recovery())
+	// SPEC-072: count every /api/v1/* request (api_calls).
+	router.Use(middleware.MetricsMiddleware(deps.MetricsCounter))
 	if deps.AuditLogger != nil {
 		router.Use(deps.AuditLogger.AuditMiddleware())
 	}
@@ -179,11 +183,8 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 	}
 	if deps.Dashboard != nil {
 		dashRoutes := router.Group("/api/v1/dashboard")
-	dashRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermDashboardView))
-	RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard)
-	}
-	if deps.Stats != nil {
-		RegisterStatsRoutes(router, deps.JWTManager, deps.Stats, deps.RBACService)
+		dashRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermDashboardView))
+		RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard)
 	}
 	if deps.FeishuConfig != nil {
 		registerFeishuRoutes(router, deps.JWTManager, deps.FeishuConfig)
@@ -271,8 +272,6 @@ func registerAuditRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Audi
 	auditRoutes.GET("/logs", h.ListAuditLogs)
 	auditRoutes.POST("/export", h.ExportAuditLogs)
 }
-
-
 
 func registerNotificationRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *NotificationHandler) {
 	notifRoutes := router.Group("/api/v1/notifications")
@@ -363,8 +362,6 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	admin.DELETE("/users/:userId/rbac-roles/:id", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.RemoveUserRole)
 }
 
-
-
 func registerAPICollectionRoutes(admin *gin.RouterGroup, h *APICollectionHandler, rbacSvc *rbacsvc.Service) {
 	apiCol := admin.Group("/api-collections")
 	apiCol.GET("", middleware.RequirePermission(rbacSvc, model.PermAPICollectionView), h.List)
@@ -374,7 +371,6 @@ func registerAPICollectionRoutes(admin *gin.RouterGroup, h *APICollectionHandler
 	apiCol.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionDelete), h.Delete)
 	apiCol.POST("/:id/approve", middleware.RequirePermission(rbacSvc, model.PermAPICollectionApprove), h.Approve)
 }
-
 
 func registerAPIToolsRoutes(router *gin.Engine, h *APIToolsHandler, jwt *middleware.JWTManager, rbacSvc *rbacsvc.Service) {
 	tools := router.Group("/api/v1/tools/api")

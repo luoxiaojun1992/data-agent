@@ -4,20 +4,29 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/artifact"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
 // Storage combines file storage with MongoDB metadata.
 type Storage struct {
-	files repository.FileRepository
-	meta  repository.ArtifactRepository
+	files   repository.FileRepository
+	meta    repository.ArtifactRepository
+	counter metrics.Counter // SPEC-072: artifact_created 埋点（nil = disabled）
 }
 
 // NewStorage creates a new artifact storage adapter.
 func NewStorage(files repository.FileRepository, meta repository.ArtifactRepository) *Storage {
 	return &Storage{files: files, meta: meta}
+}
+
+// WithCounter attaches the metrics counter for artifact_created埋点 (SPEC-072).
+func (s *Storage) WithCounter(counter metrics.Counter) *Storage {
+	s.counter = counter
+	return s
 }
 
 // Upload stores a file and creates metadata.
@@ -36,6 +45,11 @@ func (s *Storage) Upload(userID, sessionID, taskID, name, mimeType string, reade
 	if err := s.meta.Create(context.Background(), art); err != nil {
 		_ = s.files.Delete(context.Background(), storagePath)
 		return nil, fmt.Errorf("insert artifact metadata: %w", err)
+	}
+
+	// SPEC-072: artifact_created is count-only (never decremented on delete).
+	if s.counter != nil {
+		_ = s.counter.Incr(context.Background(), metrics.MetricArtifact, time.Now(), 1)
 	}
 
 	return art, nil

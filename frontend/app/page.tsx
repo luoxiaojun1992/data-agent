@@ -21,115 +21,125 @@ function Chart({ testid, title, children }: ChartProps) {
   );
 }
 
-function SimpleBar({ data, emptyText = '暂无数据' }: { data: { label: string; value: number; color?: string }[], emptyText?: string }) {
+type Point = { time: string; value: number };
+
+function formatLabel(time: string, gran: string): string {
+  const d = new Date(time);
+  if (Number.isNaN(d.getTime())) return '';
+  if (gran === 'year') return String(d.getFullYear());
+  if (gran === 'month') return `${d.getFullYear()}/${d.getMonth() + 1}`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
   const hasData = data.some(d => d.value > 0);
   if (!hasData) {
     return (
       <div className="flex items-center justify-center h-[100px] text-xs text-[var(--text-secondary)]">
-        {emptyText}
+        暂无数据
       </div>
     );
   }
   const max = Math.max(...data.map(d => d.value), 1);
   return (
-    <div className="flex items-end gap-2" style={{ height: '100px' }}>
+    <div className="flex items-end gap-1" style={{ height: '100px' }}>
       {data.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+        <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
           <div className="w-full rounded-t" style={{
-            height: `${Math.max(8, (d.value / max) * 80)}px`,
-            backgroundColor: d.color || 'var(--accent)',
-            minHeight: '8px',
+            height: `${Math.max(4, (d.value / max) * 80)}px`,
+            backgroundColor: 'var(--accent)',
+            minHeight: '4px',
           }} />
-          <span className="text-[9px] text-[var(--text-secondary)]">{d.label}</span>
+          {data.length <= 12 && <span className="text-[8px] text-[var(--text-secondary)] truncate w-full text-center">{formatLabel(d.time, gran)}</span>}
         </div>
       ))}
     </div>
   );
 }
 
-function SimpleLine({ data }: { data: { label: string; value: number }[] }) {
-  const max = Math.max(...data.map(d => d.value), 1), min = 0;
-  const w = 100 / (data.length - 1 || 1);
-  const points = data.map((d, i) => `${i * w},${100 - ((d.value - min) / (max - min || 1)) * 90}`).join(' ');
-  return (
-    <svg viewBox="0 0 100 100" className="w-full" style={{ height: '80px' }}>
-      <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="2" />
-      {data.map((d, i) => (
-        <circle key={i} cx={i * w} cy={100 - ((d.value - min) / (max - min || 1)) * 90} r="1.5" fill="var(--accent)" />
-      ))}
-    </svg>
-  );
-}
+const GRANS = [
+  { key: 'day', label: '日' },
+  { key: 'week', label: '周' },
+  { key: 'month', label: '月' },
+  { key: 'year', label: '年' },
+];
 
 export default function MainPage() {
   const { apiFetch, auth } = useAuth();
-  const [timeFilter, setTimeFilter] = useState('today');
-  const [stats, setStats] = useState<any>(null);
+  const [granularity, setGranularity] = useState('day');
+  const [summary, setSummary] = useState<any>(null);
   const [trends, setTrends] = useState<any>(null);
 
   useEffect(() => {
     if (!auth.token) return;
     (async () => {
       try {
-        const [sr, tr] = await Promise.all([apiFetch('/dashboard'), apiFetch('/dashboard/trends')]);
-        setStats(await sr.json());
-        setTrends(await tr.json());
+        const sr = await apiFetch('/dashboard');
+        setSummary(await sr.json());
       } catch { /* ignore */ }
     })();
   }, [auth.token]);
 
-  const kpis = stats?.kpis || [
-    { label: '活跃 Chat 会话', value: '—', icon: '💬', trend: '—' },
-    { label: 'Agent 任务', value: '—', icon: '⚡', trend: '—' },
-    { label: '知识库文档', value: '—', icon: '📚', trend: '—' },
-    { label: '系统可用率', value: '99.9%', icon: '🟢', trend: '稳定' },
+  useEffect(() => {
+    if (!auth.token) return;
+    (async () => {
+      try {
+        const tr = await apiFetch(`/dashboard/trends?granularity=${granularity}`);
+        setTrends(await tr.json());
+      } catch { /* ignore */ }
+    })();
+  }, [auth.token, granularity]);
+
+  const num = (v: any) => (typeof v === 'number' ? v : 0);
+
+  const kpis = [
+    { label: '知识库文档', value: num(summary?.kb_docs), icon: '📚', testid: 'dashboard-stat-kb' },
+    { label: 'Token 消耗', value: num(summary?.token_tokens), icon: '🪙', testid: 'dashboard-stat-token' },
+    { label: 'LLM 调用', value: num(summary?.llm_calls), icon: '🤖', testid: 'dashboard-stat-llm' },
+    { label: 'API 调用', value: num(summary?.api_calls), icon: '🔌', testid: 'dashboard-stat-api' },
+    { label: '产出物', value: num(summary?.artifact_created), icon: '📦', testid: 'dashboard-stat-artifact' },
+    { label: '完成任务', value: num(summary?.task_completed), icon: '✅', testid: 'dashboard-stat-task' },
+    { label: 'ROI', value: `${(num(summary?.roi) * 100).toFixed(1)}%`, icon: '📈', testid: 'dashboard-stat-roi' },
   ];
 
-  const taskStats = stats?.task_stats || { total: 0, pending: 0, running: 0, completed: 0, failed: 0 };
-
-  // Status distribution from real task data
-  const statusDist = [
-    { label: '完成', value: taskStats.completed, color: '#34D399' },
-    { label: '运行', value: taskStats.running, color: '#60A5FA' },
-    { label: '失败', value: taskStats.failed, color: '#F87171' },
-    { label: '等待', value: taskStats.pending, color: '#FBBF24' },
+  const series: { key: string; title: string; testid: string }[] = [
+    { key: 'token_tokens', title: 'Token 消耗趋势', testid: 'chart-token' },
+    { key: 'llm_calls', title: 'LLM 调用趋势', testid: 'chart-llm' },
+    { key: 'api_calls', title: 'API 调用趋势', testid: 'chart-api' },
+    { key: 'artifact_created', title: '产出物趋势', testid: 'chart-artifact' },
+    { key: 'task_completed', title: '任务完成趋势', testid: 'chart-task' },
+    { key: 'roi', title: 'ROI 趋势', testid: 'chart-roi' },
   ];
 
   return (
     <AppLayout>
       <div className="animate-fade-in">
-        {/* Greeting + Time Filter */}
         <div className="mb-6 flex items-center justify-between" data-testid="page-header">
           <div>
-            <p className="text-lg font-semibold text-[var(--text-primary)]" data-testid="page-title">
-              仪表盘
-            </p>
-            <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-greeting">
-              {getGreeting()}，欢迎回来 👋
-            </p>
+            <p className="text-lg font-semibold text-[var(--text-primary)]" data-testid="page-title">仪表盘</p>
+            <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-greeting">{getGreeting()}，欢迎回来 👋</p>
             <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-date">
               {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
             </p>
           </div>
           <div className="flex items-center gap-2" data-testid="dashboard-time-filter">
-            {['today', 'week', 'month'].map(f => (
-              <button key={f} onClick={() => setTimeFilter(f)}
-                data-testid={`filter-${f}`}
+            {GRANS.map(g => (
+              <button key={g.key} onClick={() => setGranularity(g.key)}
+                data-testid={`filter-${g.key}`}
                 className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                  timeFilter === f ? 'bg-[var(--accent)]/20 text-[var(--accent)]' : 'text-[var(--text-secondary)]'
+                  granularity === g.key ? 'bg-[var(--accent)]/20 text-[var(--accent)]' : 'text-[var(--text-secondary)]'
                 }`}
-              >{f === 'today' ? '今日' : f === 'week' ? '本周' : '本月'}</button>
+              >{g.label}</button>
             ))}
           </div>
         </div>
 
-        {/* Stats cards */}
+        {/* KPI cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {kpis.map((kpi: any, i: number) => (
-            <div key={kpi.label} className="glass p-5 glass-hover" data-testid={`dashboard-stat-${i}`}>
+          {kpis.map((kpi) => (
+            <div key={kpi.label} className="glass p-5 glass-hover" data-testid={kpi.testid}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-2xl">{kpi.icon}</span>
-                <span className="text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">{kpi.trend}</span>
               </div>
               <p className="text-2xl font-bold text-[var(--text-primary)]">{kpi.value}</p>
               <p className="text-sm text-[var(--text-secondary)] mt-1">{kpi.label}</p>
@@ -137,61 +147,15 @@ export default function MainPage() {
           ))}
         </div>
 
-        {/* Charts Row 1 */}
+        {/* Trend charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          <Chart testid="chart-call-trend" title="Agent 调用量趋势">
-            <SimpleBar data={(trends?.call_trend || []).map((p: any) => ({ label: p.label, value: p.value }))} />
-          </Chart>
-          <Chart testid="chart-status-pie" title="任务状态分布">
-            <SimpleBar data={statusDist} />
-          </Chart>
-        </div>
-
-        {/* Charts Row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          <Chart testid="chart-duration-dist" title="任务耗时分布">
-            <SimpleBar data={(trends?.duration_dist || []).map((p: any) => ({ label: p.label, value: p.value }))} />
-          </Chart>
-          <Chart testid="chart-req-dist" title="24h 请求量分布">
-            <SimpleBar data={(trends?.req_dist || []).map((p: any) => ({ label: p.label, value: p.value }))} />
-          </Chart>
-        </div>
-
-        {/* Charts Row 3 */}
-        <div className="mb-6">
-          <Chart testid="chart-success-trend" title="成功率趋势">
-            <SimpleBar data={(trends?.success_trend || []).map((p: any) => ({ label: p.label, value: p.value, color: '#34D399' }))} />
-          </Chart>
-        </div>
-
-        {/* Token / ROI Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {[
-            { label: 'Token 消耗', value: trends?.token_trend ? trends.token_trend.reduce((a: number,b: any) => a+b.value, 0) : '—' },
-            { label: 'AI 产出', value: trends?.output_stats ? trends.output_stats.reduce((a: number,b: any) => a+b.value, 0) : '—' },
-            { label: 'ROI', value: trends?.roi_trend && trends.roi_trend.length > 0 ? `${(trends.roi_trend[trends.roi_trend.length-1]?.value || 0) / Math.max(1, taskStats.total)}x` : '—' },
-          ].map((kpi, i) => (
-            <div key={kpi.label} className="glass p-5" data-testid={`dashboard-token-kpi-${i}`}>
-              <p className="text-xs text-[var(--text-secondary)] uppercase mb-1">{kpi.label}</p>
-              <span className="text-2xl font-bold text-[var(--text-primary)]" data-testid={`dashboard-token-value-${i}`}>{String(kpi.value)}</span>
-            </div>
+          {series.map(s => (
+            <Chart key={s.key} testid={s.testid} title={s.title}>
+              <TrendChart data={(trends?.[s.key] || []) as Point[]} gran={granularity} />
+            </Chart>
           ))}
         </div>
 
-        {/* Charts Row 4 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-          <Chart testid="chart-token-trend" title="Token 消耗趋势">
-            <SimpleBar data={(trends?.token_trend || []).map((p: any) => ({ label: p.label, value: p.value, color: '#60A5FA' }))} />
-          </Chart>
-          <Chart testid="chart-output-stats" title="产出统计">
-            <SimpleBar data={(trends?.output_stats || []).map((p: any) => ({ label: p.label, value: p.value, color: '#34D399' }))} />
-          </Chart>
-          <Chart testid="chart-roi-dual" title="AI Agent ROI">
-            <SimpleBar data={(trends?.roi_trend || []).map((p: any) => ({ label: p.label, value: p.value, color: '#F472B6' }))} />
-          </Chart>
-        </div>
-
-        {/* Real-time badge */}
         <div className="text-center pb-6">
           <span data-testid="dashboard-realtime-badge"
             className="inline-flex items-center gap-2 text-xs text-[var(--text-secondary)] bg-[var(--glass-bg)] px-3 py-1.5 rounded-full"

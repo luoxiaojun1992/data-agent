@@ -12,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	fsops "github.com/luoxiaojun1992/data-agent/internal/logic/fsops"
 	pptxpkg "github.com/luoxiaojun1992/data-agent/internal/logic/pptx"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
@@ -65,6 +67,8 @@ type Deps struct {
 	EmbedFunc func(ctx context.Context, text string) ([]float32, error)
 	// VecCol is the Qdrant collection holding chunk vectors.
 	VecCol string
+	// Counter backs the task_completed埋点 (SPEC-072). Nil → no-op.
+	Counter metrics.Counter
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -452,6 +456,10 @@ func saveTaskResult(deps *Deps) functiontool.Func[SaveTaskResultArgs, SaveTaskRe
 		} else {
 			if err := deps.Tasks.UpdateRunResult(runID, result); err != nil {
 				return SaveTaskResultResult{}, fmt.Errorf("save_task_result: update run result: %w", err)
+			}
+			// SPEC-072: task_completed is count-only (never decremented).
+			if deps.Counter != nil {
+				_ = deps.Counter.Incr(tc, metrics.MetricTaskCompleted, time.Now(), 1)
 			}
 		}
 		return SaveTaskResultResult{

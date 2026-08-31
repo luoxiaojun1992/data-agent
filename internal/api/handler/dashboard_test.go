@@ -9,143 +9,154 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	domainknowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
-	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
-	kbmocks "github.com/luoxiaojun1992/data-agent/internal/service/knowledge/mocks"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
+	kmocks "github.com/luoxiaojun1992/data-agent/internal/service/knowledge/mocks"
 )
 
-// fakeAggregator is a test double for TokenTrendAggregator. It returns a
-// canned bucket slice (or an error) without touching MongoDB.
-type fakeAggregator struct {
-	buckets []llmstats.TimeBucketResult
-	err     error
+// fakeReader is a test double for metrics.Reader.
+type fakeReader struct {
+	sums   map[metrics.Metric]int64
+	series map[metrics.Metric][]metrics.Bucket
 }
 
-func (f *fakeAggregator) AggregateByTime(ctx context.Context, since time.Time, bucketMs int64) ([]llmstats.TimeBucketResult, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.buckets, nil
+func (f *fakeReader) Sum(_ context.Context, m metrics.Metric, _, _ time.Time) (int64, error) {
+	return f.sums[m], nil
 }
 
-func TestDashboardHandler_Get(t *testing.T) {
-	kb := kbmocks.NewKnowledgeService(t)
-	kb.On("ListAllDocs", 1, 1).Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}, {ID: "d2"}}, int64(2), nil)
+func (f *fakeReader) Series(_ context.Context, m metrics.Metric, _, _ time.Time, _ metrics.Granularity) ([]metrics.Bucket, error) {
+	return f.series[m], nil
+}
 
-	h := NewDashboardHandler(nil, kb, nil)
-	gin.SetMode(gin.TestMode)
+func newDashboardHandler(t *testing.T, sums map[metrics.Metric]int64, series map[metrics.Metric][]metrics.Bucket) *DashboardHandler {
+	t.Helper()
+	kb := kmocks.NewKnowledgeService(t)
+	kb.On("ListAllDocs", 1, 1).Return(nil, int64(42), nil)
+	return NewDashboardHandler(kb, &fakeReader{sums: sums, series: series})
+}
+
+func TestDashboardGet(t *testing.T) {
+	h := newDashboardHandler(t, map[metrics.Metric]int64{
+		metrics.MetricTokenTokens:   100,
+		metrics.MetricLLMCalls:      10,
+		metrics.MetricAPICalls:      200,
+		metrics.MetricArtifact:      5,
+		metrics.MetricTaskCompleted: 15,
+	}, nil)
+
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Set("user_id", "u1")
-	c.Request = httptest.NewRequest("GET", "/dashboard", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard", nil)
 	h.Get(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-	var resp map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-
-	if resp["kb_docs"].(float64) != 2 {
-		t.Errorf("kb_docs = %v, want 2", resp["kb_docs"])
-	}
+	require.Equal(t, http.StatusOK, w.Code)
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, float64(42), body["kb_docs"])
+	assert.Equal(t, float64(100), body["token_tokens"])
+	assert.Equal(t, float64(10), body["llm_calls"])
+	assert.Equal(t, float64(200), body["api_calls"])
+	assert.Equal(t, float64(5), body["artifact_created"])
+	assert.Equal(t, float64(15), body["task_completed"])
+	// ROI = (5 + 15) / 100 = 0.2
+	assert.InDelta(t, 0.2, body["roi"], 1e-9)
 }
 
-func TestDashboardHandler_GetTrends(t *testing.T) {
-	kb := kbmocks.NewKnowledgeService(t)
+func TestDashboardGet_ZeroTokensROI(t *testing.T) {
+	h := newDashboardHandler(t, map[metrics.Metric]int64{
+		metrics.MetricTokenTokens:   0,
+		metrics.MetricArtifact:      5,
+		metrics.MetricTaskCompleted: 3,
+	}, nil)
 
-	agg := &fakeAggregator{buckets: []llmstats.TimeBucketResult{
-		{BucketStart: time.Now().Add(-1 * time.Hour), TotalTokens: 200},
-	}}
-
-	h := NewDashboardHandler(nil, kb, agg)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Set("user_id", "u1")
-	c.Request = httptest.NewRequest("GET", "/dashboard/trends", nil)
-	h.GetTrends(c)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard", nil)
+	h.Get(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-	var resp map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-
-	// All seven trend fields should be present.
-	for _, key := range []string{"call_trend", "duration_dist", "req_dist", "success_trend", "token_trend", "output_stats", "roi_trend"} {
-		if resp[key] == nil {
-			t.Errorf("missing %s in trends response: %+v", key, resp)
-		}
-	}
-
-	// token_trend should carry the 200 tokens aggregated by the fake recorder.
-	tokenTrend, ok := resp["token_trend"].([]any)
-	if !ok {
-		t.Fatalf("token_trend is not a slice: %T", resp["token_trend"])
-	}
-	if len(tokenTrend) != 6 {
-		t.Errorf("token_trend len = %d, want 6", len(tokenTrend))
-	}
-	total := 0
-	for _, p := range tokenTrend {
-		point, _ := p.(map[string]any)
-		total += int(point["value"].(float64))
-	}
-	if total != 200 {
-		t.Errorf("token_trend total = %d, want 200", total)
-	}
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, float64(0), body["roi"])
 }
 
-func TestDashboardHandler_GetTrends_RecorderError(t *testing.T) {
-	kb := kbmocks.NewKnowledgeService(t)
+func TestDashboardGetTrends(t *testing.T) {
+	series := map[metrics.Metric][]metrics.Bucket{
+		metrics.MetricTokenTokens: {
+			{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 10},
+			{Time: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), Value: 20},
+		},
+		metrics.MetricLLMCalls:      {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 1}},
+		metrics.MetricAPICalls:      {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 5}},
+		metrics.MetricArtifact:      {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 2}},
+		metrics.MetricTaskCompleted: {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 3}},
+	}
+	h := newDashboardHandler(t, nil, series)
 
-	agg := &fakeAggregator{err: errStr("llmstats down")}
-
-	h := NewDashboardHandler(nil, kb, agg)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Set("user_id", "u1")
-	c.Request = httptest.NewRequest("GET", "/dashboard/trends", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/trends?granularity=day", nil)
 	h.GetTrends(c)
 
-	// Errors are swallowed so the dashboard still renders with empty trends.
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 even when recorder errors, got %d", w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Granularity   string       `json:"granularity"`
+		TokenTokens   []trendPoint `json:"token_tokens"`
+		LLMCalls      []trendPoint `json:"llm_calls"`
+		APICalls      []trendPoint `json:"api_calls"`
+		TaskCompleted []trendPoint `json:"task_completed"`
+		ROI           []roiPoint   `json:"roi"`
 	}
-	var resp map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	tokenTrend, ok := resp["token_trend"].([]any)
-	if !ok {
-		t.Fatalf("token_trend missing even on recorder error: %+v", resp)
-	}
-	if len(tokenTrend) != 6 {
-		t.Errorf("token_trend len = %d, want 6 (zeroed)", len(tokenTrend))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "day", body.Granularity)
+	assert.Len(t, body.TokenTokens, 2)
+	assert.Equal(t, int64(10), body.TokenTokens[0].Value)
+	// ROI series aligned with token series (2 points).
+	assert.Len(t, body.ROI, 2)
 }
 
-func TestDashboardHandler_GetTrends_NilRecorder(t *testing.T) {
-	kb := kbmocks.NewKnowledgeService(t)
-
-	// nil recorder (e.g. when MongoDB is unavailable) must not panic.
-	h := NewDashboardHandler(nil, kb, nil)
+func TestDashboardGetTrends_InvalidSince(t *testing.T) {
+	h := newDashboardHandler(t, nil, nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Set("user_id", "u1")
-	c.Request = httptest.NewRequest("GET", "/dashboard/trends", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/trends?since=not-a-date", nil)
 	h.GetTrends(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 with nil recorder, got %d", w.Code)
-	}
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestNewDashboardHandler(t *testing.T) {
-	h := NewDashboardHandler(nil, nil, nil)
-	if h == nil {
-		t.Error("handler should not be nil")
-	}
+func TestParseGranularity(t *testing.T) {
+	assert.Equal(t, metrics.GranularityDay, parseGranularity(""))
+	assert.Equal(t, metrics.GranularityDay, parseGranularity("bogus"))
+	assert.Equal(t, metrics.GranularityWeek, parseGranularity("week"))
+	assert.Equal(t, metrics.GranularityMonth, parseGranularity("month"))
+	assert.Equal(t, metrics.GranularityYear, parseGranularity("year"))
 }
 
-// Compile-time guard: *fakeAggregator satisfies TokenTrendAggregator.
-var _ TokenTrendAggregator = (*fakeAggregator)(nil)
+func TestParseRange(t *testing.T) {
+	since, until, err := parseRange("", "")
+	assert.NoError(t, err)
+	assert.True(t, since.IsZero())
+	assert.True(t, until.IsZero())
+
+	since, until, err = parseRange("2026-08-01T00:00:00Z", "2026-08-31T00:00:00Z")
+	assert.NoError(t, err)
+	assert.Equal(t, "2026-08-01 00:00:00 +0000 UTC", since.String())
+	assert.Equal(t, "2026-08-31 00:00:00 +0000 UTC", until.String())
+
+	_, _, err = parseRange("bad", "")
+	assert.Error(t, err)
+}
+
+func TestROISeries(t *testing.T) {
+	artifact := []trendPoint{{Value: 5}, {Value: 0}}
+	task := []trendPoint{{Value: 3}, {Value: 10}}
+	token := []trendPoint{{Value: 100, Time: time.Now()}, {Value: 0, Time: time.Now().Add(time.Hour)}}
+
+	out := roiSeries(artifact, task, token)
+	require.Len(t, out, 2)
+	// (5+3)/100 = 0.08
+	assert.InDelta(t, 0.08, out[0].Value, 1e-9)
+	// token=0 → ROI 0
+	assert.Equal(t, float64(0), out[1].Value)
+}

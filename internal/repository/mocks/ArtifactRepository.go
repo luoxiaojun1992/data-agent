@@ -141,6 +141,43 @@ func (_m *ArtifactRepository) ListByTask(ctx context.Context, taskID string) ([]
 	return r0, r1
 }
 
+// ListByUser provides a mock function with given fields: ctx, userID, skip, limit
+func (_m *ArtifactRepository) ListByUser(ctx context.Context, userID string, skip int64, limit int64) ([]*artifact.Artifact, int64, error) {
+	ret := _m.Called(ctx, userID, skip, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListByUser")
+	}
+
+	var r0 []*artifact.Artifact
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) ([]*artifact.Artifact, int64, error)); ok {
+		return rf(ctx, userID, skip, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) []*artifact.Artifact); ok {
+		r0 = rf(ctx, userID, skip, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*artifact.Artifact)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int64) int64); ok {
+		r1 = rf(ctx, userID, skip, limit)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, string, int64, int64) error); ok {
+		r2 = rf(ctx, userID, skip, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
 // NewArtifactRepository creates a new instance of ArtifactRepository. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewArtifactRepository(t interface {

@@ -29,6 +29,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
@@ -99,6 +100,8 @@ type serverDependencies struct {
 	piiEnabled     func() bool
 	llmRecorder    *llmstats.Recorder
 	llmCache       *llmcache.Cache
+	metricsCounter *metrics.MongoCounter // SPEC-072: unified埋点 counter (buffered)
+	metricsReader  *metrics.MongoReader  // SPEC-072: dashboard reader
 	taskStream     *queue.Stream
 	orchestrator   *agentlogic.Orchestrator
 	enhanceService *enhancesvc.Service
@@ -154,6 +157,12 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 		if err := migration.SeedRBAC(ctx, mongoClient.DB()); err != nil {
 			logger.Warn("Failed to seed RBAC data", zap.Error(err))
 		}
+		// SPEC-072: idempotently initialize stats_hourly indexes (no data
+		// migration/backfill). Failure is non-fatal — the dashboard reads
+		// simply return zero until indexes exist.
+		if err := migration.SeedStats(ctx, mongoClient.DB()); err != nil {
+			logger.Warn("Failed to seed stats_hourly indexes", zap.Error(err))
+		}
 		deps.userRepo = mongoinfra.NewUserRepository(mongoClient.DB())
 		if err := ensureSystemAdmin(ctx, deps.userRepo, logger); err != nil {
 			logger.Warn("Failed to ensure system admin", zap.Error(err))
@@ -206,6 +215,11 @@ func cleanup(logger *zap.Logger, mongoClient *mongoinfra.Client, deps *serverDep
 	}
 	if deps.redisClient != nil {
 		deps.redisClient.Close()
+	}
+	// SPEC-072: flush buffered metrics on shutdown so the last few seconds of
+	// counts are not lost.
+	if deps.metricsCounter != nil {
+		deps.metricsCounter.Stop()
 	}
 }
 

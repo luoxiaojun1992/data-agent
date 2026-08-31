@@ -28,6 +28,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
@@ -226,7 +227,12 @@ func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text strin
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoinfra.NewSessionRepository(mongoClient.DB()), 24*time.Hour)
 	deps.sessionRepo = mongoinfra.NewSessionRepository(mongoClient.DB())
-	deps.llmRecorder = llmstats.NewRecorder(mongoClient.DB())
+	// SPEC-072: unified metrics component (stats_hourly hourly counter +
+	// reader). The counter is shared by all埋点 (llmstats/middleware/artifact/
+	// task); the reader powers the dashboard queries.
+	deps.metricsCounter = metrics.NewCounter(mongoClient.DB(), 5*time.Second)
+	deps.metricsReader = metrics.NewReader(mongoClient.DB())
+	deps.llmRecorder = llmstats.NewRecorder(deps.metricsCounter)
 	if deps.redisClient != nil {
 		deps.llmCache = llmcache.New(deps.redisClient.Client())
 	}
@@ -269,6 +275,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		VectorRepo: deps.vectorStore,
 		EmbedFunc:  deps.kbEmbedFn,
 		VecCol:     "kb_chunks",
+		Counter:    deps.metricsCounter,
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -382,7 +389,7 @@ func initIM(deps *serverDependencies) {
 func initArtifacts(deps *serverDependencies, mongoClient *mongoinfra.Client, cfg *config.Config) {
 	artifactRepo := mongoinfra.NewArtifactRepository(mongoClient.DB())
 	fileStore := seaweedfs.NewFileStore(deps.swClient)
-	deps.artifactStorage = artifact_svc.NewStorage(fileStore, artifactRepo)
+	deps.artifactStorage = artifact_svc.NewStorage(fileStore, artifactRepo).WithCounter(deps.metricsCounter)
 	deps.workspaceMgr = workspace.NewManager(deps.artifactStorage)
 	deps.artifactHandler = handler.NewArtifactHandler(deps.artifactStorage, deps.workspaceMgr)
 }
@@ -579,35 +586,35 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 	})
 
 	return &handler.RouteDeps{
-		JWTManager:    deps.jwtManager,
-		AuditLogger:   deps.auditLogger,
-		Auth:          deps.authHandler,
-		User:          handler.NewUserHandler(user.NewService(deps.userRepo, user.NewBcryptHasher())),
-		RBAC:          handler.NewRBACHandler(rbacSvc),
-		RBACService:   rbacSvc,
-		ModelConfig:   handler.NewModelConfigHandler(cfgSvc, deps.modelCfg),
-		SysConfig:     handler.NewConfigHandler(cfgSvc, deps.userRepo),
-		Memory:        handler.NewMemoryHandler(deps.memoryService, deps.memoryKit.Storage(), appName, deps.userRepo, deps.sessionRepo),
-		Chat:          handler.NewChatHandler(deps.chatService),
-		Enhance:       handler.NewEnhanceHandler(deps.enhanceService),
-		Agent:         handler.NewAgentHandler(deps.orchestrator, deps.taskService, toolLister),
-		Session:       handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),
-		Artifact:      deps.artifactHandler,
-		Knowledge:     deps.kbHandler,
-		Audit:         deps.auditHandler,
-		Notification:  deps.notifHandler,
-		Task:          deps.taskHandler,
-		Dashboard:     handler.NewDashboardHandler(deps.taskService, deps.kbService, deps.llmRecorder),
-		IMBind:        imBindHandler,
-		Stats:         handler.NewStatsHandler(deps.llmRecorder),
-		SkillConfig:   deps.skillConfigHandler,
-		FeishuConfig:  handler.NewFeishuConfigHandler(deps.feishuCfgService),
-		APICollection: handler.NewAPICollectionHandler(deps.apiCollectionSvc),
-		APITools:      handler.NewAPIToolsHandler(deps.apiCollectionSvc),
-		IMWebhook:     imWebhook,
-		HermesURL:     os.Getenv("HERMES_URL"),
-		AppName:       appName,
-		MemoryService: deps.memoryService,
+		JWTManager:     deps.jwtManager,
+		AuditLogger:    deps.auditLogger,
+		Auth:           deps.authHandler,
+		User:           handler.NewUserHandler(user.NewService(deps.userRepo, user.NewBcryptHasher())),
+		RBAC:           handler.NewRBACHandler(rbacSvc),
+		RBACService:    rbacSvc,
+		ModelConfig:    handler.NewModelConfigHandler(cfgSvc, deps.modelCfg),
+		SysConfig:      handler.NewConfigHandler(cfgSvc, deps.userRepo),
+		Memory:         handler.NewMemoryHandler(deps.memoryService, deps.memoryKit.Storage(), appName, deps.userRepo, deps.sessionRepo),
+		Chat:           handler.NewChatHandler(deps.chatService),
+		Enhance:        handler.NewEnhanceHandler(deps.enhanceService),
+		Agent:          handler.NewAgentHandler(deps.orchestrator, deps.taskService, toolLister),
+		Session:        handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),
+		Artifact:       deps.artifactHandler,
+		Knowledge:      deps.kbHandler,
+		Audit:          deps.auditHandler,
+		Notification:   deps.notifHandler,
+		Task:           deps.taskHandler,
+		Dashboard:      handler.NewDashboardHandler(deps.kbService, deps.metricsReader),
+		IMBind:         imBindHandler,
+		SkillConfig:    deps.skillConfigHandler,
+		FeishuConfig:   handler.NewFeishuConfigHandler(deps.feishuCfgService),
+		APICollection:  handler.NewAPICollectionHandler(deps.apiCollectionSvc),
+		APITools:       handler.NewAPIToolsHandler(deps.apiCollectionSvc),
+		IMWebhook:      imWebhook,
+		HermesURL:      os.Getenv("HERMES_URL"),
+		AppName:        appName,
+		MetricsCounter: deps.metricsCounter,
+		MemoryService:  deps.memoryService,
 	}
 }
 
