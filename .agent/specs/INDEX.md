@@ -87,6 +87,7 @@
 | SPEC-071 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-071-agent-invoke-subagent.md](spec-071-agent-invoke-subagent.md) | ✅ 已实现 |
 | SPEC-072 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-072-dashboard-stats-mongo-hourly.md](spec-072-dashboard-stats-mongo-hourly.md) | ✅ 已实现 |
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
+| SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -311,4 +312,11 @@ SPEC-006│               │
                    (业务领域 logic/service/db_model 垂直切片;
                     替换水平分层 domain/service/logic/infra;
                     依赖 SPEC-066/067/069/071 落地后再展开)
+
+[P15] SPEC-074 ─── 可搜索下拉选择器统一设计 (设计中)
+                   (模型/角色/父角色/权限 4 处下拉统一 q+limit topN;
+                    过滤排序截取全下沉 DB 层 $match+$sort+$limit;
+                    默认项排最前(模型用 aggregation sortKey);
+                    禁止内存/前端排序截取;
+                    依赖 SPEC-062/064/066 已实现)
 ```
