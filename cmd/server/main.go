@@ -188,6 +188,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initPII(&deps)                      // SPEC-068: pii redactor before auditor + KB service
 	initGraphStore(&deps)               // SPEC-070: graph store BEFORE initAgentEngine (tool deps need it)
 	initMetrics(&deps, mongoClient)     // SPEC-072: counter/reader/recorder before initArtifacts + initServices
+	initRedis(&deps, cfg, logger)       // llmCache before initKnowledgeBase (KB embedding cache would be nil otherwise)
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initSkillConfig(&deps, mongoClient)

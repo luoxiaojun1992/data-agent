@@ -236,6 +236,21 @@ func initMetrics(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.llmRecorder = llmstats.NewRecorder(deps.metricsCounter)
 }
 
+// initRedis connects to Redis and builds the LLM cache. Runs BEFORE
+// initKnowledgeBase so cachedEmbedFn captures a non-nil cache — previously the
+// connection was established inside initTaskQueue (after initKnowledgeBase),
+// so the KB embedding cache was silently nil and never hit. Redis failure
+// degrades: cache/queue stay disabled, matching the old behavior.
+func initRedis(deps *serverDependencies, cfg *config.Config, logger *zap.Logger) {
+	redisClient, redisErr := redis.NewClient(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	if redisErr != nil {
+		logger.Warn("Failed to connect to Redis — cache/queue disabled", zap.Error(redisErr))
+		return
+	}
+	deps.redisClient = redisClient
+	deps.llmCache = llmcache.New(redisClient.Client())
+}
+
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
 	deps.sessionManager = chat.NewManager(mongoinfra.NewSessionRepository(mongoClient.DB()), 24*time.Hour)
 	deps.sessionRepo = mongoinfra.NewSessionRepository(mongoClient.DB())
@@ -244,9 +259,6 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// biggest call point was previously unrecorded).
 	if deps.modelCfg != nil {
 		deps.modelCfg.SetUsageRecorder(deps.llmRecorder)
-	}
-	if deps.redisClient != nil {
-		deps.llmCache = llmcache.New(deps.redisClient.Client())
 	}
 
 	// SPEC-062/066/067: System-level compaction LLM (baked into the shared ADK
@@ -477,12 +489,13 @@ func initAuditAndNotifications(deps *serverDependencies, mongoClient *mongoinfra
 }
 
 func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mongoinfra.Client, logger *zap.Logger) {
-	redisClient, redisErr := redis.NewClient(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
-	if redisErr != nil {
-		logger.Warn("Failed to connect to Redis — task queue disabled", zap.Error(redisErr))
+	// Redis is connected in initRedis (before initKnowledgeBase, for the LLM
+	// cache). Task queue wiring happens here, after the task service exists.
+	if deps.redisClient == nil {
+		logger.Warn("Redis not connected — task queue disabled")
 		return
 	}
-	deps.redisClient = redisClient
+	redisClient := deps.redisClient
 
 	// Inject Redis into the guard (relevance retry counter) once connected.
 	if deps.guardSvc != nil {
