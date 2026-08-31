@@ -5,6 +5,7 @@ package mocks
 import (
 	context "context"
 
+	modelconfig "github.com/luoxiaojun1992/data-agent/internal/domain/modelconfig"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -13,9 +14,9 @@ type ModelConfigRepository struct {
 	mock.Mock
 }
 
-// Delete provides a mock function with given fields: ctx, key
-func (_m *ModelConfigRepository) Delete(ctx context.Context, key string) error {
-	ret := _m.Called(ctx, key)
+// Delete provides a mock function with given fields: ctx, id
+func (_m *ModelConfigRepository) Delete(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Delete")
@@ -23,7 +24,7 @@ func (_m *ModelConfigRepository) Delete(ctx context.Context, key string) error {
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, key)
+		r0 = rf(ctx, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -31,29 +32,29 @@ func (_m *ModelConfigRepository) Delete(ctx context.Context, key string) error {
 	return r0
 }
 
-// GetAll provides a mock function with given fields: ctx
-func (_m *ModelConfigRepository) GetAll(ctx context.Context) ([]map[string]interface{}, error) {
-	ret := _m.Called(ctx)
+// Get provides a mock function with given fields: ctx, id
+func (_m *ModelConfigRepository) Get(ctx context.Context, id string) (*modelconfig.ModelEntry, error) {
+	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetAll")
+		panic("no return value specified for Get")
 	}
 
-	var r0 []map[string]interface{}
+	var r0 *modelconfig.ModelEntry
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) ([]map[string]interface{}, error)); ok {
-		return rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*modelconfig.ModelEntry, error)); ok {
+		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) []map[string]interface{}); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, string) *modelconfig.ModelEntry); ok {
+		r0 = rf(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]map[string]interface{})
+			r0 = ret.Get(0).(*modelconfig.ModelEntry)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = rf(ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, id)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -61,17 +62,72 @@ func (_m *ModelConfigRepository) GetAll(ctx context.Context) ([]map[string]inter
 	return r0, r1
 }
 
-// Upsert provides a mock function with given fields: ctx, key, config
-func (_m *ModelConfigRepository) Upsert(ctx context.Context, key string, config map[string]interface{}) error {
-	ret := _m.Called(ctx, key, config)
+// Insert provides a mock function with given fields: ctx, entry
+func (_m *ModelConfigRepository) Insert(ctx context.Context, entry modelconfig.ModelEntry) error {
+	ret := _m.Called(ctx, entry)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Upsert")
+		panic("no return value specified for Insert")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) error); ok {
-		r0 = rf(ctx, key, config)
+	if rf, ok := ret.Get(0).(func(context.Context, modelconfig.ModelEntry) error); ok {
+		r0 = rf(ctx, entry)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// List provides a mock function with given fields: ctx, t, skip, limit
+func (_m *ModelConfigRepository) List(ctx context.Context, t modelconfig.ModelType, skip int64, limit int64) ([]modelconfig.ModelEntry, int64, error) {
+	ret := _m.Called(ctx, t, skip, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for List")
+	}
+
+	var r0 []modelconfig.ModelEntry
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, modelconfig.ModelType, int64, int64) ([]modelconfig.ModelEntry, int64, error)); ok {
+		return rf(ctx, t, skip, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, modelconfig.ModelType, int64, int64) []modelconfig.ModelEntry); ok {
+		r0 = rf(ctx, t, skip, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]modelconfig.ModelEntry)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, modelconfig.ModelType, int64, int64) int64); ok {
+		r1 = rf(ctx, t, skip, limit)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, modelconfig.ModelType, int64, int64) error); ok {
+		r2 = rf(ctx, t, skip, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Update provides a mock function with given fields: ctx, id, entry
+func (_m *ModelConfigRepository) Update(ctx context.Context, id string, entry modelconfig.ModelEntry) error {
+	ret := _m.Called(ctx, id, entry)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Update")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, modelconfig.ModelEntry) error); ok {
+		r0 = rf(ctx, id, entry)
 	} else {
 		r0 = ret.Error(0)
 	}

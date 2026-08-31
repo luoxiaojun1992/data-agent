@@ -43,6 +43,7 @@ type Reader interface {
 type Granularity string
 
 const (
+	GranularityHour  Granularity = "hour"
 	GranularityDay   Granularity = "day"
 	GranularityWeek  Granularity = "week"
 	GranularityMonth Granularity = "month"
@@ -65,11 +66,13 @@ func HourBucket(t time.Time) time.Time {
 }
 
 // bucketStart truncates t to the start of the given granularity bucket (UTC).
-// day→day, week→Monday, month→1st, year→Jan 1. It is the pure-function used
-// by the reader's Go-side bucketing.
+// hour→hour, day→day, week→Monday, month→1st, year→Jan 1. It is the
+// pure-function used by the reader's Go-side bucketing.
 func bucketStart(t time.Time, g Granularity) time.Time {
 	t = t.UTC()
 	switch g {
+	case GranularityHour:
+		return t.Truncate(time.Hour)
 	case GranularityWeek:
 		// Week starts on Monday (ISO).
 		wd := int(t.Weekday())
@@ -89,6 +92,8 @@ func bucketStart(t time.Time, g Granularity) time.Time {
 // bucketAdvance returns the start of the next bucket after t for granularity g.
 func bucketAdvance(t time.Time, g Granularity) time.Time {
 	switch g {
+	case GranularityHour:
+		return t.Add(time.Hour)
 	case GranularityWeek:
 		return t.AddDate(0, 0, 7)
 	case GranularityMonth:

@@ -16,14 +16,14 @@ import (
 
 func newModelTestHandler(t *testing.T, entries []modelcfg.ModelEntry) *ModelConfigHandler {
 	t.Helper()
-	repo := mockrepo.NewSysConfigRepository(t)
+	repo := mockrepo.NewModelConfigRepository(t)
 	raw, _ := json.Marshal(entries)
-	cfg := &model.SystemConfig{Namespace: "model", Key: "models", Value: string(raw)}
-	repo.On("Get", mock.Anything, "model", "models").Maybe().Return(cfg, nil)
-	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
-	repo.On("GetAll", mock.Anything, "model").Maybe().Return([]model.SystemConfig{*cfg}, nil)
-	repo.On("Upsert", mock.Anything, "model", "models", mock.Anything).Maybe().Return(nil)
-	p := modelcfg.NewProvider(repo, nil)
+	cfg := &model.SystemConfig{Key: "models", Value: string(raw)}
+	repo.On("Get", mock.Anything, "models").Maybe().Return(cfg, nil)
+	repo.On("Get", mock.Anything, "api_url").Maybe().Return(nil, nil)
+	repo.On("GetAll", mock.Anything).Maybe().Return([]model.SystemConfig{*cfg}, nil)
+	repo.On("Upsert", mock.Anything, "models", mock.Anything).Maybe().Return(nil)
+	p := modelcfg.NewProvider(repo, mockrepo.NewModelDefaultRepository(t), nil)
 	return NewModelConfigHandler(nil, p)
 }
 
@@ -105,7 +105,7 @@ func TestModelConfig_DeleteModel_Idempotent(t *testing.T) {
 
 func TestModelConfig_SetDefault(t *testing.T) {
 	h := newModelTestHandler(t, []modelcfg.ModelEntry{
-		{ID: "m1", Name: "M1", Type: modelcfg.ModelTypeLLM, IsDefault: true},
+		{ID: "m1", Name: "M1", Type: modelcfg.ModelTypeLLM, IsDefaultFor: []string{"chat"}},
 		{ID: "m2", Name: "M2", Type: modelcfg.ModelTypeLLM},
 	})
 	c, w := ginReq("PATCH", "/models/m2/default", nil)

@@ -16,7 +16,7 @@ import (
 // where JSON parses successfully but the prompt is an empty string. The
 // handler should respond 400 with the ErrInvalidReq message.
 func TestEnhanceHandler_EmptyPromptAfterJSONParse_ErrorMsg(t *testing.T) {
-	svc := enhance.NewService(nil, nil, nil)
+	svc := enhance.NewService(nil, nil)
 	h := NewEnhanceHandler(svc)
 	c, w := newEnhanceGin("POST", "/enhance", `{"prompt":""}`)
 	h.Enhance(c)
@@ -34,7 +34,7 @@ func TestEnhanceHandler_EmptyPromptAfterJSONParse_ErrorMsg(t *testing.T) {
 func TestRegisterEnhanceRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	svc := enhance.NewService(nil, nil, nil)
+	svc := enhance.NewService(nil, nil)
 	h := NewEnhanceHandler(svc)
 	rg := r.Group("/api")
 	RegisterEnhanceRoute(rg, h)

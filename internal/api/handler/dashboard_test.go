@@ -33,7 +33,7 @@ func (f *fakeReader) Series(_ context.Context, m metrics.Metric, _, _ time.Time,
 func newDashboardHandler(t *testing.T, sums map[metrics.Metric]int64, series map[metrics.Metric][]metrics.Bucket) *DashboardHandler {
 	t.Helper()
 	kb := kmocks.NewKnowledgeService(t)
-	kb.On("ListAllDocs", 1, 1).Return(nil, int64(42), nil)
+	kb.On("ListAllDocs", 1, 1).Maybe().Return(nil, int64(42), nil)
 	return NewDashboardHandler(kb, &fakeReader{sums: sums, series: series})
 }
 
@@ -84,13 +84,13 @@ func TestDashboardGet_ZeroTokensROI(t *testing.T) {
 func TestDashboardGetTrends(t *testing.T) {
 	series := map[metrics.Metric][]metrics.Bucket{
 		metrics.MetricTokenTokens: {
-			{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 10},
-			{Time: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), Value: 20},
+			{Time: time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC), Value: 10},
+			{Time: time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC), Value: 20},
 		},
-		metrics.MetricLLMCalls:      {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 1}},
-		metrics.MetricAPICalls:      {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 5}},
-		metrics.MetricArtifact:      {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 2}},
-		metrics.MetricTaskCompleted: {{Time: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), Value: 3}},
+		metrics.MetricLLMCalls:      {{Time: time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC), Value: 1}},
+		metrics.MetricAPICalls:      {{Time: time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC), Value: 5}},
+		metrics.MetricArtifact:      {{Time: time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC), Value: 2}},
+		metrics.MetricTaskCompleted: {{Time: time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC), Value: 3}},
 	}
 	h := newDashboardHandler(t, nil, series)
 
@@ -102,6 +102,7 @@ func TestDashboardGetTrends(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	var body struct {
 		Granularity   string       `json:"granularity"`
+		Bucket        string       `json:"bucket"`
 		TokenTokens   []trendPoint `json:"token_tokens"`
 		LLMCalls      []trendPoint `json:"llm_calls"`
 		APICalls      []trendPoint `json:"api_calls"`
@@ -110,10 +111,32 @@ func TestDashboardGetTrends(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	assert.Equal(t, "day", body.Granularity)
+	assert.Equal(t, "hour", body.Bucket, "day window must use hour buckets")
 	assert.Len(t, body.TokenTokens, 2)
 	assert.Equal(t, int64(10), body.TokenTokens[0].Value)
 	// ROI series aligned with token series (2 points).
 	assert.Len(t, body.ROI, 2)
+}
+
+// TestWindowFor verifies the granularity → (bucket, window) mapping: the
+// dashboard granularity is a display window, and the bucket size inside that
+// window is chosen automatically.
+func TestWindowFor(t *testing.T) {
+	tests := []struct {
+		gran   metrics.Granularity
+		bucket metrics.Granularity
+		window time.Duration
+	}{
+		{metrics.GranularityDay, metrics.GranularityHour, 24 * time.Hour},
+		{metrics.GranularityWeek, metrics.GranularityDay, 7 * 24 * time.Hour},
+		{metrics.GranularityMonth, metrics.GranularityDay, 30 * 24 * time.Hour},
+		{metrics.GranularityYear, metrics.GranularityMonth, 365 * 24 * time.Hour},
+	}
+	for _, tc := range tests {
+		spec := windowFor(tc.gran)
+		assert.Equal(t, tc.bucket, spec.bucket, "granularity %s", tc.gran)
+		assert.Equal(t, tc.window, spec.window, "granularity %s", tc.gran)
+	}
 }
 
 func TestDashboardGetTrends_InvalidSince(t *testing.T) {

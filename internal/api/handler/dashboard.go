@@ -77,7 +77,8 @@ type roiPoint struct {
 
 // trendsResponse is the JSON payload of GET /api/v1/dashboard/trends.
 type trendsResponse struct {
-	Granularity     string       `json:"granularity"`
+	Granularity     string       `json:"granularity"` // window: day|week|month|year
+	Bucket          string       `json:"bucket"`      // actual bucket size: hour|day|month
 	TokenTokens     []trendPoint `json:"token_tokens"`
 	LLMCalls        []trendPoint `json:"llm_calls"`
 	APICalls        []trendPoint `json:"api_calls"`
@@ -86,29 +87,63 @@ type trendsResponse struct {
 	ROI             []roiPoint   `json:"roi"`
 }
 
-// GetTrends returns per-metric time series bucketed by granularity. The
-// default window is the last year; since/until query params are RFC3339 (UTC).
-// Granularity is one of day|week|month|year (default day).
+// windowSpec maps a dashboard granularity (the display window) to the bucket
+// size used inside that window and the default window length:
+//
+//	day   → 24-hour window, hour buckets
+//	week  → 7-day window,   day buckets
+//	month → 30-day window,  day buckets
+//	year  → 12-month window, month buckets
+type windowSpec struct {
+	bucket metrics.Granularity
+	window time.Duration
+}
+
+func windowFor(g metrics.Granularity) windowSpec {
+	switch g {
+	case metrics.GranularityWeek:
+		return windowSpec{bucket: metrics.GranularityDay, window: 7 * 24 * time.Hour}
+	case metrics.GranularityMonth:
+		return windowSpec{bucket: metrics.GranularityDay, window: 30 * 24 * time.Hour}
+	case metrics.GranularityYear:
+		return windowSpec{bucket: metrics.GranularityMonth, window: 365 * 24 * time.Hour}
+	default: // day
+		return windowSpec{bucket: metrics.GranularityHour, window: 24 * time.Hour}
+	}
+}
+
+// GetTrends returns per-metric time series. granularity selects the display
+// window (day|week|month|year), and the bucket size inside that window is
+// chosen automatically (hour for day, day for week/month, month for year).
+// since/until query params are RFC3339 (UTC) and override the default window.
 func (h *DashboardHandler) GetTrends(c *gin.Context) {
 	ctx := c.Request.Context()
 	gran := parseGranularity(c.Query("granularity"))
+	spec := windowFor(gran)
 	since, until, err := parseRange(c.Query("since"), c.Query("until"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	now := time.Now().UTC()
+	if since.IsZero() {
+		since = now.Add(-spec.window)
+	}
+	if until.IsZero() {
+		until = now
+	}
 
-	resp := trendsResponse{Granularity: string(gran)}
+	resp := trendsResponse{Granularity: string(gran), Bucket: string(spec.bucket)}
 	if h.reader == nil {
 		c.JSON(http.StatusOK, resp)
 		return
 	}
 
-	resp.TokenTokens = series(h.reader, ctx, metrics.MetricTokenTokens, since, until, gran)
-	resp.LLMCalls = series(h.reader, ctx, metrics.MetricLLMCalls, since, until, gran)
-	resp.APICalls = series(h.reader, ctx, metrics.MetricAPICalls, since, until, gran)
-	resp.ArtifactCreated = series(h.reader, ctx, metrics.MetricArtifact, since, until, gran)
-	resp.TaskCompleted = series(h.reader, ctx, metrics.MetricTaskCompleted, since, until, gran)
+	resp.TokenTokens = series(h.reader, ctx, metrics.MetricTokenTokens, since, until, spec.bucket)
+	resp.LLMCalls = series(h.reader, ctx, metrics.MetricLLMCalls, since, until, spec.bucket)
+	resp.APICalls = series(h.reader, ctx, metrics.MetricAPICalls, since, until, spec.bucket)
+	resp.ArtifactCreated = series(h.reader, ctx, metrics.MetricArtifact, since, until, spec.bucket)
+	resp.TaskCompleted = series(h.reader, ctx, metrics.MetricTaskCompleted, since, until, spec.bucket)
 	resp.ROI = roiSeries(resp.ArtifactCreated, resp.TaskCompleted, resp.TokenTokens)
 
 	c.JSON(http.StatusOK, resp)

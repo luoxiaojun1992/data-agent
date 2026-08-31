@@ -41,7 +41,7 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		Audit:        NewAuditHandler(nil),
 		Notification: NewNotificationHandler(nil),
 		Task:         NewTaskHandler(nil, nil),
-		Dashboard:    NewDashboardHandler(nil, nil, nil),
+		Dashboard:    NewDashboardHandler(nil, nil),
 		IMBind:       NewIMBindHandler(nil),
 	}
 	RegisterAllRoutes(router, deps)
@@ -60,18 +60,18 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 	}
 
 	// A representative route from each register* helper should be present.
+	// Routes conditioned on services this test leaves nil (RBAC roles/permissions,
+	// APICollection api-reviews) are covered by their own tests.
 	wantPaths := []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
 		"/api/v1/auth/refresh",
 		"/api/v1/auth/profile",
 		"/api/v1/users",
-		"/api/v1/roles",
-		"/api/v1/permissions",
-		"/api/v1/models",
-		"/api/v1/sysconfig/:namespace",
-		"/api/v1/change-password",
-		"/api/v1/memory/search",
+		"/api/v1/models/list",
+		"/api/v1/admin/sysconfig",
+		"/api/v1/admin/change-password",
+		"/api/v1/memory/list",
 		"/api/v1/chat",
 		"/api/v1/chat/enhance",
 		"/api/v1/agent/tasks",
@@ -84,7 +84,6 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		"/api/v1/knowledge/search",
 		"/api/v1/admin/knowledge/docs",
 		"/api/v1/admin/audit/logs",
-		"/api/v1/admin/api-reviews",
 		"/api/v1/notifications",
 		"/api/v1/notifications/broadcast",
 		"/api/v1/tasks",

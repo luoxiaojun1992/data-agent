@@ -26,8 +26,8 @@ type Point = { time: string; value: number };
 function formatLabel(time: string, gran: string): string {
   const d = new Date(time);
   if (Number.isNaN(d.getTime())) return '';
-  if (gran === 'year') return String(d.getFullYear());
-  if (gran === 'month') return `${d.getFullYear()}/${d.getMonth() + 1}`;
+  if (gran === 'day') return `${String(d.getHours()).padStart(2, '0')}:00`;
+  if (gran === 'year') return `${d.getFullYear()}/${d.getMonth() + 1}`;
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
@@ -41,6 +41,7 @@ function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
     );
   }
   const max = Math.max(...data.map(d => d.value), 1);
+  const showLabel = data.length <= 12 || gran === 'day';
   return (
     <div className="flex items-end gap-1" style={{ height: '100px' }}>
       {data.map((d, i) => (
@@ -50,7 +51,9 @@ function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
             backgroundColor: 'var(--accent)',
             minHeight: '4px',
           }} />
-          {data.length <= 12 && <span className="text-[8px] text-[var(--text-secondary)] truncate w-full text-center">{formatLabel(d.time, gran)}</span>}
+          {showLabel && <span className="text-[8px] text-[var(--text-secondary)] truncate w-full text-center">
+            {gran === 'day' && data.length > 12 && i % 3 !== 0 ? '' : formatLabel(d.time, gran)}
+          </span>}
         </div>
       ))}
     </div>

@@ -21,7 +21,7 @@ func newEnhanceGin(method, path, body string) (*gin.Context, *httptest.ResponseR
 }
 
 func TestEnhanceHandler_Success(t *testing.T) {
-	svc := enhance.NewService(nil, nil, nil) // fallback returns original prompt
+	svc := enhance.NewService(nil, nil) // fallback returns original prompt
 	h := NewEnhanceHandler(svc)
 	c, w := newEnhanceGin("POST", "/enhance", `{"prompt":"分析营收"}`)
 	h.Enhance(c)
@@ -36,7 +36,7 @@ func TestEnhanceHandler_Success(t *testing.T) {
 }
 
 func TestEnhanceHandler_EmptyPrompt(t *testing.T) {
-	svc := enhance.NewService(nil, nil, nil)
+	svc := enhance.NewService(nil, nil)
 	h := NewEnhanceHandler(svc)
 	c, w := newEnhanceGin("POST", "/enhance", `{"prompt":""}`)
 	h.Enhance(c)
@@ -46,7 +46,7 @@ func TestEnhanceHandler_EmptyPrompt(t *testing.T) {
 }
 
 func TestEnhanceHandler_InvalidBody(t *testing.T) {
-	svc := enhance.NewService(nil, nil, nil)
+	svc := enhance.NewService(nil, nil)
 	h := NewEnhanceHandler(svc)
 	c, w := newEnhanceGin("POST", "/enhance", "not-json")
 	h.Enhance(c)

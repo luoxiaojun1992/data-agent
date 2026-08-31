@@ -85,7 +85,7 @@ func TestBucketHours(t *testing.T) {
 func TestBucketHours_IncludesPartialFinalBucket(t *testing.T) {
 	d1 := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
 	hourSums := map[time.Time]int64{
-		d1:                10,
+		d1:                     10,
 		d1.Add(23 * time.Hour): 5,
 	}
 	// until is mid-day on Sep 1 → the Sep 1 bucket (which holds no data here)
@@ -99,6 +99,30 @@ func TestBucketHours_IncludesPartialFinalBucket(t *testing.T) {
 	}
 	if buckets[1].Value != 0 {
 		t.Errorf("Sep 1 (partial) value = %d, want 0", buckets[1].Value)
+	}
+}
+
+// TestBucketHours_HourGranularity covers the dashboard "日" window: hour-sized
+// buckets over a 24h range.
+func TestBucketHours_HourGranularity(t *testing.T) {
+	d1 := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
+	hourSums := map[time.Time]int64{
+		d1:                    10,
+		d1.Add(2 * time.Hour): 7,
+	}
+	buckets := bucketHours(hourSums, d1, d1.Add(4*time.Hour), GranularityHour)
+	if len(buckets) != 4 {
+		t.Fatalf("bucket count = %d, want 4 hour buckets", len(buckets))
+	}
+	if buckets[0].Value != 10 || buckets[2].Value != 7 {
+		t.Errorf("hour values = [%d %d %d %d], want [10 0 7 0]",
+			buckets[0].Value, buckets[1].Value, buckets[2].Value, buckets[3].Value)
+	}
+	if got := bucketStart(time.Date(2026, 8, 31, 15, 47, 0, 0, time.UTC), GranularityHour); got.Hour() != 15 || got.Minute() != 0 {
+		t.Errorf("bucketStart(hour) = %v, want 15:00", got)
+	}
+	if got := bucketAdvance(d1, GranularityHour); !got.Equal(d1.Add(time.Hour)) {
+		t.Errorf("bucketAdvance(hour) = %v, want %v", got, d1.Add(time.Hour))
 	}
 }
 

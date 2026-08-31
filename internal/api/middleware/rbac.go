@@ -34,6 +34,12 @@ func RequirePermission(svc *rbacsvc.Service, permission string) gin.HandlerFunc 
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "user not authenticated"})
 			return
 		}
+		if svc == nil {
+			// RBAC service not wired (misconfiguration): fail closed instead of
+			// panicking on a nil receiver.
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "permission service unavailable"})
+			return
+		}
 
 		has, err := svc.HasPermission(c.Request.Context(), userID, permission)
 		if err != nil {

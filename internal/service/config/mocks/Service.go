@@ -14,17 +14,17 @@ type Service struct {
 	mock.Mock
 }
 
-// Delete provides a mock function with given fields: ctx, namespace, key
-func (_m *Service) Delete(ctx context.Context, namespace string, key string) error {
-	ret := _m.Called(ctx, namespace, key)
+// Delete provides a mock function with given fields: ctx, key
+func (_m *Service) Delete(ctx context.Context, key string) error {
+	ret := _m.Called(ctx, key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Delete")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, namespace, key)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, key)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -32,9 +32,9 @@ func (_m *Service) Delete(ctx context.Context, namespace string, key string) err
 	return r0
 }
 
-// GetAll provides a mock function with given fields: ctx, namespace
-func (_m *Service) GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error) {
-	ret := _m.Called(ctx, namespace)
+// GetAll provides a mock function with given fields: ctx
+func (_m *Service) GetAll(ctx context.Context) ([]model.SystemConfig, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAll")
@@ -42,19 +42,19 @@ func (_m *Service) GetAll(ctx context.Context, namespace string) ([]model.System
 
 	var r0 []model.SystemConfig
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) ([]model.SystemConfig, error)); ok {
-		return rf(ctx, namespace)
+	if rf, ok := ret.Get(0).(func(context.Context) ([]model.SystemConfig, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) []model.SystemConfig); ok {
-		r0 = rf(ctx, namespace)
+	if rf, ok := ret.Get(0).(func(context.Context) []model.SystemConfig); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]model.SystemConfig)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, namespace)
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -62,9 +62,9 @@ func (_m *Service) GetAll(ctx context.Context, namespace string) ([]model.System
 	return r0, r1
 }
 
-// List provides a mock function with given fields: ctx, namespace, page, pageSize
-func (_m *Service) List(ctx context.Context, namespace string, page int, pageSize int) ([]model.SystemConfig, int64, error) {
-	ret := _m.Called(ctx, namespace, page, pageSize)
+// List provides a mock function with given fields: ctx, page, pageSize
+func (_m *Service) List(ctx context.Context, page int, pageSize int) ([]model.SystemConfig, int64, error) {
+	ret := _m.Called(ctx, page, pageSize)
 
 	if len(ret) == 0 {
 		panic("no return value specified for List")
@@ -73,25 +73,25 @@ func (_m *Service) List(ctx context.Context, namespace string, page int, pageSiz
 	var r0 []model.SystemConfig
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int, int) ([]model.SystemConfig, int64, error)); ok {
-		return rf(ctx, namespace, page, pageSize)
+	if rf, ok := ret.Get(0).(func(context.Context, int, int) ([]model.SystemConfig, int64, error)); ok {
+		return rf(ctx, page, pageSize)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int, int) []model.SystemConfig); ok {
-		r0 = rf(ctx, namespace, page, pageSize)
+	if rf, ok := ret.Get(0).(func(context.Context, int, int) []model.SystemConfig); ok {
+		r0 = rf(ctx, page, pageSize)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]model.SystemConfig)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, int, int) int64); ok {
-		r1 = rf(ctx, namespace, page, pageSize)
+	if rf, ok := ret.Get(1).(func(context.Context, int, int) int64); ok {
+		r1 = rf(ctx, page, pageSize)
 	} else {
 		r1 = ret.Get(1).(int64)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, string, int, int) error); ok {
-		r2 = rf(ctx, namespace, page, pageSize)
+	if rf, ok := ret.Get(2).(func(context.Context, int, int) error); ok {
+		r2 = rf(ctx, page, pageSize)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -117,17 +117,17 @@ func (_m *Service) SeedBuiltins(ctx context.Context) error {
 	return r0
 }
 
-// Upsert provides a mock function with given fields: ctx, namespace, key, value
-func (_m *Service) Upsert(ctx context.Context, namespace string, key string, value string) error {
-	ret := _m.Called(ctx, namespace, key, value)
+// Upsert provides a mock function with given fields: ctx, key, value
+func (_m *Service) Upsert(ctx context.Context, key string, value string) error {
+	ret := _m.Called(ctx, key, value)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Upsert")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
-		r0 = rf(ctx, namespace, key, value)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, key, value)
 	} else {
 		r0 = ret.Error(0)
 	}
