@@ -227,44 +227,48 @@ ORDER BY r.score DESC LIMIT $topN
 - 写操作用 `ExecuteWrite`（managed transaction，自动重试瞬时错误）
 - driver 线程安全；session/transaction 非线程安全
 
-### 文档删除关联清理（MongoDB + Qdrant + ArcadeDB 三处级联）
+### 文档删除关联清理（MongoDB + GridFS + Qdrant + ArcadeDB 四处级联）
 
 **现存缺口**（本 spec 一并修复）：`DeleteDoc`（`service.go:95-101`）目前**只删 MongoDB doc + chunks**：
 - Qdrant 向量**从未清理**（`VectorStore.DeleteCollection` 是 no-op，Client 无按 doc_id 删点能力）→ 文档删除后仍能被搜索命中（孤儿向量）
 - ArcadeDB 图数据同理需级联清理
+- **GridFS 原始文件从未清理**（`KBRepository` 无 `DeleteFile` 能力，`GridFSFileID` 指向的文件残留）→ 孤儿文件占用存储
 
-**删除时序（拍板：先删索引 Qdrant + ArcadeDB，最后删主数据 MongoDB；MongoDB 内部先删 chunks 最后删 doc）**：
+**删除时序（拍板：先删索引 Qdrant + ArcadeDB，再删明细 chunks + GridFS，最后删主记录 doc）**：
 
 ```
 DeleteDoc(docID):
-  ① vector.DeletePoints(ctx, collection, filter{doc_id}) ← 先删 Qdrant 向量（索引）
-  ② graph.DeleteByDocID(ctx, docID)                     ← 再删 ArcadeDB 图（索引）
-  ③ kb.DeleteChunks(docID)                              ← 删 MongoDB chunks（明细）
-  ④ kb.DeleteDoc(docID)                                 ← 最后删 MongoDB doc（主记录 = 最终提交点）
+  ① vector.DeletePoints(ctx, collection, filter{doc_id})  ← 先删 Qdrant 向量（索引）
+  ② graph.DeleteByDocID(ctx, docID)                      ← 再删 ArcadeDB 图（索引）
+  ③ kb.DeleteChunks(docID)                               ← 删 MongoDB chunks（明细）
+  ④ kb.DeleteFile(doc.GridFSFileID)                      ← 删 GridFS 原始文件（明细，需先 GetDoc 取 fileID）
+  ⑤ kb.DeleteDoc(docID)                                  ← 最后删 MongoDB doc（主记录 = 最终提交点）
 ```
 
-**顺序理由**：索引（Qdrant/ArcadeDB）先删，主数据（MongoDB）最后删；MongoDB 内部 chunks（明细）先删、doc（主记录）最后删。若中途失败：
+**顺序理由**：索引（Qdrant/ArcadeDB）先删，明细（chunks/GridFS）其次，主记录（doc）最后删。若中途失败：
 - 索引已删但 MongoDB 未删 → 文档仍存在，只是索引缺失，可**重新索引恢复**（自愈）；
-- chunks 已删但 doc 未删 → doc 主记录仍在，可**重新切片/重建 chunks**（自愈）；
-- 反之（doc 已删但 chunks/索引残留）→ 孤儿数据更难发现且不可恢复。
-- 因此 **doc 删除是最终提交点**，放最后一步。
+- chunks/GridFS 已删但 doc 未删 → doc 主记录仍在，可**重新切片/重建 chunks**（自愈）；
+- 反之（doc 已删但 chunks/GridFS/索引残留）→ 孤儿数据更难发现且不可恢复。
+- 因此 **doc 删除是最终提交点**，放最后一步。步骤 ④ 需先 `GetDoc` 取 `GridFSFileID`（doc 未删前可取到）。
 
-**重试幂等（必须保证）**：四处删除均幂等，部分成功后重试安全：
+**重试幂等（必须保证）**：五处删除均幂等，部分成功后重试安全：
 
 | 步骤 | 幂等机制 | 重试行为 |
 |------|---------|---------|
 | ① Qdrant `DeletePoints`（filter doc_id） | filter 匹配不到点时删除 0 条，正常返回 | 已删后重试 → no-op ✅ |
 | ② ArcadeDB `DeleteByDocID`（`MATCH ... DETACH DELETE`） | 无匹配节点时语句正常执行（删 0 节点） | 已删后重试 → no-op ✅ |
 | ③ MongoDB `DeleteChunks`（docID） | 项目约定：**删除永不返回 404**（`DeleteMany` 0 行也返回成功） | 已删后重试 → no-op ✅ |
-| ④ MongoDB `DeleteDoc`（docID） | 项目约定：**删除永不返回 404**（`DeleteOne` 0 行也返回成功） | 已删后重试 → no-op ✅ |
+| ④ GridFS `DeleteFile`（fileID） | gridfs `Delete` 返回 `ErrFileNotFound` 时**忽略并返回 nil**（`GridFSFileID` 为空直接跳过） | 已删后重试 → no-op ✅ |
+| ⑤ MongoDB `DeleteDoc`（docID） | 项目约定：**删除永不返回 404**（`DeleteOne` 0 行也返回成功） | 已删后重试 → no-op ✅ |
 
-- 四处失败均 `log.Printf` 降级不阻断（与 `AddChunks` 一致）；删除流程可安全整体重试。
+- 五处失败均 `log.Printf` 降级不阻断（与 `AddChunks` 一致）；删除流程可安全整体重试。
 - `DeleteChunk(chunkID)` 同理幂等：单节点 `DETACH DELETE`。
 
 配套新增能力：
 
 1. **Qdrant**：`Client.DeletePoints(collection, filter)`（REST `POST /points/delete`，body `{filter}`）；`VectorRepository` 增加 `DeletePoints(ctx, collection, filter)`，`VectorStore` 实现。
-2. **ArcadeDB**：`GraphRepository.DeleteByDocID` 实现为单条 Cypher：
+2. **GridFS**：`KBRepository` 增加 `DeleteFile(ctx, fileID)`（`gridfs.Bucket.Delete`，`ErrFileNotFound` 忽略为幂等）；`Repository` 接口（`internal/repository/knowledge.go`）同步增加。
+3. **ArcadeDB**：`GraphRepository.DeleteByDocID` 实现为单条 Cypher：
 
 ```cypher
 MATCH (c:Chunk {doc_id: $docID}) DETACH DELETE c
@@ -328,10 +332,11 @@ arcadedb:
 |------|------|-----------------|
 | `docker-compose.yml` / `docker-compose.ui-test.yml` | 新增 arcadedb 服务 + volume | New |
 | `internal/infra/qdrant/client.go` + `vector_store.go` | **新增** `Client.DeletePoints`（按 doc_id 删点）+ `Client.RetrievePoints`（按 ids 批量取 payload，供内容反查）+ `VectorStore` 封装 | Modify |
-| `internal/repository/knowledge.go` | `VectorRepository` 接口增 `DeletePoints` + `RetrievePoints` | Modify |
+| `internal/repository/knowledge.go` | `VectorRepository` 接口增 `DeletePoints` + `RetrievePoints`；`KBRepository` 接口增 `DeleteFile` | Modify |
+| `internal/infra/mongo/kb_repository.go` | **新增** `DeleteFile`（gridfs Bucket.Delete，`ErrFileNotFound` 忽略幂等） | Modify |
 | `internal/repository/graph.go` | `GraphRepository` 接口 + 类型（GraphNode 含 Content，由 skill 反查填充） | New |
 | `internal/infra/arcadedb/client.go` + `graph_store.go` | ArcadeDB Bolt 客户端（neo4j-go-driver）+ 实现（含 `DeleteByDocID` DETACH DELETE） | New |
-| `internal/service/knowledge/service.go` | `AddChunks` hook 图写入 + `WithGraphIndex` + `DeleteDoc` 级联清理（先索引后主数据） | Modify |
+| `internal/service/knowledge/service.go` | `AddChunks` hook 图写入 + `WithGraphIndex` + `DeleteDoc` 五步级联清理（索引 → 明细 → 主记录） | Modify |
 | `internal/adk/tools/tools.go` | `knowledge_graph_search` tool（三步：Search 锚点 → QueryTopN → Qdrant 反查内容） | Modify |
 | `internal/service/skill/config.go` | `predefinedSkills` 增 seed 配置 | Modify |
 | `cmd/server/wire.go` | ArcadeDB 客户端初始化 + `EnsureSchema` + `Deps.GraphRepo` 注入 | Modify |
@@ -379,8 +384,8 @@ arcadedb:
 - [ ] 普通用户 `knowledge_graph_search` 仅返回自己或公开切片；system_admin 返回全局
 - [ ] **图查询内容反查**：`QueryTopN` 返回的 chunk_id 经 Qdrant `RetrievePoints` 反查到 payload.content，skill 返回结果含内容（不查 MongoDB）
 - [ ] Qdrant filter 修复后，`vectorSearch` 权限过滤生效（回归验证）
-- [ ] **文档删除四处级联（顺序：Qdrant → ArcadeDB → MongoDB chunks → MongoDB doc）**：删除后 Qdrant 搜索不再命中、ArcadeDB 无残留节点/边、MongoDB chunks/doc 已删
-- [ ] **删除重试幂等**：删除后再次调用 `DeleteDoc` 四处均 no-op 正常返回（不报错）
+- [ ] **文档删除五处级联（顺序：Qdrant → ArcadeDB → MongoDB chunks → GridFS 文件 → MongoDB doc）**：删除后 Qdrant 搜索不再命中、ArcadeDB 无残留节点/边、MongoDB chunks/doc 已删、GridFS 文件已删
+- [ ] **删除重试幂等**：删除后再次调用 `DeleteDoc` 五处均 no-op 正常返回（不报错）
 - [ ] License 确认：ArcadeDB（Apache-2.0）✅ + neo4j-go-driver（Apache-2.0）✅，无 copyleft 顾虑
 
 ## 拍板记录（2026-08-28/29/31 晓军确认）
@@ -395,7 +400,7 @@ arcadedb:
 | 6 | 附带发现 | Qdrant `Client.Search` 不支持 filter → 现有 `vectorSearch` 权限过滤失效（已完成 9911090） |
 | 7 | 图数据库选型 | **ArcadeDB（Apache-2.0）替代 Neo4j（GPLv3）/ Cayley（quad 模型）**；独立部署 |
 | 8 | Go client | `neo4j-go-driver/v5`（Apache-2.0），经 Bolt 协议连 ArcadeDB（官方符合性认证），Cypher 零改动 |
-| 9 | 文档删除清理 | 三处级联：MongoDB + Qdrant `DeletePoints`（按 doc_id）+ ArcadeDB `DeleteByDocID`（DETACH DELETE）；修复现有 Qdrant 孤儿向量缺口 |
+| 9 | 文档删除清理 | 四处级联：MongoDB doc/chunks + GridFS 原始文件 + Qdrant `DeletePoints`（按 doc_id）+ ArcadeDB `DeleteByDocID`（DETACH DELETE）；修复现有 Qdrant 孤儿向量 + GridFS 孤儿文件缺口 |
 | 10 | 自定义字段 | Chunk 节点支持 `creator_id`(=userId) 与 `is_public` 两个自定义字段，供权限/可见性过滤；暂不含标签、分类等元数据 |
-| 11 | 联动删除顺序 | **先删索引（Qdrant → ArcadeDB），再删 MongoDB chunks（明细），最后删 MongoDB doc（主记录 = 最终提交点）**；中途失败可重试，四处均幂等（Qdrant filter 删 / ArcadeDB MATCH 删 / Mongo 永不 404） |
+| 11 | 联动删除顺序 | **先删索引（Qdrant → ArcadeDB），再删明细（MongoDB chunks → GridFS 文件），最后删 MongoDB doc（主记录 = 最终提交点）**；中途失败可重试，五处均幂等（Qdrant filter 删 / ArcadeDB MATCH 删 / Mongo 永不 404 / GridFS not found 忽略） |
 | 12 | 图查询内容反查 | ArcadeDB 图只存 chunk_id 元数据不存内容；查询后经 chunk_id 哈希 → Qdrant `RetrievePoints` 反查 payload.content（**Qdrant 已直接存内容 + 关联 chunk_id，无需回 MongoDB**） |
