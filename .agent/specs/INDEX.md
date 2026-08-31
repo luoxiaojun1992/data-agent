@@ -84,7 +84,7 @@
 | SPEC-068 | 知识库文本 PII 脱敏（Presidio pii-redaction：spacy+纯规则；后端封装 + KB 上传纯文本脱敏落库 + 模型输入/输出审计 + 内置 LLM 审计接入 + 输入 token 校验） | **P15** | [spec-068-pii-redaction.md](spec-068-pii-redaction.md) | ✅ 已实现 |
 | SPEC-069 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-069-compaction-trigger-fixes.md](spec-069-compaction-trigger-fixes.md) | ✅ 已实现 |
 | SPEC-070 | KB 切片图数据库索引（ArcadeDB）+ 图访问共用组件 + 图谱搜索 Skill（GraphRepository 接口 + knowledge_graph_search tool + seed） | **P15** | [spec-070-kb-graph-index.md](spec-070-kb-graph-index.md) | ✅ 已实现 |
-| SPEC-071 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-071-agent-invoke-subagent.md](spec-071-agent-invoke-subagent.md) | 📐 调研完成（方案已定，待实现） |
+| SPEC-071 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-071-agent-invoke-subagent.md](spec-071-agent-invoke-subagent.md) | ✅ 已实现 |
 | SPEC-072 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-072-dashboard-stats-mongo-hourly.md](spec-072-dashboard-stats-mongo-hourly.md) | 📐 详细设计 |
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
 
@@ -287,7 +287,7 @@ SPEC-006│               │
                     前置修复: Qdrant Search filter ✅ 已完成(9911090);
                     依赖 SPEC-006/068 已实现)
 
-[P15] SPEC-071 ─── agent 调用子 agent (调研完成，方案已定，待实现)
+[P15] SPEC-071 ─── agent 调用子 agent ✅
                    (sub agent tool + interface 解耦，无 import 循环;
                     能力提示词单独组装; 独立 session 父绑定 + 返回即硬删;
                     最终返回同 tool response 写回主 session;

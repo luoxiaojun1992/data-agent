@@ -1,6 +1,6 @@
 # agent 调用子 agent（subagent invocation）
 
-> **SPEC-071** | Status: 调研完成（方案定为 sub agent tool + interface 解耦，暂不实现）
+> **SPEC-071** | Status: ✅ 已实现（2026-08-31 落地 + 测试服务器验证）
 
 ## 目标
 
