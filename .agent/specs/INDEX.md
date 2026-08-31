@@ -90,6 +90,7 @@
 | SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | 📐 设计中 |
 | SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计中 |
 | SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计中 |
+| SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -333,4 +334,11 @@ SPEC-006│               │
                     保留深色为默认, 新增蓝白 Light;
                     ThemeToggle + localStorage 持久化, 默认 dark;
                     inline script 防闪烁; 纯前端无后端改动)
+
+[P15] SPEC-077 ─── Chat 附件支持 PDF (设计中)
+                   (复用 lib/pdf.ts parsePdf 解析;
+                    解析文字发送时前置到用户输入提示词前, 前端不显示;
+                    特殊标签 [PDF:name] 供前端展示卡片;
+                    解析图限制与图片附件等价(≤5张/≤2MiB);
+                    后端 ChatRequest 加 pdfs 字段)
 ```
