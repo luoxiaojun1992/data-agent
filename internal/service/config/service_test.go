@@ -12,9 +12,9 @@ import (
 
 func TestService_GetAll(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
-	repo.On("GetAll", mock.Anything, "models").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
+	repo.On("GetAll", mock.Anything).Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
 	svc := NewService(repo)
-	cfgs, err := svc.GetAll(context.Background(), "models")
+	cfgs, err := svc.GetAll(context.Background())
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
@@ -25,9 +25,9 @@ func TestService_GetAll(t *testing.T) {
 
 func TestService_GetAll_NilReturnsEmpty(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
-	repo.On("GetAll", mock.Anything, "models").Return(([]model.SystemConfig)(nil), nil)
+	repo.On("GetAll", mock.Anything).Return(([]model.SystemConfig)(nil), nil)
 	svc := NewService(repo)
-	cfgs, err := svc.GetAll(context.Background(), "models")
+	cfgs, err := svc.GetAll(context.Background())
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
@@ -38,9 +38,9 @@ func TestService_GetAll_NilReturnsEmpty(t *testing.T) {
 
 func TestService_GetAll_Error(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
-	repo.On("GetAll", mock.Anything, "models").Return(([]model.SystemConfig)(nil), errStr("db"))
+	repo.On("GetAll", mock.Anything).Return(([]model.SystemConfig)(nil), errStr("db"))
 	svc := NewService(repo)
-	_, err := svc.GetAll(context.Background(), "models")
+	_, err := svc.GetAll(context.Background())
 	if err == nil {
 		t.Error("expected error")
 	}
@@ -48,29 +48,47 @@ func TestService_GetAll_Error(t *testing.T) {
 
 func TestService_Upsert(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
-	repo.On("Upsert", mock.Anything, "models", "k", "v").Return(nil)
+	repo.On("Upsert", mock.Anything, "k", "v").Return(nil)
 	svc := NewService(repo)
-	if err := svc.Upsert(context.Background(), "models", "k", "v"); err != nil {
+	if err := svc.Upsert(context.Background(), "k", "v"); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
 }
 
 func TestService_Delete(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
-	repo.On("Delete", mock.Anything, "models", "k").Return(nil)
+	repo.On("Delete", mock.Anything, "k").Return(nil)
 	svc := NewService(repo)
-	if err := svc.Delete(context.Background(), "models", "k"); err != nil {
+	if err := svc.Delete(context.Background(), "k"); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
 }
 
 func TestService_Delete_Error(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
-	repo.On("Delete", mock.Anything, "models", "k").Return(errStr("db"))
+	repo.On("Delete", mock.Anything, "k").Return(errStr("db"))
 	svc := NewService(repo)
-	if err := svc.Delete(context.Background(), "models", "k"); err == nil {
+	if err := svc.Delete(context.Background(), "k"); err == nil {
 		t.Error("expected error")
 	}
+}
+
+func TestService_SeedBuiltins(t *testing.T) {
+	repo := repomocks.NewSysConfigRepository(t)
+	repo.On("GetAll", mock.Anything).Return([]model.SystemConfig{{Key: "SESSION_TIMEOUT", Value: "24"}}, nil)
+	// Only the missing built-in keys get upserted.
+	for _, b := range SystemBuiltins() {
+		if b.Key == "SESSION_TIMEOUT" {
+			continue
+		}
+		repo.On("Upsert", mock.Anything, b.Key, b.Default).Return(nil).Maybe()
+	}
+	svc := NewService(repo)
+	if err := svc.SeedBuiltins(context.Background()); err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	// SESSION_TIMEOUT already exists → must not be overwritten.
+	repo.AssertNotCalled(t, "Upsert", mock.Anything, "SESSION_TIMEOUT", mock.Anything)
 }
 
 type errStr string

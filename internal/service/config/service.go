@@ -34,6 +34,7 @@ func SystemBuiltins() []BuiltinConfig {
 		{Key: "SERVER_WRITE_TIMEOUT", Description: "HTTP 写超时（秒）", Default: "600"},
 		{Key: "WORKER_POOL_SIZE", Description: "Worker 协程池大小", Default: "10"},
 		{Key: "pii_redaction_enabled", Description: "PII 脱敏开关（Presidio，知识库/模型输入输出）", Default: "true"},
+		{Key: "embedding_cache_ttl", Description: "Embedding 缓存 TTL（秒）", Default: "3600"},
 	}
 }
 

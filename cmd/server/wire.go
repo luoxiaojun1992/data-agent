@@ -249,6 +249,23 @@ func initRedis(deps *serverDependencies, cfg *config.Config, logger *zap.Logger)
 	}
 	deps.redisClient = redisClient
 	deps.llmCache = llmcache.New(redisClient.Client())
+	// Embedding cache TTL reads the live system config on every Set (hot-reload).
+	// sysConfigCacheRepo is built early in initServer, before initRedis, and is
+	// nil-safe when Redis config backend is unavailable.
+	deps.llmCache.SetEmbeddingTTLProvider(func(ctx context.Context) time.Duration {
+		if deps.sysConfigCacheRepo == nil {
+			return 0 // → default (1h)
+		}
+		cfgv, err := deps.sysConfigCacheRepo.Get(ctx, "embedding_cache_ttl")
+		if err != nil || cfgv == nil {
+			return 0
+		}
+		secs, err := strconv.Atoi(strings.TrimSpace(cfgv.Value))
+		if err != nil || secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	})
 }
 
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {

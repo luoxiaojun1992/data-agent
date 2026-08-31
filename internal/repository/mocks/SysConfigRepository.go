@@ -14,9 +14,9 @@ type SysConfigRepository struct {
 	mock.Mock
 }
 
-// Count provides a mock function with given fields: ctx, namespace
-func (_m *SysConfigRepository) Count(ctx context.Context, namespace string) (int64, error) {
-	ret := _m.Called(ctx, namespace)
+// Count provides a mock function with given fields: ctx
+func (_m *SysConfigRepository) Count(ctx context.Context) (int64, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Count")
@@ -24,17 +24,17 @@ func (_m *SysConfigRepository) Count(ctx context.Context, namespace string) (int
 
 	var r0 int64
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
-		return rf(ctx, namespace)
+	if rf, ok := ret.Get(0).(func(context.Context) (int64, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) int64); ok {
-		r0 = rf(ctx, namespace)
+	if rf, ok := ret.Get(0).(func(context.Context) int64); ok {
+		r0 = rf(ctx)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, namespace)
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -42,17 +42,17 @@ func (_m *SysConfigRepository) Count(ctx context.Context, namespace string) (int
 	return r0, r1
 }
 
-// Delete provides a mock function with given fields: ctx, namespace, key
-func (_m *SysConfigRepository) Delete(ctx context.Context, namespace string, key string) error {
-	ret := _m.Called(ctx, namespace, key)
+// Delete provides a mock function with given fields: ctx, key
+func (_m *SysConfigRepository) Delete(ctx context.Context, key string) error {
+	ret := _m.Called(ctx, key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Delete")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, namespace, key)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, key)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -60,9 +60,9 @@ func (_m *SysConfigRepository) Delete(ctx context.Context, namespace string, key
 	return r0
 }
 
-// Get provides a mock function with given fields: ctx, namespace, key
-func (_m *SysConfigRepository) Get(ctx context.Context, namespace string, key string) (*model.SystemConfig, error) {
-	ret := _m.Called(ctx, namespace, key)
+// Get provides a mock function with given fields: ctx, key
+func (_m *SysConfigRepository) Get(ctx context.Context, key string) (*model.SystemConfig, error) {
+	ret := _m.Called(ctx, key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Get")
@@ -70,19 +70,19 @@ func (_m *SysConfigRepository) Get(ctx context.Context, namespace string, key st
 
 	var r0 *model.SystemConfig
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.SystemConfig, error)); ok {
-		return rf(ctx, namespace, key)
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*model.SystemConfig, error)); ok {
+		return rf(ctx, key)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.SystemConfig); ok {
-		r0 = rf(ctx, namespace, key)
+	if rf, ok := ret.Get(0).(func(context.Context, string) *model.SystemConfig); ok {
+		r0 = rf(ctx, key)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*model.SystemConfig)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, namespace, key)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, key)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -90,9 +90,9 @@ func (_m *SysConfigRepository) Get(ctx context.Context, namespace string, key st
 	return r0, r1
 }
 
-// GetAll provides a mock function with given fields: ctx, namespace
-func (_m *SysConfigRepository) GetAll(ctx context.Context, namespace string) ([]model.SystemConfig, error) {
-	ret := _m.Called(ctx, namespace)
+// GetAll provides a mock function with given fields: ctx
+func (_m *SysConfigRepository) GetAll(ctx context.Context) ([]model.SystemConfig, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAll")
@@ -100,19 +100,19 @@ func (_m *SysConfigRepository) GetAll(ctx context.Context, namespace string) ([]
 
 	var r0 []model.SystemConfig
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) ([]model.SystemConfig, error)); ok {
-		return rf(ctx, namespace)
+	if rf, ok := ret.Get(0).(func(context.Context) ([]model.SystemConfig, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) []model.SystemConfig); ok {
-		r0 = rf(ctx, namespace)
+	if rf, ok := ret.Get(0).(func(context.Context) []model.SystemConfig); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]model.SystemConfig)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, namespace)
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -120,9 +120,9 @@ func (_m *SysConfigRepository) GetAll(ctx context.Context, namespace string) ([]
 	return r0, r1
 }
 
-// List provides a mock function with given fields: ctx, namespace, skip, limit
-func (_m *SysConfigRepository) List(ctx context.Context, namespace string, skip int64, limit int64) ([]model.SystemConfig, error) {
-	ret := _m.Called(ctx, namespace, skip, limit)
+// List provides a mock function with given fields: ctx, skip, limit
+func (_m *SysConfigRepository) List(ctx context.Context, skip int64, limit int64) ([]model.SystemConfig, error) {
+	ret := _m.Called(ctx, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for List")
@@ -130,19 +130,19 @@ func (_m *SysConfigRepository) List(ctx context.Context, namespace string, skip 
 
 	var r0 []model.SystemConfig
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) ([]model.SystemConfig, error)); ok {
-		return rf(ctx, namespace, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) ([]model.SystemConfig, error)); ok {
+		return rf(ctx, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) []model.SystemConfig); ok {
-		r0 = rf(ctx, namespace, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) []model.SystemConfig); ok {
+		r0 = rf(ctx, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]model.SystemConfig)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int64) error); ok {
-		r1 = rf(ctx, namespace, skip, limit)
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+		r1 = rf(ctx, skip, limit)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -150,17 +150,17 @@ func (_m *SysConfigRepository) List(ctx context.Context, namespace string, skip 
 	return r0, r1
 }
 
-// Upsert provides a mock function with given fields: ctx, namespace, key, value
-func (_m *SysConfigRepository) Upsert(ctx context.Context, namespace string, key string, value string) error {
-	ret := _m.Called(ctx, namespace, key, value)
+// Upsert provides a mock function with given fields: ctx, key, value
+func (_m *SysConfigRepository) Upsert(ctx context.Context, key string, value string) error {
+	ret := _m.Called(ctx, key, value)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Upsert")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
-		r0 = rf(ctx, namespace, key, value)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, key, value)
 	} else {
 		r0 = ret.Error(0)
 	}
