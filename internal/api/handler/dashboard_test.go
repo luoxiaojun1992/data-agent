@@ -60,8 +60,8 @@ func TestDashboardGet(t *testing.T) {
 	assert.Equal(t, float64(200), body["api_calls"])
 	assert.Equal(t, float64(5), body["artifact_created"])
 	assert.Equal(t, float64(15), body["task_completed"])
-	// ROI = (5 + 15) / 100 = 0.2
-	assert.InDelta(t, 0.2, body["roi"], 1e-9)
+	// ROI = (5 + 15) * 10000 / 100 = 2000（每万 token 产出）
+	assert.InDelta(t, 2000.0, body["roi"], 1e-9)
 }
 
 func TestDashboardGet_ZeroTokensROI(t *testing.T) {
@@ -178,8 +178,8 @@ func TestROISeries(t *testing.T) {
 
 	out := roiSeries(artifact, task, token)
 	require.Len(t, out, 2)
-	// (5+3)/100 = 0.08
-	assert.InDelta(t, 0.08, out[0].Value, 1e-9)
+	// (5+3) * 10000 / 100 = 800（每万 token 产出）
+	assert.InDelta(t, 800.0, out[0].Value, 1e-9)
 	// token=0 → ROI 0
 	assert.Equal(t, float64(0), out[1].Value)
 }

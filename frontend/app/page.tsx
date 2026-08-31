@@ -110,7 +110,7 @@ export default function MainPage() {
     { label: 'API 调用', value: num(summary?.api_calls), icon: '🔌', testid: 'dashboard-stat-api' },
     { label: '产出物', value: num(summary?.artifact_created), icon: '📦', testid: 'dashboard-stat-artifact' },
     { label: '完成任务', value: num(summary?.task_completed), icon: '✅', testid: 'dashboard-stat-task' },
-    { label: 'ROI', value: `${(num(summary?.roi) * 100).toFixed(1)}%`, icon: '📈', testid: 'dashboard-stat-roi' },
+    { label: 'ROI（每万Token产出）', value: num(summary?.roi).toFixed(2), icon: '📈', testid: 'dashboard-stat-roi' },
   ];
 
   const series: { key: string; title: string; testid: string }[] = [
@@ -119,7 +119,7 @@ export default function MainPage() {
     { key: 'api_calls', title: 'API 调用趋势', testid: 'chart-api' },
     { key: 'artifact_created', title: '产出物趋势', testid: 'chart-artifact' },
     { key: 'task_completed', title: '任务完成趋势', testid: 'chart-task' },
-    { key: 'roi', title: 'ROI 趋势', testid: 'chart-roi' },
+    { key: 'roi', title: 'ROI 趋势（每万Token产出）', testid: 'chart-roi' },
   ];
 
   return (

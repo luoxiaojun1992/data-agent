@@ -14,7 +14,9 @@ func TestROI(t *testing.T) {
 		artifact, task, t int64
 		want              float64
 	}{
-		{"normal", 10, 20, 100, 0.3},
+		// ROI = (artifact + task) * 10000 / tokens（每万 token 产出比）
+		{"normal", 10, 20, 100, 3000},
+		{"one output per 10k", 1, 0, 10000, 1},
 		{"zero tokens", 10, 20, 0, 0},
 		{"negative tokens", 10, 20, -5, 0},
 		{"zero everything", 0, 0, 0, 0},

@@ -126,14 +126,19 @@ func bucketHours(hourSums map[time.Time]int64, since, until time.Time, g Granula
 	return out
 }
 
-// ROI derives the return-on-investment ratio:
+// ROI derives the output-per-10k-tokens ratio:
 //
-//	ROI = (artifact_created + task_completed) / token_tokens
+//	ROI = (artifact_created + task_completed) / (token_tokens / 10000)
+//
+// i.e. how many artifacts/tasks are produced per ten-thousand tokens. Tokens
+// are counted in units of 10000 because raw token counts (millions) dwarf the
+// artifact/task counts (tens), which would make the ratio converge to zero
+// and carry no signal.
 //
 // When tokenToks is zero the result is 0 (never divide by zero).
 func ROI(artifactCreated, taskCompleted, tokenToks int64) float64 {
 	if tokenToks <= 0 {
 		return 0
 	}
-	return float64(artifactCreated+taskCompleted) / float64(tokenToks)
+	return float64(artifactCreated+taskCompleted) * 10000 / float64(tokenToks)
 }
