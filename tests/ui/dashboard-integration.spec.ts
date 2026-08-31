@@ -1,8 +1,9 @@
 /**
- * SPEC-046: Dashboard Real Data Integration E2E (UI-229 ~ UI-236)
+ * SPEC-072: Dashboard Real Data Integration E2E
  *
- * Verifies Dashboard shows real data instead of zeros.
- * Seeds tasks/sessions/docs via API, verifies KPI values and chart rendering.
+ * Verifies the dashboard shows real data (global hourly counters) instead of
+ * zeros. Seeds KB docs via API, verifies KPI values and the granularity-switch
+ * trend charts via the new /dashboard + /dashboard/trends API shape.
  */
 import { test, expect } from '@playwright/test';
 
@@ -12,9 +13,7 @@ const U = { username: `e2e-dashi-${uid}@test.local`, password: 'E2eTest123!', ro
 
 let adminToken = '';
 
-test.describe('DASHBOARD INTEGRATION — SPEC-046', () => {
-  const seededTasks: string[] = [];
-  const seededSessions: string[] = [];
+test.describe('DASHBOARD INTEGRATION — SPEC-072', () => {
   const seededDocs: string[] = [];
 
   test.beforeAll(async ({ request }) => {
@@ -24,40 +23,8 @@ test.describe('DASHBOARD INTEGRATION — SPEC-046', () => {
     });
     adminToken = (await loginRes.json()).access_token;
 
-    // Seed real data
+    // Seed real KB docs so kb_docs is non-zero.
     console.log('[DASH-INT] Seeding dashboard data...');
-
-    // Create sessions
-    for (let i = 0; i < 3; i++) {
-      const res = await request.post(`${API_BASE}/sessions`, {
-        headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-        data: { title: `Dashboard Session ${i + 1}` },
-      });
-      if (res.ok()) {
-        const s = await res.json();
-        seededSessions.push(s.id || s.session_id);
-      }
-    }
-    console.log(`[DASH-INT] Sessions: ${seededSessions.length}`);
-
-    // Create tasks
-    for (let i = 0; i < 5; i++) {
-      const res = await request.post(`${API_BASE}/tasks`, {
-        headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-        data: {
-          title: `Dashboard Task ${i + 1}`,
-          skills: ['sql_executor'],
-          async: false,
-        },
-      });
-      if (res.ok()) {
-        const t = await res.json();
-        seededTasks.push(t.task_id || t.id);
-      }
-    }
-    console.log(`[DASH-INT] Tasks: ${seededTasks.length}`);
-
-    // Create KB docs
     for (let i = 0; i < 3; i++) {
       const res = await request.post(`${API_BASE}/knowledge/docs`, {
         headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
@@ -78,12 +45,6 @@ test.describe('DASHBOARD INTEGRATION — SPEC-046', () => {
 
   test.afterAll(async ({ request }) => {
     const headers = { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' };
-    for (const id of seededTasks) {
-      await request.delete(`${API_BASE}/tasks/${id}`, { headers }).catch(() => {});
-    }
-    for (const id of seededSessions) {
-      await request.delete(`${API_BASE}/sessions/${id}`, { headers }).catch(() => {});
-    }
     for (const id of seededDocs) {
       await request.delete(`${API_BASE}/knowledge/docs/${id}`, { headers }).catch(() => {});
     }
@@ -104,182 +65,128 @@ test.describe('DASHBOARD INTEGRATION — SPEC-046', () => {
     await page.locator('[data-testid="login-btn"]').click();
     await page.waitForURL((u: URL) => !u.pathname.includes('/login'), { timeout: 10000 });
     await page.locator('[data-testid="nav-dashboard"]').click();
-    await page.waitForURL('**/', { timeout: 5000 });
     await page.waitForTimeout(2000);
   });
 
-  // ═══ UI-229: KPI 显示真实任务数 ═══
-  test('[UI-229] Dashboard — KPI 显示真实任务数', async ({ page }) => {
-    console.log('[UI-229] Verifying task KPI...');
+  const KPI_TESTIDS = [
+    'dashboard-stat-kb',
+    'dashboard-stat-token',
+    'dashboard-stat-llm',
+    'dashboard-stat-api',
+    'dashboard-stat-artifact',
+    'dashboard-stat-task',
+    'dashboard-stat-roi',
+  ];
+  const CHART_TESTIDS = ['chart-token', 'chart-llm', 'chart-api', 'chart-artifact', 'chart-task', 'chart-roi'];
+  const SERIES_KEYS = ['token_tokens', 'llm_calls', 'api_calls', 'artifact_created', 'task_completed', 'roi'];
 
-    // Stats cards should be visible
-    await expect(page.locator('[data-testid="dashboard-stat-0"]')).toBeVisible();
-    await expect(page.locator('[data-testid="dashboard-stat-1"]')).toBeVisible();
-
-    // At least one KPI card should have non-zero content
-    const statTexts: string[] = [];
-    for (let i = 0; i < 4; i++) {
-      const stat = page.locator(`[data-testid="dashboard-stat-${i}"]`);
-      if (await stat.isVisible({ timeout: 3000 }).catch(() => false)) {
-        const text = await stat.textContent();
-        statTexts.push(text || '');
-        console.log(`[UI-229] Stat ${i}:`, text);
-      }
+  // ═══ UI-229: 7 KPI 卡片渲染 ═══
+  test('[UI-229] Dashboard — 7 个 KPI 卡片渲染', async ({ page }) => {
+    for (const id of KPI_TESTIDS) {
+      await expect(page.locator(`[data-testid="${id}"]`)).toBeVisible({ timeout: 5000 });
     }
-
-    // At least one stat should contain a number (non-empty data)
-    const hasData = statTexts.some((t) => /\d/.test(t) && t.replace(/\s/g, '').length > 1);
-    console.log('[UI-229] Has data:', hasData);
-
-    // If we seeded 5 tasks, the task KPI should show a number
-    expect(statTexts.length).toBeGreaterThanOrEqual(2);
-
-    // Verify via API (SPEC-060: endpoint is /dashboard, no longer 404)
-    const statsRes = await page.request.get(`${API_BASE}/dashboard`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    console.log('[UI-229] Dashboard API status:', statsRes.status());
-    expect(statsRes.ok()).toBeTruthy();
-    const stats = await statsRes.json();
-    console.log('[UI-229] API stats:', JSON.stringify(stats).substring(0, 200));
-    // API should return task_stats with the seeded tasks counted
-    expect(stats.task_stats).toBeTruthy();
-    expect(stats.task_stats.total).toBeGreaterThanOrEqual(5);
   });
 
   // ═══ UI-230: KPI 显示真实文档数 ═══
-  test('[UI-230] Dashboard — KPI 显示真实文档数', async ({ page }) => {
-    console.log('[UI-230] Verifying doc KPI...');
+  test('[UI-230] Dashboard — KPI 显示真实文档数', async ({ page, request }) => {
+    await expect(page.locator('[data-testid="dashboard-stat-kb"]')).toBeVisible({ timeout: 5000 });
 
-    await expect(page.locator('[data-testid="dashboard-stat-2"]')).toBeVisible({ timeout: 5000 });
-    const docStat = await page.locator('[data-testid="dashboard-stat-2"]').textContent();
-    console.log('[UI-230] Doc KPI text:', docStat);
-
-    // Verify via API (SPEC-060: endpoint is /dashboard, no longer 404)
-    const statsRes = await page.request.get(`${API_BASE}/dashboard`, {
+    const statsRes = await request.get(`${API_BASE}/dashboard`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(statsRes.ok()).toBeTruthy();
     const data = await statsRes.json();
-    console.log('[UI-230] API kb_docs:', data.kb_docs);
     expect(data.kb_docs).toBeGreaterThanOrEqual(3);
   });
 
-  // ═══ UI-231: 任务状态分布准确 ═══
-  test('[UI-231] Dashboard — 任务状态分布准确', async ({ page }) => {
-    console.log('[UI-231] Verifying task status chart...');
-
-    // Chart should be visible
-    await expect(page.locator('[data-testid="chart-status-pie"]')).toBeVisible({ timeout: 5000 });
-
-    // Verify via API (SPEC-060: endpoint is /dashboard, no longer 404)
-    const statsRes = await page.request.get(`${API_BASE}/dashboard`, {
+  // ═══ UI-231: summary 返回 7 指标 + ROI 派生 ═══
+  test('[UI-231] Dashboard — summary 返回 7 指标 + ROI', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/dashboard`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
-    expect(statsRes.ok()).toBeTruthy();
-    const data = await statsRes.json();
-    console.log('[UI-231] Task stats:', JSON.stringify(data.task_stats));
-    expect(data.task_stats).toBeTruthy();
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    for (const key of ['kb_docs', 'token_tokens', 'llm_calls', 'api_calls', 'artifact_created', 'task_completed', 'roi']) {
+      expect(data[key]).toBeDefined();
+    }
+    // ROI = (artifact + task) / token, token=0 → 0 (no NaN).
+    expect(typeof data.roi).toBe('number');
+    expect(Number.isNaN(data.roi)).toBeFalsy();
   });
 
-  // ═══ UI-232: 24h 趋势有时间戳分布 ═══
-  test('[UI-232] Dashboard — 24h 趋势图渲染', async ({ page }) => {
-    console.log('[UI-232] Verifying 24h trend chart...');
-
-    await expect(page.locator('[data-testid="chart-req-dist"]')).toBeVisible({ timeout: 5000 });
-
-    // Chart should render (even if data is sparse with seeded tasks)
-    const chart = page.locator('[data-testid="chart-req-dist"]');
-    await expect(chart).toBeVisible();
+  // ═══ UI-232: trends 返回 6 序列 + granularity ═══
+  test('[UI-232] Dashboard — trends 返回 6 序列 + granularity', async ({ request }) => {
+    for (const gran of ['day', 'week', 'month', 'year']) {
+      const res = await request.get(`${API_BASE}/dashboard/trends?granularity=${gran}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      expect(res.ok()).toBeTruthy();
+      const data = await res.json();
+      expect(data.granularity).toBe(gran);
+      for (const key of SERIES_KEYS) {
+        expect(Array.isArray(data[key])).toBeTruthy();
+      }
+    }
   });
 
-  // ═══ UI-233: Token KPI 非 0 ═══
-  test('[UI-233] Dashboard — Token KPI 渲染', async ({ page }) => {
-    console.log('[UI-233] Verifying Token KPIs...');
-
-    // Token KPI section should be visible
-    await expect(page.locator('[data-testid="dashboard-token-kpi-0"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('[data-testid="dashboard-token-kpi-1"]')).toBeVisible();
-    await expect(page.locator('[data-testid="dashboard-token-kpi-2"]')).toBeVisible();
-
-    const token0 = await page.locator('[data-testid="dashboard-token-kpi-0"]').textContent();
-    console.log('[UI-233] Token KPI 0:', token0);
-    expect(token0).toContain('Token');
+  // ═══ UI-233: 6 张趋势图渲染 ═══
+  test('[UI-233] Dashboard — 6 张趋势图渲染', async ({ page }) => {
+    for (const id of CHART_TESTIDS) {
+      await expect(page.locator(`[data-testid="${id}"]`)).toBeVisible({ timeout: 5000 });
+    }
   });
 
-  // ═══ UI-234: ROI 显示 ═══
+  // ═══ UI-234: ROI 图表渲染 ═══
   test('[UI-234] Dashboard — ROI 图表渲染', async ({ page }) => {
-    console.log('[UI-234] Verifying ROI chart...');
-
-    await expect(page.locator('[data-testid="chart-roi-dual"]')).toBeVisible({ timeout: 5000 });
-
-    const roiChart = page.locator('[data-testid="chart-roi-dual"]');
-    await expect(roiChart).toBeVisible();
+    await expect(page.locator('[data-testid="chart-roi"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="dashboard-stat-roi"]')).toBeVisible();
   });
 
-  // ═══ UI-235: 多用户隔离 ═══
-  test('[UI-235] Dashboard — 多用户数据隔离', async ({ page, request }) => {
-    console.log('[UI-235] Testing multi-user data isolation...');
-
-    // Create user B
+  // ═══ UI-235: 全局统计（所有登录用户同份数据） ═══
+  test('[UI-235] Dashboard — 全局统计（所有用户可见）', async ({ request }) => {
     const uidB = crypto.randomUUID().slice(0, 8);
-    const userB = {
-      username: `e2e-dashb-${uidB}@test.local`,
-      password: 'E2eTest123!',
-      role: 'user',
-    };
+    const userB = { username: `e2e-dashb-${uidB}@test.local`, password: 'E2eTest123!', role: 'user' };
     await request.post(`${API_BASE}/auth/register`, { data: userB }).catch(() => {});
     const loginB = await request.post(`${API_BASE}/auth/login`, {
       data: { username: userB.username, password: userB.password },
     });
     const tokenB = (await loginB.json()).access_token;
 
-    // User B's dashboard should be accessible (with their own data)
+    // A non-admin user can access the global dashboard (SPEC-072: all
+    // logged-in users see the same global stats).
     const statsB = await request.get(`${API_BASE}/dashboard`, {
       headers: { Authorization: `Bearer ${tokenB}` },
     });
-    console.log('[UI-235] User B dashboard:', statsB.status());
-    expect(statsB.status()).toBeLessThan(500);
+    expect(statsB.ok()).toBeTruthy();
+    const dataB = await statsB.json();
+    expect(dataB.kb_docs).toBeDefined();
 
     // Cleanup
-    const listRes = await request.get(`${API_BASE}/users?skip=0&limit=100`);
+    const listRes = await request.get(`${API_BASE}/users?skip=0&limit=100`, { headers: { Authorization: `Bearer ${adminToken}` } });
     if (listRes.ok()) {
       for (const u of (await listRes.json()).users || []) {
-        if (u.email?.includes(uidB)) {
-          await request.delete(`${API_BASE}/users/${u.id}`);
+        if (u.username?.includes(`e2e-dashb-${uidB}`)) {
+          await request.delete(`${API_BASE}/users/${u.id}`, { headers: { Authorization: `Bearer ${adminToken}` } });
         }
       }
     }
   });
 
-  // ═══ UI-236: 时间筛选有效 ═══
-  test('[UI-236] Dashboard — 时间筛选有效', async ({ page }) => {
-    console.log('[UI-236] Testing time filter...');
-
+  // ═══ UI-236: 粒度切换器有效 ═══
+  test('[UI-236] Dashboard — 粒度切换器有效', async ({ page }) => {
     await expect(page.locator('[data-testid="dashboard-time-filter"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('[data-testid="filter-today"]')).toBeVisible();
-    await expect(page.locator('[data-testid="filter-week"]')).toBeVisible();
-
-    // Click "本周" filter
-    await page.locator('[data-testid="filter-week"]').click();
-    await page.waitForTimeout(1000);
-
-    // Dashboard should still be functional after filter change
-    await expect(page.locator('[data-testid="dashboard-stat-0"]')).toBeVisible({ timeout: 5000 });
-
-    // Switch back to "今日"
-    await page.locator('[data-testid="filter-today"]').click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('[data-testid="dashboard-stat-0"]')).toBeVisible({ timeout: 5000 });
+    for (const g of ['day', 'week', 'month', 'year']) {
+      await page.locator(`[data-testid="filter-${g}"]`).click();
+      await page.waitForTimeout(800);
+      // Charts stay rendered after switching granularity.
+      await expect(page.locator('[data-testid="chart-token"]')).toBeVisible({ timeout: 5000 });
+    }
   });
 
-  // ═══ UI-237: 全 trend 真数据显示（SPEC-060） ═══
-  test('[UI-237] Dashboard — 全 trend 真数据显示', async ({ page, request }) => {
-    console.log('[UI-237] Verifying all trends display real data...');
-
-    // Trigger an enhance call to write real llm_usage (best-effort; the chart
-    // still renders with zeroed buckets if this fails — the point is the
-    // endpoint exists and returns structured data).
+  // ═══ UI-237: 全 trend 真数据 + API 结构 ═══
+  test('[UI-237] Dashboard — 全 trend 真数据 + API 结构', async ({ page, request }) => {
+    // Trigger an enhance call to write a real token/llm counter (best-effort;
+    // the chart still renders with zeroed buckets if this fails).
     try {
       await request.post(`${API_BASE}/chat/enhance`, {
         headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
@@ -290,60 +197,30 @@ test.describe('DASHBOARD INTEGRATION — SPEC-046', () => {
       console.log('[UI-237] enhance call failed (non-blocking):', e);
     }
 
-    // Navigate to dashboard root and allow the trends fetch to settle.
     await page.goto('/');
     await page.waitForTimeout(2000);
 
-    // All 7 trend charts should be visible (data-testid present).
-    const chartTestIds = [
-      'chart-call-trend',
-      'chart-duration-dist',
-      'chart-req-dist',
-      'chart-success-trend',
-      'chart-token-trend',
-      'chart-output-stats',
-      'chart-roi-dual',
-    ];
-    for (const testid of chartTestIds) {
-      await expect(page.locator(`[data-testid="${testid}"]`)).toBeVisible({ timeout: 5000 });
-      console.log(`[UI-237] ${testid} visible`);
+    for (const id of CHART_TESTIDS) {
+      await expect(page.locator(`[data-testid="${id}"]`)).toBeVisible({ timeout: 5000 });
     }
 
-    // Token KPI should show a number (not "—"); with the trends endpoint live,
-    // token_trend is always a 6-point array so the value is a number (possibly 0).
-    const tokenValue = await page.locator('[data-testid="dashboard-token-value-0"]').textContent();
-    console.log('[UI-237] Token KPI value:', tokenValue);
-    expect(tokenValue).not.toBe('—');
-
-    // KPI stat cards should reflect seeded tasks (at least one digit present).
-    let hasDigit = false;
-    for (let i = 0; i < 4; i++) {
-      const text = await page.locator(`[data-testid="dashboard-stat-${i}"]`).textContent();
-      if (text && /\d/.test(text)) hasDigit = true;
-    }
-    expect(hasDigit).toBeTruthy();
-
-    // API verification: /dashboard returns task_stats + kb_docs (SPEC-060 format)
+    // API: /dashboard returns all 7 KPI fields; kb_docs reflects the seeded docs.
     const statsRes = await request.get(`${API_BASE}/dashboard`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(statsRes.ok()).toBeTruthy();
     const stats = await statsRes.json();
-    expect(stats.task_stats).toBeTruthy();
-    expect(stats.task_stats.total).toBeGreaterThanOrEqual(5);
     expect(stats.kb_docs).toBeGreaterThanOrEqual(3);
 
-    // API verification: /dashboard/trends returns all 7 trend fields
-    const trendsRes = await request.get(`${API_BASE}/dashboard/trends`, {
+    // API: /dashboard/trends returns all 6 series as arrays.
+    const trendsRes = await request.get(`${API_BASE}/dashboard/trends?granularity=day`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(trendsRes.ok()).toBeTruthy();
     const trends = await trendsRes.json();
-    for (const key of ['call_trend', 'duration_dist', 'req_dist', 'success_trend', 'token_trend', 'output_stats', 'roi_trend']) {
-      expect(trends[key]).toBeDefined();
+    for (const key of SERIES_KEYS) {
+      expect(Array.isArray(trends[key])).toBeTruthy();
     }
-    expect(Array.isArray(trends.token_trend)).toBeTruthy();
-    expect(trends.token_trend.length).toBe(6);
-    console.log('[UI-237] All 7 trends verified, token_trend points:', trends.token_trend.length);
+    expect(trends.granularity).toBe('day');
   });
 });

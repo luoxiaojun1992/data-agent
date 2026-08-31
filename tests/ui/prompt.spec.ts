@@ -21,15 +21,15 @@ async function clearMocks(request: any) {
   }).catch(() => {});
 }
 
-// getLLMStats calls the real /api/v1/stats/llm endpoint (admin-only) to verify
-// that enhance calls are recorded into llm_usage. SPEC-059 UI-160.
-async function getLLMStats(request: any, token: string, callPoint: string) {
-  const res = await request.get(`${API_BASE}/stats/llm`, {
-    params: callPoint ? { call_point: callPoint } : {},
+// getLLMCalls reads the unified metrics dashboard to verify that enhance calls
+// increment llm_calls (SPEC-072 replaces the /stats/llm detail endpoint; the
+// counter flushes to stats_hourly every 5s).
+async function getLLMCalls(request: any, token: string) {
+  const res = await request.get(`${API_BASE}/dashboard`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok()) return { stats: [] };
-  return res.json();
+  if (!res.ok()) return 0;
+  return (await res.json()).llm_calls ?? 0;
 }
 
 test.describe.serial('PROMPT — SPEC-033', () => {
@@ -38,7 +38,7 @@ test.describe.serial('PROMPT — SPEC-033', () => {
     await clearMocks(request);
     await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
 
-    // Register an admin so UI-160 can query /stats/llm (admin-only).
+    // Register an admin so UI-160 can query /dashboard (global metrics).
     let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
     if (res.status() !== 201) {
       res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
@@ -127,22 +127,20 @@ test.describe.serial('PROMPT — SPEC-033', () => {
   test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, request }) => {
     await clearMocks(request);
     // Unique key per run guarantees a cache miss so the LLM is actually invoked
-    // and recordEnhanceTokens writes a new llm_usage row.
+    // and the enhance call increments the unified llm_calls metric.
     await seedMock(request, 'test token ' + uid, '增强后的测试内容');
 
-    const before = await getLLMStats(request, adminToken, 'enhance');
-    const beforeCount = before.stats?.[0]?.count ?? 0;
+    const before = await getLLMCalls(request, adminToken);
 
     const input = page.locator('[data-testid="chat-input"]');
     await input.fill('test token ' + uid);
     await page.locator('[data-testid="chat-enhance-btn"]').click();
     await expect(input).toHaveValue('增强后的测试内容', { timeout: 5000 });
 
-    // recordEnhanceTokens writes llm_usage asynchronously; poll /stats/llm
-    // until the enhance call_point count increments.
+    // The counter flushes to stats_hourly every ~5s; poll /dashboard until
+    // llm_calls increments (SPEC-072 unified metrics).
     await expect.poll(async () => {
-      const after = await getLLMStats(request, adminToken, 'enhance');
-      return after.stats?.[0]?.count ?? 0;
-    }, { timeout: 5000 }).toBe(beforeCount + 1);
+      return await getLLMCalls(request, adminToken);
+    }, { timeout: 20000 }).toBeGreaterThanOrEqual(before + 1);
   });
 });
