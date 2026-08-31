@@ -899,6 +899,12 @@ func saveArtifact(deps *Deps) functiontool.Func[SaveArtifactArgs, SaveArtifactRe
 		if strings.TrimSpace(args.Path) == "" {
 			return SaveArtifactResult{}, fmt.Errorf("save_artifact: 'path' must not be empty")
 		}
+		// Defensive: the tool is registered when SessionSvc is wired, but the
+		// artifact storage itself may still be nil (init-order bug). Fail with
+		// a clear error instead of panicking on a nil receiver.
+		if deps.Artifacts == nil {
+			return SaveArtifactResult{}, fmt.Errorf("save_artifact: artifact storage not initialized")
+		}
 
 		userID := stateString(tc, "user_id")
 		sessionID := stateString(tc, "session_id")

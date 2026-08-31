@@ -224,15 +224,21 @@ func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text strin
 	}
 }
 
-func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
-	deps.sessionManager = chat.NewManager(mongoinfra.NewSessionRepository(mongoClient.DB()), 24*time.Hour)
-	deps.sessionRepo = mongoinfra.NewSessionRepository(mongoClient.DB())
-	// SPEC-072: unified metrics component (stats_hourly hourly counter +
-	// reader). The counter is shared by all埋点 (llmstats/middleware/artifact/
-	// task); the reader powers the dashboard queries.
+// initMetrics creates the unified SPEC-072 metrics component (stats_hourly
+// hourly counter + reader + llm recorder). Runs BEFORE initServices so the
+// artifact storage (built in initArtifacts, also before initServices) can
+// attach the counter and the tool deps (built inside initServices) can capture
+// a fully-initialized artifact storage — a nil capture here surfaces as a
+// save_artifact panic (nil *Storage receiver).
+func initMetrics(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.metricsCounter = metrics.NewCounter(mongoClient.DB(), 5*time.Second)
 	deps.metricsReader = metrics.NewReader(mongoClient.DB())
 	deps.llmRecorder = llmstats.NewRecorder(deps.metricsCounter)
+}
+
+func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
+	deps.sessionManager = chat.NewManager(mongoinfra.NewSessionRepository(mongoClient.DB()), 24*time.Hour)
+	deps.sessionRepo = mongoinfra.NewSessionRepository(mongoClient.DB())
 	// SPEC-072: wrap the runtime (chat) LLM with actual-usage recording so the
 	// main chat path's token/call counts feed token_tokens + llm_calls (the
 	// biggest call point was previously unrecorded).

@@ -187,13 +187,17 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initTaskService(&deps, mongoClient) // must run before initAgentEngine — tool deps need TaskRunService
 	initPII(&deps)                      // SPEC-068: pii redactor before auditor + KB service
 	initGraphStore(&deps)               // SPEC-070: graph store BEFORE initAgentEngine (tool deps need it)
+	initMetrics(&deps, mongoClient)     // SPEC-072: counter/reader/recorder before initArtifacts + initServices
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initSkillConfig(&deps, mongoClient)
 	initBuiltins(&deps, logger) // seed system config + skill defaults before services
+	// initArtifacts must run BEFORE initServices: toolDeps (built inside
+	// initServices) capture deps.artifactStorage for the save_artifact tool —
+	// running after left a nil *Storage in the tool and a panic on first use.
+	initArtifacts(&deps, mongoClient, cfg)
 	initServices(&deps, mongoClient, logger)
 	initFeishuConfig(&deps, mongoClient) // needs sessionManager from initServices
-	initArtifacts(&deps, mongoClient, cfg)
 	initAuditAndNotifications(&deps, mongoClient)
 	initTaskQueue(&deps, cfg, mongoClient, logger)
 	initEnhance(&deps)
