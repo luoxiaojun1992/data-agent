@@ -19,6 +19,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	adksession "github.com/luoxiaojun1992/data-agent/internal/adk/session"
+	"github.com/luoxiaojun1992/data-agent/internal/adk/subagent"
 	adktools "github.com/luoxiaojun1992/data-agent/internal/adk/tools"
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
@@ -49,7 +50,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
-	notifsvc 	"github.com/luoxiaojun1992/data-agent/internal/service/notification"
+	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/service/pii"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
@@ -277,14 +278,31 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// SPEC-062: Build the per-model Runtime registry (lazy create + fingerprint
 	// hot-reload). Replaces the single shared Runtime; chat.Service resolves a
 	// Runtime per session.ModelID at run time.
+	//
+	// SPEC-071: `tools` above are the base tools (no invoke_subagent). They are
+	// shared as SubAgentTools (trimmed — no sub-agent tool, so sub-agents can't
+	// delegate recursively). The sub-agent tool is built after the Registry
+	// (its Runner needs the Registry) and appended to the parent tool set via
+	// SetTools below.
 	deps.registry = adkruntime.NewRegistry(adkruntime.RegistryConfig{
 		Provider:       deps.modelCfg,
 		SessionService: deps.adkSessions,
 		MemoryService:  deps.memoryService,
 		Tools:          tools,
+		SubAgentTools:  tools,
 		Auditor:        deps.secAuditor,
 		AppName:        appName,
 	})
+
+	// SPEC-071: sub-agent tool — delegate a multi-step subtask to an
+	// independent sub-agent (same model, trimmed tools). Built after the
+	// Registry so the Runner can reuse it; added to the parent tool set after.
+	subRunner := subagent.NewRunner(deps.registry, deps.adkSessions, deps.sessionManager)
+	if subTool, sErr := subagent.NewTool(subRunner); sErr == nil {
+		deps.registry.SetTools(append(tools, subTool))
+	} else {
+		logger.Warn("Failed to build sub-agent tool", zap.Error(sErr))
+	}
 
 	// Evict stale Runtime entries (not accessed in 30 min) to prevent memory leaks.
 	go deps.registry.StartCleanup()

@@ -35,6 +35,9 @@ type sessionDoc struct {
 	Events    []*session.Event `bson:"events"`
 	RawEvents []*session.Event `bson:"raw_events"` // legacy: fallback for pre-SPEC-069 sessions
 	UpdatedAt time.Time        `bson:"updated_at"`
+	// ParentSessionID binds a sub-agent session to its parent session
+	// (SPEC-071). Empty for top-level sessions. Enables cascade deletion.
+	ParentSessionID string `bson:"parent_session_id,omitempty"`
 }
 
 // sessionEventDoc is one raw (never-compacted) event in session_events.
@@ -75,13 +78,19 @@ type Service struct {
 
 func NewService(db *mongo.Database) *Service {
 	evtColl := db.Collection(SessionEventsCollection)
+	coll := db.Collection(CollectionName)
 	// 幂等创建唯一索引（append-only 排序 + 去重）。CreateOne 重复执行安全。
 	_, _ = evtColl.Indexes().CreateOne(context.Background(), mongo.IndexModel{
 		Keys:    bson.D{{Key: "session_id", Value: 1}, {Key: "seq", Value: 1}},
 		Options: options.Index().SetUnique(true).SetName("uniq_session_seq"),
 	})
+	// SPEC-071: parent_session_id 索引支撑子 session 级联删除查询。
+	_, _ = coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+		Keys:    bson.D{{Key: "parent_session_id", Value: 1}},
+		Options: options.Index().SetName("idx_parent_session"),
+	})
 	return &Service{
-		coll:    db.Collection(CollectionName),
+		coll:    coll,
 		evtColl: evtColl,
 		buf:     make(map[string]*chunkBuffer),
 	}
@@ -107,6 +116,17 @@ func (s *Service) WithCompaction(cfg CompactionConfig, summarizer Summarizer) *S
 }
 
 func (s *Service) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
+	return s.create(ctx, req, "")
+}
+
+// CreateSubSession creates an independent session bound to a parent session
+// (SPEC-071 sub-agent). The parent binding enables cascade deletion of sub
+// sessions when the parent is removed. Idempotent like Create.
+func (s *Service) CreateSubSession(ctx context.Context, req *session.CreateRequest, parentSessionID string) (*session.CreateResponse, error) {
+	return s.create(ctx, req, parentSessionID)
+}
+
+func (s *Service) create(ctx context.Context, req *session.CreateRequest, parentSessionID string) (*session.CreateResponse, error) {
 	id := req.SessionID
 	if id == "" {
 		id = "sess_" + uuid.New().String()
@@ -118,13 +138,14 @@ func (s *Service) Create(ctx context.Context, req *session.CreateRequest) (*sess
 		return &session.CreateResponse{Session: existing.toSession()}, nil
 	}
 	doc := &sessionDoc{
-		ID:        id,
-		AppName:   req.AppName,
-		UserID:    req.UserID,
-		State:     map[string]any{},
-		Events:    []*session.Event{},
-		RawEvents: []*session.Event{},
-		UpdatedAt: time.Now(),
+		ID:              id,
+		AppName:         req.AppName,
+		UserID:          req.UserID,
+		ParentSessionID: parentSessionID,
+		State:           map[string]any{},
+		Events:          []*session.Event{},
+		RawEvents:       []*session.Event{},
+		UpdatedAt:       time.Now(),
 	}
 	for k, v := range req.State {
 		doc.State[k] = v
@@ -182,7 +203,40 @@ func (s *Service) Delete(ctx context.Context, req *session.DeleteRequest) error 
 	if _, err := s.evtColl.DeleteMany(ctx, bson.M{"session_id": req.SessionID}); err != nil {
 		log.Printf("[session] delete session events %s: %v", req.SessionID, err)
 	}
+	// SPEC-071: cascade hard-delete any sub-agent sessions bound to this
+	// parent (parent_session_id == SessionID) plus their raw event streams.
+	// The sub-agent runner normally deletes sub sessions immediately after
+	// return; this is a defensive fallback for parent-session removal.
+	s.deleteSubSessions(ctx, req.SessionID)
 	return nil
+}
+
+// deleteSubSessions hard-deletes every sub session whose parent_session_id
+// equals parentID, along with their session_events. Best-effort: a leftover
+// sub session only affects display/storage, never correctness.
+func (s *Service) deleteSubSessions(ctx context.Context, parentID string) {
+	cur, err := s.coll.Find(ctx, bson.M{"parent_session_id": parentID})
+	if err != nil {
+		log.Printf("[session] find sub sessions for parent %s: %v", parentID, err)
+		return
+	}
+	var subIDs []string
+	for cur.Next(ctx) {
+		var d sessionDoc
+		if derr := cur.Decode(&d); derr == nil && d.ID != "" {
+			subIDs = append(subIDs, d.ID)
+		}
+	}
+	cur.Close(ctx)
+	if len(subIDs) == 0 {
+		return
+	}
+	if _, err := s.coll.DeleteMany(ctx, bson.M{"_id": bson.M{"$in": subIDs}}); err != nil {
+		log.Printf("[session] cascade delete sub sessions of %s: %v", parentID, err)
+	}
+	if _, err := s.evtColl.DeleteMany(ctx, bson.M{"session_id": bson.M{"$in": subIDs}}); err != nil {
+		log.Printf("[session] cascade delete sub session events of %s: %v", parentID, err)
+	}
 }
 
 // AppendEvent appends an event. Streaming text chunks are buffered and flushed
@@ -329,7 +383,6 @@ func (s *Service) appendRawEvent(ctx context.Context, sess session.Session, even
 
 // ensurePush was used to batch raw_events into the session document update;
 // removed with SPEC-069 问题 4 (raw events now live in session_events).
-
 
 func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 	if event.Content == nil {
@@ -577,7 +630,8 @@ func latestDanglingCallIndex(events []*session.Event) int {
 	return -1
 }
 
-func (s *Service) find(ctx context.Context, appName, userID, sessionID string) (*sessionDoc, error) {	var doc sessionDoc
+func (s *Service) find(ctx context.Context, appName, userID, sessionID string) (*sessionDoc, error) {
+	var doc sessionDoc
 	err := s.coll.FindOne(ctx, bson.M{
 		"_id":      sessionID,
 		"app_name": appName,
@@ -639,7 +693,7 @@ type mongoSession struct {
 	doc *sessionDoc
 }
 
-func (s *mongoSession) ID() string               { return s.doc.ID }
+func (s *mongoSession) ID() string                { return s.doc.ID }
 func (s *mongoSession) AppName() string           { return s.doc.AppName }
 func (s *mongoSession) UserID() string            { return s.doc.UserID }
 func (s *mongoSession) Events() session.Events    { return eventsView(s.doc.Events) }
@@ -679,7 +733,7 @@ func (e eventsView) All() iter.Seq[*session.Event] {
 		}
 	}
 }
-func (e eventsView) Len() int              { return len(e) }
+func (e eventsView) Len() int                { return len(e) }
 func (e eventsView) At(i int) *session.Event { return e[i] }
 
 // estimateEventTokens estimates the token count of a set of events. It covers

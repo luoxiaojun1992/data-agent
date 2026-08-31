@@ -30,8 +30,10 @@ type cachedRuntime struct {
 
 const runtimeTTL = 30 * time.Minute
 
-func (cr *cachedRuntime) touch()           { cr.lastAccess.Store(time.Now().UnixNano()) }
-func (cr *cachedRuntime) stale() bool       { return time.Since(time.Unix(0, cr.lastAccess.Load())) > runtimeTTL }
+func (cr *cachedRuntime) touch() { cr.lastAccess.Store(time.Now().UnixNano()) }
+func (cr *cachedRuntime) stale() bool {
+	return time.Since(time.Unix(0, cr.lastAccess.Load())) > runtimeTTL
+}
 
 // ModelProvider abstracts the model-config reads the Registry needs. The
 // concrete *modelcfg.Provider satisfies it; tests inject a mock to drive
@@ -51,8 +53,12 @@ type RegistryConfig struct {
 	SessionService session.Service
 	MemoryService  memory.Service
 	Tools          []tool.Tool
-	Auditor        Auditor
-	AppName        string
+	// SubAgentTools is the trimmed tool set exposed to sub-agents (SPEC-071).
+	// It must exclude the sub-agent tool itself to prevent recursive
+	// delegation. Shared across all sub-agent Runtime instances.
+	SubAgentTools []tool.Tool
+	Auditor       Auditor
+	AppName       string
 }
 
 // Registry maintains three caches of Runtime instances:
@@ -70,9 +76,10 @@ type RegistryConfig struct {
 type Registry struct {
 	cfg      RegistryConfig
 	mu       sync.RWMutex
-	sessions map[string]*cachedRuntime       // key = ModelEntry.ID
+	sessions map[string]*cachedRuntime // key = ModelEntry.ID
 	sys      map[modelcfg.UseCase]*cachedRuntime
-	taskInst map[string]*cachedRuntime       // key = entry.ID + "|" + instructionSuffix
+	taskInst map[string]*cachedRuntime // key = entry.ID + "|" + instructionSuffix
+	subAgent map[string]*cachedRuntime // SPEC-071: sub-agent runtimes (trimmed tools)
 }
 
 // NewRegistry creates an empty Runtime registry. Runtimes are created lazily
@@ -83,6 +90,7 @@ func NewRegistry(cfg RegistryConfig) *Registry {
 		sessions: make(map[string]*cachedRuntime),
 		sys:      make(map[modelcfg.UseCase]*cachedRuntime),
 		taskInst: make(map[string]*cachedRuntime),
+		subAgent: make(map[string]*cachedRuntime),
 	}
 }
 
@@ -119,7 +127,7 @@ func (r *Registry) GetOrCreate(ctx context.Context, modelID string) (*Runtime, e
 		cached.touch()
 		return cached.rt, nil
 	}
-	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction, entry.ContextLen)
+	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction, entry.ContextLen, r.cfg.Tools)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +189,7 @@ func (r *Registry) GetOrCreateWithInstruction(ctx context.Context, modelID, inst
 		cached.touch()
 		return cached.rt, nil
 	}
-	rt, err := r.buildRuntime(ctx, entry.ID, instruction, entry.ContextLen)
+	rt, err := r.buildRuntime(ctx, entry.ID, instruction, entry.ContextLen, r.cfg.Tools)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +226,7 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 		cached.touch()
 		return cached.rt, nil
 	}
-	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction, entry.ContextLen)
+	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction, entry.ContextLen, r.cfg.Tools)
 	if err != nil {
 		return nil, err
 	}
@@ -228,10 +236,58 @@ func (r *Registry) GetOrCreateByUseCase(ctx context.Context, useCase modelcfg.Us
 	return rt, nil
 }
 
+// GetOrCreateSubAgent returns the sub-agent Runtime for the given model ID
+// (SPEC-071). It reuses the same model resolution, fingerprint hot-reload and
+// LLM pooling as GetOrCreate, but exposes the trimmed SubAgentTools set
+// (which excludes the sub-agent tool itself) so a sub-agent cannot delegate
+// recursively. Instances are lazily created and cached in a dedicated pool.
+func (r *Registry) GetOrCreateSubAgent(ctx context.Context, modelID string) (*Runtime, error) {
+	entry, err := r.cfg.Provider.GetModelByID(ctx, modelID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve model %q: %w", modelID, err)
+	}
+	hash := modelcfg.ConfigHash(*entry)
+
+	r.mu.RLock()
+	if cached, ok := r.subAgent[entry.ID]; ok && cached.hash == hash {
+		cached.touch()
+		rt := cached.rt
+		r.mu.RUnlock()
+		return rt, nil
+	}
+	r.mu.RUnlock()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.subAgent[entry.ID]; ok && cached.hash == hash {
+		cached.touch()
+		return cached.rt, nil
+	}
+	rt, err := r.buildRuntime(ctx, entry.ID, entry.Instruction, entry.ContextLen, r.cfg.SubAgentTools)
+	if err != nil {
+		return nil, err
+	}
+	cr := &cachedRuntime{rt: rt, hash: hash}
+	cr.touch()
+	r.subAgent[entry.ID] = cr
+	return rt, nil
+}
+
+// SetTools replaces the parent-agent tool set. It is called once at startup,
+// after the sub-agent tool (which depends on this Registry) has been built,
+// so the parent agent's full tool list = base tools + sub-agent tool. Must be
+// called before any GetOrCreate resolves a parent Runtime.
+func (r *Registry) SetTools(tools []tool.Tool) {
+	r.mu.Lock()
+	r.cfg.Tools = tools
+	r.mu.Unlock()
+}
+
 // buildRuntime constructs a new Runtime for the given model ID. Shared
 // dependencies (tools, auditor, session/memory services) come from the
 // registry config; Model, Instruction and MaxInputTokens are model-specific.
-func (r *Registry) buildRuntime(ctx context.Context, modelID, instruction string, maxInputTokens int) (*Runtime, error) {
+// tools selects the tool set (parent vs trimmed sub-agent tools).
+func (r *Registry) buildRuntime(ctx context.Context, modelID, instruction string, maxInputTokens int, tools []tool.Tool) (*Runtime, error) {
 	llm, err := r.cfg.Provider.BuildLLMByID(ctx, modelID)
 	if err != nil {
 		return nil, fmt.Errorf("build LLM for %q: %w", modelID, err)
@@ -244,7 +300,7 @@ func (r *Registry) buildRuntime(ctx context.Context, modelID, instruction string
 		Model:          llm,
 		SessionService: r.cfg.SessionService,
 		MemoryService:  r.cfg.MemoryService,
-		Tools:          r.cfg.Tools,
+		Tools:          tools,
 		Auditor:        r.cfg.Auditor,
 		Instruction:    instruction,
 		MaxInputTokens: maxInputTokens,
@@ -291,6 +347,11 @@ func (r *Registry) evictStale() {
 	for key, cr := range r.taskInst {
 		if cr.stale() {
 			delete(r.taskInst, key)
+		}
+	}
+	for id, cr := range r.subAgent {
+		if cr.stale() {
+			delete(r.subAgent, id)
 		}
 	}
 }

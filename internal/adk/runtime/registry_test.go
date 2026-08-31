@@ -249,5 +249,67 @@ func TestRegistry_GetOrCreateByUseCase_UseCaseNotFound(t *testing.T) {
 	}
 }
 
+// ---- SPEC-071 sub-agent registry tests ----
+
+func TestRegistry_GetOrCreateSubAgent_ReuseOnHit(t *testing.T) {
+	r, mp := newTestRegistry(t)
+	mp.entries["m1"] = &modelcfg.ModelEntry{ID: "m1", Name: "Model1", Type: modelcfg.ModelTypeLLM, Instruction: "sys"}
+
+	rt1, err := r.GetOrCreateSubAgent(context.Background(), "m1")
+	if err != nil {
+		t.Fatalf("GetOrCreateSubAgent: %v", err)
+	}
+	rt2, err := r.GetOrCreateSubAgent(context.Background(), "m1")
+	if err != nil {
+		t.Fatalf("GetOrCreateSubAgent (2nd): %v", err)
+	}
+	if rt1 != rt2 {
+		t.Error("same modelID should return the same sub-agent Runtime instance")
+	}
+	if mp.buildCountVal() != 1 {
+		t.Errorf("BuildLLMByID calls = %d, want 1 (reuse)", mp.buildCountVal())
+	}
+}
+
+func TestRegistry_GetOrCreateSubAgent_IndependentFromParent(t *testing.T) {
+	r, mp := newTestRegistry(t)
+	mp.entries["m1"] = &modelcfg.ModelEntry{ID: "m1", Name: "Model1", Type: modelcfg.ModelTypeLLM, Instruction: "sys"}
+
+	parentRT, _ := r.GetOrCreate(context.Background(), "m1")
+	subRT, err := r.GetOrCreateSubAgent(context.Background(), "m1")
+	if err != nil {
+		t.Fatalf("GetOrCreateSubAgent: %v", err)
+	}
+	if parentRT == subRT {
+		t.Error("sub-agent Runtime must be a distinct instance from the parent Runtime (trimmed tools)")
+	}
+	// Each pool builds its own Runtime → two LLM builds.
+	if mp.buildCountVal() != 2 {
+		t.Errorf("BuildLLMByID calls = %d, want 2 (parent + sub-agent)", mp.buildCountVal())
+	}
+}
+
+func TestRegistry_GetOrCreateSubAgent_FingerprintRebuild(t *testing.T) {
+	r, mp := newTestRegistry(t)
+	mp.entries["m1"] = &modelcfg.ModelEntry{ID: "m1", Name: "Model1", Type: modelcfg.ModelTypeLLM, Instruction: "v1"}
+
+	rt1, _ := r.GetOrCreateSubAgent(context.Background(), "m1")
+	mp.entries["m1"] = &modelcfg.ModelEntry{ID: "m1", Name: "Model1", Type: modelcfg.ModelTypeLLM, Instruction: "v2-changed"}
+	rt2, _ := r.GetOrCreateSubAgent(context.Background(), "m1")
+	if rt1 == rt2 {
+		t.Error("sub-agent config change should rebuild the Runtime")
+	}
+	if mp.buildCountVal() != 2 {
+		t.Errorf("BuildLLMByID calls = %d, want 2 (rebuild)", mp.buildCountVal())
+	}
+}
+
+func TestRegistry_GetOrCreateSubAgent_ModelNotFound(t *testing.T) {
+	r, _ := newTestRegistry(t)
+	if _, err := r.GetOrCreateSubAgent(context.Background(), "nonexistent"); err == nil {
+		t.Error("expected error for nonexistent model in GetOrCreateSubAgent")
+	}
+}
+
 // ensure memory.Service import is satisfied (registry supports nil memory).
 var _ memory.Service = (memory.Service)(nil)
