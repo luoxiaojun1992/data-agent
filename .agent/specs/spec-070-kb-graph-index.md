@@ -102,6 +102,7 @@ type GraphNode struct {
     ChunkID string
     DocID   string
     Score   float64
+    Content string  // 查询后由 skill 从 Qdrant 反查填充（图本身不存内容）
 }
 ```
 
@@ -181,12 +182,13 @@ type GraphSearchArgs struct {
 }
 type GraphSearchResult struct {
     Query string      `json:"query"`
-    Nodes []GraphNode `json:"nodes"`
+    Nodes []GraphNode `json:"nodes"`   // 含反查到的 content
     Count int         `json:"count"`
 }
-// handler：
-//   1. 文本 → embed → Qdrant Search 定位锚点 chunk_id（走修复后的 filter 能力）
-//   2. chunk_id → graph.QueryTopN(anchorID, topN, GraphFilter{CreatorID, IsSystemAdmin})
+// handler（三步，含内容反查）：
+//   1. 文本 → embed → Qdrant Search 定位锚点 chunk_id（走修复后的 filter 能力，Search 自带锚点 content）
+//   2. chunk_id → graph.QueryTopN(anchorID, topN, GraphFilter{CreatorID, IsSystemAdmin}) → 相关 chunk_id 列表
+//   3. 反查内容：chunk_id 哈希 → Qdrant RetrievePoints 批量取 payload.content（不查 MongoDB）
 // user_id / role / is_system_admin 从 session state 取（stateString），绝不由 LLM 传参。
 ```
 
@@ -231,14 +233,30 @@ ORDER BY r.score DESC LIMIT $topN
 - Qdrant 向量**从未清理**（`VectorStore.DeleteCollection` 是 no-op，Client 无按 doc_id 删点能力）→ 文档删除后仍能被搜索命中（孤儿向量）
 - ArcadeDB 图数据同理需级联清理
 
-**删除时序（幂等，三处失败均 log 降级）**：
+**删除时序（拍板：先删索引 Qdrant + ArcadeDB，最后删主数据 MongoDB）**：
 
 ```
 DeleteDoc(docID):
-  ① kb.DeleteDoc(docID) + kb.DeleteChunks(docID)        ← 现有（MongoDB）
-  ② vector.DeletePoints(ctx, collection, filter{doc_id}) ← 新增：Qdrant 按 doc_id 删点
-  ③ graph.DeleteByDocID(ctx, docID)                     ← 新增：ArcadeDB 级联删节点+边
+  ① vector.DeletePoints(ctx, collection, filter{doc_id}) ← 先删 Qdrant 向量（索引）
+  ② graph.DeleteByDocID(ctx, docID)                     ← 再删 ArcadeDB 图（索引）
+  ③ kb.DeleteDoc(docID) + kb.DeleteChunks(docID)        ← 最后删 MongoDB（主数据）
 ```
+
+**顺序理由**：索引（Qdrant/ArcadeDB）先删，主数据（MongoDB）最后删。若中途失败：
+- 索引已删但 MongoDB 未删 → 文档仍存在，只是索引缺失，可**重新索引恢复**（自愈）；
+- 反之（MongoDB 已删但索引残留）→ 孤儿索引更难发现且不可恢复。
+- 因此主数据删除放最后一步，作为"提交点"。
+
+**重试幂等（必须保证）**：三处删除均幂等，部分成功后重试安全：
+
+| 步骤 | 幂等机制 | 重试行为 |
+|------|---------|---------|
+| ① Qdrant `DeletePoints`（filter doc_id） | filter 匹配不到点时删除 0 条，正常返回 | 已删后重试 → no-op ✅ |
+| ② ArcadeDB `DeleteByDocID`（`MATCH ... DETACH DELETE`） | 无匹配节点时语句正常执行（删 0 节点） | 已删后重试 → no-op ✅ |
+| ③ MongoDB `DeleteDoc`/`DeleteChunks` | 项目约定：**删除永不返回 404**（`DeleteOne` 0 行也返回成功） | 已删后重试 → no-op ✅ |
+
+- 三处失败均 `log.Printf` 降级不阻断（与 `AddChunks` 一致）；删除流程可安全整体重试。
+- `DeleteChunk(chunkID)` 同理幂等：单节点 `DETACH DELETE`。
 
 配套新增能力：
 
@@ -249,7 +267,32 @@ DeleteDoc(docID):
 MATCH (c:Chunk {doc_id: $docID}) DETACH DELETE c
 ```
 
-`DETACH DELETE` 连带删除该节点所有 `RELATED_TO` 边，无孤儿边残留；`DeleteChunk(chunkID)` 同理单节点 `DETACH DELETE`。
+`DETACH DELETE` 连带删除该节点所有 `RELATED_TO` 边，无孤儿边残留。
+
+### 图查询内容反查（ArcadeDB 只存 chunk_id，内容从 Qdrant 反查）
+
+**拍板：ArcadeDB 图节点只存元数据（chunk_id/doc_id/creator_id/is_public 等），不存内容**。图查询返回 chunk_id 后，**通过 chunk_id 从 Qdrant 反查内容**。
+
+**Qdrant 存储现状确认（2026-08-31 查代码确认）**：
+
+| 确认项 | 结论 |
+|--------|------|
+| Qdrant 是否直接存了内容？ | ✅ **是** — `AddChunks` 写 VectorPoint 时 payload 含 `content`（脱敏后全文），`vectorSearch` 直接读 `Metadata["content"]` 返回，无需反查 |
+| Qdrant 是否关联了 chunk id？ | ✅ **是** — point `ID` = `chunk.ID`（`stringToInt64` 哈希后作为 point ID），与 chunk_id 一一对应（哈希可逆算） |
+| 是否不需要通过 chunk id 反查？ | ⚠️ **图查询场景需要反查** — Qdrant 的 payload 里有 content，但**图（ArcadeDB）不存内容**；`QueryTopN` 返回的 chunk_id 需反查 content，反查数据源即 Qdrant（无需回 MongoDB） |
+
+**反查实现**：
+
+```
+skill handler:
+  ① 文本 → embed → Qdrant Search 定位锚点 chunk_id（Search 自带 payload.content，锚点内容直接可用）
+  ② graph.QueryTopN(anchorID, topN, filter) → 相关 chunk_id 列表（无内容）
+  ③ 反查内容：对每个 chunk_id 计算 stringToInt64 哈希 → Qdrant RetrievePoints(ids) 批量取 payload.content
+```
+
+- 新增 Qdrant 能力：`Client.RetrievePoints(collection, ids []int64)`（REST `POST /points`，body `{ids: [...], with_payload: true}`），`VectorStore` 封装 `GetByIDs(ctx, collection, ids)` 返回 `map[pointID]payload`。
+- 反查从 **Qdrant** 取 content（内容已冗余存储），**不回查 MongoDB kb_chunks**；若 Qdrant 无该点（索引已删），content 置空（降级）。
+- 锚点内容（第 ① 步 Search 结果）与相关节点内容（第 ③ 步 RetrievePoints）合并返回给 LLM。
 
 ### ArcadeDB 服务（docker-compose）
 
@@ -281,12 +324,12 @@ arcadedb:
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `docker-compose.yml` / `docker-compose.ui-test.yml` | 新增 arcadedb 服务 + volume | New |
-| `internal/infra/qdrant/client.go` + `vector_store.go` | **新增** `Client.DeletePoints` + `VectorStore.DeletePoints`（按 doc_id 删点） | Modify |
-| `internal/repository/knowledge.go` | `VectorRepository` 接口增 `DeletePoints` | Modify |
-| `internal/repository/graph.go` | `GraphRepository` 接口 + 类型 | New |
+| `internal/infra/qdrant/client.go` + `vector_store.go` | **新增** `Client.DeletePoints`（按 doc_id 删点）+ `Client.RetrievePoints`（按 ids 批量取 payload，供内容反查）+ `VectorStore` 封装 | Modify |
+| `internal/repository/knowledge.go` | `VectorRepository` 接口增 `DeletePoints` + `RetrievePoints` | Modify |
+| `internal/repository/graph.go` | `GraphRepository` 接口 + 类型（GraphNode 含 Content，由 skill 反查填充） | New |
 | `internal/infra/arcadedb/client.go` + `graph_store.go` | ArcadeDB Bolt 客户端（neo4j-go-driver）+ 实现（含 `DeleteByDocID` DETACH DELETE） | New |
-| `internal/service/knowledge/service.go` | `AddChunks` hook 图写入 + `WithGraphIndex` + `DeleteDoc` 级联清理 Qdrant/ArcadeDB | Modify |
-| `internal/adk/tools/tools.go` | `knowledge_graph_search` tool | Modify |
+| `internal/service/knowledge/service.go` | `AddChunks` hook 图写入 + `WithGraphIndex` + `DeleteDoc` 级联清理（先索引后主数据） | Modify |
+| `internal/adk/tools/tools.go` | `knowledge_graph_search` tool（三步：Search 锚点 → QueryTopN → Qdrant 反查内容） | Modify |
 | `internal/service/skill/config.go` | `predefinedSkills` 增 seed 配置 | Modify |
 | `cmd/server/wire.go` | ArcadeDB 客户端初始化 + `EnsureSchema` + `Deps.GraphRepo` 注入 | Modify |
 | `internal/config` | 新增 ArcadeDB 连接配置（URI/username/password/database） | Modify |
@@ -331,11 +374,13 @@ arcadedb:
 - [ ] KB 上传文档后，切片除 Qdrant 外，ArcadeDB 出现 Chunk 节点 + `RELATED_TO` 边
 - [ ] 单 chunk 的 `RELATED_TO` 边数 ≤ topN，且边两端 `creator_id` 相同
 - [ ] 普通用户 `knowledge_graph_search` 仅返回自己或公开切片；system_admin 返回全局
+- [ ] **图查询内容反查**：`QueryTopN` 返回的 chunk_id 经 Qdrant `RetrievePoints` 反查到 payload.content，skill 返回结果含内容（不查 MongoDB）
 - [ ] Qdrant filter 修复后，`vectorSearch` 权限过滤生效（回归验证）
-- [ ] **文档删除三处级联清理**：MongoDB doc/chunks 删除 → Qdrant 按 doc_id 删点（搜索不再命中）→ ArcadeDB `DETACH DELETE` 节点+边（`MATCH (c:Chunk {doc_id})` 为空）
+- [ ] **文档删除三处级联（顺序：先 Qdrant → ArcadeDB → MongoDB 主数据最后）**：删除后 Qdrant 搜索不再命中、ArcadeDB 无残留节点/边、MongoDB doc/chunks 已删
+- [ ] **删除重试幂等**：删除后再次调用 `DeleteDoc` 三处均 no-op 正常返回（不报错）
 - [ ] License 确认：ArcadeDB（Apache-2.0）✅ + neo4j-go-driver（Apache-2.0）✅，无 copyleft 顾虑
 
-## 拍板记录（2026-08-28/29 晓军确认）
+## 拍板记录（2026-08-28/29/31 晓军确认）
 
 | # | 决策点 | 结论 |
 |---|---|---|
@@ -349,3 +394,5 @@ arcadedb:
 | 8 | Go client | `neo4j-go-driver/v5`（Apache-2.0），经 Bolt 协议连 ArcadeDB（官方符合性认证），Cypher 零改动 |
 | 9 | 文档删除清理 | 三处级联：MongoDB + Qdrant `DeletePoints`（按 doc_id）+ ArcadeDB `DeleteByDocID`（DETACH DELETE）；修复现有 Qdrant 孤儿向量缺口 |
 | 10 | 自定义字段 | Chunk 节点支持 `creator_id`(=userId) 与 `is_public` 两个自定义字段，供权限/可见性过滤；暂不含标签、分类等元数据 |
+| 11 | 联动删除顺序 | **先删索引（Qdrant → ArcadeDB），最后删主数据（MongoDB）**；中途失败可重试，三处均幂等（Qdrant filter 删 / ArcadeDB MATCH 删 / Mongo 永不 404） |
+| 12 | 图查询内容反查 | ArcadeDB 图只存 chunk_id 元数据不存内容；查询后经 chunk_id 哈希 → Qdrant `RetrievePoints` 反查 payload.content（**Qdrant 已直接存内容 + 关联 chunk_id，无需回 MongoDB**） |
