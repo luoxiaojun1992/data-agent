@@ -1,6 +1,6 @@
 # 领域内聚重构：业务领域 logic/service/db_model 垂直切片
 
-> **SPEC-072** | Status: 立项（不展开）
+> **SPEC-073** | Status: 立项（不展开）
 
 ## 目标
 
@@ -30,6 +30,6 @@
 ## 提交约定
 
 ```bash
-git add .agent/specs/spec-072-domain-cohesion-refactor.md .agent/specs/INDEX.md
-git commit -m "docs: add SPEC-072 domain cohesion refactor (立项)"
+git add .agent/specs/spec-073-domain-cohesion-refactor.md .agent/specs/INDEX.md
+git commit -m "docs: add SPEC-073 domain cohesion refactor (立项)"
 ```

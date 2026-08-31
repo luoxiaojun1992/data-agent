@@ -85,8 +85,8 @@
 | SPEC-069 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-069-compaction-trigger-fixes.md](spec-069-compaction-trigger-fixes.md) | 📐 设计中 |
 | SPEC-070 | KB 切片图数据库索引（ArcadeDB）+ 图访问共用组件 + 图谱搜索 Skill（GraphRepository 接口 + knowledge_graph_search tool + seed） | **P15** | [spec-070-kb-graph-index.md](spec-070-kb-graph-index.md) | 📐 详细设计 |
 | SPEC-071 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-071-agent-invoke-subagent.md](spec-071-agent-invoke-subagent.md) | 📐 调研完成（方案已定，待实现） |
-| SPEC-072 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-072-domain-cohesion-refactor.md](spec-072-domain-cohesion-refactor.md) | 📐 立项（不展开） |
-| SPEC-073 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-073-dashboard-stats-mongo-hourly.md](spec-073-dashboard-stats-mongo-hourly.md) | 📐 详细设计 |
+| SPEC-072 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-072-dashboard-stats-mongo-hourly.md](spec-072-dashboard-stats-mongo-hourly.md) | 📐 详细设计 |
+| SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
 
 ## Phase 对应与依赖
 
@@ -295,12 +295,7 @@ SPEC-006│               │
                     ctx 继承 + 取消销毁 session/runtime/DB;
                     依赖 SPEC-066/067/069)
 
-[P15] SPEC-072 ─── 领域内聚重构 (立项，不展开，放最后实现)
-                   (业务领域 logic/service/db_model 垂直切片;
-                    替换水平分层 domain/service/logic/infra;
-                    依赖 SPEC-066/067/069/071 落地后再展开)
-
-[P15] SPEC-073 ─── Dashboard 统计重构 (MongoDB 小时粒度计数 + 统一统计组件)
+[P15] SPEC-072 ─── Dashboard 统计重构 (MongoDB 小时粒度计数 + 统一统计组件)
                    (统一 metrics.Counter/Reader 组件(MongoDB stats_hourly 后端);
                     全局统计不区分用户; 每小时一条 document(upsert $inc);
                     token/llm_calls/api_calls/artifact/task_completed 五计数指标;
@@ -311,4 +306,9 @@ SPEC-006│               │
                     废弃 llmstats 明细聚合 + ComputeTrends + 旧 dashboard;
                     所有登录用户可看(现有 JWT 无 RBAC 限制);
                     依赖 SPEC-003/051/060/064 已实现)
+
+[P15] SPEC-073 ─── 领域内聚重构 (立项，不展开，放最后实现)
+                   (业务领域 logic/service/db_model 垂直切片;
+                    替换水平分层 domain/service/logic/infra;
+                    依赖 SPEC-066/067/069/071 落地后再展开)
 ```
