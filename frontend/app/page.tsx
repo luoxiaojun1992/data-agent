@@ -43,19 +43,27 @@ function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
   const max = Math.max(...data.map(d => d.value), 1);
   const showLabel = data.length <= 12 || gran === 'day';
   return (
-    <div className="flex items-end gap-1" style={{ height: '100px' }}>
-      {data.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-          <div className="w-full rounded-t" style={{
-            height: `${Math.max(4, (d.value / max) * 80)}px`,
+    <div className="flex flex-col">
+      {/* 柱子行：固定高度，柱体在行内底部对齐，不与标签行重叠 */}
+      <div className="flex items-end gap-1" style={{ height: '80px' }}>
+        {data.map((d, i) => (
+          <div key={i} className="flex-1 rounded-t" style={{
+            height: `${Math.max(4, (d.value / max) * 76)}px`,
             backgroundColor: 'var(--accent)',
             minHeight: '4px',
           }} />
-          {showLabel && <span className="text-[8px] text-[var(--text-secondary)] truncate w-full text-center">
-            {gran === 'day' && data.length > 12 && i % 3 !== 0 ? '' : formatLabel(d.time, gran)}
-          </span>}
+        ))}
+      </div>
+      {/* 标签行：独立一行，固定间距，永不与柱体重合 */}
+      {showLabel && (
+        <div className="flex gap-1 mt-1">
+          {data.map((d, i) => (
+            <span key={i} className="flex-1 min-w-0 text-[8px] text-[var(--text-secondary)] truncate text-center">
+              {gran === 'day' && data.length > 12 && i % 3 !== 0 ? '' : formatLabel(d.time, gran)}
+            </span>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
