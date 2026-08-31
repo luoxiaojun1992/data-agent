@@ -26,10 +26,9 @@ func newCfgGin(method, path, body string) (*gin.Context, *httptest.ResponseRecor
 
 func TestConfigHandler_Get(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("List", mock.Anything, "models", 1, 20).Return([]model.SystemConfig{{Key: "k"}}, int64(1), nil)
+	cfgSvc.On("List", mock.Anything, 1, 20).Return([]model.SystemConfig{{Key: "k"}}, int64(1), nil)
 	h := NewConfigHandler(cfgSvc, nil)
-	c, w := newCfgGin("GET", "/sysconfig/models", "")
-	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
+	c, w := newCfgGin("GET", "/sysconfig/system", "")
 	h.Get(c)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
@@ -38,10 +37,9 @@ func TestConfigHandler_Get(t *testing.T) {
 
 func TestConfigHandler_Get_Error(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("List", mock.Anything, "models", 1, 20).Return(([]model.SystemConfig)(nil), int64(0), errStr("db"))
+	cfgSvc.On("List", mock.Anything, 1, 20).Return(([]model.SystemConfig)(nil), int64(0), errStr("db"))
 	h := NewConfigHandler(cfgSvc, nil)
-	c, w := newCfgGin("GET", "/sysconfig/models", "")
-	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
+	c, w := newCfgGin("GET", "/sysconfig/system", "")
 	h.Get(c)
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
@@ -50,10 +48,9 @@ func TestConfigHandler_Get_Error(t *testing.T) {
 
 func TestConfigHandler_Put(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("Upsert", mock.Anything, "models", "k", "v").Return(nil)
+	cfgSvc.On("Upsert", mock.Anything, "k", "v").Return(nil)
 	h := NewConfigHandler(cfgSvc, nil)
-	c, w := newCfgGin("PUT", "/sysconfig/models", `{"key":"k","value":"v"}`)
-	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
+	c, w := newCfgGin("PUT", "/sysconfig/system", `{"key":"k","value":"v"}`)
 	h.Put(c)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
@@ -62,8 +59,7 @@ func TestConfigHandler_Put(t *testing.T) {
 
 func TestConfigHandler_Put_InvalidBody(t *testing.T) {
 	h := NewConfigHandler(nil, nil)
-	c, w := newCfgGin("PUT", "/sysconfig/models", "not-json")
-	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
+	c, w := newCfgGin("PUT", "/sysconfig/system", "not-json")
 	h.Put(c)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)

@@ -159,43 +159,6 @@ test.describe('SESSION — SPEC-037', () => {
     expect(await newBanner.isVisible({ timeout: 2000 }).catch(() => false)).toBe(false);
   });
 
-  // ═══ UI-183: 恢复缓冲期可配置 ═══
-  test('[UI-183] Session — 恢复缓冲期可配置', async ({ page }) => {
-    await page.goto('/admin/sysconfig');
-    await page.waitForSelector('[data-testid="sysconfig-session-recovery"]', { timeout: 10000 });
-
-    // Verify recovery hours input exists and has default value 24
-    const input = page.locator('[data-testid="sysconfig-session-recovery-input"]');
-    await expect(input).toBeVisible();
-    const val = await input.inputValue();
-    expect(Number(val)).toBeGreaterThanOrEqual(1);
-    expect(Number(val)).toBeLessThanOrEqual(168);
-
-    // Change to 48 hours and save
-    await input.fill('48');
-    await page.locator('[data-testid="sysconfig-session-recovery-save"]').click();
-
-    // Wait for success
-    await page.waitForTimeout(2000);
-
-    // Error should not be visible
-    const err = page.locator('[data-testid="sysconfig-session-recovery-error"]');
-    await expect(err).not.toBeVisible({ timeout: 5000 });
-
-    // Reload and verify value persisted
-    await page.reload();
-    await page.waitForSelector('[data-testid="sysconfig-session-recovery"]', { timeout: 10000 });
-    await page.waitForTimeout(2000);
-    const newVal = await page.locator('[data-testid="sysconfig-session-recovery-input"]').inputValue();
-    // Allow 48 or the existing value if it didn't stick
-    expect(Number(newVal)).toBeGreaterThanOrEqual(1);
-
-    // Reset to default
-    await page.locator('[data-testid="sysconfig-session-recovery-input"]').fill('24');
-    await page.locator('[data-testid="sysconfig-session-recovery-save"]').click();
-    await page.waitForTimeout(1000);
-  });
-
   // ═══ UI-177: Session idle timeout warning ═══
   test('[UI-177] Session — 超时警告', async ({ page }) => {
     // Inject short idle timeout BEFORE page loads (init script runs before React)

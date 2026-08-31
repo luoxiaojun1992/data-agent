@@ -139,35 +139,6 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tasks": tasks, "total": total, "page": page, "page_size": pageSize})
 }
 
-// ListAllTasks returns all task definitions (admin view).
-// GET /api/v1/admin/tasks
-func (h *TaskHandler) ListAllTasks(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	tasks, err := h.svc.ListAllTasks(userID.(string))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, tasks)
-}
-
-// BatchCancelTasks cancels multiple task definitions.
-// POST /api/v1/admin/tasks/batch-cancel
-func (h *TaskHandler) BatchCancelTasks(c *gin.Context) {
-	var req struct {
-		TaskIDs []string `json:"task_ids"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if err := h.svc.BatchCancelTasks(req.TaskIDs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"cancelled": len(req.TaskIDs)})
-}
-
 // ── Run endpoints ──
 
 // ListRuns returns paginated runs for a task definition.
@@ -210,16 +181,6 @@ func (h *TaskHandler) CreateRun(c *gin.Context) {
 	c.JSON(http.StatusAccepted, run)
 }
 
-// CancelRun cancels a run by ID if not yet started. POST /admin/tasks/:run_id/cancel
-func (h *TaskHandler) CancelRun(c *gin.Context) {
-	runID := c.Param("run_id")
-	if err := h.runSvc.CancelRun(runID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "cancelled", "run_id": runID})
-}
-
 // PauseTask pauses a scheduled task (delegates to CancelRun).
 // PUT /api/v1/tasks/:task_id/pause
 func (h *TaskHandler) PauseTask(c *gin.Context) {
@@ -245,18 +206,6 @@ func (h *TaskHandler) DownloadArtifacts(c *gin.Context) {
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", `attachment; filename="task_`+taskID+`_artifacts.zip"`)
 	c.Data(http.StatusOK, "application/zip", []byte{0x50, 0x4B, 0x03, 0x04})
-}
-
-// RetryTask triggers a new run for a failed task.
-// PUT /api/v1/admin/tasks/:task_id/retry
-func (h *TaskHandler) RetryTask(c *gin.Context) {
-	taskID := c.Param("task_id")
-	run, err := h.svc.CreateRun(taskID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "retried", "task_id": taskID, "run": run})
 }
 
 // ToggleScheduledEnabled turns scheduled task on/off. PATCH /admin/tasks/:id/scheduled-enabled

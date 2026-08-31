@@ -91,6 +91,7 @@
 | SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计中 |
 | SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计中 |
 | SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计中 |
+| SPEC-078 | 前端列表页 UI 规范统一（分页组件 / 顶部主按钮 / 弹窗玻璃样式） | **P15** | [spec-078-frontend-list-ui-consistency.md](spec-078-frontend-list-ui-consistency.md) | 📐 设计已定稿 |
 
 ## Phase 对应与依赖
 
@@ -321,6 +322,12 @@ SPEC-006│               │
                     过滤排序截取全下沉 DB 层 $match+$sort+$limit;
                     默认项排最前(模型用 aggregation sortKey);
                     禁止内存/前端排序截取;
+                    + 用户管理两个角色维度(同一页面, 互不混淆):
+                      三级主角色下拉(User.Role 定死枚举 user/admin/system_admin,
+                        写死 3 option 不走搜索, 前后端枚举一致) 5.6;
+                      RBAC 角色关联下拉(/admin/rbac/roles?q&limit&exclude_user_id
+                        DB 搜索 + $nin 排除已关联; 现状 path 错误 404 +
+                        全量拉取前端 filter 违规) 5.7;
                     依赖 SPEC-062/064/066 已实现)
 
 [P15] SPEC-075 ─── 前端列表搜索/分页后端化重构 (设计中)
@@ -341,4 +348,14 @@ SPEC-006│               │
                     特殊标签 [PDF:name] 供前端展示卡片;
                     解析图限制与图片附件等价(≤5张/≤2MiB);
                     后端 ChatRequest 加 pdfs 字段)
+
+[P15] SPEC-078 ─── 前端列表页 UI 规范统一 (设计已定稿)
+                   (分页组件收敛到 Pagination.tsx 唯一组件; 非 skill 定义;
+                    每页条数下拉统一内嵌进分页组件(10/20/50/100);
+                    API 管理页补标准分页;
+                    顶部主按钮统一渐变 #5c7cfa→#7c3aed(以用户管理为准);
+                    弹窗统一玻璃透明(遮罩 blur + 变量面板);
+                    仅当前主题, 不考虑 SPEC-076 多主题;
+                    红线: 禁止破坏布局/禁改 item 按钮;
+                    纯前端, 不改后端/交互逻辑)
 ```

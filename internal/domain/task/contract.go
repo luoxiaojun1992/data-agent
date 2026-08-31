@@ -17,8 +17,6 @@ type TaskService interface {
 	GetTask(id string) (*Task, error)
 	CancelTask(id string) error
 	ListTasks(userID string, skip, limit int64) ([]*Task, int64, error)
-	ListAllTasks(userID string) ([]*Task, error)
-	BatchCancelTasks(ids []string) error
 	// CreateRun creates a new TaskRun from the task definition and enqueues it.
 	CreateRun(taskID string) (*TaskRun, error)
 	// SetScheduledEnabled toggles the on/off flag for scheduled tasks.

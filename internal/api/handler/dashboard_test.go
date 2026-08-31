@@ -30,6 +30,21 @@ func (f *fakeReader) Series(_ context.Context, m metrics.Metric, _, _ time.Time,
 	return f.series[m], nil
 }
 
+// capturingReader records the since/until of the last Sum call so tests can
+// assert the KPI window is driven by granularity (not a hardcoded year).
+type capturingReader struct {
+	since, until time.Time
+}
+
+func (c *capturingReader) Sum(_ context.Context, _ metrics.Metric, since, until time.Time) (int64, error) {
+	c.since, c.until = since, until
+	return 0, nil
+}
+
+func (c *capturingReader) Series(_ context.Context, _ metrics.Metric, _, _ time.Time, _ metrics.Granularity) ([]metrics.Bucket, error) {
+	return nil, nil
+}
+
 func newDashboardHandler(t *testing.T, sums map[metrics.Metric]int64, series map[metrics.Metric][]metrics.Bucket) *DashboardHandler {
 	t.Helper()
 	kb := kmocks.NewKnowledgeService(t)
@@ -62,6 +77,40 @@ func TestDashboardGet(t *testing.T) {
 	assert.Equal(t, float64(15), body["task_completed"])
 	// ROI = (5 + 15) * 10000 / 100 = 2000（每万 token 产出）
 	assert.InDelta(t, 2000.0, body["roi"], 1e-9)
+}
+
+// TestDashboardGet_WindowFollowsGranularity verifies the KPI counters follow
+// the selected time window (week → 7 days) while kb_docs stays the point-in-
+// time total.
+func TestDashboardGet_WindowFollowsGranularity(t *testing.T) {
+	kb := kmocks.NewKnowledgeService(t)
+	kb.On("ListAllDocs", 1, 1).Maybe().Return(nil, int64(42), nil)
+	cr := &capturingReader{}
+	h := NewDashboardHandler(kb, cr)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard?granularity=week", nil)
+	h.Get(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.False(t, cr.since.IsZero(), "since should be set")
+	require.False(t, cr.until.IsZero(), "until should be set")
+	assert.InDelta(t, float64(7*24*time.Hour), float64(cr.until.Sub(cr.since)), float64(time.Second))
+
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	// kb_docs is a snapshot total and must not be windowed.
+	assert.Equal(t, float64(42), body["kb_docs"])
+}
+
+func TestDashboardGet_InvalidSince(t *testing.T) {
+	h := newDashboardHandler(t, nil, nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard?since=not-a-date", nil)
+	h.Get(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestDashboardGet_ZeroTokensROI(t *testing.T) {

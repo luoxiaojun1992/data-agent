@@ -69,23 +69,6 @@ func (r *TaskDefRepository) List(ctx context.Context, userID string, skip, limit
 	return tasks, total, nil
 }
 
-func (r *TaskDefRepository) ListAll(ctx context.Context, userID string) ([]*task.Task, error) {
-	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-	var docs []bson.M
-	if err := cursor.All(ctx, &docs); err != nil {
-		return nil, err
-	}
-	tasks := make([]*task.Task, len(docs))
-	for i, d := range docs {
-		tasks[i] = docToTaskDef(d)
-	}
-	return tasks, nil
-}
-
 // ---- TaskRun Repository ----
 
 type TaskRunRepository struct {

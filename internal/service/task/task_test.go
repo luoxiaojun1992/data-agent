@@ -185,32 +185,6 @@ func TestListTasks_Success(t *testing.T) {
 	}
 }
 
-func TestListAllTasks_Success(t *testing.T) {
-	s, repo, _, _ := newTestService(t)
-	repo.On("ListAll", mock.Anything, "u1").Return([]*task.Task{{ID: "t1"}, {ID: "t2"}}, nil)
-
-	tasks, err := s.ListAllTasks("u1")
-	if err != nil {
-		t.Fatalf("ListAllTasks: %v", err)
-	}
-	if len(tasks) != 2 {
-		t.Errorf("got %d tasks, want 2", len(tasks))
-	}
-}
-
-func TestBatchCancelTasks_BestEffort(t *testing.T) {
-	s, repo, _, _ := newTestService(t)
-	repo.On("Cancel", mock.Anything, "t1").Return(nil)
-	repo.On("Cancel", mock.Anything, "t2").Return(fmt.Errorf("not found"))
-
-	// best-effort: returns nil even if one fails.
-	if err := s.BatchCancelTasks([]string{"t1", "t2"}); err != nil {
-		t.Fatalf("BatchCancelTasks should be best-effort: %v", err)
-	}
-	repo.AssertCalled(t, "Cancel", mock.Anything, "t1")
-	repo.AssertCalled(t, "Cancel", mock.Anything, "t2")
-}
-
 // ── Run-level methods (executor contract) ──
 
 func TestCreateRun_Success(t *testing.T) {

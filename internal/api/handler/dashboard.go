@@ -43,14 +43,31 @@ type summary struct {
 	ROI             float64 `json:"roi"`
 }
 
-// Get returns the KPI summary (near-one-year cumulative). Partial failures
-// are swallowed so a single outage does not break the dashboard.
+// Get returns the KPI summary over the selected time window. The window is
+// driven by the same granularity (day|week|month|year) and since/until query
+// params as /dashboard/trends, so the KPI cards stay consistent with the
+// trend charts. kb_docs is a point-in-time total and is intentionally NOT
+// windowed — it always reflects the current KB document count. Partial
+// failures are swallowed so a single outage does not break the dashboard.
 func (h *DashboardHandler) Get(c *gin.Context) {
 	ctx := c.Request.Context()
-	since := time.Now().UTC().Add(-metrics.MaxRange)
-	until := time.Now().UTC()
+	gran := parseGranularity(c.Query("granularity"))
+	spec := windowFor(gran)
+	since, until, err := parseRange(c.Query("since"), c.Query("until"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	now := time.Now().UTC()
+	if since.IsZero() {
+		since = now.Add(-spec.window)
+	}
+	if until.IsZero() {
+		until = now
+	}
 
 	s := summary{}
+	// kb_docs is a snapshot total, unaffected by the time filter.
 	_, s.KbDocs, _ = h.kbService.ListAllDocs(1, 1)
 	if h.reader != nil {
 		s.TokenTokens, _ = h.reader.Sum(ctx, metrics.MetricTokenTokens, since, until)

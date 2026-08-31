@@ -103,17 +103,6 @@ func (s *Service) ListTasks(userID string, skip, limit int64) ([]*task.Task, int
 	return s.repo.List(context.Background(), userID, skip, limit)
 }
 
-func (s *Service) ListAllTasks(userID string) ([]*task.Task, error) {
-	return s.repo.ListAll(context.Background(), userID)
-}
-
-func (s *Service) BatchCancelTasks(ids []string) error {
-	for _, id := range ids {
-		_ = s.repo.Cancel(context.Background(), id)
-	}
-	return nil
-}
-
 // ---- Run-level methods used by executors ----
 
 func (s *Service) GetRun(id string) (*task.TaskRun, error) {

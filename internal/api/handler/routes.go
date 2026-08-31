@@ -289,15 +289,10 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	taskRoutes.PUT("/:task_id/resume", h.ResumeTask)
 	taskRoutes.GET("/:task_id/artifacts/download", h.DownloadArtifacts)
 
-	adminTasks := router.Group("/api/v1/admin/tasks")
-	adminTasks.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentView))
-	adminTasks.GET("", h.ListAllTasks)
-
+	// Scheduled-enabled toggle — also used by the /agent page.
 	adminTasksWrite := router.Group("/api/v1/admin/tasks")
 	adminTasksWrite.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentEdit))
-	adminTasksWrite.PUT("/:task_id/retry", h.RetryTask)
 	adminTasksWrite.PATCH("/:id/scheduled-enabled", h.ToggleScheduledEnabled)
-	adminTasksWrite.POST("/:run_id/cancel", h.CancelRun)
 
 	// Standalone run endpoint — useful for the run-detail page where the
 	// client only has run_id (task_id is in URL state).

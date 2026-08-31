@@ -2,8 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -19,10 +17,9 @@ import (
 // service Upsert call fails.
 func TestConfigHandler_Put_ServiceError(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("Upsert", mock.Anything, "models", "k", "v").Return(errStr("db down"))
+	cfgSvc.On("Upsert", mock.Anything, "k", "v").Return(errStr("db down"))
 	h := NewConfigHandler(cfgSvc, nil)
-	c, w := newCfgGin("PUT", "/sysconfig/models", `{"key":"k","value":"v"}`)
-	c.Params = gin.Params{{Key: "namespace", Value: "models"}}
+	c, w := newCfgGin("PUT", "/sysconfig/system", `{"key":"k","value":"v"}`)
 	h.Put(c)
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
@@ -92,43 +89,6 @@ func TestValidatePasswordComplexity_ExtraCases(t *testing.T) {
 	}
 }
 
-// TestRegisterSysConfigRoutes verifies that RegisterSysConfigRoutes wires the
-// sysconfig GET/PUT and change-password endpoints. This exercises the
-// previously uncovered RegisterSysConfigRoutes function.
-func TestRegisterSysConfigRoutes(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("List", mock.Anything, "models", 1, 20).Return([]model.SystemConfig{{Key: "k", Value: "v"}}, int64(1), nil)
-	cfgSvc.On("Upsert", mock.Anything, "models", "k", "v").Return(nil)
-	h := NewConfigHandler(cfgSvc, nil)
-	admin := r.Group("/api/v1/admin")
-	RegisterSysConfigRoutes(admin, h, nil)
-
-	// GET /api/v1/admin/sysconfig/models → 200
-	req := httptest.NewRequest("GET", "/api/v1/admin/sysconfig/models", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("Get expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "configs") {
-		t.Errorf("expected configs field in body, got %s", w.Body.String())
-	}
-
-	// PUT /api/v1/admin/sysconfig/models → 200
-	req = httptest.NewRequest("PUT", "/api/v1/admin/sysconfig/models", strings.NewReader(`{"key":"k","value":"v"}`))
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("Put expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "已保存") {
-		t.Errorf("expected saved message in body, got %s", w.Body.String())
-	}
-}
-
 // TestRegisterSysConfigRoutes_SystemSubpath verifies the additional
 // /sysconfig/system routes wired for the /admin/settings frontend page.
 // These were added to fix a long-standing 404 orphan page (the new
@@ -170,27 +130,22 @@ func TestRegisterSysConfigRoutes_SystemSubpath(t *testing.T) {
 		t.Errorf("PUT /api/v1/admin/sysconfig/system not registered")
 	}
 
-	// Also verify the legacy /sysconfig routes are still present (no regression).
-	var legacyGet, legacyPut, legacyDel, legacyPost bool
+	// /change-password remains registered (no RBAC middleware on it).
+	var gotChangePwd bool
 	for _, rt := range routes {
-		switch rt.Path {
-		case "/api/v1/admin/sysconfig":
-			switch rt.Method {
-			case http.MethodGet:
-				legacyGet = true
-			case http.MethodPut:
-				legacyPut = true
-			case http.MethodDelete:
-				legacyDel = true
-			}
-		case "/api/v1/admin/change-password":
-			if rt.Method == http.MethodPost {
-				legacyPost = true
-			}
+		if rt.Path == "/api/v1/admin/change-password" && rt.Method == http.MethodPost {
+			gotChangePwd = true
 		}
 	}
-	if !legacyGet || !legacyPut || !legacyDel || !legacyPost {
-		t.Errorf("legacy routes regressed: get=%v put=%v del=%v changePassword=%v",
-			legacyGet, legacyPut, legacyDel, legacyPost)
+	if !gotChangePwd {
+		t.Errorf("POST /api/v1/admin/change-password not registered")
+	}
+
+	// The legacy bare /sysconfig routes (GET/PUT/DELETE) must be gone — the
+	// orphan /admin/sysconfig page that used them was removed.
+	for _, rt := range routes {
+		if rt.Path == "/api/v1/admin/sysconfig" {
+			t.Errorf("legacy %s /api/v1/admin/sysconfig route should be removed", rt.Method)
+		}
 	}
 }

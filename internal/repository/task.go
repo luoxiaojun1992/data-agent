@@ -16,7 +16,6 @@ type TaskRepository interface {
 	UpdateLastRun(ctx context.Context, id string, runAt time.Time) error
 	Cancel(ctx context.Context, id string) error
 	List(ctx context.Context, userID string, skip, limit int64) ([]*task.Task, int64, error)
-	ListAll(ctx context.Context, userID string) ([]*task.Task, error)
 	// ListScheduled returns scheduled tasks (cron_expr not empty OR scheduled_at <= now).
 	ListScheduled(ctx context.Context, skip, limit int64, now time.Time) ([]*task.Task, int64, error)
 	// MarkScheduledDone sets scheduled_done=true for a one-shot task.

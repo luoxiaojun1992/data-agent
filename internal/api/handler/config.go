@@ -27,16 +27,11 @@ func NewConfigHandler(cfgSvc config.Service, userRepo repository.UserRepository)
 const sysConfigRoutePath = "/sysconfig"
 
 // RegisterSysConfigRoutes registers system configuration routes.
-// Sysconfig write operations require PermSystemEdit.
+// Read requires PermSystemView; write requires PermSystemEdit.
 func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler, rbacSvc *rbacsvc.Service) {
-	admin.GET(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Get)
-	admin.PUT(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Put)
-	admin.DELETE(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Delete)
-	// /sysconfig/system — the new /admin/settings UI hard-codes this path
-	// (added to fix a long-standing 404 orphan). Same handler, same payload.
-	// Kept in addition to /sysconfig so legacy callers (admin/sysconfig page)
-	// continue to work unchanged.
-	admin.GET(sysConfigRoutePath+"/system", middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Get)
+	// /sysconfig/system — the /admin/settings UI hard-codes this path.
+	// The legacy /sysconfig page was removed; only this sub-path is used.
+	admin.GET(sysConfigRoutePath+"/system", middleware.RequirePermission(rbacSvc, model.PermSystemView), h.Get)
 	admin.PUT(sysConfigRoutePath+"/system", middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Put)
 	admin.POST("/change-password", h.ChangePassword)
 }
@@ -67,23 +62,6 @@ func (h *ConfigHandler) Put(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已保存"})
-}
-
-// Delete removes a config entry by key. Idempotent — returns 200
-// even if the entry does not exist.
-func (h *ConfigHandler) Delete(c *gin.Context) {
-	var req struct {
-		Key string `json:"key"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if err := h.cfgSvc.Delete(c.Request.Context(), req.Key); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
 func validatePasswordComplexity(pw string) bool {

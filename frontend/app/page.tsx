@@ -92,11 +92,11 @@ export default function MainPage() {
     if (!auth.token) return;
     (async () => {
       try {
-        const sr = await apiFetch('/dashboard');
+        const sr = await apiFetch(`/dashboard?granularity=${granularity}`);
         setSummary(await sr.json());
       } catch { /* ignore */ }
     })();
-  }, [auth.token]);
+  }, [auth.token, granularity]);
 
   useEffect(() => {
     if (!auth.token) return;
