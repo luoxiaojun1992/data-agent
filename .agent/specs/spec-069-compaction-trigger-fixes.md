@@ -1,6 +1,6 @@
 # compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构
 
-> **SPEC-069** | Status: 设计中（问题 2 定 C，问题 3/4 已定方向）
+> **SPEC-069** | Status: ✅ 已实现（2026-08-31，四项修复落地 + 测试服务器验证）
 
 ## 目标
 
