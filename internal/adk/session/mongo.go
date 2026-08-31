@@ -429,7 +429,6 @@ func (s *Service) flushBuffer(ctx context.Context, sess session.Session) {
 	}
 	delete(s.buf, sess.ID())
 	s.mu.Unlock()
-
 	event := &session.Event{
 		ID:        b.eventID,
 		Timestamp: b.since,
@@ -446,6 +445,19 @@ func (s *Service) flushBuffer(ctx context.Context, sess session.Session) {
 	if err := s.appendRawEvent(ctx, sess, event); err != nil {
 		log.Printf("[session] flush buffered raw event: %v", err)
 	}
+}
+
+// FlushStreamBuffer flushes any buffered streaming text for the session into
+// session_events. Runtime calls this at turn end because the ieshan openai
+// backend's final response still has Partial=true (empty finish_reason), so
+// AppendEvent alone never flushes the last assistant message — it would stay
+// in the in-memory buffer (and be lost on restart), leaving the transcript
+// without the LLM reply. No-op when nothing is buffered.
+func (s *Service) FlushStreamBuffer(ctx context.Context, appName, userID, sessionID string) error {
+	s.flushBuffer(ctx, &mongoSession{doc: &sessionDoc{
+		ID: sessionID, AppName: appName, UserID: userID,
+	}})
+	return nil
 }
 
 func mergeTextIntoEvent(prev, next *session.Event) *session.Event {

@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"log"
 	"strings"
+	"time"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -53,6 +55,9 @@ type Config struct {
 type Runtime struct {
 	runner  *runner.Runner
 	appName string
+	// sessSvc keeps the concrete session service for optional capabilities
+	// (e.g. FlushStreamBuffer at turn end). Same instance as runner's.
+	sessSvc session.Service
 }
 
 // TaskInstructionSuffix is appended to the agent's system prompt when an
@@ -124,7 +129,7 @@ func New(cfg Config) (*Runtime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create runner: %w", err)
 	}
-	return &Runtime{runner: r, appName: cfg.AppName}, nil
+	return &Runtime{runner: r, appName: cfg.AppName, sessSvc: cfg.SessionService}, nil
 }
 
 // RunConfig controls a single run.
@@ -154,7 +159,37 @@ func (rt *Runtime) RunContent(ctx context.Context, userID, sessionID string, con
 	if len(rc.StateDelta) > 0 {
 		opts = append(opts, runner.WithStateDelta(rc.StateDelta))
 	}
-	return rt.runner.Run(ctx, userID, sessionID, content, agentCfg, opts...)
+	inner := rt.runner.Run(ctx, userID, sessionID, content, agentCfg, opts...)
+	return func(yield func(*session.Event, error) bool) {
+		for evt, err := range inner {
+			if !yield(evt, err) {
+				rt.flushStreamBuffer(userID, sessionID)
+				return
+			}
+		}
+		// Turn end: force-flush buffered streaming chunks. The ieshan openai
+		// backend's final response still carries Partial=true, so AppendEvent
+		// never flushes the last assistant message on its own (SPEC-069 问题 4
+		// follow-up — the transcript would otherwise miss the LLM reply).
+		rt.flushStreamBuffer(userID, sessionID)
+	}
+}
+
+// flushStreamBuffer asks the session service (when it supports the optional
+// interface) to flush buffered streaming text into session_events. Failures
+// are logged only — the turn itself already completed.
+func (rt *Runtime) flushStreamBuffer(userID, sessionID string) {
+	flusher, ok := rt.sessSvc.(interface {
+		FlushStreamBuffer(ctx context.Context, appName, userID, sessionID string) error
+	})
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := flusher.FlushStreamBuffer(ctx, rt.appName, userID, sessionID); err != nil {
+		log.Printf("[runtime] flush stream buffer (session=%s): %v", sessionID, err)
+	}
 }
 
 // RunAndCollect executes one ADK turn and returns the final assistant text.
