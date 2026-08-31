@@ -88,6 +88,7 @@
 | SPEC-072 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-072-dashboard-stats-mongo-hourly.md](spec-072-dashboard-stats-mongo-hourly.md) | ✅ 已实现 |
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
 | SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | 📐 设计中 |
+| SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -319,4 +320,10 @@ SPEC-006│               │
                     默认项排最前(模型用 aggregation sortKey);
                     禁止内存/前端排序截取;
                     依赖 SPEC-062/064/066 已实现)
+
+[P15] SPEC-075 ─── 前端列表搜索/分页后端化重构 (设计中)
+                   (排查所有前端列表页的搜索/过滤/分页;
+                    前端本地 filter/slice 一律重构为后端 DB 层筛选分页;
+                    整改清单: 知识库/模型/任务/会话/RBAC父角色/权限/用户角色 8 处;
+                    依赖 SPEC-074(模型q搜索/父角色过滤复用))
 ```
