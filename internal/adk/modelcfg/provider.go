@@ -364,7 +364,12 @@ func filterLLMs(models []ModelEntry) []ModelEntry {
 	return out
 }
 
-// buildBackends creates the model.LLM chain sorted by FallbackOrder.
+// buildBackends creates the model.LLM chain sorted by FallbackOrder. Every
+// backend is wrapped with a usage recorder (SPEC-072) so that ALL
+// GenerateContent LLM calls — chat, enhance, compaction, intent, relevance,
+// kb chunking/image — record their real token usage from UsageMetadata at the
+// single ADK LLM boundary. Embedding is a separate EmbeddingFunc (not
+// model.LLM) and records its own usage at its call sites.
 func (p *Provider) buildBackends(models []ModelEntry) []model.LLM {
 	sortModels(models)
 	backends := make([]model.LLM, 0, len(models))
@@ -381,6 +386,7 @@ func (p *Provider) buildBackends(models []ModelEntry) []model.LLM {
 		if m.MaxTokens > 0 {
 			wrapped = &maxTokensLLM{inner: wrapped, maxTokens: int32(m.MaxTokens)}
 		}
+		wrapped = adkmodel.NewRecordingLLM(wrapped, p.usageRec, "llm")
 		backends = append(backends, wrapped)
 	}
 	return backends
@@ -441,9 +447,9 @@ func (p *Provider) GetModelByID(ctx context.Context, modelID string) (*ModelEntr
 	return p.getModel(ctx, modelID)
 }
 
-// BuildLLMByID constructs an LLM from the model entry matching modelID.
-// The runtime (chat) LLM is wrapped with a usage recorder (SPEC-072) so the
-// main chat path's real token usage feeds token_tokens + llm_calls.
+// BuildLLMByID constructs an LLM from the model entry matching modelID. Usage
+// recording happens uniformly in buildBackends (SPEC-072), covering this
+// runtime (chat) path as well as the useCase path.
 func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM, error) {
 	entry, err := p.GetModelByID(ctx, modelID)
 	if err != nil {
@@ -453,7 +459,7 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 	if len(backends) == 0 {
 		return nil, fmt.Errorf("failed to build LLM for model %q", entry.ID)
 	}
-	return adkmodel.NewRecordingLLM(backends[0], p.usageRec, "chat"), nil
+	return backends[0], nil
 }
 
 // defaultMap loads the full use_case → model_id mapping from model_defaults.

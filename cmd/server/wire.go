@@ -352,7 +352,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 }
 
 func initEnhance(deps *serverDependencies) {
-	deps.enhanceService = enhancesvc.NewService(deps.modelCfg, deps.llmCache, deps.llmRecorder)
+	deps.enhanceService = enhancesvc.NewService(deps.modelCfg, deps.llmCache)
 }
 
 func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {

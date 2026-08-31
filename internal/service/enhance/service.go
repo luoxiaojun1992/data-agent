@@ -1,7 +1,6 @@
 // Package enhance implements the prompt-enhancement service. It wraps the
-// ADK model router with a Redis cache and token-usage recording, falling
-// back to a direct OpenAI-compatible HTTP call when the ADK model is
-// unavailable.
+// ADK model router with a Redis cache; token usage is recorded uniformly at
+// the ADK LLM boundary (modelcfg.buildBackends) rather than here (SPEC-072).
 package enhance
 
 import (
@@ -13,27 +12,22 @@ import (
 
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
-	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 )
-
-// defaultModel is the fallback model name for enhance/embedding.
-const defaultModel = "gpt-4o"
 
 // Service enhances user prompts into structured data-analysis prompts.
 type Service struct {
-	modelCfg    *modelcfg.Provider
-	cache       *llmcache.Cache
-	recorder    *llmstats.Recorder
+	modelCfg *modelcfg.Provider
+	cache    *llmcache.Cache
 }
 
 // NewService creates an enhance service.
-func NewService(modelCfg *modelcfg.Provider, cache *llmcache.Cache, recorder *llmstats.Recorder) *Service {
-	return &Service{modelCfg: modelCfg, cache: cache, recorder: recorder}
+func NewService(modelCfg *modelcfg.Provider, cache *llmcache.Cache) *Service {
+	return &Service{modelCfg: modelCfg, cache: cache}
 }
 
-// Enhance optimizes a prompt via the ADK model router (with Redis cache and
-// token recording). Returns the original prompt on any failure so callers
-// never hard-fail on enhancement.
+// Enhance optimizes a prompt via the ADK model router (with Redis cache).
+// Returns the original prompt on any failure so callers never hard-fail on
+// enhancement.
 func (s *Service) Enhance(ctx context.Context, prompt string) string {
 	modelName := envOrDefault("LLM_MODEL", "default")
 
@@ -48,7 +42,6 @@ func (s *Service) Enhance(ctx context.Context, prompt string) string {
 	if s.cache != nil {
 		s.cache.SetEnhance(ctx, modelName, prompt, enhanced)
 	}
-	s.recordTokens(ctx, prompt, enhanced)
 	return enhanced
 }
 
@@ -80,27 +73,6 @@ func (s *Service) enhanceViaADK(ctx context.Context, prompt string) string {
 		}
 	}
 	return prompt
-}
-
-// callEnhanceLLM calls a plain OpenAI-compatible HTTP endpoint to enhance a
-// prompt. Falls back to the original prompt on any error.
-func callEnhanceLLM(ctx context.Context, prompt string) string {
-	return prompt // removed — enhance uses ADK model router exclusively
-}
-
-// recordTokens records token usage for an enhance call.
-func (s *Service) recordTokens(ctx context.Context, prompt, enhanced string) {
-	if s.recorder == nil {
-		return
-	}
-	modelName := envOrDefault("LLM_MODEL", defaultModel)
-	_ = s.recorder.Record(ctx, llmstats.Record{
-		CallPoint:        "enhance",
-		Model:            modelName,
-		PromptTokens:     llmstats.EstimateTokens(prompt),
-		CompletionTokens: llmstats.EstimateTokens(enhanced),
-		Estimated:        true,
-	})
 }
 
 // envOrDefault reads an env var or returns the default when unset/empty.

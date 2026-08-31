@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// TestEnhance_NilDeps_Fallback verifies that with no model config, no cache,
-// and no recorder, the service falls back to callEnhanceLLM (which fails
-// without a real endpoint) and returns the original prompt unchanged.
+// TestEnhance_NilDeps_Fallback verifies that with no model config and no
+// cache, the service falls back to callEnhanceLLM (which fails without a real
+// endpoint) and returns the original prompt unchanged.
 func TestEnhance_NilDeps_Fallback(t *testing.T) {
-	svc := NewService(nil, nil, nil)
+	svc := NewService(nil, nil)
 	got := svc.Enhance(context.Background(), "分析营收")
 	if got != "分析营收" {
 		t.Errorf("expected original prompt on fallback, got %q", got)
@@ -33,9 +33,3 @@ func TestEnvOrDefault(t *testing.T) {
 	}
 }
 
-// TestRecordTokens_NilRecorder verifies recordTokens is a no-op when recorder
-// is nil (no panic).
-func TestRecordTokens_NilRecorder(t *testing.T) {
-	svc := &Service{}
-	svc.recordTokens(context.Background(), "p", "e")
-}
