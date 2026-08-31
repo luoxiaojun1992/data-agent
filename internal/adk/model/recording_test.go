@@ -48,13 +48,19 @@ func (f *fakeCounter) Incr(_ context.Context, m metrics.Metric, _ time.Time, del
 
 func (f *fakeCounter) Stop() {}
 
+func newTestReq() *model.LLMRequest {
+	return &model.LLMRequest{
+		Contents: []*genai.Content{
+			{Role: "user", Parts: []*genai.Part{{Text: "hello prompt"}}},
+		},
+	}
+}
+
 func TestNewRecordingLLM_RecordsUsage(t *testing.T) {
 	fc := &fakeCounter{}
 	rec := llmstats.NewRecorder(fc)
 	inner := &fakeUsageLLM{responses: []*model.LLMResponse{
-		// Intermediate chunk without usage.
 		{Content: genai.NewContentFromText("partial", "model")},
-		// Final response carrying usage.
 		{Content: genai.NewContentFromText("done", "model"), UsageMetadata: &genai.GenerateContentResponseUsageMetadata{
 			PromptTokenCount:     100,
 			CandidatesTokenCount: 50,
@@ -63,7 +69,7 @@ func TestNewRecordingLLM_RecordsUsage(t *testing.T) {
 	wrapped := NewRecordingLLM(inner, rec, "chat")
 
 	var got []*model.LLMResponse
-	for resp, err := range wrapped.GenerateContent(context.Background(), nil, false) {
+	for resp, err := range wrapped.GenerateContent(context.Background(), newTestReq(), false) {
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -72,12 +78,50 @@ func TestNewRecordingLLM_RecordsUsage(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("response count = %d, want 2", len(got))
 	}
-	// Billed = prompt(100) + completion(50) = 150; llm_calls = 1.
 	if fc.tokenDelta != 150 {
-		t.Errorf("token delta = %d, want 150", fc.tokenDelta)
+		t.Errorf("token delta = %d, want 150 (real usage)", fc.tokenDelta)
 	}
 	if fc.calls != 1 {
 		t.Errorf("llm_calls = %d, want 1", fc.calls)
+	}
+}
+
+func TestNewRecordingLLM_EstimatesWhenNoUsage(t *testing.T) {
+	fc := &fakeCounter{}
+	rec := llmstats.NewRecorder(fc)
+	// Backend returns no usage (streaming without include_usage, or Ollama/mockllm).
+	inner := &fakeUsageLLM{responses: []*model.LLMResponse{
+		{Content: genai.NewContentFromText("done text", "model")},
+	}}
+	wrapped := NewRecordingLLM(inner, rec, "chat")
+
+	for range wrapped.GenerateContent(context.Background(), newTestReq(), true) {
+	}
+	// Fallback estimation must still count the call exactly once.
+	if fc.calls != 1 {
+		t.Errorf("llm_calls = %d, want 1 (fallback estimate)", fc.calls)
+	}
+	if fc.tokenDelta <= 0 {
+		t.Errorf("token delta = %d, want > 0 (fallback estimate)", fc.tokenDelta)
+	}
+}
+
+func TestNewRecordingLLM_RecordsOnceWhenUsageInMiddle(t *testing.T) {
+	fc := &fakeCounter{}
+	rec := llmstats.NewRecorder(fc)
+	// Usage appears on a middle chunk; only the first non-nil usage is recorded.
+	inner := &fakeUsageLLM{responses: []*model.LLMResponse{
+		{Content: genai.NewContentFromText("a", "model"), UsageMetadata: &genai.GenerateContentResponseUsageMetadata{PromptTokenCount: 10, CandidatesTokenCount: 5}},
+		{Content: genai.NewContentFromText("b", "model"), UsageMetadata: &genai.GenerateContentResponseUsageMetadata{PromptTokenCount: 99, CandidatesTokenCount: 99}},
+	}}
+	wrapped := NewRecordingLLM(inner, rec, "chat")
+	for range wrapped.GenerateContent(context.Background(), newTestReq(), true) {
+	}
+	if fc.calls != 1 {
+		t.Errorf("llm_calls = %d, want 1 (dedup)", fc.calls)
+	}
+	if fc.tokenDelta != 15 {
+		t.Errorf("token delta = %d, want 15 (first usage only)", fc.tokenDelta)
 	}
 }
 
@@ -86,22 +130,7 @@ func TestNewRecordingLLM_NilRecNoop(t *testing.T) {
 		{Content: genai.NewContentFromText("done", "model"), UsageMetadata: &genai.GenerateContentResponseUsageMetadata{PromptTokenCount: 1}},
 	}}
 	wrapped := NewRecordingLLM(inner, nil, "chat")
-	// Nil recorder → returns inner unwrapped (same instance).
 	if wrapped != model.LLM(inner) {
 		t.Fatal("nil recorder should return the inner LLM unwrapped")
-	}
-}
-
-func TestNewRecordingLLM_SkipsNilUsage(t *testing.T) {
-	fc := &fakeCounter{}
-	rec := llmstats.NewRecorder(fc)
-	inner := &fakeUsageLLM{responses: []*model.LLMResponse{
-		{Content: genai.NewContentFromText("no usage", "model")},
-	}}
-	wrapped := NewRecordingLLM(inner, rec, "chat")
-	for range wrapped.GenerateContent(context.Background(), nil, false) {
-	}
-	if fc.calls != 0 {
-		t.Errorf("no usage metadata should not record, got llm_calls=%d", fc.calls)
 	}
 }
