@@ -50,14 +50,15 @@ services:
       - "7687:7687"
       - "2480:2480"
     environment:
-      - JAVA_OPTS=-Darcadedb.server.rootPassword=arcadedb-root-pw -Darcadedb.server.databaseDirectory=/data/databases -Xmx512m
+      # Bolt 是可选插件，必须显式启用（否则 7687 不监听）；defaultDatabases 启动时自动创建 kbgraph
+      - JAVA_OPTS=-Darcadedb.server.rootPassword=arcadedb-root-pw -Darcadedb.server.databaseDirectory=/home/arcadedb/databases -Darcadedb.server.defaultDatabases=kbgraph[root] -Darcadedb.server.plugins=Bolt:com.arcadedb.bolt.BoltProtocolPlugin -Xmx512m
     volumes:
-      - arcadedb-data:/data
+      - arcadedb-data:/home/arcadedb
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:2480/api/v1/server || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:2480/ || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 18
       start_period: 30s
 
   seaweedfs:
