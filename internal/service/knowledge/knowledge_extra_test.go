@@ -465,12 +465,14 @@ func TestCreateDoc_FieldPropagation(t *testing.T) {
 
 // --- DeleteDoc cascade ---
 
-// TestDeleteDoc_CascadeDeletesChunks verifies DeleteDoc deletes the doc and
-// cascades to delete its chunks.
+// TestDeleteDoc_CascadeDeletesChunks verifies DeleteDoc cascades through the
+// five steps (SPEC-070): Qdrant → graph → chunks → GridFS → doc.
 func TestDeleteDoc_CascadeDeletesChunks(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "kbdoc_cascade").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_cascade"}, nil)
 	kbRepo.On("DeleteDoc", mock.Anything, "kbdoc_cascade").Return(nil)
 	kbRepo.On("DeleteChunks", mock.Anything, "kbdoc_cascade").Return(int64(5), nil)
+	kbRepo.On("DeleteFile", mock.Anything, "").Return(nil)
 
 	svc := NewService(kbRepo)
 	if err := svc.DeleteDoc("kbdoc_cascade"); err != nil {
@@ -482,8 +484,10 @@ func TestDeleteDoc_CascadeDeletesChunks(t *testing.T) {
 // chunk deletion errors and returns nil (chunks are best-effort cleanup).
 func TestDeleteDoc_ChunkDeletionErrorStillReturnsNil(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
+	kbRepo.On("GetDoc", mock.Anything, "kbdoc_ok").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_ok"}, nil)
 	kbRepo.On("DeleteDoc", mock.Anything, "kbdoc_ok").Return(nil)
 	kbRepo.On("DeleteChunks", mock.Anything, "kbdoc_ok").Return(int64(0), errors.New("chunks delete failed"))
+	kbRepo.On("DeleteFile", mock.Anything, "").Return(nil)
 
 	// DeleteDoc on the service returns nil because the doc was deleted successfully.
 	svc := NewService(kbRepo)

@@ -31,6 +31,9 @@ type KBRepository interface {
 	// GridFS operations.
 	UploadFile(ctx context.Context, fileID string, reader io.Reader) error
 	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
+	// DeleteFile removes a GridFS file. Idempotent: an empty fileID is a
+	// no-op and file-not-found is ignored (SPEC-070 cascade delete).
+	DeleteFile(ctx context.Context, fileID string) error
 }
 
 //go:generate mockery --name VectorRepository --output ./mocks --outpkg mocks
@@ -41,6 +44,13 @@ type VectorRepository interface {
 	Search(ctx context.Context, collection string, vector []float32, topK int, filter map[string]interface{}) ([]VectorSearchHit, error)
 	SetPayload(ctx context.Context, collection string, id string, payload map[string]interface{}) error
 	DeleteCollection(ctx context.Context, collection string) error
+	// DeletePoints removes all points matching the filter. Idempotent —
+	// deleting zero points is not an error (SPEC-070 cascade delete).
+	DeletePoints(ctx context.Context, collection string, filter map[string]interface{}) error
+	// GetChunkContents fetches payloads keyed by chunk ID (the implementation
+	// hashes chunk IDs to point IDs). Missing chunks are absent from the
+	// result — used by the graph search skill for content lookup (SPEC-070).
+	GetChunkContents(ctx context.Context, collection string, chunkIDs []string) (map[string]map[string]interface{}, error)
 }
 
 // VectorPoint represents a single vector point for upsert.

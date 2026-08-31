@@ -32,6 +32,54 @@ func (_m *VectorRepository) DeleteCollection(ctx context.Context, collection str
 	return r0
 }
 
+// DeletePoints provides a mock function with given fields: ctx, collection, filter
+func (_m *VectorRepository) DeletePoints(ctx context.Context, collection string, filter map[string]interface{}) error {
+	ret := _m.Called(ctx, collection, filter)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeletePoints")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) error); ok {
+		r0 = rf(ctx, collection, filter)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// GetChunkContents provides a mock function with given fields: ctx, collection, chunkIDs
+func (_m *VectorRepository) GetChunkContents(ctx context.Context, collection string, chunkIDs []string) (map[string]map[string]interface{}, error) {
+	ret := _m.Called(ctx, collection, chunkIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetChunkContents")
+	}
+
+	var r0 map[string]map[string]interface{}
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string) (map[string]map[string]interface{}, error)); ok {
+		return rf(ctx, collection, chunkIDs)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string) map[string]map[string]interface{}); ok {
+		r0 = rf(ctx, collection, chunkIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]map[string]interface{})
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = rf(ctx, collection, chunkIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Search provides a mock function with given fields: ctx, collection, vector, topK, filter
 func (_m *VectorRepository) Search(ctx context.Context, collection string, vector []float32, topK int, filter map[string]interface{}) ([]repository.VectorSearchHit, error) {
 	ret := _m.Called(ctx, collection, vector, topK, filter)

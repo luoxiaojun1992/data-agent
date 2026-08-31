@@ -80,6 +80,35 @@ func (v *VectorStore) DeleteCollection(ctx context.Context, collection string) e
 	return nil
 }
 
+// DeletePoints implements repository.VectorRepository. Idempotent: deleting
+// zero points is not an error (SPEC-070 cascade delete).
+func (v *VectorStore) DeletePoints(ctx context.Context, collection string, filter map[string]interface{}) error {
+	return v.client.DeletePoints(collection, filter)
+}
+
+// GetChunkContents implements repository.VectorRepository. Chunk IDs are
+// hashed to Qdrant point IDs; missing chunks are absent from the result.
+func (v *VectorStore) GetChunkContents(ctx context.Context, collection string, chunkIDs []string) (map[string]map[string]interface{}, error) {
+	ids := make([]int64, 0, len(chunkIDs))
+	byID := make(map[int64]string, len(chunkIDs))
+	for _, cid := range chunkIDs {
+		id := stringToInt64(cid)
+		ids = append(ids, id)
+		byID[id] = cid
+	}
+	payloads, err := v.client.RetrievePoints(collection, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]map[string]interface{}, len(payloads))
+	for id, p := range payloads {
+		if cid, ok := byID[id]; ok {
+			out[cid] = p
+		}
+	}
+	return out, nil
+}
+
 // SetPayload updates the payload on all points matching a doc_id filter.
 func (v *VectorStore) SetPayload(ctx context.Context, collection string, docID string, payload map[string]interface{}) error {
 	filter := map[string]any{

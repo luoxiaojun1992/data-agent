@@ -23,6 +23,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/handler"
 	"github.com/luoxiaojun1992/data-agent/internal/config"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	arcadedbinfra "github.com/luoxiaojun1992/data-agent/internal/infra/arcadedb"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
@@ -261,6 +262,12 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		SessionSvc:     deps.sessionManager,
 		Artifacts:      deps.artifactStorage,
 		APICollections: deps.apiCollectionSvc,
+		// SPEC-070: graph search skill deps (nil-safe — tool only registers
+		// when GraphRepo is non-nil).
+		GraphRepo:  deps.graphRepo,
+		VectorRepo: deps.vectorStore,
+		EmbedFunc:  deps.kbEmbedFn,
+		VecCol:     "kb_chunks",
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -375,6 +382,10 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 			getEnvOrDefault("EMBEDDING_MODEL", "embedding"))
 		vectorStore := qdrantinfra.NewVectorStore(deps.qdrantClient)
 		deps.kbService.WithVectorIndex(vectorStore, knowledge.EmbeddingFunc(kEmbedFn))
+		// SPEC-070: expose the vector store + embed fn for the graph search
+		// skill (anchor search + content lookup).
+		deps.vectorStore = vectorStore
+		deps.kbEmbedFn = knowledge.EmbeddingFunc(kEmbedFn)
 
 		// Auto-create Qdrant collection at startup (like a migration).
 		// Vectors are associated with KB doc IDs via payload metadata,
@@ -392,7 +403,33 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 			log.Printf("[kb] WARNING: failed to ensure Qdrant collection kb_chunks: %v", err)
 		}
 	}
+	// SPEC-070: graph index wires into the KB service when available.
+	if deps.graphRepo != nil {
+		deps.kbService.WithGraphIndex(deps.graphRepo)
+	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
+}
+
+// initGraphStore creates the ArcadeDB graph store (SPEC-070). Runs BEFORE
+// initAgentEngine so the graph search skill's tool deps can see it. Optional:
+// disabled when ARCADE_URI is unset.
+func initGraphStore(deps *serverDependencies) {
+	arcadeURI := getEnvOrDefault("ARCADE_URI", "")
+	if arcadeURI == "" {
+		return
+	}
+	driver, err := arcadedbinfra.NewDriver(context.Background(), arcadeURI,
+		getEnvOrDefault("ARCADE_USERNAME", "root"),
+		getEnvOrDefault("ARCADE_PASSWORD", ""))
+	if err != nil {
+		log.Printf("[kb] WARNING: failed to create ArcadeDB driver: %v", err)
+		return
+	}
+	graphStore := arcadedbinfra.NewGraphStore(driver, getEnvOrDefault("ARCADE_DATABASE", "kbgraph"))
+	if err := graphStore.EnsureSchema(context.Background()); err != nil {
+		log.Printf("[kb] WARNING: failed to ensure ArcadeDB schema: %v", err)
+	}
+	deps.graphRepo = graphStore
 }
 
 func initAuditAndNotifications(deps *serverDependencies, mongoClient *mongoinfra.Client) {

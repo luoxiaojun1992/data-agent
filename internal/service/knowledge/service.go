@@ -22,6 +22,9 @@ type Service struct {
 	vector repository.VectorRepository
 	embed  EmbeddingFunc
 	vecCol string
+	// graph is the optional graph index (SPEC-070). nil = graph indexing off.
+	graph    repository.GraphRepository
+	graphTopN int
 	// redactor is the optional PII redactor (SPEC-068). redactionEnabled reads
 	// the `pii_redaction_enabled` switch; nil redactor = no redaction.
 	redactor         security.Redactor
@@ -29,12 +32,27 @@ type Service struct {
 }
 
 func NewService(kb repository.KBRepository) *Service {
-	return &Service{kb: kb, vecCol: "kb_chunks"}
+	return &Service{kb: kb, vecCol: "kb_chunks", graphTopN: 5}
 }
 
 func (s *Service) WithVectorIndex(repo repository.VectorRepository, embed EmbeddingFunc) *Service {
 	s.vector = repo
 	s.embed = embed
+	return s
+}
+
+// WithGraphIndex injects the graph repository (SPEC-070). Each chunk links to
+// at most graphTopN similar chunks of the same creator.
+func (s *Service) WithGraphIndex(graph repository.GraphRepository) *Service {
+	s.graph = graph
+	return s
+}
+
+// WithGraphTopN overrides the default 5 for the RELATED_TO fan-out.
+func (s *Service) WithGraphTopN(topN int) *Service {
+	if topN > 0 {
+		s.graphTopN = topN
+	}
 	return s
 }
 
@@ -93,11 +111,63 @@ func (s *Service) GetDoc(id string) (*knowledge.KnowledgeDoc, error) {
 }
 
 func (s *Service) DeleteDoc(id string) error {
+	// SPEC-070 五步级联（顺序：先删索引，再删明细，最后删主记录 doc）：
+	// ① Qdrant（索引）→ ② ArcadeDB（索引）→ ③ chunks（明细）→
+	// ④ GridFS 文件（明细）→ ⑤ doc（主记录 = 最终提交点）。
+	// 索引/明细先删：中途失败时 doc 仍在，可重新索引自愈。
+	// 五处均幂等（Qdrant filter 删 / ArcadeDB MATCH 删 / Mongo 永不 404 /
+	// GridFS not-found 忽略），重试安全。
+	doc, err := s.kb.GetDoc(context.Background(), id)
+	if err != nil {
+		// 幂等：doc 不存在（可能已删，重试场景）→ no-op 成功。其他错误
+		// log 降级（无法拿到 GridFSFileID，后续删除无意义）。
+		log.Printf("[kb] get doc for delete id=%s: %v", id, err)
+		return nil
+	}
+	// ① Qdrant 向量（索引）
+	if s.vector != nil {
+		if err := s.vector.DeletePoints(context.Background(), s.vecCol, docIDFilter(id)); err != nil {
+			log.Printf("[kb] delete qdrant points for doc=%s: %v", id, err)
+		}
+	}
+	// ② ArcadeDB 图（索引）
+	if s.graph != nil {
+		if err := s.graph.DeleteByDocID(context.Background(), id); err != nil {
+			log.Printf("[kb] delete graph chunks for doc=%s: %v", id, err)
+		}
+	}
+	// ③ MongoDB chunks（明细）
+	if _, err := s.kb.DeleteChunks(context.Background(), id); err != nil {
+		log.Printf("[kb] delete chunks for doc=%s: %v", id, err)
+	}
+	// ④ GridFS 原始文件（明细）
+	if err := s.kb.DeleteFile(context.Background(), doc.GridFSFileID); err != nil {
+		log.Printf("[kb] delete gridfs file for doc=%s: %v", id, err)
+	}
+	// ⑤ MongoDB doc（主记录 = 最终提交点）
 	if err := s.kb.DeleteDoc(context.Background(), id); err != nil {
 		return err
 	}
-	_, _ = s.kb.DeleteChunks(context.Background(), id)
 	return nil
+}
+
+// docIDFilter builds a Qdrant filter matching all points of one document.
+func docIDFilter(docID string) map[string]interface{} {
+	return map[string]interface{}{
+		"must": []interface{}{
+			map[string]interface{}{"key": "doc_id", "match": map[string]interface{}{"value": docID}},
+		},
+	}
+}
+
+// creatorFilter builds a Qdrant filter matching chunks of one creator
+// (used by graph indexing: RELATED_TO edges only link same-creator chunks).
+func creatorFilter(creatorID string) map[string]interface{} {
+	return map[string]interface{}{
+		"must": []interface{}{
+			map[string]interface{}{"key": "creator_id", "match": map[string]interface{}{"value": creatorID}},
+		},
+	}
 }
 
 // ListDocs returns paginated docs for a user (own docs only, backward compat).
@@ -144,6 +214,14 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 	}
 	var chunks []*knowledge.Chunk
 	var vectors []repository.VectorPoint
+	// SPEC-070: graph writes accumulate here and flush after Qdrant upsert
+	// (先搜后写 — the chunk is not yet in Qdrant during the similarity
+	// search, so it can never match itself).
+	type graphWrite struct {
+		chunk *knowledge.Chunk
+		refs  []repository.RelatedRef
+	}
+	var graphWrites []graphWrite
 	for idx, text := range texts {
 		redacted, rErr := s.maybeRedact(context.Background(), text)
 		if rErr != nil {
@@ -169,10 +247,29 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 				log.Printf("[kb] embed returned nil for chunk=%s (check embedding config)", chunk.ID)
 				continue
 			}
+			// SPEC-070 ①: search topN similar chunks of the SAME creator
+			// before upserting this chunk (it cannot match itself).
+			if s.graph != nil {
+				hits, sErr := s.vector.Search(context.Background(), s.vecCol, vec, s.graphTopN, creatorFilter(doc.UserID))
+				if sErr == nil {
+					refs := make([]repository.RelatedRef, 0, len(hits))
+					for _, h := range hits {
+						cid, _ := h.Metadata["chunk_id"].(string)
+						if cid == "" || cid == chunk.ID {
+							continue
+						}
+						refs = append(refs, repository.RelatedRef{ChunkID: cid, Score: float64(h.Score)})
+					}
+					graphWrites = append(graphWrites, graphWrite{chunk: chunk, refs: refs})
+				} else {
+					graphWrites = append(graphWrites, graphWrite{chunk: chunk})
+				}
+			}
 			vectors = append(vectors, repository.VectorPoint{
 				ID:     chunk.ID,
 				Vector: vec,
 				Metadata: map[string]interface{}{
+					"chunk_id":   chunk.ID, // SPEC-070: 供图索引从 Search 命中反查原始 chunk ID
 					"doc_id":     docID,
 					"content":    redacted,
 					"creator_id": doc.UserID,
@@ -187,6 +284,29 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 	if len(vectors) > 0 {
 		if err := s.vector.Upsert(context.Background(), s.vecCol, vectors); err != nil {
 			log.Printf("[kb] upsert vectors to Qdrant failed: %v", err)
+		}
+	}
+	// SPEC-070 ③: graph writes flush AFTER the Qdrant upsert. Failures degrade
+	// with a log — the main indexing chain must not fail on graph errors.
+	if s.graph != nil {
+		for _, gw := range graphWrites {
+			gc := repository.GraphChunk{
+				ChunkID:   gw.chunk.ID,
+				DocID:     gw.chunk.DocID,
+				ChunkIdx:  gw.chunk.ChunkIdx,
+				CreatorID: gw.chunk.CreatorID,
+				IsPublic:  gw.chunk.IsPublic,
+				CharCount: gw.chunk.CharCount,
+			}
+			if err := s.graph.UpsertChunk(context.Background(), gc); err != nil {
+				log.Printf("[kb] graph upsert chunk=%s: %v", gw.chunk.ID, err)
+				continue
+			}
+			if len(gw.refs) > 0 {
+				if err := s.graph.LinkRelated(context.Background(), gw.chunk.ID, gw.refs); err != nil {
+					log.Printf("[kb] graph link related chunk=%s: %v", gw.chunk.ID, err)
+				}
+			}
 		}
 	}
 	return s.kb.UpdateDocStatus(context.Background(), docID, knowledge.StatusIndexing, len(chunks), 0)

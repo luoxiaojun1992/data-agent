@@ -19,13 +19,14 @@ import (
 	pptxpkg "github.com/luoxiaojun1992/data-agent/internal/logic/pptx"
 	sqlpkg "github.com/luoxiaojun1992/data-agent/internal/logic/sql"
 	statspkg "github.com/luoxiaojun1992/data-agent/internal/logic/stats"
-	websearchpkg "github.com/luoxiaojun1992/data-agent/internal/logic/websearch"
 	webfetchpkg "github.com/luoxiaojun1992/data-agent/internal/logic/webfetch"
-	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
+	websearchpkg "github.com/luoxiaojun1992/data-agent/internal/logic/websearch"
+	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	apicollectionsvc "github.com/luoxiaojun1992/data-agent/internal/service/apicollection"
+	artifact_svc "github.com/luoxiaojun1992/data-agent/internal/service/artifact"
 	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
-	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	knowledgepkg "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
+	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/tool"
@@ -54,6 +55,16 @@ type Deps struct {
 	Artifacts artifact_svc.Service
 	// APICollections backs the external_api_* tools for proxying approved API calls.
 	APICollections *apicollectionsvc.Service
+	// GraphRepo backs the knowledge_graph_search tool (SPEC-070). When nil the
+	// tool is not registered.
+	GraphRepo repository.GraphRepository
+	// VectorRepo backs graph-search anchor lookup + content fetch. Nil → the
+	// tool degrades (anchor = raw query, no content).
+	VectorRepo repository.VectorRepository
+	// EmbedFunc embeds the query text for anchor lookup. Nil → anchor = raw query.
+	EmbedFunc func(ctx context.Context, text string) ([]float32, error)
+	// VecCol is the Qdrant collection holding chunk vectors.
+	VecCol string
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -195,6 +206,101 @@ func knowledgeSearch(deps *Deps) functiontool.Func[KnowledgeSearchArgs, Knowledg
 			})
 		}
 		return KnowledgeSearchResult{Query: args.Query, KBID: kbID, Results: hits, Count: len(hits)}, nil
+	}
+}
+
+// ---- knowledge_graph_search (SPEC-070) ----
+
+// GraphSearchArgs are the arguments for the knowledge_graph_search tool.
+type GraphSearchArgs struct {
+	Query string `json:"query" jsonschema:"切片 ID 或查询文本"`
+	TopN  int    `json:"top_n,omitempty" jsonschema:"返回节点数（默认5，最大20）"`
+}
+
+// GraphNodeOut is one related chunk returned by the graph search.
+type GraphNodeOut struct {
+	ChunkID string  `json:"chunk_id"`
+	DocID   string  `json:"doc_id"`
+	Score   float64 `json:"score"`
+	Content string  `json:"content"` // 由 Qdrant 反查填充，可能为空
+}
+
+// GraphSearchResult is the knowledge_graph_search tool output.
+type GraphSearchResult struct {
+	Query string         `json:"query"`
+	Nodes []GraphNodeOut `json:"nodes"`
+	Count int            `json:"count"`
+}
+
+// knowledgeGraphSearch runs the three-step graph search: locate the anchor
+// chunk (embed → Qdrant), query the graph for topN related chunks (visibility
+// filtered), then fetch contents from Qdrant (the graph stores metadata only).
+// Identity comes from session state, never from LLM params.
+func knowledgeGraphSearch(deps *Deps) functiontool.Func[GraphSearchArgs, GraphSearchResult] {
+	return func(tc agent.ToolContext, args GraphSearchArgs) (GraphSearchResult, error) {
+		if strings.TrimSpace(args.Query) == "" {
+			return GraphSearchResult{}, fmt.Errorf("knowledge_graph_search: missing required parameter 'query'")
+		}
+		topN := args.TopN
+		if topN <= 0 {
+			topN = 5
+		}
+		if topN > 20 {
+			topN = 20
+		}
+
+		userID := stateString(tc, "user_id")
+		role := stateString(tc, "role")
+		isSystemAdmin := role == "system_admin"
+
+		// ① Anchor lookup: text → embed → Qdrant search (top-1). The payload
+		// carries the original chunk_id + content.
+		anchorID := args.Query
+		if deps.VectorRepo != nil && deps.EmbedFunc != nil && deps.VecCol != "" {
+			vec, err := deps.EmbedFunc(context.Background(), args.Query)
+			if err == nil && vec != nil {
+				hits, sErr := deps.VectorRepo.Search(context.Background(), deps.VecCol, vec, 1, nil)
+				if sErr == nil && len(hits) > 0 {
+					if cid, ok := hits[0].Metadata["chunk_id"].(string); ok && cid != "" {
+						anchorID = cid
+					}
+				}
+			}
+		}
+
+		// ② Graph query (visibility filtered inside).
+		nodes, err := deps.GraphRepo.QueryTopN(context.Background(), anchorID, topN,
+			repository.GraphFilter{CreatorID: userID, IsSystemAdmin: isSystemAdmin})
+		if err != nil {
+			return GraphSearchResult{}, fmt.Errorf("knowledge_graph_search: graph query failed: %w", err)
+		}
+
+		// ③ Content lookup from Qdrant (chunk_id hash → payload).
+		contentByChunk := map[string]string{}
+		if deps.VectorRepo != nil && len(nodes) > 0 {
+			ids := make([]string, 0, len(nodes))
+			for _, n := range nodes {
+				ids = append(ids, n.ChunkID)
+			}
+			if payloads, gErr := deps.VectorRepo.GetChunkContents(context.Background(), deps.VecCol, ids); gErr == nil {
+				for cid, p := range payloads {
+					if c, ok := p["content"].(string); ok {
+						contentByChunk[cid] = c
+					}
+				}
+			}
+		}
+
+		out := make([]GraphNodeOut, 0, len(nodes))
+		for _, n := range nodes {
+			out = append(out, GraphNodeOut{
+				ChunkID: n.ChunkID,
+				DocID:   n.DocID,
+				Score:   n.Score,
+				Content: contentByChunk[n.ChunkID],
+			})
+		}
+		return GraphSearchResult{Query: args.Query, Nodes: out, Count: len(out)}, nil
 	}
 }
 
@@ -468,6 +574,15 @@ func specs(deps *Deps) []toolSpec {
 			description: "Searches the knowledge base with full-text and semantic search capabilities",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{Name: "knowledge_search", Description: "Searches the knowledge base with full-text and semantic search capabilities"}, knowledgeSearch(deps))
+			},
+		})
+	}
+	if deps.GraphRepo != nil {
+		out = append(out, toolSpec{
+			name:        "knowledge_graph_search",
+			description: "Queries the knowledge graph for the topN chunks most related to a chunk ID or query text, returning their contents",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "knowledge_graph_search", Description: "Queries the knowledge graph for the topN chunks most related to a chunk ID or query text, returning their contents"}, knowledgeGraphSearch(deps))
 			},
 		})
 	}

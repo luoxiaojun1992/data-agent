@@ -106,6 +106,9 @@ type serverDependencies struct {
 	// Handlers + services (populated by wire.go init functions).
 	kbService          *knowledge.Service
 	kbHandler          *handler.KnowledgeHandler
+	graphRepo          repository.GraphRepository // SPEC-070: ArcadeDB graph (nil = disabled)
+	vectorStore        *qdrantinfra.VectorStore   // SPEC-070: shared vector store (graph skill content lookup)
+	kbEmbedFn          knowledge.EmbeddingFunc    // SPEC-070: embed fn for the graph skill anchor search
 	skillConfigSvc     *skillsvc.ConfigService
 	skillConfigHandler *handler.SkillConfigHandler
 	feishuCfgRepo      *mongoinfra.FeishuConfigRepository
@@ -174,6 +177,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initADKModel(&deps, mongoClient)
 	initTaskService(&deps, mongoClient) // must run before initAgentEngine — tool deps need TaskRunService
 	initPII(&deps)                      // SPEC-068: pii redactor before auditor + KB service
+	initGraphStore(&deps)               // SPEC-070: graph store BEFORE initAgentEngine (tool deps need it)
 	initAgentEngine(&deps)
 	initKnowledgeBase(&deps, mongoClient)
 	initSkillConfig(&deps, mongoClient)

@@ -192,3 +192,83 @@ func (c *Client) SetPayload(collection string, payload map[string]any, filter ma
 	}
 	return nil
 }
+
+// DeletePoints deletes all points matching the given filter. Deleting zero
+// points is not an error — the operation is idempotent (SPEC-070 cascade
+// delete).
+func (c *Client) DeletePoints(collection string, filter map[string]any) error {
+	payload := map[string]any{"filter": filter}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal delete points: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/collections/%s/points/delete?wait=true", c.addr, collection)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create delete points request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("delete points: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("qdrant delete points %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// RetrievePoints fetches points by numeric IDs together with their payloads
+// (content lookup for the graph search skill — SPEC-070). Missing points are
+// simply absent from the result, so callers degrade gracefully.
+func (c *Client) RetrievePoints(collection string, ids []int64) (map[int64]map[string]any, error) {
+	if len(ids) == 0 {
+		return map[int64]map[string]any{}, nil
+	}
+	payload := map[string]any{
+		"ids":          ids,
+		"with_payload": true,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal retrieve points: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/collections/%s/points", c.addr, collection)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create retrieve points request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve points: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("qdrant retrieve points %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Result []struct {
+			ID      int64          `json:"id"`
+			Payload map[string]any `json:"payload"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode retrieve points: %w", err)
+	}
+	out := make(map[int64]map[string]any, len(result.Result))
+	for _, r := range result.Result {
+		out[r.ID] = r.Payload
+	}
+	return out, nil
+}

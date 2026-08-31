@@ -77,6 +77,13 @@ func predefinedSkills() []skill.SkillConfig {
 			ConfigJSON:  `{"max_results":50}`,
 		},
 		{
+			Name:        "knowledge_graph_search",
+			DisplayName: "知识图谱搜索",
+			Description: "查询知识图谱中与某切片/概念最相关的 topN 节点及关系",
+			Enabled:     true,
+			ConfigJSON:  `{"top_n":5,"max_top_n":20}`,
+		},
+		{
 			Name:        "memory_search",
 			DisplayName: "记忆搜索",
 			Description: "搜索长期记忆中的历史对话和分析结果",

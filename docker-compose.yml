@@ -44,6 +44,22 @@ services:
       retries: 6
       start_period: 10s
 
+  arcadedb:
+    image: arcadedata/arcadedb:latest
+    ports:
+      - "7687:7687"
+      - "2480:2480"
+    environment:
+      - JAVA_OPTS=-Darcadedb.server.rootPassword=arcadedb-root-pw -Darcadedb.server.databaseDirectory=/data/databases -Xmx512m
+    volumes:
+      - arcadedb-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2480/api/v1/server || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   seaweedfs:
     image: chrislusf/seaweedfs
     ports:
@@ -191,6 +207,10 @@ services:
       - INVITE_HMAC_SECRET=dev-invite-secret-key
       - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:3000
       - PRESIDIO_ANONYMIZER_URL=http://presidio-anonymizer:3000
+      - ARCADE_URI=bolt://arcadedb:7687
+      - ARCADE_USERNAME=root
+      - ARCADE_PASSWORD=arcadedb-root-pw
+      - ARCADE_DATABASE=kbgraph
     depends_on:
       mongodb:
         condition: service_healthy
@@ -209,6 +229,8 @@ services:
       presidio-analyzer:
         condition: service_healthy
       presidio-anonymizer:
+        condition: service_healthy
+      arcadedb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -246,3 +268,4 @@ volumes:
   seaweedfs-data:
   ollama-data:
   mysql-data:
+  arcadedb-data:

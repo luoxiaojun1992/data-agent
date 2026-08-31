@@ -97,6 +97,24 @@ func (_m *KBRepository) DeleteDoc(ctx context.Context, id string) error {
 	return r0
 }
 
+// DeleteFile provides a mock function with given fields: ctx, fileID
+func (_m *KBRepository) DeleteFile(ctx context.Context, fileID string) error {
+	ret := _m.Called(ctx, fileID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteFile")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, fileID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // DownloadFile provides a mock function with given fields: ctx, fileID
 func (_m *KBRepository) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
 	ret := _m.Called(ctx, fileID)
@@ -231,36 +249,6 @@ func (_m *KBRepository) ListDocs(ctx context.Context, userID string, skip int64,
 	return r0, r1, r2
 }
 
-// SearchChunks provides a mock function with given fields: ctx, query, userID, isSystemAdmin, topK
-func (_m *KBRepository) SearchChunks(ctx context.Context, query string, userID string, isSystemAdmin bool, topK int) ([]*knowledge.SearchResult, error) {
-	ret := _m.Called(ctx, query, userID, isSystemAdmin, topK)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SearchChunks")
-	}
-
-	var r0 []*knowledge.SearchResult
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool, int) ([]*knowledge.SearchResult, error)); ok {
-		return rf(ctx, query, userID, isSystemAdmin, topK)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool, int) []*knowledge.SearchResult); ok {
-		r0 = rf(ctx, query, userID, isSystemAdmin, topK)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*knowledge.SearchResult)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, bool, int) error); ok {
-		r1 = rf(ctx, query, userID, isSystemAdmin, topK)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // ListDocsByVisibility provides a mock function with given fields: ctx, userID, isSystemAdmin, skip, limit
 func (_m *KBRepository) ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, skip int64, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
 	ret := _m.Called(ctx, userID, isSystemAdmin, skip, limit)
@@ -296,6 +284,36 @@ func (_m *KBRepository) ListDocsByVisibility(ctx context.Context, userID string,
 	}
 
 	return r0, r1, r2
+}
+
+// SearchChunks provides a mock function with given fields: ctx, query, userID, isSystemAdmin, topK
+func (_m *KBRepository) SearchChunks(ctx context.Context, query string, userID string, isSystemAdmin bool, topK int) ([]*knowledge.SearchResult, error) {
+	ret := _m.Called(ctx, query, userID, isSystemAdmin, topK)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchChunks")
+	}
+
+	var r0 []*knowledge.SearchResult
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool, int) ([]*knowledge.SearchResult, error)); ok {
+		return rf(ctx, query, userID, isSystemAdmin, topK)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool, int) []*knowledge.SearchResult); ok {
+		r0 = rf(ctx, query, userID, isSystemAdmin, topK)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*knowledge.SearchResult)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, bool, int) error); ok {
+		r1 = rf(ctx, query, userID, isSystemAdmin, topK)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // SetPublicFlag provides a mock function with given fields: ctx, id, isPublic

@@ -3,6 +3,7 @@ package mongo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -156,6 +157,22 @@ func (r *KBRepository) DownloadFile(ctx context.Context, fileID string) ([]byte,
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// DeleteFile removes a GridFS file. Idempotent: an empty fileID is a no-op
+// and file-not-found is ignored (SPEC-070 cascade delete).
+func (r *KBRepository) DeleteFile(ctx context.Context, fileID string) error {
+	if fileID == "" {
+		return nil
+	}
+	bucket, err := gridfs.NewBucket(r.db)
+	if err != nil {
+		return err
+	}
+	if err := bucket.Delete(fileID); err != nil && !errors.Is(err, gridfs.ErrFileNotFound) {
+		return err
+	}
+	return nil
 }
 
 // SetPublicFlag toggles the is_public flag on a knowledge document.

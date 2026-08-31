@@ -178,8 +178,10 @@ func TestGetDoc_NotFound(t *testing.T) {
 
 func TestDeleteDoc_Success(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
+	repo.On("GetDoc", mock.Anything, "kbdoc_1").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_1"}, nil)
 	repo.On("DeleteDoc", mock.Anything, "kbdoc_1").Return(nil)
 	repo.On("DeleteChunks", mock.Anything, "kbdoc_1").Return(int64(0), nil)
+	repo.On("DeleteFile", mock.Anything, "").Return(nil)
 
 	if err := NewService(repo).DeleteDoc("kbdoc_1"); err != nil {
 		t.Fatalf("DeleteDoc failed: %v", err)
@@ -187,12 +189,12 @@ func TestDeleteDoc_Success(t *testing.T) {
 }
 
 func TestDeleteDoc_NotFound(t *testing.T) {
+	// SPEC-070 幂等：doc 不存在（可能已删，重试场景）→ no-op 成功，不再报错。
 	repo := mockrepo.NewKBRepository(t)
-	repo.On("DeleteDoc", mock.Anything, "missing").Return(fmt.Errorf("not found"))
+	repo.On("GetDoc", mock.Anything, "missing").Return(nil, fmt.Errorf("not found"))
 
-	err := NewService(repo).DeleteDoc("missing")
-	if err == nil {
-		t.Fatal("expected error")
+	if err := NewService(repo).DeleteDoc("missing"); err != nil {
+		t.Fatalf("DeleteDoc on missing doc must be idempotent no-op, got: %v", err)
 	}
 }
 
