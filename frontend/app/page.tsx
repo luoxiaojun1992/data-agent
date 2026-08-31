@@ -41,7 +41,8 @@ function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
     );
   }
   const max = Math.max(...data.map(d => d.value), 1);
-  const showLabel = data.length <= 12 || gran === 'day';
+  // 标签按桶数自动降采样，最多约 12 个，避免拥挤；竖排显示不占横向空间。
+  const labelEvery = Math.max(1, Math.ceil(data.length / 12));
   return (
     <div className="flex flex-col">
       {/* 柱子行：固定高度，柱体在行内底部对齐，不与标签行重叠 */}
@@ -54,16 +55,18 @@ function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
           }} />
         ))}
       </div>
-      {/* 标签行：独立一行，固定间距，永不与柱体重合 */}
-      {showLabel && (
-        <div className="flex gap-1 mt-1">
-          {data.map((d, i) => (
-            <span key={i} className="flex-1 min-w-0 text-[8px] text-[var(--text-secondary)] truncate text-center">
-              {gran === 'day' && data.length > 12 && i % 3 !== 0 ? '' : formatLabel(d.time, gran)}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* 标签行：竖向显示（writing-mode: vertical-rl），窄宽度下也不截断 */}
+      <div className="flex gap-1 mt-2 items-start">
+        {data.map((d, i) => (
+          <span
+            key={i}
+            className="flex-1 min-w-0 text-[8px] leading-none text-[var(--text-secondary)] text-center"
+            style={{ writingMode: 'vertical-rl' }}
+          >
+            {i % labelEvery === 0 ? formatLabel(d.time, gran) : ''}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
