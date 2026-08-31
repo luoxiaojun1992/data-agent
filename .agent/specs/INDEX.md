@@ -89,6 +89,7 @@
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
 | SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | 📐 设计中 |
 | SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计中 |
+| SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计中 |
 
 ## Phase 对应与依赖
 
@@ -326,4 +327,10 @@ SPEC-006│               │
                     前端本地 filter/slice 一律重构为后端 DB 层筛选分页;
                     整改清单: 知识库/模型/任务/会话/RBAC父角色/权限/用户角色 8 处;
                     依赖 SPEC-074(模型q搜索/父角色过滤复用))
+
+[P15] SPEC-076 ─── 前端主题切换 + 蓝白 Light 主题 (设计中)
+                   (CSS 变量 + data-theme 两套主题;
+                    保留深色为默认, 新增蓝白 Light;
+                    ThemeToggle + localStorage 持久化, 默认 dark;
+                    inline script 防闪烁; 纯前端无后端改动)
 ```
