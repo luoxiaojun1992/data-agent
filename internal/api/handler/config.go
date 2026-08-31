@@ -32,6 +32,12 @@ func RegisterSysConfigRoutes(admin *gin.RouterGroup, h *ConfigHandler, rbacSvc *
 	admin.GET(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Get)
 	admin.PUT(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Put)
 	admin.DELETE(sysConfigRoutePath, middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Delete)
+	// /sysconfig/system — the new /admin/settings UI hard-codes this path
+	// (added to fix a long-standing 404 orphan). Same handler, same payload.
+	// Kept in addition to /sysconfig so legacy callers (admin/sysconfig page)
+	// continue to work unchanged.
+	admin.GET(sysConfigRoutePath+"/system", middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Get)
+	admin.PUT(sysConfigRoutePath+"/system", middleware.RequirePermission(rbacSvc, model.PermSystemEdit), h.Put)
 	admin.POST("/change-password", h.ChangePassword)
 }
 

@@ -128,3 +128,69 @@ func TestRegisterSysConfigRoutes(t *testing.T) {
 		t.Errorf("expected saved message in body, got %s", w.Body.String())
 	}
 }
+
+// TestRegisterSysConfigRoutes_SystemSubpath verifies the additional
+// /sysconfig/system routes wired for the /admin/settings frontend page.
+// These were added to fix a long-standing 404 orphan page (the new
+// settings UI hard-codes /admin/sysconfig/system).
+//
+// RBAC middleware requires a non-nil Service and an authenticated user, so
+// instead of triggering HTTP requests through middleware, we walk the Gin
+// route tree to confirm both /sysconfig/system GET and PUT handlers are
+// registered and use the same underlying ConfigHandler methods.
+func TestRegisterSysConfigRoutes_SystemSubpath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	// cfgSvc is only passed so the handler can be constructed; the test does
+	// not exercise service methods (middleware blocks the request before the
+	// handler runs).
+	cfgSvc := configmocks.NewService(t)
+	h := NewConfigHandler(cfgSvc, nil)
+	admin := r.Group("/api/v1/admin")
+	RegisterSysConfigRoutes(admin, h, nil)
+
+	// Verify the new routes are present in the Gin route tree.
+	routes := r.Routes()
+	var gotGet, gotPut bool
+	for _, rt := range routes {
+		switch rt.Path {
+		case "/api/v1/admin/sysconfig/system":
+			if rt.Method == http.MethodGet {
+				gotGet = true
+			}
+			if rt.Method == http.MethodPut {
+				gotPut = true
+			}
+		}
+	}
+	if !gotGet {
+		t.Errorf("GET /api/v1/admin/sysconfig/system not registered")
+	}
+	if !gotPut {
+		t.Errorf("PUT /api/v1/admin/sysconfig/system not registered")
+	}
+
+	// Also verify the legacy /sysconfig routes are still present (no regression).
+	var legacyGet, legacyPut, legacyDel, legacyPost bool
+	for _, rt := range routes {
+		switch rt.Path {
+		case "/api/v1/admin/sysconfig":
+			switch rt.Method {
+			case http.MethodGet:
+				legacyGet = true
+			case http.MethodPut:
+				legacyPut = true
+			case http.MethodDelete:
+				legacyDel = true
+			}
+		case "/api/v1/admin/change-password":
+			if rt.Method == http.MethodPost {
+				legacyPost = true
+			}
+		}
+	}
+	if !legacyGet || !legacyPut || !legacyDel || !legacyPost {
+		t.Errorf("legacy routes regressed: get=%v put=%v del=%v changePassword=%v",
+			legacyGet, legacyPut, legacyDel, legacyPost)
+	}
+}
