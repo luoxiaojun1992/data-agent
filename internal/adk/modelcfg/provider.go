@@ -21,6 +21,7 @@ import (
 	"github.com/ieshan/adk-go-pkg/model/openai"
 	adkmodel "github.com/luoxiaojun1992/data-agent/internal/adk/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/modelconfig"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
@@ -115,8 +116,9 @@ type EmbeddingEntry struct {
 type Provider struct {
 	modelRepo   repository.ModelConfigRepository
 	defaultRepo repository.ModelDefaultRepository
-	vault       VaultStore // optional; per-model API keys stored/retrieved via Vault
-	auditor     TextAuditor // optional; wraps internal (non-runtime) LLM calls with input/output text audit
+	vault       VaultStore         // optional; per-model API keys stored/retrieved via Vault
+	auditor     TextAuditor        // optional; wraps internal (non-runtime) LLM calls with input/output text audit
+	usageRec    *llmstats.Recorder // optional; records actual token usage for the runtime (chat) LLM (SPEC-072)
 }
 
 // SetAuditor injects the text auditor used to wrap internal LLM calls built
@@ -125,6 +127,15 @@ type Provider struct {
 // call after construction; nil clears auditing.
 func (p *Provider) SetAuditor(a TextAuditor) {
 	p.auditor = a
+}
+
+// SetUsageRecorder injects the token-usage recorder used to wrap the runtime
+// (chat) LLM built via BuildLLMByID (SPEC-072). Internal LLM calls (BuildLLM
+// useCase path) record their own usage at their call sites; the runtime path
+// records actual UsageMetadata here. Safe to call after construction; nil
+// disables recording.
+func (p *Provider) SetUsageRecorder(rec *llmstats.Recorder) {
+	p.usageRec = rec
 }
 
 // NewProvider creates a config provider. Passing nil repos means "env only".
@@ -431,6 +442,8 @@ func (p *Provider) GetModelByID(ctx context.Context, modelID string) (*ModelEntr
 }
 
 // BuildLLMByID constructs an LLM from the model entry matching modelID.
+// The runtime (chat) LLM is wrapped with a usage recorder (SPEC-072) so the
+// main chat path's real token usage feeds token_tokens + llm_calls.
 func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM, error) {
 	entry, err := p.GetModelByID(ctx, modelID)
 	if err != nil {
@@ -440,7 +453,7 @@ func (p *Provider) BuildLLMByID(ctx context.Context, modelID string) (model.LLM,
 	if len(backends) == 0 {
 		return nil, fmt.Errorf("failed to build LLM for model %q", entry.ID)
 	}
-	return backends[0], nil
+	return adkmodel.NewRecordingLLM(backends[0], p.usageRec, "chat"), nil
 }
 
 // defaultMap loads the full use_case → model_id mapping from model_defaults.

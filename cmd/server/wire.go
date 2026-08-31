@@ -233,6 +233,12 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	deps.metricsCounter = metrics.NewCounter(mongoClient.DB(), 5*time.Second)
 	deps.metricsReader = metrics.NewReader(mongoClient.DB())
 	deps.llmRecorder = llmstats.NewRecorder(deps.metricsCounter)
+	// SPEC-072: wrap the runtime (chat) LLM with actual-usage recording so the
+	// main chat path's token/call counts feed token_tokens + llm_calls (the
+	// biggest call point was previously unrecorded).
+	if deps.modelCfg != nil {
+		deps.modelCfg.SetUsageRecorder(deps.llmRecorder)
+	}
 	if deps.redisClient != nil {
 		deps.llmCache = llmcache.New(deps.redisClient.Client())
 	}
