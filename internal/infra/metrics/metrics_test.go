@@ -82,6 +82,26 @@ func TestBucketHours(t *testing.T) {
 	}
 }
 
+func TestBucketHours_IncludesPartialFinalBucket(t *testing.T) {
+	d1 := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	hourSums := map[time.Time]int64{
+		d1:                10,
+		d1.Add(23 * time.Hour): 5,
+	}
+	// until is mid-day on Sep 1 → the Sep 1 bucket (which holds no data here)
+	// is still emitted as the final partial bucket.
+	buckets := bucketHours(hourSums, d1, d1.Add(25*time.Hour), GranularityDay)
+	if len(buckets) != 2 {
+		t.Fatalf("bucket count = %d, want 2 (includes partial final day)", len(buckets))
+	}
+	if buckets[0].Value != 15 {
+		t.Errorf("Aug 31 value = %d, want 15", buckets[0].Value)
+	}
+	if buckets[1].Value != 0 {
+		t.Errorf("Sep 1 (partial) value = %d, want 0", buckets[1].Value)
+	}
+}
+
 // ---- MongoCounter concurrency (white-box, no Mongo IO) ----
 
 func newTestCounter() *MongoCounter {

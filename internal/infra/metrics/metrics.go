@@ -102,16 +102,17 @@ func bucketAdvance(t time.Time, g Granularity) time.Time {
 
 // bucketHours aggregates hourly documents into granularity buckets. It is the
 // pure-function counterpart to the reader's Series: given per-hour sums keyed
-// by the hour bucket start, it returns one Bucket per granularity step between
-// since and until (empty buckets included).
+// by the hour bucket start, it returns one Bucket per granularity step that
+// overlaps [since, until), including the final (possibly partial) bucket that
+// contains `until` — so a query ending mid-day still surfaces today's data.
 func bucketHours(hourSums map[time.Time]int64, since, until time.Time, g Granularity) []Bucket {
-	since = bucketStart(since, g)
-	until = bucketStart(until, g)
+	start := bucketStart(since, g)
 	var out []Bucket
-	for cur := since; cur.Before(until); cur = bucketAdvance(cur, g) {
+	for cur := start; cur.Before(until); cur = bucketAdvance(cur, g) {
+		next := bucketAdvance(cur, g)
 		var total int64
 		for h, v := range hourSums {
-			if !h.Before(cur) && h.Before(bucketAdvance(cur, g)) {
+			if !h.Before(cur) && h.Before(next) {
 				total += v
 			}
 		}
