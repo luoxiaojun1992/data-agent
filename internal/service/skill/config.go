@@ -105,6 +105,13 @@ func predefinedSkills() []skill.SkillConfig {
 			ConfigJSON:  "{}",
 		},
 		{
+			Name:        "invoke_subagent",
+			DisplayName: "子 Agent 委派",
+			Description: "将子任务委派给独立的子 agent 执行（独立 session、同模型、并行委派支持）；子 agent 的 save_artifact/文件操作透明落到父会话上下文，返回即销毁",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
 			Name:        "pptx_generator",
 			DisplayName: "PPTX 生成",
 			Description: "从 markdown 内容生成 .pptx PowerPoint 文件，保存到 session workspace",
