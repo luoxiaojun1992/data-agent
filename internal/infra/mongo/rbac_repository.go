@@ -47,7 +47,7 @@ func (r *RBACRepository) ListRoles(ctx context.Context, skip, limit int64, paren
 		}
 	}
 	total, _ := coll.CountDocuments(ctx, filter)
-	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1, "display_name": 1}))
+	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "level", Value: 1}, {Key: "display_name", Value: 1}}))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -170,7 +170,7 @@ func (r *RBACRepository) AvailableParents(ctx context.Context, level int, q stri
 		}
 	}
 	cur, err := r.db.Collection("rbac_roles").Find(ctx, filter,
-		options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1, "display_name": 1}),
+		options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "level", Value: 1}, {Key: "display_name", Value: 1}}),
 	)
 	if err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func (r *RBACRepository) ListParentCandidates(ctx context.Context, q string, ski
 		}
 	}
 	cur, err := r.db.Collection("rbac_roles").Find(ctx, filter,
-		options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1, "display_name": 1}),
+		options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "level", Value: 1}, {Key: "display_name", Value: 1}}),
 	)
 	if err != nil {
 		return nil, err
@@ -231,7 +231,7 @@ func (r *RBACRepository) ListPermissions(ctx context.Context, skip, limit int64,
 		}
 	}
 	total, _ := coll.CountDocuments(ctx, filter)
-	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"module": 1, "name": 1}))
+	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "module", Value: 1}, {Key: "name", Value: 1}}))
 	if err != nil {
 		return nil, 0, err
 	}
