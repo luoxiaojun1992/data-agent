@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import AppLayout from '../../../../../providers';
 import { useAuth } from '../../../../../../lib/api';
+import { useDebouncedSearch, SearchableOption } from '../../../../../components/SearchableSelect';
 
 interface RBACPermission { id: string; key: string; name: string; module: string; type: string; }
 
@@ -13,12 +14,10 @@ export default function RolePermissionsPage() {
   const { auth, apiFetch } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [perms, setPerms] = useState<RBACPermission[]>([]);
-  const [allPerms, setAllPerms] = useState<RBACPermission[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [roleName, setRoleName] = useState('');
   const [level, setLevel] = useState(0);
-  const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [toast, setToast] = useState('');
 
@@ -30,12 +29,6 @@ export default function RolePermissionsPage() {
     }).catch(() => showToast('加载失败'));
   };
 
-  const fetchAll = () => {
-    apiFetch('/admin/admin/rbac/permissions?page=1&page_size=200').then(r => r.json()).then(data => {
-      setAllPerms(data.permissions || []);
-    });
-  };
-
   useEffect(() => {
     if (!auth.hydrated) return;
     apiFetch(`/admin/rbac/roles/${id}`).then(r => r.json()).then(data => {
@@ -43,9 +36,6 @@ export default function RolePermissionsPage() {
     });
     fetchPerms();
   }, [id, page, auth.hydrated]);
-
-  const available = allPerms.filter(p => !perms.find(pp => pp.id === p.id) &&
-    (search === '' || p.key.includes(search) || p.name.includes(search)));
 
   const add = (pid: string) => {
     apiFetch(`/admin/rbac/roles/${id}/permissions`, { method: 'POST', body: JSON.stringify({ permission_id: pid }) })
@@ -61,10 +51,7 @@ export default function RolePermissionsPage() {
     background: l === 0 ? '#ef4444' : l === 1 ? '#f59e0b' : '#34d399', color: '#fff', marginLeft: 8,
   });
   const btnPri: React.CSSProperties = { padding: '8px 16px', background: '#5c7cfa', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
-  const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
   const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
-  const mo: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
-  const mc: React.CSSProperties = { background: 'var(--card-bg)', padding: 24, borderRadius: 12, minWidth: 450 };
 
   const pagination = () => {
     const tp = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -84,7 +71,7 @@ export default function RolePermissionsPage() {
         <a href="/admin/rbac" style={{ color: '#5c7cfa', fontSize: 13 }}>← 返回 RBAC 管理</a>
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: '8px 0' }}>{roleName}<span style={badge(level)}>L{level}</span></h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>已关联 {total} 个权限</p>
-        <button data-testid="rbac-role-add-perm-btn" onClick={() => { fetchAll(); setShowAdd(true); }} style={{ ...btnPri, marginBottom: 16 }}>+ 添加权限</button>
+        <button data-testid="rbac-role-add-perm-btn" onClick={() => setShowAdd(true)} style={{ ...btnPri, marginBottom: 16 }}>+ 添加权限</button>
 
         <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
@@ -113,25 +100,56 @@ export default function RolePermissionsPage() {
         {pagination()}
 
         {showAdd && (
-          <div style={mo} onClick={() => setShowAdd(false)}><div style={mc} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 12 }}>添加权限</h3>
-            <input style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box' }}
-              placeholder="搜索..." value={search} onChange={e => setSearch(e.target.value)} />
-            <div style={{ maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
-              {available.map(p => (
-                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div><code style={{ fontSize: 12 }}>{p.key}</code><span style={{ fontSize: 13, marginLeft: 8 }}>{p.name}</span></div>
-                  <button onClick={() => add(p.id)} style={{ ...btnSm, color: '#5c7cfa' }}>添加</button>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 12, textAlign: 'right' }}><button onClick={() => setShowAdd(false)} style={btnSec}>关闭</button></div>
-          </div></div>
+          <AddPermModal apiFetch={apiFetch} roleId={id} onAdd={add} onClose={() => setShowAdd(false)} />
         )}
 
         {toast && <div style={{ position: 'fixed', bottom: 20, right: 20, padding: '10px 20px', borderRadius: 8,
           background: toast.includes('失败') ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast}</div>}
       </div>
     </AppLayout>
+  );
+}
+
+// AddPermModal loads available permissions straight from the backend (SPEC-074):
+// /admin/rbac/permissions?limit=20&exclude_role_id=<id> (default) and appends
+// &q=<kw> for debounced search. The client only renders the returned top-N;
+// no local filter/sort/slice.
+function AddPermModal({ apiFetch, roleId, onAdd, onClose }: {
+  apiFetch: (path: string, options?: RequestInit) => Promise<Response>;
+  roleId: string;
+  onAdd: (permId: string) => void;
+  onClose: () => void;
+}) {
+  const fetchAvail = async (q: string, limit: number): Promise<SearchableOption[]> => {
+    const res = await apiFetch(`/admin/rbac/permissions?limit=${limit}&exclude_role_id=${roleId}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+    if (!res.ok) throw new Error('加载失败');
+    const data = await res.json();
+    return (data.permissions || []) as SearchableOption[];
+  };
+  const { items, loading, error, query, onSearch } = useDebouncedSearch(fetchAvail, 20);
+
+  const mo: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
+  const mc: React.CSSProperties = { background: 'var(--card-bg)', padding: 24, borderRadius: 12, minWidth: 450 };
+  const inp: React.CSSProperties = { width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box' };
+  const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
+  const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
+
+  return (
+    <div style={mo} onClick={onClose}><div style={mc} onClick={e => e.stopPropagation()}>
+      <h3 style={{ marginBottom: 12 }}>添加权限</h3>
+      <input style={inp} placeholder="搜索..." value={query} onChange={e => onSearch(e.target.value)} />
+      <div style={{ maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
+        {loading && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>加载中...</p>}
+        {!loading && error && <p style={{ color: '#ef4444', fontSize: 13 }}>{error}</p>}
+        {!loading && !error && items.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>无结果</p>}
+        {!loading && items.map((p) => (
+          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div><code style={{ fontSize: 12 }}>{p.key}</code><span style={{ fontSize: 13, marginLeft: 8 }}>{p.name}</span></div>
+            <button onClick={() => onAdd(p.id)} style={{ ...btnSm, color: '#5c7cfa' }}>添加</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 12, textAlign: 'right' }}><button onClick={onClose} style={btnSec}>关闭</button></div>
+    </div></div>
   );
 }

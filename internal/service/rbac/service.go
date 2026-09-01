@@ -61,9 +61,9 @@ func (s *Service) GetUserPermissionKeys(ctx context.Context, userID string) ([]s
 
 // ── Role CRUD ────────────────────────────────────────────────────────
 
-func (s *Service) ListRoles(ctx context.Context, page, pageSize int, parentID string) ([]model.RBACRole, int64, error) {
+func (s *Service) ListRoles(ctx context.Context, page, pageSize int, parentID, q, excludeUserID string) ([]model.RBACRole, int64, error) {
 	skip := int64((page - 1) * pageSize)
-	return s.repo.ListRoles(ctx, skip, int64(pageSize), parentID)
+	return s.repo.ListRoles(ctx, skip, int64(pageSize), parentID, q, excludeUserID)
 }
 
 func (s *Service) GetRole(ctx context.Context, id string) (*model.RBACRole, error) {
@@ -163,15 +163,20 @@ func (s *Service) DeleteRole(ctx context.Context, id string) error {
 	return s.repo.DeleteRole(ctx, id)
 }
 
-func (s *Service) AvailableParents(ctx context.Context, level int) ([]model.RBACRole, error) {
-	return s.repo.AvailableParents(ctx, level)
+func (s *Service) AvailableParents(ctx context.Context, level int, q string, limit int) ([]model.RBACRole, error) {
+	return s.repo.AvailableParents(ctx, level, q, 0, int64(limit))
+}
+
+// ListParentCandidates returns roles eligible as the parent of a new role.
+func (s *Service) ListParentCandidates(ctx context.Context, q string, limit int) ([]model.RBACRole, error) {
+	return s.repo.ListParentCandidates(ctx, q, 0, int64(limit))
 }
 
 // ── Permission ───────────────────────────────────────────────────────
 
-func (s *Service) ListPermissions(ctx context.Context, page, pageSize int) ([]model.RBACPermission, int64, error) {
+func (s *Service) ListPermissions(ctx context.Context, page, pageSize int, q, excludeRoleID string) ([]model.RBACPermission, int64, error) {
 	skip := int64((page - 1) * pageSize)
-	return s.repo.ListPermissions(ctx, skip, int64(pageSize))
+	return s.repo.ListPermissions(ctx, skip, int64(pageSize), q, excludeRoleID)
 }
 
 func (s *Service) CreatePermission(ctx context.Context, p *model.RBACPermission) error {

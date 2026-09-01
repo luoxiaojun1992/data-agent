@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/modelconfig"
@@ -36,6 +37,63 @@ func (r *ModelConfigRepository) List(ctx context.Context, t modelconfig.ModelTyp
 	cursor, err := r.coll.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list model configs: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, 0, fmt.Errorf("decode model configs: %w", err)
+	}
+	entries := make([]modelconfig.ModelEntry, len(docs))
+	for i, d := range docs {
+		entries[i] = docToModelEntry(d)
+	}
+	return entries, total, nil
+}
+
+// Search returns top-N models of the given type matching q. Models whose IDs
+// are in defaultIDs are sorted first (via a computed _defaultOrder field),
+// then by name ascending. All filtering ($match), sorting ($sort), and
+// truncation ($skip/$limit) happen in MongoDB — never in Go memory (SPEC-074).
+// The search term is escaped with regexp.QuoteMeta to prevent regex injection.
+func (r *ModelConfigRepository) Search(ctx context.Context, t modelconfig.ModelType, q string, defaultIDs []string, skip, limit int64) ([]modelconfig.ModelEntry, int64, error) {
+	filter := bson.M{}
+	if t != "" {
+		filter["type"] = string(t)
+	}
+	if q != "" {
+		re := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
+		filter["$or"] = []bson.M{
+			{"name": re},
+			{"display_name": re},
+		}
+	}
+
+	total, err := r.coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count model configs: %w", err)
+	}
+
+	// _defaultOrder: 0 when the model is a default (in defaultIDs), else 1.
+	var defaultOrder any = 1
+	if len(defaultIDs) > 0 {
+		defaultOrder = bson.M{"$cond": bson.A{
+			bson.M{"$in": bson.A{"$_id", defaultIDs}},
+			0,
+			1,
+		}}
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: filter}},
+		{{Key: "$addFields", Value: bson.M{"_defaultOrder": defaultOrder}}},
+		{{Key: "$sort", Value: bson.D{{Key: "_defaultOrder", Value: 1}, {Key: "name", Value: 1}}}},
+		{{Key: "$skip", Value: skip}},
+		{{Key: "$limit", Value: limit}},
+	}
+	cursor, err := r.coll.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, 0, fmt.Errorf("search model configs: %w", err)
 	}
 	defer cursor.Close(ctx)
 

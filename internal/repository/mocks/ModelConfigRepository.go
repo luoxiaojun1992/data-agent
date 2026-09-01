@@ -117,6 +117,43 @@ func (_m *ModelConfigRepository) List(ctx context.Context, t modelconfig.ModelTy
 	return r0, r1, r2
 }
 
+// Search provides a mock function with given fields: ctx, t, q, defaultIDs, skip, limit
+func (_m *ModelConfigRepository) Search(ctx context.Context, t modelconfig.ModelType, q string, defaultIDs []string, skip int64, limit int64) ([]modelconfig.ModelEntry, int64, error) {
+	ret := _m.Called(ctx, t, q, defaultIDs, skip, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Search")
+	}
+
+	var r0 []modelconfig.ModelEntry
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, modelconfig.ModelType, string, []string, int64, int64) ([]modelconfig.ModelEntry, int64, error)); ok {
+		return rf(ctx, t, q, defaultIDs, skip, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, modelconfig.ModelType, string, []string, int64, int64) []modelconfig.ModelEntry); ok {
+		r0 = rf(ctx, t, q, defaultIDs, skip, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]modelconfig.ModelEntry)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, modelconfig.ModelType, string, []string, int64, int64) int64); ok {
+		r1 = rf(ctx, t, q, defaultIDs, skip, limit)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, modelconfig.ModelType, string, []string, int64, int64) error); ok {
+		r2 = rf(ctx, t, q, defaultIDs, skip, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
 // Update provides a mock function with given fields: ctx, id, entry
 func (_m *ModelConfigRepository) Update(ctx context.Context, id string, entry modelconfig.ModelEntry) error {
 	ret := _m.Called(ctx, id, entry)

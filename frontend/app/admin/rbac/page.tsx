@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
+import SearchableSelect, { SearchableOption } from '../../components/SearchableSelect';
 
 interface RBACRole {
   id: string; name: string; display_name: string; description: string;
@@ -161,9 +162,9 @@ export default function RBACPage() {
           background: toast.includes('失败') ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast}</div>}
 
         {showAddPerm && <AddPermModal apiFetch={apiFetch} onClose={() => setShowAddPerm(false)} onSuccess={() => { setShowAddPerm(false); fetchPerms(); }} showToast={showToast} />}
-        {showAddRole && <AddRoleModal apiFetch={apiFetch} roles={roles} onClose={() => setShowAddRole(false)}
+        {showAddRole && <AddRoleModal apiFetch={apiFetch} onClose={() => setShowAddRole(false)}
           onSuccess={() => { setShowAddRole(false); fetchRoles(); }} showToast={showToast} />}
-        {showEditRole && selectedRole && <EditRoleModal apiFetch={apiFetch} role={selectedRole} roles={roles}
+        {showEditRole && selectedRole && <EditRoleModal apiFetch={apiFetch} role={selectedRole}
           onClose={() => { setShowEditRole(false); setSelectedRole(null); }}
           onSuccess={() => { setShowEditRole(false); setSelectedRole(null); fetchRoles(); }} showToast={showToast} />}
       </div>
@@ -197,7 +198,7 @@ const mContent: React.CSSProperties = { background: 'var(--card-bg)', padding: 2
 const inLabel: React.CSSProperties = { display: 'block', fontSize: 13, marginBottom: 8, color: 'var(--text-secondary)' };
 const inStyle: React.CSSProperties = { display: 'block', width: '100%', marginTop: 4, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14 };
 
-function AddRoleModal({ apiFetch, roles, onClose, onSuccess, showToast }: any) {
+function AddRoleModal({ apiFetch, onClose, onSuccess, showToast }: any) {
   const [name, setName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
@@ -208,17 +209,30 @@ function AddRoleModal({ apiFetch, roles, onClose, onSuccess, showToast }: any) {
       showToast('角色已创建'); onSuccess();
     } catch (e: any) { showToast(e?.message || '创建失败'); }
   };
-  const lvl = (r: RBACRole) => `L${r.level}`;
+  // SPEC-074: parent candidates are searched in the DB (top-N + q).
+  const fetchParents = async (q: string, limit: number): Promise<SearchableOption[]> => {
+    const res = await apiFetch(`/admin/rbac/parent-candidates?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+    if (!res.ok) throw new Error('加载失败');
+    const data = await res.json();
+    return (data.parents || []) as SearchableOption[];
+  };
   return (
     <div style={mOverlay} onClick={onClose}><div style={mContent} onClick={e => e.stopPropagation()}>
       <h3 style={{ marginBottom: 12 }}>新建角色</h3>
       <label style={inLabel}>名称 <input style={inStyle} value={name} onChange={e => setName(e.target.value)} placeholder="my_custom_role" /></label>
       <label style={inLabel}>显示名 <input style={inStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="我的自定义角色" /></label>
       <label style={inLabel}>描述 <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
-      <label style={inLabel}>父角色 <select style={inStyle} value={parentID} onChange={e => setParentID(e.target.value)}>
-        <option value="">无（根角色）</option>
-        {roles.filter((r: RBACRole) => r.level < 2 && r.child_count < 10).map((r: RBACRole) => <option key={r.id} value={r.id}>{r.display_name} ({lvl(r)})</option>)}
-      </select></label>
+      <label style={inLabel}>父角色
+        <SearchableSelect
+          fetch={fetchParents}
+          value={parentID}
+          onChange={setParentID}
+          labelKey="display_name"
+          allowEmpty
+          emptyLabel="无（根角色）"
+          renderLabel={(r) => <span>{r.display_name} (L{r.level})</span>}
+        />
+      </label>
       <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
         <button onClick={onClose} style={btnSec}>取消</button>
         <button data-testid="rbac-add-role-submit" onClick={create} style={btnPri}>创建</button>
@@ -226,7 +240,7 @@ function AddRoleModal({ apiFetch, roles, onClose, onSuccess, showToast }: any) {
     </div></div>
   );
 }
-function EditRoleModal({ apiFetch, role, roles, onClose, onSuccess, showToast }: any) {
+function EditRoleModal({ apiFetch, role, onClose, onSuccess, showToast }: any) {
   const [displayName, setDisplayName] = useState(role.display_name);
   const [description, setDescription] = useState(role.description || '');
   const [parentID, setParentID] = useState(role.parent_id || '');
@@ -236,16 +250,30 @@ function EditRoleModal({ apiFetch, role, roles, onClose, onSuccess, showToast }:
       showToast('已更新'); onSuccess();
     } catch (e: any) { showToast(e?.message || '更新失败'); }
   };
+  // SPEC-074: available parents are searched in the DB (top-N + q).
+  const fetchParents = async (q: string, limit: number): Promise<SearchableOption[]> => {
+    const res = await apiFetch(`/admin/rbac/roles/${role.id}/available-parents?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+    if (!res.ok) throw new Error('加载失败');
+    const data = await res.json();
+    return (data.parents || []) as SearchableOption[];
+  };
   return (
     <div style={mOverlay} onClick={onClose}><div style={mContent} onClick={e => e.stopPropagation()}>
       <h3 style={{ marginBottom: 12 }}>编辑 — {role.name}</h3>
       <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>层级 L{role.level}（不可更改） | {role.type}</p>
       <label style={inLabel}>显示名 <input style={inStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} /></label>
       <label style={inLabel}>描述 <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
-      <label style={inLabel}>父角色 <select style={inStyle} value={parentID} onChange={e => setParentID(e.target.value)}>
-        <option value="">无</option>
-        {roles.filter((r: RBACRole) => r.level === role.level - 1 && r.id !== role.id && r.child_count < 10).map((r: RBACRole) => <option key={r.id} value={r.id}>{r.display_name} (L{r.level})</option>)}
-      </select></label>
+      <label style={inLabel}>父角色
+        <SearchableSelect
+          fetch={fetchParents}
+          value={parentID}
+          onChange={setParentID}
+          labelKey="display_name"
+          allowEmpty
+          emptyLabel="无"
+          renderLabel={(r) => <span>{r.display_name} (L{r.level})</span>}
+        />
+      </label>
       <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
         <button onClick={onClose} style={btnSec}>取消</button>
         <button data-testid="rbac-edit-role-submit" onClick={update} style={btnPri}>保存</button>

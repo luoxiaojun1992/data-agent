@@ -26,7 +26,21 @@ func (h *RBACHandler) ListRoles(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	parentID := c.Query("parent_id")
-	roles, total, err := h.svc.ListRoles(c.Request.Context(), page, pageSize, parentID)
+	q := c.Query("q")
+	excludeUserID := c.Query("exclude_user_id")
+
+	// Dropdown mode (SPEC-074): ?limit=<n> overrides page_size and starts top.
+	if rawLimit := c.Query("limit"); rawLimit != "" {
+		if n, err := strconv.Atoi(rawLimit); err == nil && n >= 1 {
+			if n > 100 {
+				n = 100
+			}
+			pageSize = n
+			page = 1
+		}
+	}
+
+	roles, total, err := h.svc.ListRoles(c.Request.Context(), page, pageSize, parentID, q, excludeUserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -98,7 +112,19 @@ func (h *RBACHandler) AvailableParents(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "role not found"})
 		return
 	}
-	parents, err := h.svc.AvailableParents(c.Request.Context(), role.Level)
+	q := c.Query("q")
+	parents, err := h.svc.AvailableParents(c.Request.Context(), role.Level, q, dropdownLimit(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"parents": parents})
+}
+
+// ListParentCandidates returns roles eligible as the parent of a new role
+// (SPEC-074 — "新建角色" modal parent dropdown).
+func (h *RBACHandler) ListParentCandidates(c *gin.Context) {
+	parents, err := h.svc.ListParentCandidates(c.Request.Context(), c.Query("q"), dropdownLimit(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -139,7 +165,21 @@ func (h *RBACHandler) CreatePermission(c *gin.Context) {
 func (h *RBACHandler) ListPermissions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	perms, total, err := h.svc.ListPermissions(c.Request.Context(), page, pageSize)
+	q := c.Query("q")
+	excludeRoleID := c.Query("exclude_role_id")
+
+	// Dropdown mode (SPEC-074): ?limit=<n> overrides page_size and starts top.
+	if rawLimit := c.Query("limit"); rawLimit != "" {
+		if n, err := strconv.Atoi(rawLimit); err == nil && n >= 1 {
+			if n > 100 {
+				n = 100
+			}
+			pageSize = n
+			page = 1
+		}
+	}
+
+	perms, total, err := h.svc.ListPermissions(c.Request.Context(), page, pageSize, q, excludeRoleID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -270,4 +310,19 @@ func (h *RBACHandler) RemoveUserRole(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "removed"})
+}
+
+// dropdownLimit parses the optional ?limit= query param for dropdown searches,
+// clamped to [1,100] with a default of 20 (SPEC-074).
+func dropdownLimit(c *gin.Context) int {
+	limit := 20
+	if raw := c.Query("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 1 {
+			if n > 100 {
+				n = 100
+			}
+			limit = n
+		}
+	}
+	return limit
 }

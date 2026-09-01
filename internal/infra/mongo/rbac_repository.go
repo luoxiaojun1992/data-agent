@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -23,14 +24,30 @@ func NewRBACRepository(db *mongo.Database) *RBACRepository {
 
 // ── Roles ────────────────────────────────────────────────────────────
 
-func (r *RBACRepository) ListRoles(ctx context.Context, skip, limit int64, parentID string) ([]model.RBACRole, int64, error) {
+func (r *RBACRepository) ListRoles(ctx context.Context, skip, limit int64, parentID, q, excludeUserID string) ([]model.RBACRole, int64, error) {
 	coll := r.db.Collection("rbac_roles")
 	filter := bson.M{}
 	if parentID != "" {
-		filter = bson.M{"parent_id": parentID}
+		filter["parent_id"] = parentID
+	}
+	if q != "" {
+		re := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
+		filter["$or"] = []bson.M{
+			{"name": re},
+			{"display_name": re},
+		}
+	}
+	if excludeUserID != "" {
+		roleIDs, err := r.GetUserRoleIDs(ctx, excludeUserID)
+		if err != nil {
+			return nil, 0, err
+		}
+		if len(roleIDs) > 0 {
+			filter["_id"] = bson.M{"$nin": roleIDs}
+		}
 	}
 	total, _ := coll.CountDocuments(ctx, filter)
-	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1}))
+	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1, "display_name": 1}))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -139,11 +156,47 @@ func (r *RBACRepository) ChangeRoleParent(ctx context.Context, id, newParentID s
 	return err
 }
 
-func (r *RBACRepository) AvailableParents(ctx context.Context, level int) ([]model.RBACRole, error) {
-	// Parents must be at level-1 and have ChildCount < 10
+func (r *RBACRepository) AvailableParents(ctx context.Context, level int, q string, skip, limit int64) ([]model.RBACRole, error) {
+	// Parents must be exactly one level below the child (RBAC levels are
+	// adjacent) and have spare child capacity. Optional q search on
+	// name/display_name. Filtering/sorting/truncation all happen in DB.
 	parentLevel := level - 1
-	cur, err := r.db.Collection("rbac_roles").Find(ctx,
-		bson.M{"level": parentLevel, "child_count": bson.M{"$lt": 10}},
+	filter := bson.M{"level": parentLevel, "child_count": bson.M{"$lt": 10}}
+	if q != "" {
+		re := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
+		filter["$or"] = []bson.M{
+			{"name": re},
+			{"display_name": re},
+		}
+	}
+	cur, err := r.db.Collection("rbac_roles").Find(ctx, filter,
+		options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1, "display_name": 1}),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var roles []model.RBACRole
+	if err := cur.All(ctx, &roles); err != nil {
+		return nil, err
+	}
+	return roles, nil
+}
+
+// ListParentCandidates returns roles eligible as the parent of a NEW role:
+// any role below the max level (L0/L1) with spare child capacity. Used by the
+// "新建角色" modal's parent dropdown. Filtering/sorting/truncation in DB.
+func (r *RBACRepository) ListParentCandidates(ctx context.Context, q string, skip, limit int64) ([]model.RBACRole, error) {
+	filter := bson.M{"level": bson.M{"$lt": model.MaxRoleLevel}, "child_count": bson.M{"$lt": 10}}
+	if q != "" {
+		re := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
+		filter["$or"] = []bson.M{
+			{"name": re},
+			{"display_name": re},
+		}
+	}
+	cur, err := r.db.Collection("rbac_roles").Find(ctx, filter,
+		options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"level": 1, "display_name": 1}),
 	)
 	if err != nil {
 		return nil, err
@@ -158,10 +211,27 @@ func (r *RBACRepository) AvailableParents(ctx context.Context, level int) ([]mod
 
 // ── Permissions ──────────────────────────────────────────────────────
 
-func (r *RBACRepository) ListPermissions(ctx context.Context, skip, limit int64) ([]model.RBACPermission, int64, error) {
+func (r *RBACRepository) ListPermissions(ctx context.Context, skip, limit int64, q, excludeRoleID string) ([]model.RBACPermission, int64, error) {
 	coll := r.db.Collection("rbac_permissions")
-	total, _ := coll.CountDocuments(ctx, bson.M{})
-	cur, err := coll.Find(ctx, bson.M{}, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"module": 1}))
+	filter := bson.M{}
+	if q != "" {
+		re := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
+		filter["$or"] = []bson.M{
+			{"name": re},
+			{"key": re},
+		}
+	}
+	if excludeRoleID != "" {
+		permIDs, err := r.GetRolePermissionIDs(ctx, excludeRoleID)
+		if err != nil {
+			return nil, 0, err
+		}
+		if len(permIDs) > 0 {
+			filter["_id"] = bson.M{"$nin": permIDs}
+		}
+	}
+	total, _ := coll.CountDocuments(ctx, filter)
+	cur, err := coll.Find(ctx, filter, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"module": 1, "name": 1}))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -171,6 +241,24 @@ func (r *RBACRepository) ListPermissions(ctx context.Context, skip, limit int64)
 		return nil, 0, err
 	}
 	return perms, total, nil
+}
+
+// GetRolePermissionIDs returns the permission IDs currently linked to a role.
+func (r *RBACRepository) GetRolePermissionIDs(ctx context.Context, roleID string) ([]string, error) {
+	cur, err := r.db.Collection("rbac_role_permissions").Find(ctx, bson.M{"role_id": roleID})
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var links []model.RBACRolePermission
+	if err := cur.All(ctx, &links); err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(links))
+	for i, l := range links {
+		ids[i] = l.PermissionID
+	}
+	return ids, nil
 }
 
 func (r *RBACRepository) CreatePermission(ctx context.Context, p *model.RBACPermission) error {

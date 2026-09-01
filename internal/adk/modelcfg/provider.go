@@ -493,6 +493,21 @@ func (p *Provider) attachDefaults(ctx context.Context, entries []ModelEntry) {
 	}
 }
 
+// defaultIDs returns the distinct model IDs referenced by model_defaults.
+// Used to compute the "default-first" sort key in DB (SPEC-074).
+func (p *Provider) defaultIDs(ctx context.Context) []string {
+	dm := p.defaultMap(ctx)
+	seen := make(map[string]bool, len(dm))
+	ids := make([]string, 0, len(dm))
+	for _, mid := range dm {
+		if mid != "" && !seen[mid] {
+			seen[mid] = true
+			ids = append(ids, mid)
+		}
+	}
+	return ids
+}
+
 // ListEmbeddingModels returns paginated Type==embedding model entries.
 func (p *Provider) ListEmbeddingModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if p.modelRepo == nil {
@@ -579,6 +594,43 @@ func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]Mod
 	}
 	skip := int64((page - 1) * pageSize)
 	entries, total, err := p.modelRepo.List(ctx, ModelTypeLLM, skip, int64(pageSize))
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range entries {
+		p.applyEnvDefaults(&entries[i])
+		_ = p.resolveAPIKey(ctx, &entries[i])
+	}
+	p.attachDefaults(ctx, entries)
+	return entries, int(total), nil
+}
+
+// SearchLLMModels returns top-N LLM models matching q, with default models
+// sorted first (SPEC-074). q is empty for the initial "load topN" request.
+func (p *Provider) SearchLLMModels(ctx context.Context, q string, limit int) ([]ModelEntry, int, error) {
+	return p.searchModels(ctx, ModelTypeLLM, q, limit)
+}
+
+// SearchEmbeddingModels returns top-N embedding models matching q, with
+// default models sorted first (SPEC-074).
+func (p *Provider) SearchEmbeddingModels(ctx context.Context, q string, limit int) ([]ModelEntry, int, error) {
+	return p.searchModels(ctx, ModelTypeEmbedding, q, limit)
+}
+
+// searchModels is the shared dropdown-search implementation: it resolves the
+// default model IDs, then delegates filtering/sorting/truncation to the
+// repository's aggregation (SPEC-074 — no in-memory sort/slice here).
+func (p *Provider) searchModels(ctx context.Context, t ModelType, q string, limit int) ([]ModelEntry, int, error) {
+	if p.modelRepo == nil {
+		return nil, 0, nil
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	entries, total, err := p.modelRepo.Search(ctx, t, q, p.defaultIDs(ctx), 0, int64(limit))
 	if err != nil {
 		return nil, 0, err
 	}

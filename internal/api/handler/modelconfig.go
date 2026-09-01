@@ -133,6 +133,18 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
 		return
 	}
+	q := c.Query("q")
+	// Dropdown mode (SPEC-074): q or limit present → search (topN, default-first).
+	if q != "" || c.Query("limit") != "" {
+		models, total, err := h.provider.SearchLLMModels(c.Request.Context(), q, dropdownLimit(c))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		applyModelLegacyDefaults(models)
+		c.JSON(http.StatusOK, gin.H{"models": models, "total": total})
+		return
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	models, total, err := h.provider.ListLLMModels(c.Request.Context(), page, pageSize)
@@ -140,15 +152,7 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	for i := range models {
-		// Apply sane defaults for legacy DB rows where fields weren't tracked.
-		if models[i].ContextLen == 0 {
-			models[i].ContextLen = 128000
-		}
-		if models[i].MaxTokens == 0 {
-			models[i].MaxTokens = 16000
-		}
-	}
+	applyModelLegacyDefaults(models)
 	// Decorate with api_key_exists for the frontend (the JSON tag on APIKey
 	// is "omitempty" so an empty string would otherwise signal "not set").
 	c.JSON(http.StatusOK, gin.H{
@@ -159,11 +163,35 @@ func (h *ModelConfigHandler) ListLLM(c *gin.Context) {
 	})
 }
 
+// applyModelLegacyDefaults fills sane fallbacks for legacy DB rows where the
+// context length / max tokens weren't tracked.
+func applyModelLegacyDefaults(models []modelcfg.ModelEntry) {
+	for i := range models {
+		if models[i].ContextLen == 0 {
+			models[i].ContextLen = 128000
+		}
+		if models[i].MaxTokens == 0 {
+			models[i].MaxTokens = 16000
+		}
+	}
+}
+
 // ListEmbedding returns the embedding-type model list with pagination.
 // GET /models/embedding
 func (h *ModelConfigHandler) ListEmbedding(c *gin.Context) {
 	if h.provider == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": errProviderNotConfigured})
+		return
+	}
+	q := c.Query("q")
+	// Dropdown mode (SPEC-074): q or limit present → search (topN, default-first).
+	if q != "" || c.Query("limit") != "" {
+		models, total, err := h.provider.SearchEmbeddingModels(c.Request.Context(), q, dropdownLimit(c))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"models": models, "total": total})
 		return
 	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

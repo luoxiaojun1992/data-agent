@@ -1,15 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useRef } from 'react';
+import SearchableSelect, { SearchableOption } from './SearchableSelect';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-
-export interface ModelOption {
-  id: string;
-  name: string;
-  capability?: string;
-  is_default?: boolean;
-}
 
 interface ModelSelectorProps {
   value: string;
@@ -19,38 +13,36 @@ interface ModelSelectorProps {
 }
 
 /**
- * ModelSelector renders a dropdown of available LLM models (Type==llm only).
- * SPEC-062: used by chat/agent/imbind pages to bind a model to a session.
- * When disabled (session already bound), shows the current model with a lock.
+ * ModelSelector renders a searchable dropdown of available LLM models
+ * (Type==llm only). SPEC-062: used by chat/agent/imbind pages to bind a model
+ * to a session. SPEC-074: loads top-N (20) from the backend and debounce-
+ * searches via /models/list?q=&limit= — filtering/sorting stay in the DB.
+ * The default model (is_default_for non-empty) is surfaced first by the
+ * backend and shown with a "(默认)" suffix.
  */
 export default function ModelSelector({ value, onChange, disabled, token }: ModelSelectorProps) {
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Track the latest bound value so the first-load auto-select (below) sees
+  // the current value without re-running on every render.
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
-  useEffect(() => {
-    if (disabled) return; // no need to fetch when locked
-    setLoading(true);
+  const doFetch = useCallback(async (q: string, limit: number): Promise<SearchableOption[]> => {
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(`${API_BASE}/models/list`, { headers })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error('load models failed')))
-      .then(data => {
-        setModels(data.models || []);
-        setError(null);
-        // Auto-select default when no value set.
-        if (!value && (data.models || []).length > 0) {
-          const def = data.models.find((m: ModelOption) => m.is_default);
-          onChange(def ? def.id : data.models[0].id);
-        }
-      })
-      .catch(err => { console.error('ModelSelector load:', err); setError(err.message); })
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disabled]);
-
-  const selected = models.find(m => m.id === value);
-  const displayName = selected ? selected.name : (value || '默认模型');
+    const url = `${API_BASE}/models/list?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error('加载模型失败');
+    const data = await res.json();
+    const models: SearchableOption[] = data.models || [];
+    // Auto-select the default model on the initial (empty-query) load when
+    // nothing is bound yet — mirrors the native <select> behaviour and the
+    // "new session" reset. Search results must NOT auto-select.
+    if (q === '' && models.length > 0 && !valueRef.current) {
+      const def = models.find(m => Array.isArray(m.is_default_for) && m.is_default_for.length > 0);
+      onChange(def ? def.id : models[0].id);
+    }
+    return models;
+  }, [token, onChange]);
 
   if (disabled) {
     return (
@@ -59,27 +51,26 @@ export default function ModelSelector({ value, onChange, disabled, token }: Mode
         data-testid="model-selector-locked"
         title="会话已绑定模型，不可更换"
       >
-        🔒 {displayName}
+        🔒 {value || '默认模型'}
       </span>
     );
   }
 
   return (
-    <select
+    <SearchableSelect
+      fetch={doFetch}
       value={value}
-      onChange={e => onChange(e.target.value)}
-      disabled={loading}
-      className="px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none disabled:opacity-50"
-      data-testid="model-selector"
-    >
-      {loading && <option value="">加载模型…</option>}
-      {!loading && error && <option value="">模型加载失败</option>}
-      {!loading && !error && models.length === 0 && <option value="">无可用模型</option>}
-      {!loading && models.map(m => (
-        <option key={m.id} value={m.id}>
-          {m.name}{m.is_default ? ' (默认)' : ''}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      placeholder="选择模型…"
+      dataTestid="model-selector"
+      renderLabel={(item) => (
+        <span>
+          {item.name}
+          {Array.isArray(item.is_default_for) && item.is_default_for.length > 0 && (
+            <span style={{ color: 'var(--text-secondary)' }}> (默认)</span>
+          )}
+        </span>
+      )}
+    />
   );
 }

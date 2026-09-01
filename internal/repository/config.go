@@ -37,6 +37,10 @@ type SysConfigRepository interface {
 // configurations (one document per model).
 type ModelConfigRepository interface {
 	List(ctx context.Context, t modelconfig.ModelType, skip, limit int64) ([]modelconfig.ModelEntry, int64, error)
+	// Search returns top-N models of the given type matching q, with models
+	// whose IDs are in defaultIDs sorted first. Filtering, sorting and
+	// truncation all happen in MongoDB (SPEC-074).
+	Search(ctx context.Context, t modelconfig.ModelType, q string, defaultIDs []string, skip, limit int64) ([]modelconfig.ModelEntry, int64, error)
 	Get(ctx context.Context, id string) (*modelconfig.ModelEntry, error)
 	Insert(ctx context.Context, entry modelconfig.ModelEntry) error
 	Update(ctx context.Context, id string, entry modelconfig.ModelEntry) error

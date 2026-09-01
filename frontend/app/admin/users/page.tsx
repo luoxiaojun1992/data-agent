@@ -89,7 +89,7 @@ export default function UsersPage() {
         body: JSON.stringify({
           username: formEmail,
           password: formPassword,
-          role: formRole === 'system_admin' ? 'system_admin' : formRole === 'admin' ? 'admin' : 'user',
+          role: formRole,
           status: 'enabled',
         }),
       });
@@ -526,8 +526,9 @@ export default function UsersPage() {
                   onChange={(e) => setFormRole(e.target.value)}
                   style={inputStyle}
                 >
-                  {/* NOTE: both dropdowns (edit modal + add modal) */}
-
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                  <option value="system_admin">系统管理员</option>
                 </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
@@ -572,8 +573,9 @@ export default function UsersPage() {
                   onChange={(e) => setFormRole(e.target.value)}
                   style={inputStyle}
                 >
-                  {/* NOTE: both dropdowns (edit modal + add modal) */}
-
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                  <option value="system_admin">系统管理员</option>
                 </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>

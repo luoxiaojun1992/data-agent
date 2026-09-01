@@ -326,6 +326,7 @@ func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACH
 	view.GET("/roles", h.ListRoles)
 	view.GET("/roles/:id", h.GetRole)
 	view.GET("/roles/:id/available-parents", h.AvailableParents)
+	view.GET("/parent-candidates", h.ListParentCandidates)
 	view.GET("/permissions", h.ListPermissions)
 	view.GET("/permissions/:id", h.GetPermission)
 	view.GET("/roles/:id/permissions", h.ListRolePermissions)

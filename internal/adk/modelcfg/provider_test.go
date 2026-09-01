@@ -711,3 +711,142 @@ func newProviderWithRepo(t *testing.T) (*Provider, *mockrepo.ModelConfigReposito
 	repo.On("Get", mock.Anything, mock.Anything).Return(nil, errNotFound)
 	return NewProvider(repo, defRepo, nil), repo
 }
+
+// newProviderWithSearchRepo builds a Provider backed by mocks whose Search is
+// NOT pre-stubbed, returning both repos so tests register Search expectations.
+func newProviderWithSearchRepo(t *testing.T) (*Provider, *mockrepo.ModelConfigRepository, *mockrepo.ModelDefaultRepository) {
+	t.Helper()
+	repo := mockrepo.NewModelConfigRepository(t)
+	defRepo := mockrepo.NewModelDefaultRepository(t)
+	return NewProvider(repo, defRepo, nil), repo, defRepo
+}
+
+// stringSetContains reports whether every want id is present in got.
+func stringSetContains(got []string, want ...string) bool {
+	seen := map[string]bool{}
+	for _, g := range got {
+		seen[g] = true
+	}
+	for _, w := range want {
+		if !seen[w] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestSearchLLMModels_PassesDefaultIDsAndLimit(t *testing.T) {
+	p, repo, defRepo := newProviderWithSearchRepo(t)
+	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{
+		{UseCase: string(UseCaseChat), ModelID: "m1"},
+		{UseCase: string(UseCaseTask), ModelID: "m2"},
+	}, nil).Maybe()
+
+	var gotQ string
+	var gotLimit int64
+	var gotType modelconfig.ModelType
+	var gotDefaultIDs []string
+	repo.On("Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			gotType = args.Get(1).(modelconfig.ModelType)
+			gotQ = args.Get(2).(string)
+			gotDefaultIDs = args.Get(3).([]string)
+			gotLimit = args.Get(5).(int64)
+		}).
+		Return([]modelconfig.ModelEntry{{ID: "m1", Name: "M1", Type: ModelTypeLLM}}, int64(1), nil).Once()
+
+	models, total, err := p.SearchLLMModels(context.Background(), "gpt", 30)
+	if err != nil {
+		t.Fatalf("SearchLLMModels: %v", err)
+	}
+	if gotType != ModelTypeLLM {
+		t.Errorf("type = %q, want llm", gotType)
+	}
+	if gotQ != "gpt" {
+		t.Errorf("q = %q, want gpt", gotQ)
+	}
+	if gotLimit != 30 {
+		t.Errorf("limit = %d, want 30", gotLimit)
+	}
+	if !stringSetContains(gotDefaultIDs, "m1", "m2") || len(gotDefaultIDs) != 2 {
+		t.Errorf("defaultIDs = %v, want set {m1,m2}", gotDefaultIDs)
+	}
+	if total != 1 || len(models) != 1 || models[0].ID != "m1" {
+		t.Errorf("result = total %d len %d, want 1/1 m1", total, len(models))
+	}
+}
+
+func TestSearchLLMModels_DefaultLimitWhenZero(t *testing.T) {
+	p, repo, defRepo := newProviderWithSearchRepo(t)
+	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{}, nil).Maybe()
+
+	var gotLimit int64
+	repo.On("Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { gotLimit = args.Get(5).(int64) }).
+		Return([]modelconfig.ModelEntry{}, int64(0), nil).Once()
+
+	if _, _, err := p.SearchLLMModels(context.Background(), "", 0); err != nil {
+		t.Fatalf("SearchLLMModels: %v", err)
+	}
+	if gotLimit != 20 {
+		t.Errorf("limit = %d, want 20 (default)", gotLimit)
+	}
+}
+
+func TestSearchLLMModels_LimitClampedTo100(t *testing.T) {
+	p, repo, defRepo := newProviderWithSearchRepo(t)
+	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{}, nil).Maybe()
+
+	var gotLimit int64
+	repo.On("Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { gotLimit = args.Get(5).(int64) }).
+		Return([]modelconfig.ModelEntry{}, int64(0), nil).Once()
+
+	if _, _, err := p.SearchLLMModels(context.Background(), "", 500); err != nil {
+		t.Fatalf("SearchLLMModels: %v", err)
+	}
+	if gotLimit != 100 {
+		t.Errorf("limit = %d, want 100 (clamped)", gotLimit)
+	}
+}
+
+func TestSearchEmbeddingModels_PassesEmbeddingType(t *testing.T) {
+	p, repo, defRepo := newProviderWithSearchRepo(t)
+	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{
+		{UseCase: string(UseCaseEmbedding), ModelID: "e1"},
+	}, nil).Maybe()
+
+	var gotType modelconfig.ModelType
+	var gotDefaultIDs []string
+	repo.On("Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			gotType = args.Get(1).(modelconfig.ModelType)
+			gotDefaultIDs = args.Get(3).([]string)
+		}).
+		Return([]modelconfig.ModelEntry{{ID: "e1", Name: "E1", Type: ModelTypeEmbedding}}, int64(1), nil).Once()
+
+	models, _, err := p.SearchEmbeddingModels(context.Background(), "nomic", 20)
+	if err != nil {
+		t.Fatalf("SearchEmbeddingModels: %v", err)
+	}
+	if gotType != ModelTypeEmbedding {
+		t.Errorf("type = %q, want embedding", gotType)
+	}
+	if !stringSetContains(gotDefaultIDs, "e1") {
+		t.Errorf("defaultIDs = %v, want contains e1", gotDefaultIDs)
+	}
+	if len(models) != 1 || models[0].ID != "e1" {
+		t.Errorf("models = %+v, want single e1", models)
+	}
+}
+
+func TestSearchLLMModels_NilRepo(t *testing.T) {
+	p := NewProvider(nil, nil, nil)
+	models, total, err := p.SearchLLMModels(context.Background(), "x", 20)
+	if err != nil {
+		t.Fatalf("SearchLLMModels nil repo should not error, got %v", err)
+	}
+	if len(models) != 0 || total != 0 {
+		t.Errorf("nil repo result = len %d total %d, want 0/0", len(models), total)
+	}
+}
