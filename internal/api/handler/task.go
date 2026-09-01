@@ -195,8 +195,13 @@ func (h *TaskHandler) PauseTask(c *gin.Context) {
 // ResumeTask resumes a paused scheduled task (alias for CreateRun).
 // PUT /api/v1/tasks/:task_id/resume
 func (h *TaskHandler) ResumeTask(c *gin.Context) {
-	c.Request.URL.Path = "/api/v1/tasks/" + c.Param("task_id") + "/run"
-	h.CreateTask(c)
+	taskID := c.Param("task_id")
+	run, err := h.svc.CreateRun(taskID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, run)
 }
 
 // DownloadArtifacts downloads all artifacts for a task run as ZIP.

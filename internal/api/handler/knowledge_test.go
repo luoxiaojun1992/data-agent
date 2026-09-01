@@ -66,6 +66,7 @@ func TestUploadDoc_Success(t *testing.T) {
 		Status:   knowledge.StatusUploaded,
 	}
 
+	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
 	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("gridfs_1", nil)
 	svc.On("CreateDoc", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockDoc, nil)
 
@@ -112,6 +113,7 @@ func TestUploadDoc_GridFSUploadError(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
+	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
 	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("", fmt.Errorf("gridfs full"))
 
 	c, w := newKnowledgeMultipartCtx("large.pdf", "content", map[string]string{
@@ -131,6 +133,7 @@ func TestUploadDoc_CreateDocError(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
+	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
 	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("gridfs_1", nil)
 	svc.On("CreateDoc", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("insert failed"))
 
@@ -152,6 +155,7 @@ func TestUploadDoc_WithSizeBytes(t *testing.T) {
 
 	mockDoc := &knowledge.KnowledgeDoc{ID: "kbdoc_3", UserID: "user-1", Title: "Sized Doc"}
 
+	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
 	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("gridfs_2", nil)
 	svc.On("CreateDoc", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockDoc, nil)
 
@@ -255,10 +259,11 @@ func TestListDocs_Success(t *testing.T) {
 		{ID: "kbdoc_2", Title: "Doc 2", UserID: "user-1"},
 	}
 
-	svc.On("ListDocs", mock.Anything, mock.Anything, mock.Anything).Return(docs, int64(3), nil)
+	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(docs, int64(3), nil)
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.ListDocs(c)
 
 	if w.Code != http.StatusOK {
@@ -270,10 +275,11 @@ func TestListDocs_Error(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListDocs", mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), fmt.Errorf("db error"))
+	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.ListDocs(c)
 
 	if w.Code != http.StatusInternalServerError {
@@ -285,10 +291,11 @@ func TestListDocs_Empty(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListDocs", mock.Anything, mock.Anything, mock.Anything).Return([]*knowledge.KnowledgeDoc{}, int64(0), nil)
+	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*knowledge.KnowledgeDoc{}, int64(0), nil)
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.ListDocs(c)
 
 	if w.Code != http.StatusOK {

@@ -68,6 +68,7 @@ func Search(ctx context.Context, query string, cfg Config) (*SearchResult, error
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var all []ResultItem
+	var errs []string
 
 	// Run both engines concurrently
 	for _, engine := range []struct {
@@ -87,6 +88,9 @@ func Search(ctx context.Context, query string, cfg Config) (*SearchResult, error
 			results, err := engine.fn(ctx, query, engine.key, n)
 			if err != nil {
 				log.Printf("[websearch] %s error: %v", engine.name, err)
+				mu.Lock()
+				errs = append(errs, engine.name+": "+err.Error())
+				mu.Unlock()
 				return
 			}
 			mu.Lock()
@@ -95,7 +99,14 @@ func Search(ctx context.Context, query string, cfg Config) (*SearchResult, error
 		}()
 	}
 	wg.Wait()
-	return &SearchResult{Query: query, Results: all}, nil
+
+	// If every engine failed (no results and at least one error), surface the
+	// error to the caller instead of silently returning an empty result set.
+	res := &SearchResult{Query: query, Results: all}
+	if len(all) == 0 && len(errs) > 0 {
+		res.Error = strings.Join(errs, "; ")
+	}
+	return res, nil
 }
 
 // ---- Bing Web Search API (free tier: 1000 queries/month) ----

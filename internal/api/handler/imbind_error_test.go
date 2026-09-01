@@ -1,17 +1,31 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
 
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 )
+
+// stubRBACAllow patches (*rbacsvc.Service).HasPermission to always grant,
+// so route-level permission checks pass in wiring tests.
+func stubRBACAllow(t *testing.T) *rbacsvc.Service {
+	t.Helper()
+	svc := &rbacsvc.Service{}
+	patches := gomonkey.ApplyMethodFunc(svc, "HasPermission",
+		func(_ context.Context, _ string, _ string) (bool, error) { return true, nil })
+	t.Cleanup(patches.Reset)
+	return svc
+}
 
 // TestRegisterIMBindRoutes_NilSvc verifies that RegisterIMBindRoutes wires
 // GET/PUT /im/bind and that the nil-service 503 path is reachable through the
@@ -23,7 +37,7 @@ func TestRegisterIMBindRoutes_NilSvc(t *testing.T) {
 	h := NewIMBindHandler(nil)
 	rg := r.Group("/api/im/bind")
 	rg.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() })
-	RegisterIMBindRoutes(rg, h, nil)
+	RegisterIMBindRoutes(rg, h, stubRBACAllow(t))
 
 	// GET with nil svc → 503
 	req := httptest.NewRequest("GET", "/api/im/bind", nil)
@@ -62,7 +76,7 @@ func TestRegisterIMBindRoutes_WithService(t *testing.T) {
 	h := NewIMBindHandler(svc)
 	rg := r.Group("/api/im/bind")
 	rg.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() })
-	RegisterIMBindRoutes(rg, h, nil)
+	RegisterIMBindRoutes(rg, h, stubRBACAllow(t))
 
 	// GET with real svc → 200
 	req := httptest.NewRequest("GET", "/api/im/bind", nil)

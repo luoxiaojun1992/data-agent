@@ -1,6 +1,6 @@
 # 前端主题切换 + 蓝白 Light 主题
 
-> **SPEC-076** | Status: 设计中
+> **SPEC-076** | Status: 设计已定稿（2026-09-01）
 
 ## 1. 目标
 
@@ -93,6 +93,17 @@ ThemeToggle 组件 → setTheme('light')
 - 新建 `app/components/ThemeToggle.tsx`：按钮切换 dark/light（图标 + 可选动画）
 - 挂载点：顶栏（`providers.tsx` 中 `main` 顶部的 header 区域，与 `NotificationBell` 同级），或 `Sidebar` 底部
 - `data-testid="theme-toggle"` 供 E2E 断言
+
+### 4.6 既有硬编码色值的变量化收尾（本 spec 范围，重要）
+
+按实施顺序（074 → 075 → 078 → 077 → **076**），076 落地时前端已存在两类**不消费 CSS 变量**的硬编码色值，本 spec 需一并变量化，否则 Light 主题下会显示异常：
+
+| 来源 | 硬编码值 | 变量化建议 |
+|------|---------|-----------|
+| **SPEC-078 统一 UI**（本 spec 前置） | 顶部主按钮渐变 `#5c7cfa→#7c3aed`（白字）、弹窗面板曾用的 `#1a1a2e` 类硬编码 | 提取 `--btn-primary`（及 light 变体）、`--modal-bg`，两套主题各给值 |
+| 历史遗留（各页面 inline style） | 各页内联 `style={{...}}` 中的色值（如分页 active `#5c7cfa`、toast `#34d399`/`#ef4444` 等） | 逐页排查，改为 `var(--*)` 引用（`--accent`、`--success`、`--danger`） |
+
+> 红线：变量化收尾只改「颜色表达方式」，**禁止**改变视觉设计（色值换算为两套主题下的对应值，深色主题视觉保持原样）、**禁止**破坏布局（对齐 SPEC-078 红线）。
 
 ## 5. 可行性分析
 

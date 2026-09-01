@@ -84,7 +84,7 @@ func newTestExecutor(t *testing.T, llm model.LLM) *testExecutor {
 	runs := domaintaskmocks.NewTaskRunService(t)
 	notif := notificationmocks.NewNotificationService(t)
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	exec := NewAgentExecutor(registry, adkSess, runs, notif, cbReg)
+	exec := NewAgentExecutor(registry, adkSess, runs, notif, cbReg, nil)
 
 	patches := gomonkey.NewPatches()
 	t.Cleanup(patches.Reset)
@@ -267,7 +267,7 @@ func TestExecute_NilNotifier(t *testing.T) {
 	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{AppName: "data-agent", SessionService: adkSess})
 	runs := domaintaskmocks.NewTaskRunService(t)
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	exec := NewAgentExecutor(registry, adkSess, runs, nil, cbReg) // nil notifier
+	exec := NewAgentExecutor(registry, adkSess, runs, nil, cbReg, nil) // nil notifier
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
@@ -321,7 +321,7 @@ func TestExecute_NilCircuitBreaker(t *testing.T) {
 	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{AppName: "data-agent", SessionService: adkSess})
 	runs := domaintaskmocks.NewTaskRunService(t)
 	notif := notificationmocks.NewNotificationService(t)
-	exec := NewAgentExecutor(registry, adkSess, runs, notif, nil) // nil cbReg
+	exec := NewAgentExecutor(registry, adkSess, runs, notif, nil, nil) // nil cbReg
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
@@ -377,7 +377,7 @@ func TestExecute_CancelledDuringExecution(t *testing.T) {
 	runs := domaintaskmocks.NewTaskRunService(t)
 	notif := notificationmocks.NewNotificationService(t)
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	exec := NewAgentExecutor(registry, adkSess, runs, notif, cbReg)
+	exec := NewAgentExecutor(registry, adkSess, runs, notif, cbReg, nil)
 
 	patches := gomonkey.NewPatches()
 	t.Cleanup(patches.Reset)

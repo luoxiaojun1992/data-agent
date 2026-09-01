@@ -241,7 +241,11 @@ func (h *ModelConfigHandler) SetDefault(c *gin.Context) {
 			break
 		}
 	}
-	if target != nil && target.Type == modelcfg.ModelTypeEmbedding {
+	if target == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "model not found: " + id})
+		return
+	}
+	if target.Type == modelcfg.ModelTypeEmbedding {
 		if err := h.provider.SetDefaultEmbedding(c.Request.Context(), id); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

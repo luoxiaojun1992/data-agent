@@ -171,6 +171,7 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*Register
 		Username:        req.Username,
 		PasswordHash:    passwordHash,
 		Role:            role,
+		Status:          model.StatusEnabled,
 		PasswordChanged: false,
 	}
 

@@ -15,9 +15,7 @@ import (
 )
 
 // newMocks creates a fresh pair of SysConfigRepository and CacheRepository
-// mocks for a single test case. The SysConfigRepository mock asserts
-// expectations on cleanup; the CacheRepository mock does not (some cache
-// calls are best-effort and should not be strictly asserted).
+// mocks for a single test case.
 func newMocks(t *testing.T) (*repomocks.SysConfigRepository, *repomocks.CacheRepository) {
 	t.Helper()
 	repoMock := repomocks.NewSysConfigRepository(t)
@@ -33,13 +31,12 @@ func TestGet_CacheHit(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	// Cache returns a non-empty value → should NOT touch mongo.
-	cacheMock.On("Get", mock.Anything, "syscfg:model:models").Return("cached-value", nil)
+	cacheMock.On("Get", mock.Anything, "syscfg:models").Return("cached-value", nil)
 
-	cfg, err := dec.Get(context.Background(), "model", "models")
+	cfg, err := dec.Get(context.Background(), "models")
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, "cached-value", cfg.Value)
-	assert.Equal(t, "model", cfg.Namespace)
 	assert.Equal(t, "models", cfg.Key)
 }
 
@@ -48,13 +45,13 @@ func TestGet_CacheMiss_Backfills(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	// Cache miss (empty string) → falls through to mongo → backfills cache.
-	cacheMock.On("Get", mock.Anything, "syscfg:model:models").Return("", nil)
-	repoMock.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{
-		Namespace: "model", Key: "models", Value: "db-value",
+	cacheMock.On("Get", mock.Anything, "syscfg:models").Return("", nil)
+	repoMock.On("Get", mock.Anything, "models").Return(&model.SystemConfig{
+		Key: "models", Value: "db-value",
 	}, nil)
-	cacheMock.On("Set", mock.Anything, "syscfg:model:models", "db-value", 600).Return(nil)
+	cacheMock.On("Set", mock.Anything, "syscfg:models", "db-value", 600).Return(nil)
 
-	cfg, err := dec.Get(context.Background(), "model", "models")
+	cfg, err := dec.Get(context.Background(), "models")
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, "db-value", cfg.Value)
@@ -65,11 +62,11 @@ func TestGet_CacheNil_DegradesToMongo(t *testing.T) {
 	// cache is nil → degrade mode, no cache interaction.
 	dec := NewSysConfigCacheRepo(repoMock, nil, 0)
 
-	repoMock.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{
-		Namespace: "model", Key: "models", Value: "direct-value",
+	repoMock.On("Get", mock.Anything, "models").Return(&model.SystemConfig{
+		Key: "models", Value: "direct-value",
 	}, nil)
 
-	cfg, err := dec.Get(context.Background(), "model", "models")
+	cfg, err := dec.Get(context.Background(), "models")
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, "direct-value", cfg.Value)
@@ -80,13 +77,13 @@ func TestGet_CacheError_FallsThroughToMongo(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	// Cache returns error → should fall through to mongo (degrade on error).
-	cacheMock.On("Get", mock.Anything, "syscfg:model:models").Return("", errors.New("redis down"))
-	repoMock.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{
-		Namespace: "model", Key: "models", Value: "fallback",
+	cacheMock.On("Get", mock.Anything, "syscfg:models").Return("", errors.New("redis down"))
+	repoMock.On("Get", mock.Anything, "models").Return(&model.SystemConfig{
+		Key: "models", Value: "fallback",
 	}, nil)
-	cacheMock.On("Set", mock.Anything, "syscfg:model:models", "fallback", 600).Return(nil)
+	cacheMock.On("Set", mock.Anything, "syscfg:models", "fallback", 600).Return(nil)
 
-	cfg, err := dec.Get(context.Background(), "model", "models")
+	cfg, err := dec.Get(context.Background(), "models")
 	require.NoError(t, err)
 	assert.Equal(t, "fallback", cfg.Value)
 }
@@ -99,9 +96,9 @@ func TestGetAll_CacheHit(t *testing.T) {
 
 	cached := []model.SystemConfig{{Key: "k1", Value: "v1"}, {Key: "k2", Value: "v2"}}
 	data, _ := json.Marshal(cached)
-	cacheMock.On("Get", mock.Anything, "syscfg:ns:model:all").Return(string(data), nil)
+	cacheMock.On("Get", mock.Anything, "syscfg:all").Return(string(data), nil)
 
-	cfgs, err := dec.GetAll(context.Background(), "model")
+	cfgs, err := dec.GetAll(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, cfgs, 2)
 	assert.Equal(t, "v1", cfgs[0].Value)
@@ -112,11 +109,11 @@ func TestGetAll_CacheMiss_Backfills(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	dbCfgs := []model.SystemConfig{{Key: "k", Value: "v"}}
-	cacheMock.On("Get", mock.Anything, "syscfg:ns:model:all").Return("", nil)
-	repoMock.On("GetAll", mock.Anything, "model").Return(dbCfgs, nil)
-	cacheMock.On("Set", mock.Anything, "syscfg:ns:model:all", mock.Anything, 600).Return(nil)
+	cacheMock.On("Get", mock.Anything, "syscfg:all").Return("", nil)
+	repoMock.On("GetAll", mock.Anything).Return(dbCfgs, nil)
+	cacheMock.On("Set", mock.Anything, "syscfg:all", mock.Anything, 600).Return(nil)
 
-	cfgs, err := dec.GetAll(context.Background(), "model")
+	cfgs, err := dec.GetAll(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, cfgs, 1)
 }
@@ -125,11 +122,25 @@ func TestGetAll_CacheNil_DegradesToMongo(t *testing.T) {
 	repoMock, _ := newMocks(t)
 	dec := NewSysConfigCacheRepo(repoMock, nil, 0)
 
-	repoMock.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
+	repoMock.On("GetAll", mock.Anything).Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
 
-	cfgs, err := dec.GetAll(context.Background(), "model")
+	cfgs, err := dec.GetAll(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, cfgs, 1)
+}
+
+func TestGetAll_MalformedCache_FallsThrough(t *testing.T) {
+	repoMock, cacheMock := newMocks(t)
+	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
+
+	cacheMock.On("Get", mock.Anything, "syscfg:all").Return("{not-json", nil)
+	repoMock.On("GetAll", mock.Anything).Return([]model.SystemConfig{{Key: "k", Value: "v"}}, nil)
+	cacheMock.On("Set", mock.Anything, "syscfg:all", mock.Anything, 600).Return(nil)
+
+	cfgs, err := dec.GetAll(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, cfgs, 1)
+	assert.Equal(t, "v", cfgs[0].Value)
 }
 
 // ── Upsert ─────────────────────────────────────────────────────────────
@@ -139,11 +150,11 @@ func TestUpsert_Success_UpdatesCache(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	// DB upsert succeeds → cache.Set (single) + cache.Delete (aggregate).
-	repoMock.On("Upsert", mock.Anything, "model", "models", "new-val").Return(nil)
-	cacheMock.On("Set", mock.Anything, "syscfg:model:models", "new-val", 600).Return(nil)
-	cacheMock.On("Delete", mock.Anything, "syscfg:ns:model:all").Return(nil)
+	repoMock.On("Upsert", mock.Anything, "models", "new-val").Return(nil)
+	cacheMock.On("Set", mock.Anything, "syscfg:models", "new-val", 600).Return(nil)
+	cacheMock.On("Delete", mock.Anything, "syscfg:all").Return(nil)
 
-	err := dec.Upsert(context.Background(), "model", "models", "new-val")
+	err := dec.Upsert(context.Background(), "models", "new-val")
 	require.NoError(t, err)
 }
 
@@ -152,19 +163,21 @@ func TestUpsert_DBError_NoCacheTouch(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	// DB fails → cache must NOT be touched.
-	repoMock.On("Upsert", mock.Anything, "model", "models", "val").Return(errors.New("db down"))
+	repoMock.On("Upsert", mock.Anything, "models", "val").Return(errors.New("db down"))
 
-	err := dec.Upsert(context.Background(), "model", "models", "val")
+	err := dec.Upsert(context.Background(), "models", "val")
 	require.Error(t, err)
+	cacheMock.AssertNotCalled(t, "Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	cacheMock.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
 }
 
 func TestUpsert_CacheNil_PassesThrough(t *testing.T) {
 	repoMock, _ := newMocks(t)
 	dec := NewSysConfigCacheRepo(repoMock, nil, 0)
 
-	repoMock.On("Upsert", mock.Anything, "model", "models", "val").Return(nil)
+	repoMock.On("Upsert", mock.Anything, "models", "val").Return(nil)
 
-	err := dec.Upsert(context.Background(), "model", "models", "val")
+	err := dec.Upsert(context.Background(), "models", "val")
 	require.NoError(t, err)
 }
 
@@ -174,11 +187,11 @@ func TestDelete_Success_InvalidatesCache(t *testing.T) {
 	repoMock, cacheMock := newMocks(t)
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
-	repoMock.On("Delete", mock.Anything, "model", "models").Return(nil)
+	repoMock.On("Delete", mock.Anything, "models").Return(nil)
 	// Both single and aggregate keys are invalidated.
-	cacheMock.On("Delete", mock.Anything, "syscfg:model:models", "syscfg:ns:model:all").Return(nil)
+	cacheMock.On("Delete", mock.Anything, "syscfg:models", "syscfg:all").Return(nil)
 
-	err := dec.Delete(context.Background(), "model", "models")
+	err := dec.Delete(context.Background(), "models")
 	require.NoError(t, err)
 }
 
@@ -186,20 +199,43 @@ func TestDelete_DBError_NoCacheTouch(t *testing.T) {
 	repoMock, cacheMock := newMocks(t)
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
-	repoMock.On("Delete", mock.Anything, "model", "models").Return(errors.New("db down"))
+	repoMock.On("Delete", mock.Anything, "models").Return(errors.New("db down"))
 
-	err := dec.Delete(context.Background(), "model", "models")
+	err := dec.Delete(context.Background(), "models")
 	require.Error(t, err)
+	cacheMock.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestDelete_CacheNil_PassesThrough(t *testing.T) {
 	repoMock, _ := newMocks(t)
 	dec := NewSysConfigCacheRepo(repoMock, nil, 0)
 
-	repoMock.On("Delete", mock.Anything, "model", "models").Return(nil)
+	repoMock.On("Delete", mock.Anything, "models").Return(nil)
 
-	err := dec.Delete(context.Background(), "model", "models")
+	err := dec.Delete(context.Background(), "models")
 	require.NoError(t, err)
+}
+
+// ── List / Count passthrough ────────────────────────────────────────────
+
+func TestList_PassesThrough(t *testing.T) {
+	repoMock, cacheMock := newMocks(t)
+	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
+
+	repoMock.On("List", mock.Anything, int64(0), int64(10)).Return([]model.SystemConfig{{Key: "k"}}, nil)
+	cfgs, err := dec.List(context.Background(), 0, 10)
+	require.NoError(t, err)
+	assert.Len(t, cfgs, 1)
+}
+
+func TestCount_PassesThrough(t *testing.T) {
+	repoMock, cacheMock := newMocks(t)
+	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
+
+	repoMock.On("Count", mock.Anything).Return(int64(3), nil)
+	n, err := dec.Count(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n)
 }
 
 // ── SetCache (deferred injection) ──────────────────────────────────────
@@ -210,19 +246,19 @@ func TestSetCache_InjectsAfterConstruction(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, nil, 0)
 
 	// First call: degrade to mongo (no cache).
-	repoMock.On("Get", mock.Anything, "model", "k").Return(&model.SystemConfig{
-		Namespace: "model", Key: "k", Value: "before-inject",
+	repoMock.On("Get", mock.Anything, "k").Return(&model.SystemConfig{
+		Key: "k", Value: "before-inject",
 	}, nil).Once()
 
-	cfg, err := dec.Get(context.Background(), "model", "k")
+	cfg, err := dec.Get(context.Background(), "k")
 	require.NoError(t, err)
 	assert.Equal(t, "before-inject", cfg.Value)
 
 	// Inject cache → subsequent calls should use it.
 	dec.SetCache(cacheMock)
-	cacheMock.On("Get", mock.Anything, "syscfg:model:k").Return("after-inject", nil)
+	cacheMock.On("Get", mock.Anything, "syscfg:k").Return("after-inject", nil)
 
-	cfg2, err := dec.Get(context.Background(), "model", "k")
+	cfg2, err := dec.Get(context.Background(), "k")
 	require.NoError(t, err)
 	assert.Equal(t, "after-inject", cfg2.Value)
 }

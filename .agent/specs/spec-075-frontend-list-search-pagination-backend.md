@@ -1,6 +1,6 @@
 # 前端列表搜索/分页后端化重构（统一 DB 层筛选分页）
 
-> **SPEC-075** | Status: 设计中
+> **SPEC-075** | Status: 设计已定稿（2026-09-01 过时引用修正：tasks/roles/sysconfig 页面已删除）
 
 ## 1. 目标
 
@@ -10,7 +10,7 @@
 
 | 前置 Spec | 状态 | 备注 |
 |-----------|:---:|------|
-| SPEC-074 可搜索下拉选择器 | ✅ 设计中 | 模型/角色/权限的 `q` 搜索后端能力可复用（尤其模型 `q` 搜索、父角色过滤） |
+| SPEC-074 可搜索下拉选择器 | ✅ 设计已定稿 | 模型/角色/权限的 `q` 搜索后端能力可复用（模型 `q` 搜索、父角色过滤、`exclude_user_id`） |
 | SPEC-062 / 064 / 066 | ✅ | 模型/角色/权限/任务/会话等后端列表接口已存在，仅缺 `q`/过滤参数 |
 | — | — | 无阻塞项 |
 
@@ -22,12 +22,12 @@
 |---|------|------|--------|---------|
 | 1 | 知识库 `/knowledge` | `app/knowledge/page.tsx` | 搜索 `docs.filter(...)`、标签 `filter(tagFilter)`、分页 `ceil(filtered.length/PAGE_SIZE)` 全部前端本地 | 后端 `/knowledge/docs` 加 `q` + `tag` + 分页返回 total |
 | 2 | 模型管理 `/admin/models` | `app/admin/models/page.tsx:369` | `filteredLLM = llmList.filter(matches)`、`filteredEmbedding` 前端本地搜索 | 后端 `/models/list`、`/admin/models/embedding` 加 `q`（复用 SPEC-074） |
-| 3 | 任务管理 `/admin/tasks` | `app/admin/tasks/page.tsx:105` | `tasks.filter(t.status === filter)` 前端状态筛选 | 后端 `/admin/tasks` 加 `status` 过滤 |
+| 3 | ~~任务管理 `/admin/tasks`~~ | 页面已删除（2026-09-01，commit 28b34b3） | ~~`tasks.filter(t.status === filter)`~~ | ✅ 违规随页面删除消除；任务入口 `/agent` 页经 grep 验证无本地 filter/slice/search，无需整改 |
 | 4 | 会话列表 `/chat` | `app/chat/page.tsx:738` | `sessions.filter(s => title/id includes search)` 前端本地搜索 | 后端 `/sessions` 加 `q` 搜索 |
-| 5 | RBAC 角色管理 `/admin/rbac` | `app/admin/rbac/page.tsx:220,247` | 父角色下拉 `roles.filter(level<2 && child_count<10)`、`roles.filter(level===...-1 ...)` 前端过滤 | 后端 `/roles` 加父角色候选过滤参数（复用 SPEC-074） |
+| 5 | RBAC 角色管理 `/admin/rbac` | `app/admin/rbac/page.tsx:220,247` | 父角色下拉 `roles.filter(level<2 && child_count<10)`、`roles.filter(level===...-1 ...)` 前端过滤 | 复用 SPEC-074 5.4 available-parents 改造（`q`/`limit` + level 过滤下沉 DB） |
 | 6 | 角色权限分配 `/admin/rbac/roles/[id]/permissions` | `.../permissions/page.tsx:47` | `allPerms.filter(p => !perms.find(...))` 前端计算可用权限 | 后端提供「已分配/可用」权限查询（`assigned` 参数） |
-| 7 | 用户角色分配 `/admin/users/[id]/rbac-roles` | `.../rbac-roles/page.tsx:36` | `allRoles.filter(r => !roles.find(...))` 前端计算可用角色 | 后端 `/roles` 加 `exclude_assigned_to=<user_id>` 过滤 |
-| 8 | 旧角色管理 `/admin/roles` | `app/admin/roles/page.tsx:78` | `roles.filter(type==='fixed'/'custom')` 前端分组 | ⚠️ 疑似废弃页面（旧 role 体系已删），需确认后删除或后端化 |
+| 7 | 用户角色分配 `/admin/users/[id]/rbac-roles` | `.../rbac-roles/page.tsx:36` | `allRoles.filter(r => !roles.find(...))` 前端计算可用角色 | 复用 SPEC-074 5.7（`/admin/rbac/roles?q&limit&exclude_user_id`，DB `$nin`） |
+| 8 | ~~旧角色管理 `/admin/roles`~~ | 页面已删除（2026-09-01，commit 28b34b3） | ~~前端分组 filter~~ | ✅ 已确认废弃并删除，违规随之消除 |
 
 ### 2.2 合规清单（后端 DB 分页/搜索，无需改，作样板）
 
@@ -38,7 +38,7 @@
 | 用户管理 `/admin/users` | `/users?skip=&limit=&sort=` | ✅ |
 | API 集合 `/admin/api-collections` | `/admin/api-collections?page=&page_size=` | ✅ |
 | Skill `/admin/skills` | `/admin/skills?page=&page_size=` | ✅ |
-| 审计 `/admin/audit`、邀请 `/admin/invites`、系统配置 `/admin/sysconfig` | 后端分页 | ✅ |
+| 审计 `/admin/audit`、邀请 `/admin/invites` | 后端分页 | ✅ |
 
 ## 3. 架构概述
 
@@ -76,11 +76,12 @@ repository（红线）：$match(类型 + q 模糊 + 筛选字段) → $sort → 
 | GET | `/api/v1/knowledge/docs` | `q` + `tag` | 知识库搜索/标签筛选（DB 层 `$match`） |
 | GET | `/api/v1/models/list` | `q` | 模型列表搜索（复用 SPEC-074） |
 | GET | `/api/v1/admin/models/embedding` | `q` | embedding 模型搜索 |
-| GET | `/api/v1/admin/tasks` | `status` | 任务状态筛选 |
 | GET | `/api/v1/sessions` | `q` | 会话搜索（title/id） |
-| GET | `/api/v1/roles` | `parent_candidate_for=<id>` / `max_level` | 父角色候选（复用 SPEC-074） |
+| GET | `/api/v1/admin/rbac/roles/:id/available-parents` | `q` + `limit` | 父角色候选（复用 SPEC-074 5.4 改造） |
 | GET | `/api/v1/admin/rbac/roles/:id/permissions` | `assigned`(bool) | 已分配 vs 可用权限 |
-| GET | `/api/v1/roles` | `exclude_assigned_to=<user_id>` | 用户可选角色 |
+| GET | `/api/v1/admin/rbac/roles` | `exclude_user_id`（+`q`/`limit`） | 用户可选角色（复用 SPEC-074 5.7） |
+
+> path 一律以 `routes.go` 实际注册为准（`/api/v1/admin/rbac/*`），参数命名与 SPEC-074 保持一致（`exclude_user_id`，非 `exclude_assigned_to`）。
 
 ## 5. 详细设计
 
@@ -120,9 +121,9 @@ const res = await apiFetch(`/knowledge/docs?page=${page}&page_size=${PAGE_SIZE}&
 - 分页器 → `setPage` → 重新请求
 - 删除/更新操作后 → 刷新当前页（若删到空页则回退一页）
 
-### 5.3 疑似废弃页面确认
+### 5.3 疑似废弃页面确认（已闭环）
 
-`app/admin/roles/page.tsx`（旧 role 体系）：SPEC-064 已删除旧 role 后端，此页面大概率已不可用。开发前先确认是否仍被路由引用；若已废弃，直接删除页面（连带前端本地 `filter(type)` 一并消除），不纳入后端化改造。
+~~`app/admin/roles/page.tsx`（旧 role 体系）~~：✅ **已确认废弃并删除**（2026-09-01，commit 28b34b3「清理废弃 admin 页面」，与 `/admin/tasks`、`/admin/sysconfig` 一并删除）。前端本地 `filter(type)` 违规随删除消除，无需后端化改造。
 
 ## 6. 可行性分析
 
@@ -148,12 +149,11 @@ const res = await apiFetch(`/knowledge/docs?page=${page}&page_size=${PAGE_SIZE}&
 | `internal/api/handler/*.go` | 各 handler 解析 q/筛选参数 | Small |
 | `frontend/app/knowledge/page.tsx` | 搜索/标签/分页走后端 | Medium |
 | `frontend/app/admin/models/page.tsx` | 搜索走后端 | Small |
-| `frontend/app/admin/tasks/page.tsx` | 状态筛选走后端 | Small |
 | `frontend/app/chat/page.tsx` | 会话搜索走后端 | Small |
 | `frontend/app/admin/rbac/page.tsx` | 父角色下拉走后端 | Small |
 | `frontend/app/admin/rbac/roles/[id]/permissions/page.tsx` | 可用权限走后端 | Small |
-| `frontend/app/admin/users/[id]/rbac-roles/page.tsx` | 可用角色走后端 | Small |
-| `frontend/app/admin/roles/page.tsx` | 疑似废弃，确认后删除 | Delete |
+| `frontend/app/admin/users/[id]/rbac-roles/page.tsx` | 可用角色走后端（复用 SPEC-074 5.7） | Small |
+| ~~`frontend/app/admin/roles/page.tsx`~~ / ~~tasks~~ | ✅ 已删除（2026-09-01） | — |
 
 ## 8. 测试策略
 
@@ -196,8 +196,8 @@ const res = await apiFetch(`/knowledge/docs?page=${page}&page_size=${PAGE_SIZE}&
 
 ## 10. 验证标准
 
-1. 8 处整改页面的搜索/筛选/分页全部走后端 DB 层，前端无 `filter()`/`slice()` 参与最终列表结果。
+1. 6 处整改页面（知识库/模型/会话/RBAC 角色/权限分配/用户角色）的搜索/筛选/分页全部走后端 DB 层，前端无 `filter()`/`slice()` 参与最终列表结果。
 2. 分页 `total` 准确反映后端过滤后的总数。
 3. 搜索词含正则元字符不报错、不误匹配。
 4. 不传 `q`/筛选参数时行为不变（向后兼容）。
-5. 疑似废弃页面（`/admin/roles`）已确认并处理（删除或后端化）。
+5. ✅ 废弃页面已闭环：`/admin/roles`、`/admin/tasks` 已删除（2026-09-01），违规随之消除；任务入口 `/agent` 页验证无本地过滤。

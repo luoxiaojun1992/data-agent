@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domainchatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/modelconfig"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	domaintaskmocks "github.com/luoxiaojun1992/data-agent/internal/domain/task/mocks"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
@@ -242,14 +241,16 @@ func TestCreateAgentTask_ParamsEnrichedWithMessage(t *testing.T) {
 func TestCreateAgentTask_WithProvider(t *testing.T) {
 	sessions := domainchatmocks.NewSessionService(t)
 	tasks := domaintaskmocks.NewTaskService(t)
-	repo := mockrepo.NewSysConfigRepository(t)
-	raw, _ := json.Marshal([]modelcfg.ModelEntry{
-		{ID: "def-model", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
-	})
-	repo.On("Get", mock.Anything, "model", "models").Return(&model.SystemConfig{Value: string(raw)}, nil)
-	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
-	repo.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil).Maybe()
-	provider := modelcfg.NewProvider(repo, nil)
+	repo := mockrepo.NewModelConfigRepository(t)
+	defRepo := mockrepo.NewModelDefaultRepository(t)
+	entry := modelcfg.ModelEntry{ID: "def-model", Name: "Default", Type: modelcfg.ModelTypeLLM}
+	repo.On("List", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]modelcfg.ModelEntry{entry}, int64(1), nil).Maybe()
+	repo.On("Get", mock.Anything, "def-model").Return(&entry, nil).Maybe()
+	defRepo.On("Get", mock.Anything, "chat").
+		Return(&modelconfig.ModelDefault{UseCase: "chat", ModelID: "def-model"}, nil).Maybe()
+	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{}, nil).Maybe()
+	provider := modelcfg.NewProvider(repo, defRepo, nil)
 	orch := NewOrchestrator(sessions, tasks, provider)
 
 	sessions.On("Create", "u1", "agent", "def-model").Return(&domainchat.Session{ID: "s1", UserID: "u1", ModelID: "def-model"}, nil)

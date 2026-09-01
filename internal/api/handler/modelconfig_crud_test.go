@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 
@@ -11,19 +12,73 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
 func newModelTestHandler(t *testing.T, entries []modelcfg.ModelEntry) *ModelConfigHandler {
 	t.Helper()
 	repo := mockrepo.NewModelConfigRepository(t)
-	raw, _ := json.Marshal(entries)
-	cfg := &model.SystemConfig{Key: "models", Value: string(raw)}
-	repo.On("Get", mock.Anything, "models").Maybe().Return(cfg, nil)
-	repo.On("Get", mock.Anything, "api_url").Maybe().Return(nil, nil)
-	repo.On("GetAll", mock.Anything).Maybe().Return([]model.SystemConfig{*cfg}, nil)
-	repo.On("Upsert", mock.Anything, "models", mock.Anything).Maybe().Return(nil)
-	p := modelcfg.NewProvider(repo, mockrepo.NewModelDefaultRepository(t), nil)
+	defRepo := mockrepo.NewModelDefaultRepository(t)
+
+	filterByType := func(typ modelcfg.ModelType) []modelcfg.ModelEntry {
+		if typ == "" {
+			return entries
+		}
+		var out []modelcfg.ModelEntry
+		for _, e := range entries {
+			if e.Type == typ {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+
+	// List(ctx, type, skip, limit) — paginated, filtered by type ("" = all).
+	repo.On("List", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, typ modelcfg.ModelType, skip, limit int64) ([]modelcfg.ModelEntry, int64, error) {
+			all := filterByType(typ)
+			total := int64(len(all))
+			if skip >= total {
+				return []modelcfg.ModelEntry{}, total, nil
+			}
+			end := skip + limit
+			if end > total {
+				end = total
+			}
+			return all[skip:end], total, nil
+		}).Maybe()
+
+	// Get(ctx, id) — resolve by ID.
+	repo.On("Get", mock.Anything, mock.Anything).
+		Return(func(_ context.Context, id string) (*modelcfg.ModelEntry, error) {
+			for i := range entries {
+				if entries[i].ID == id {
+					cp := entries[i]
+					return &cp, nil
+				}
+			}
+			return nil, fmt.Errorf("model %q not found", id)
+		}).Maybe()
+
+	// Insert(ctx, entry) — duplicate ID is rejected (mirrors the _id unique index).
+	repo.On("Insert", mock.Anything, mock.Anything).
+		Return(func(_ context.Context, entry modelcfg.ModelEntry) error {
+			for i := range entries {
+				if entries[i].ID == entry.ID {
+					return fmt.Errorf("duplicate model id %q", entry.ID)
+				}
+			}
+			return nil
+		}).Maybe()
+	repo.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	repo.On("Delete", mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	// model_defaults: empty by default (no defaults set).
+	defRepo.On("List", mock.Anything).Return(nil, nil).Maybe()
+	defRepo.On("Get", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("no default")).Maybe()
+	defRepo.On("Set", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	defRepo.On("Delete", mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	p := modelcfg.NewProvider(repo, defRepo, nil)
 	return NewModelConfigHandler(nil, p)
 }
 
@@ -185,9 +240,6 @@ func TestModelConfig_SetDefault_NoProvider(t *testing.T) {
 		t.Errorf("expected 503, got %d", w.Code)
 	}
 }
-
-// ensure context import used
-var _ = context.Background
 
 func TestModelConfig_Get_RawWithProvider(t *testing.T) {
 	h := newModelTestHandler(t, []modelcfg.ModelEntry{

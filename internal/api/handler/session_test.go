@@ -212,23 +212,29 @@ func TestSessionHandler_MessagesCanonicalTranscript(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Messages) != 5 {
-		t.Fatalf("messages = %d, want 5: %+v", len(body.Messages), body.Messages)
+	if len(body.Messages) != 7 {
+		t.Fatalf("messages = %d, want 7: %+v", len(body.Messages), body.Messages)
 	}
 	if body.Messages[0].Role != "user" || body.Messages[0].Content != "查询销售" {
 		t.Errorf("user message = %+v", body.Messages[0])
 	}
-	if body.Messages[1].Type != "text" || body.Messages[1].Content != "我来查询" {
-		t.Errorf("merged assistant text = %+v", body.Messages[1])
+	if body.Messages[1].Type != "text" || body.Messages[1].Content != "我来" {
+		t.Errorf("assistant text #1 = %+v", body.Messages[1])
 	}
-	if body.Messages[2].Type != "tool_call" || body.Messages[2].Name != "sql_query" {
-		t.Errorf("tool call = %+v", body.Messages[2])
+	if body.Messages[2].Type != "text" || body.Messages[2].Content != "查询" {
+		t.Errorf("assistant text #2 = %+v", body.Messages[2])
 	}
-	if body.Messages[3].Type != "tool_result" || body.Messages[3].Result == nil {
-		t.Errorf("tool result = %+v", body.Messages[3])
+	if body.Messages[3].Type != "tool_call" || body.Messages[3].Name != "sql_query" {
+		t.Errorf("tool call = %+v", body.Messages[3])
 	}
-	if body.Messages[4].Content != "完成" {
-		t.Errorf("final text = %+v", body.Messages[4])
+	if body.Messages[4].Type != "tool_result" || body.Messages[4].Result == nil {
+		t.Errorf("tool result = %+v", body.Messages[4])
+	}
+	if body.Messages[5].Content != "完成" {
+		t.Errorf("final text = %+v", body.Messages[5])
+	}
+	if body.Messages[6].Role != "system" || body.Messages[6].Content != "[compaction] 上下文已自动压缩" {
+		t.Errorf("compaction notice = %+v", body.Messages[6])
 	}
 	if strings.Contains(w.Body.String(), "should not be shown") {
 		t.Error("compaction summary leaked into transcript")

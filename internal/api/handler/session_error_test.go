@@ -1,17 +1,20 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
 
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	chatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // TestSessionHandler_Renew_ServiceError verifies Renew returns 500 when the
@@ -92,6 +95,15 @@ var _ = mock.Anything
 // previously uncovered RegisterSessionRoutes function.
 func TestRegisterSessionRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	// Stub RBAC HasPermission so the RequirePermission guard grants access
+	// in this route-wiring test (nil service would fail closed with 500).
+	rbacSvc := &rbacsvc.Service{}
+	patches := gomonkey.ApplyMethodFunc(rbacSvc, "HasPermission",
+		func(_ context.Context, _ string, _ string) (bool, error) {
+			return true, nil
+		})
+	t.Cleanup(patches.Reset)
+
 	r := gin.New()
 	mgr := chatmocks.NewSessionService(t)
 	mgr.On("ListByUserPaged", "u1", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
@@ -99,7 +111,7 @@ func TestRegisterSessionRoutes(t *testing.T) {
 	h := NewSessionHandler(mgr)
 	api := r.Group("/api/v1/sessions")
 	api.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() })
-	RegisterSessionRoutes(api, h, nil)
+	RegisterSessionRoutes(api, h, rbacSvc)
 
 	// GET /api/v1/sessions → 200 (List)
 	req := httptest.NewRequest("GET", "/api/v1/sessions", nil)

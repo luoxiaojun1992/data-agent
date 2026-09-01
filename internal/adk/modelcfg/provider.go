@@ -664,7 +664,14 @@ func (p *Provider) UpdateModel(ctx context.Context, id string, entry ModelEntry)
 	}
 	entry.ID = id
 	if entry.APIKey == "" || looksLikeVaultPath(entry.APIKey) {
-		entry.APIKey = existing.APIKey // keep existing Vault path
+		// Keep the original persisted value (Vault path, or legacy plaintext).
+		// getModel decrypts the key in memory, so re-read the raw record here —
+		// persisting the decrypted plaintext back to MongoDB would violate the
+		// "API keys live in Vault" invariant.
+		entry.APIKey = existing.APIKey
+		if raw, rawErr := p.modelRepo.Get(ctx, id); rawErr == nil && raw != nil {
+			entry.APIKey = raw.APIKey
+		}
 	} else {
 		if p.vault == nil {
 			return entry, fmt.Errorf("vault client is required to store API keys; ensure VAULT_ADDR/VAULT_TOKEN are configured")

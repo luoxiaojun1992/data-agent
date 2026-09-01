@@ -13,7 +13,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
-	domainmodel "github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/modelconfig"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 	"github.com/stretchr/testify/mock"
@@ -66,7 +66,7 @@ func newTestService(t *testing.T, llm model.LLM) *Service {
 	sessionRepo.On("SetTitle", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
 	mgr := &Manager{repo: sessionRepo, ttl: 1 * time.Hour}
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	svc := NewService(registry, nil, adkSessions, mgr, cbReg)
+	svc := NewService(registry, nil, adkSessions, mgr, cbReg, nil)
 	// Patch GetOrCreate to return the test Runtime (avoids needing a real
 	// Provider with a configured model for unit tests).
 	patches := gomonkey.NewPatches()
@@ -665,21 +665,23 @@ func TestProcess_NewSessionResolvesDefaultModel(t *testing.T) {
 	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{
 		AppName: "data-agent", SessionService: adkSessions,
 	})
-	// Provider with a default model.
-	repo := mockrepo.NewSysConfigRepository(t)
-	raw, _ := json.Marshal([]modelcfg.ModelEntry{
-		{ID: "default-llm", Name: "Default", Type: modelcfg.ModelTypeLLM, IsDefault: true},
-	})
-	repo.On("Get", mock.Anything, "model", "models").Return(&domainmodel.SystemConfig{Value: string(raw)}, nil)
-	repo.On("Get", mock.Anything, "model", "api_url").Maybe().Return(nil, nil)
-	repo.On("GetAll", mock.Anything, "model").Return([]domainmodel.SystemConfig{}, nil).Maybe()
-	provider := modelcfg.NewProvider(repo, nil)
+	// Provider with a default model (model_defaults + model_configs mocks).
+	repo := mockrepo.NewModelConfigRepository(t)
+	defRepo := mockrepo.NewModelDefaultRepository(t)
+	entry := modelcfg.ModelEntry{ID: "default-llm", Name: "Default", Type: modelcfg.ModelTypeLLM}
+	repo.On("List", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]modelcfg.ModelEntry{entry}, int64(1), nil).Maybe()
+	repo.On("Get", mock.Anything, "default-llm").Return(&entry, nil).Maybe()
+	defRepo.On("Get", mock.Anything, "chat").
+		Return(&modelconfig.ModelDefault{UseCase: "chat", ModelID: "default-llm"}, nil).Maybe()
+	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{}, nil).Maybe()
+	provider := modelcfg.NewProvider(repo, defRepo, nil)
 
 	sessionRepo := mockrepo.NewSessionRepository(t)
 	sessionRepo.On("SetTitle", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
 	mgr := &Manager{repo: sessionRepo, ttl: 1 * time.Hour}
 	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
-	svc := NewService(registry, provider, adkSessions, mgr, cbReg)
+	svc := NewService(registry, provider, adkSessions, mgr, cbReg, nil)
 
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()

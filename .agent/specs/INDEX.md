@@ -60,14 +60,14 @@
 | SPEC-044 | 邀请注册系统 — 移除自由注册，改为邀请制 | **P9** | [spec-044-invite-registration.md](spec-044-invite-registration.md) | ✅ 已实现 |
 | SPEC-045 | Go Service 单元测试全覆盖 — 98% 底线，CI 门禁 | **P10** | [spec-045-go-service-ut.md](spec-045-go-service-ut.md) | ✅ 已实现 |
 | SPEC-046 | UI E2E 测试增强与真实集成验证（KB 索引 / 工具调用 / Dashboard 数据） | **P11** | [spec-046-ui-test-integration.md](spec-046-ui-test-integration.md) | ✅ 已实现 |
-| SPEC-047 | 主分支 UI 截图审查与布局修复（9 个 bug） | **P11** | [spec-047-ui-screenshot-bugfix.md](spec-047-ui-screenshot-bugfix.md) | 📐 设计中 |
+| SPEC-047 | 主分支 UI 截图审查与布局修复（9 个 bug） | **P11** | [spec-047-ui-screenshot-bugfix.md](spec-047-ui-screenshot-bugfix.md) | 🗑 已废弃（页面多已重做，2026-09-01） |
 | SPEC-048 | 引擎层迁移 Google ADK — ReAct loop / Session 压缩 / 模型路由 | **P11** | [spec-048-adk-migration.md](spec-048-adk-migration.md) | ✅ 已实现 |
 | SPEC-049 | 统一模型配置与多模型能力体系（提示词/能力描述/token 倍率 + KB embedding 索引） | **P12** | [spec-049-unified-model-config.md](spec-049-unified-model-config.md) | ✅ 已实现 |
 | SPEC-050 | Go 1.26 升级与 adk-go-memory 迁移（含记忆相似度合并） | **P12** | [spec-050-go126-memory-migration.md](spec-050-go126-memory-migration.md) | ✅ 已实现 |
 | SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | **P12** | [spec-051-llm-token-stats-cache.md](spec-051-llm-token-stats-cache.md) | ✅ 已实现 |
-| SPEC-052 | 多模型路由与用途关联（Chat/Task/Embedding/压缩摘要） | **P13** | [spec-052-model-routing.md](spec-052-model-routing.md) | 📐 设计中 |
-| SPEC-053 | 会话存储、记忆压缩与 KB 索引逻辑对齐（Chat/Hermes 双轨） | **P13** | [spec-053-session-memory-kb-alignment.md](spec-053-session-memory-kb-alignment.md) | 📐 设计中 |
-| SPEC-054 | Sysconfig RBAC 权限不足修复（admin 访问也显示 insufficient permissions） | **P13** | [spec-054-sysconfig-rbac-fix.md](spec-054-sysconfig-rbac-fix.md) | 📐 设计中 |
+| SPEC-052 | 多模型路由与用途关联（Chat/Task/Embedding/压缩摘要） | **P13** | [spec-052-model-routing.md](spec-052-model-routing.md) | ✅ 已实现（UseCaseEnhance/Compaction/Intent/Relevance） |
+| SPEC-053 | 会话存储、记忆压缩与 KB 索引逻辑对齐（Chat/Hermes 双轨） | **P13** | [spec-053-session-memory-kb-alignment.md](spec-053-session-memory-kb-alignment.md) | ✅ 已实现（raw_events 双轨 + SPEC-069 重构） |
+| SPEC-054 | Sysconfig RBAC 权限不足修复（admin 访问也显示 insufficient permissions） | **P13** | [spec-054-sysconfig-rbac-fix.md](spec-054-sysconfig-rbac-fix.md) | ✅ 已实现（GET→PermSystemView，2026-09-01） |
 | SPEC-055 | 分层架构重构（Controller→Service→Repository→Infra） | **P14** | [spec-055-layer-refactoring.md](spec-055-layer-refactoring.md) | ✅ 已实现 |
 | SPEC-056 | 分层语义纠正（一）：domain ID 解耦 / service SDK 清理 / middleware 解耦 / IMBind 补全 | **P15** | [spec-056-layer-semantics-correction.md](spec-056-layer-semantics-correction.md) | ✅ 已实现 |
 | SPEC-057 | domain model 全量去 bson tag + infra 转换层全量改造 | **P15** | [spec-057-domain-bson-tag-removal.md](spec-057-domain-bson-tag-removal.md) | ✅ 已实现 |
@@ -76,21 +76,21 @@
 | SPEC-060 | Dashboard trend 接入 + 路径/字段修复 | **P15** | [spec-060-dashboard-trend-integration.md](spec-060-dashboard-trend-integration.md) | ✅ 已实现 |
 | SPEC-061 | 配置统一缓存到 Redis 并支持热更新（Cache-Aside + 消除预加载） | **P15** | [spec-061-config-redis-cache-hotreload.md](spec-061-config-redis-cache-hotreload.md) | ✅ 已实现 |
 | SPEC-062 | 多模型配置与 Session 绑定模型（per-model Runtime 注册表 + 模型选择器） | **P15** | [spec-062-multi-model-session-binding.md](spec-062-multi-model-session-binding.md) | ✅ 已实现 |
-| SPEC-063 | 异步/定时 Agent 任务执行器实现（RFC worker→AgentExecutor→Runtime.Run） | **P15** | [spec-063-async-scheduled-agent-executor.md](spec-063-async-scheduled-agent-executor.md) | 📐 设计中 |
-| SPEC-064 | RBAC 角色权限管理系统（角色层级、权限管控、用户-角色关联、侧边栏权限化） | **P20** | [spec-064-rbac-implementation.md](spec-064-rbac-implementation.md) | 📐 设计中 |
+| SPEC-063 | 异步/定时 Agent 任务执行器实现（RFC worker→AgentExecutor→Runtime.Run） | **P15** | [spec-063-async-scheduled-agent-executor.md](spec-063-async-scheduled-agent-executor.md) | ✅ 已实现（logic/agent/executor.go） |
+| SPEC-064 | RBAC 角色权限管理系统（角色层级、权限管控、用户-角色关联、侧边栏权限化） | **P20** | [spec-064-rbac-implementation.md](spec-064-rbac-implementation.md) | ✅ 已实现（rbac_seed.go 权限矩阵 + RequirePermission） |
 | SPEC-065 | API 注册与 MCP 工具集成（OpenAPI 上传 → 注册外部 API → external_api_search/summary/method/call 工具） | **P20** | [spec-065-api-collection-mcp-tools.md](spec-065-api-collection-mcp-tools.md) | ✅ 已实现 |
-| SPEC-066 | 配置存储拆分（system_configs 去 namespace；模型配置每模型一条文档+DB分页；model_defaults 独立集合；skill 独立集合） | **P15** | [spec-066-config-storage-split.md](spec-066-config-storage-split.md) | 📐 设计中 |
-| SPEC-067 | 用户意图识别与 LLM 输出相关性检查（Guard：intent/relevance use case + Redis 计数重试 + compaction 角色/范围调整） | **P15** | [spec-067-intent-relevance-guard.md](spec-067-intent-relevance-guard.md) | 📐 设计中 |
+| SPEC-066 | 配置存储拆分（system_configs 去 namespace；模型配置每模型一条文档+DB分页；model_defaults 独立集合；skill 独立集合） | **P15** | [spec-066-config-storage-split.md](spec-066-config-storage-split.md) | ✅ 已实现（model_configs/model_defaults 独立集合） |
+| SPEC-067 | 用户意图识别与 LLM 输出相关性检查（Guard：intent/relevance use case + Redis 计数重试 + compaction 角色/范围调整） | **P15** | [spec-067-intent-relevance-guard.md](spec-067-intent-relevance-guard.md) | ✅ 已实现（service/guard + AuditedLLM） |
 | SPEC-068 | 知识库文本 PII 脱敏（Presidio pii-redaction：spacy+纯规则；后端封装 + KB 上传纯文本脱敏落库 + 模型输入/输出审计 + 内置 LLM 审计接入 + 输入 token 校验） | **P15** | [spec-068-pii-redaction.md](spec-068-pii-redaction.md) | ✅ 已实现 |
 | SPEC-069 | compaction 机制缺陷修复 + summary 语义拆分 + raw_events 存储重构（token 估算补全 / tool 链配对保护 / summary 与提示分流 / raw_events 独立 collection） | **P15** | [spec-069-compaction-trigger-fixes.md](spec-069-compaction-trigger-fixes.md) | ✅ 已实现 |
 | SPEC-070 | KB 切片图数据库索引（ArcadeDB）+ 图访问共用组件 + 图谱搜索 Skill（GraphRepository 接口 + knowledge_graph_search tool + seed） | **P15** | [spec-070-kb-graph-index.md](spec-070-kb-graph-index.md) | ✅ 已实现 |
 | SPEC-071 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-071-agent-invoke-subagent.md](spec-071-agent-invoke-subagent.md) | ✅ 已实现 |
 | SPEC-072 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-072-dashboard-stats-mongo-hourly.md](spec-072-dashboard-stats-mongo-hourly.md) | ✅ 已实现 |
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
-| SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | 📐 设计中 |
-| SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计中 |
-| SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计中 |
-| SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计中 |
+| SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | 📐 设计已定稿 |
+| SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计已定稿 |
+| SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计已定稿 |
+| SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计已定稿 |
 | SPEC-078 | 前端列表页 UI 规范统一（分页组件 / 顶部主按钮 / 弹窗玻璃样式） | **P15** | [spec-078-frontend-list-ui-consistency.md](spec-078-frontend-list-ui-consistency.md) | 📐 设计已定稿 |
 
 ## Phase 对应与依赖
@@ -121,10 +121,10 @@
 | **P12** | SPEC-050 | Go 1.26 升级与 adk-go-memory 迁移 | **SPEC-048, SPEC-049** |
 | **P12** | SPEC-051 | LLM 全链路 Token 统计与 Redis 缓存 | SPEC-009, SPEC-010, **SPEC-048, SPEC-049** |
 | **P11** | SPEC-046 | UI E2E 真实集成验证 | **SPEC-048, SPEC-049, SPEC-050, SPEC-051**, SPEC-022, SPEC-028, SPEC-043 |
-| **P11** | SPEC-047 | UI 截图审查与布局修复 | SPEC-017~042, SPEC-046 (联动) |
+| **P11** | SPEC-047 | UI 截图审查与布局修复 | 🗑 已废弃（2026-09-01） |
 | **P13** | SPEC-052 | 多模型路由与用途关联 | SPEC-003, SPEC-025, SPEC-048, SPEC-049 |
 
-> **实施顺序（2026-07-18 晓军确认）**: SPEC-048 → **SPEC-049 → SPEC-050 → SPEC-051** → SPEC-046 → SPEC-047。049/050/051 在 046 之前，因为 046 的 E2E 用例（KB embedding 索引、Mem0、Dashboard 真实数据、token 统计）依赖这三个 spec 的能力就绪。
+> **实施顺序（2026-07-18 晓军确认）**: SPEC-048 → **SPEC-049 → SPEC-050 → SPEC-051** → SPEC-046（已全部完成；原计划中的 SPEC-047 已于 2026-09-01 废弃）。049/050/051 在 046 之前，因为 046 的 E2E 用例（KB embedding 索引、Mem0、Dashboard 真实数据、token 统计）依赖这三个 spec 的能力就绪。
 
 ### 依赖流向（简化）
 
@@ -193,17 +193,17 @@ SPEC-006│               │
     │
     └──────┬──────────┘
            ▼
-[P11] SPEC-047 ─── UI 截图审查与布局修复
-                   (与 SPEC-046 联动，修复后验证布局)
+[P11] SPEC-047 ─── UI 截图审查与布局修复 🗑 已废弃(2026-09-01)
+                   (页面多已重做, 9 个历史 bug 不再有效)
 
-[P13] SPEC-053 ─── 会话存储/记忆压缩/KB 索引逻辑对齐
+[P13] SPEC-053 ─── 会话存储/记忆压缩/KB 索引逻辑对齐 ✅
                    (Chat/Hermes 双轨梳理、删除恢复策略)
 
-[P13] SPEC-052 ─── 多模型路由与用途关联
+[P13] SPEC-052 ─── 多模型路由与用途关联 ✅
                    (UseCase-based routing: chat/compaction/enhance/embedding)
 
-[P13] SPEC-054 ─── Sysconfig RBAC 权限修复
-                   (admin 用户 403 → permission 枚举对齐)
+[P13] SPEC-054 ─── Sysconfig RBAC 权限修复 ✅
+                   (GET→PermSystemView 2026-09-01; admin 用户 403 → permission 枚举对齐)
 
 [P14] SPEC-055 ─── 分层架构重构（Controller→Service→Repository→Infra）
                    (main.go 减至 300 行、UT 无需 MongoDB 连接、接口化)
@@ -232,13 +232,13 @@ SPEC-006│               │
                     依赖 SPEC-061 cache 装饰器就位)
                    │
                    ▼
-[P15] SPEC-063 ─── 异步/定时 Agent 任务执行器实现
+[P15] SPEC-063 ─── 异步/定时 Agent 任务执行器实现 ✅
                    (AgentExecutor 实现 worker.TaskExecutor; 复用 Runtime.RunAndCollect
                     同实时执行范式; 修复 pool.go 三缺陷: DB加载task/回写结果/通知;
                     RFC §16 processTask 映射; 派生user message from Task.Params;
                     依赖 SPEC-062 Registry 按 task.ModelID 选 Runtime)
 
-[P20] SPEC-064 ─── RBAC 角色权限管理系统
+[P20] SPEC-064 ─── RBAC 角色权限管理系统 ✅
                    (角色层级 L0→L1→L2，父角色拥有子角色权限;
                     所有 API/UI 走 RBAC permission 检查;
                     用户关联多个 RBAC 角色(≤10)，权限三步 Go 查询;
@@ -250,14 +250,14 @@ SPEC-006│               │
                     external_api_search/summary/method/call 四工具;
                     审核流 pending/approved/rejected; 依赖 SPEC-064 RBAC 权限)
 
-[P15] SPEC-066 ─── 配置存储拆分
+[P15] SPEC-066 ─── 配置存储拆分 ✅
                    (system_configs 去 namespace 仅存系统配置;
                     skill → skill_configs; 模型配置 → model_configs;
                     SysConfigRepository 接口去 namespace; ModelConfigRepository 落地;
                     迁移脚本幂等 + _bak 备份回滚;
                     依赖 SPEC-061/062 已实现)
 
-[P15] SPEC-067 ─── 用户意图识别与 LLM 输出相关性检查 (Guard)
+[P15] SPEC-067 ─── 用户意图识别与 LLM 输出相关性检查 (Guard) ✅
                    (chat/feishu 意图判断 is_task; chat/feishu/agent task 相关性检查
                     is_relevant; system 事件写 events; Redis 计数有限重试;
                     intent_check/relevance_check 两个 use case;
@@ -317,7 +317,7 @@ SPEC-006│               │
                     替换水平分层 domain/service/logic/infra;
                     依赖 SPEC-066/067/069/071 落地后再展开)
 
-[P15] SPEC-074 ─── 可搜索下拉选择器统一设计 (设计中)
+[P15] SPEC-074 ─── 可搜索下拉选择器统一设计 (设计已定稿)
                    (模型/角色/父角色/权限 4 处下拉统一 q+limit topN;
                     过滤排序截取全下沉 DB 层 $match+$sort+$limit;
                     默认项排最前(模型用 aggregation sortKey);
@@ -330,19 +330,19 @@ SPEC-006│               │
                         全量拉取前端 filter 违规) 5.7;
                     依赖 SPEC-062/064/066 已实现)
 
-[P15] SPEC-075 ─── 前端列表搜索/分页后端化重构 (设计中)
+[P15] SPEC-075 ─── 前端列表搜索/分页后端化重构 (设计已定稿)
                    (排查所有前端列表页的搜索/过滤/分页;
                     前端本地 filter/slice 一律重构为后端 DB 层筛选分页;
                     整改清单: 知识库/模型/任务/会话/RBAC父角色/权限/用户角色 8 处;
                     依赖 SPEC-074(模型q搜索/父角色过滤复用))
 
-[P15] SPEC-076 ─── 前端主题切换 + 蓝白 Light 主题 (设计中)
+[P15] SPEC-076 ─── 前端主题切换 + 蓝白 Light 主题 (设计已定稿)
                    (CSS 变量 + data-theme 两套主题;
                     保留深色为默认, 新增蓝白 Light;
                     ThemeToggle + localStorage 持久化, 默认 dark;
                     inline script 防闪烁; 纯前端无后端改动)
 
-[P15] SPEC-077 ─── Chat 附件支持 PDF (设计中)
+[P15] SPEC-077 ─── Chat 附件支持 PDF (设计已定稿)
                    (复用 lib/pdf.ts parsePdf 解析;
                     解析文字发送时前置到用户输入提示词前, 前端不显示;
                     特殊标签 [PDF:name] 供前端展示卡片;
@@ -359,3 +359,19 @@ SPEC-006│               │
                     红线: 禁止破坏布局/禁改 item 按钮;
                     纯前端, 不改后端/交互逻辑)
 ```
+
+## 待实现 Spec 实施顺序（2026-09-01 晓军确认）
+
+```
+074 → 075 → 078 → 077 → 076 → 073
+```
+
+| 顺序 | Spec | 标题 | 理由 |
+|:---:|------|------|------|
+| 1 | SPEC-074 | 可搜索下拉选择器（含 5.6/5.7 bug 修复） | 含 2 个线上可见 bug（用户管理空下拉 / rbac-roles 弹窗 404+前端 filter 违规）；是 075 的前置 |
+| 2 | SPEC-075 | 前端列表搜索/分页后端化 | 依赖 074 的 q/limit DB 层搜索模式 |
+| 3 | SPEC-078 | 前端列表 UI 规范统一 | 纯前端样式收敛，设计已定稿；075 改造后统一分页组件 |
+| 4 | SPEC-077 | Chat 附件 PDF | 独立小功能，随时可插队 |
+| 5 | SPEC-076 | 前端主题切换 | 纯前端；放 078 后（078 已定稿不考虑多主题，076 落地时对 078 引入的色值做变量化收尾） |
+| 6 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
+| — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |

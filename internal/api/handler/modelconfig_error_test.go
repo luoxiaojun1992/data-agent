@@ -14,7 +14,7 @@ import (
 // underlying config service Upsert call fails.
 func TestModelConfigHandler_Put_ServiceError(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("Upsert", mock.Anything, "model", "key1", "val1").Return(errStr("db down"))
+	svc.On("Upsert", mock.Anything, "key1", "val1").Return(errStr("db down"))
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("PUT", "/models", `{"key":"key1","value":"val1"}`)
 	h.Put(c)
@@ -31,7 +31,7 @@ func TestModelConfigHandler_Put_ServiceError(t *testing.T) {
 // correctly. This exercises the Get happy path with no rows.
 func TestModelConfigHandler_Get_ServiceErrorReturningEmptyList(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("GetAll", mock.Anything, "model").Return([]model.SystemConfig{}, nil)
+	svc.On("GetAll", mock.Anything).Return([]model.SystemConfig{}, nil)
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("GET", "/models", "")
 	h.Get(c)

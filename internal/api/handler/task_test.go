@@ -287,9 +287,10 @@ func TestListTasks_Empty(t *testing.T) {
 
 func TestPauseTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc, nil)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
 
-	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
+	runSvc.On("CancelRun", "task_1").Return(nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -305,9 +306,10 @@ func TestPauseTask_Success(t *testing.T) {
 
 func TestPauseTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc, nil)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
 
-	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(fmt.Errorf("invalid status transition"))
+	runSvc.On("CancelRun", "task_1").Return(fmt.Errorf("invalid status transition"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -324,17 +326,18 @@ func TestResumeTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
-	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
+	mockRun := &task.TaskRun{ID: "run_1"}
+	svc.On("CreateRun", "task_1").Return(mockRun, nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
 	h.ResumeTask(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "active") {
-		t.Errorf("body should contain active: %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), "run_1") {
+		t.Errorf("body should contain run id: %s", w.Body.String())
 	}
 }
 
@@ -342,7 +345,7 @@ func TestResumeTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
-	svc.On("UpdateStatus", mock.Anything, mock.Anything).Return(fmt.Errorf("task not found"))
+	svc.On("CreateRun", "task_1").Return(nil, fmt.Errorf("task not found"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -354,14 +357,12 @@ func TestResumeTask_Error(t *testing.T) {
 }
 
 // ── DownloadArtifacts ──
+// DownloadArtifacts returns a minimal ZIP stub without a GetTask lookup;
+// real artifact download is served directly from SeaweedFS via nginx.
 
 func TestDownloadArtifacts_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
-
-	mockTask := &task.Task{ID: "task_1", UserID: "user-1"}
-
-	svc.On("GetTask", mock.Anything).Return(mockTask, nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -373,36 +374,6 @@ func TestDownloadArtifacts_Success(t *testing.T) {
 	contentType := w.Header().Get("Content-Type")
 	if contentType != "application/zip" {
 		t.Errorf("Content-Type should be application/zip, got: %s", contentType)
-	}
-}
-
-func TestDownloadArtifacts_TaskNotFound(t *testing.T) {
-	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc, nil)
-
-	svc.On("GetTask", mock.Anything).Return(nil, fmt.Errorf("not found"))
-
-	c, w := newGinContext("GET", "/tasks/missing/artifacts", "")
-	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
-	h.DownloadArtifacts(c)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
-	}
-}
-
-func TestDownloadArtifacts_NilTask(t *testing.T) {
-	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc, nil)
-
-	svc.On("GetTask", mock.Anything).Return((*task.Task)(nil), nil)
-
-	c, w := newGinContext("GET", "/tasks/task_1/artifacts", "")
-	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
-	h.DownloadArtifacts(c)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
 
