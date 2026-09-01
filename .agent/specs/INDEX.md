@@ -87,7 +87,7 @@
 | SPEC-071 | agent 调用子 agent（sub agent tool + interface 解耦、能力提示词单独组装、独立 session 父绑定返回即硬删、最终返回同 tool response、model 与主 agent 一致、并行委派） | **P15** | [spec-071-agent-invoke-subagent.md](spec-071-agent-invoke-subagent.md) | ✅ 已实现 |
 | SPEC-072 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-072-dashboard-stats-mongo-hourly.md](spec-072-dashboard-stats-mongo-hourly.md) | ✅ 已实现 |
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
-| SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | 📐 设计已定稿 |
+| SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | ✅ 已实现 |
 | SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计已定稿 |
 | SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计已定稿 |
 | SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计已定稿 |
@@ -317,17 +317,17 @@ SPEC-006│               │
                     替换水平分层 domain/service/logic/infra;
                     依赖 SPEC-066/067/069/071 落地后再展开)
 
-[P15] SPEC-074 ─── 可搜索下拉选择器统一设计 (设计已定稿)
+[P15] SPEC-074 ─── 可搜索下拉选择器统一设计 ✅ 已实现
                    (模型/角色/父角色/权限 4 处下拉统一 q+limit topN;
                     过滤排序截取全下沉 DB 层 $match+$sort+$limit;
-                    默认项排最前(模型用 aggregation sortKey);
+                    默认项排最前(模型用 aggregation $addFields _defaultOrder);
                     禁止内存/前端排序截取;
                     + 用户管理两个角色维度(同一页面, 互不混淆):
                       三级主角色下拉(User.Role 定死枚举 user/admin/system_admin,
                         写死 3 option 不走搜索, 前后端枚举一致) 5.6;
                       RBAC 角色关联下拉(/admin/rbac/roles?q&limit&exclude_user_id
-                        DB 搜索 + $nin 排除已关联; 现状 path 错误 404 +
-                        全量拉取前端 filter 违规) 5.7;
+                        DB 搜索 + $nin 排除已关联) 5.7;
+                    修复: SetSort 多键 map→有序 bson.D;
                     依赖 SPEC-062/064/066 已实现)
 
 [P15] SPEC-075 ─── 前端列表搜索/分页后端化重构 (设计已定稿)
@@ -368,7 +368,7 @@ SPEC-006│               │
 
 | 顺序 | Spec | 标题 | 理由 |
 |:---:|------|------|------|
-| 1 | SPEC-074 | 可搜索下拉选择器（含 5.6/5.7 bug 修复） | 含 2 个线上可见 bug（用户管理空下拉 / rbac-roles 弹窗 404+前端 filter 违规）；是 075 的前置 |
+| 1 | SPEC-074 | ✅ 可搜索下拉选择器（含 5.6/5.7 bug 修复） | 已完成（2026-09-01）；含 2 个线上可见 bug 修复（用户管理空下拉 / rbac-roles 弹窗 404+前端 filter 违规）；是 075 的前置 |
 | 2 | SPEC-075 | 前端列表搜索/分页后端化 | 依赖 074 的 q/limit DB 层搜索模式 |
 | 3 | SPEC-078 | 前端列表 UI 规范统一 | 纯前端样式收敛，设计已定稿；075 改造后统一分页组件 |
 | 4 | SPEC-077 | Chat 附件 PDF | 独立小功能，随时可插队 |
