@@ -186,9 +186,9 @@ func (_m *KnowledgeService) ListDocs(userID string, page int, pageSize int) ([]*
 	return r0, r1, r2
 }
 
-// ListDocsByVisibility provides a mock function with given fields: userID, isSystemAdmin, page, pageSize
-func (_m *KnowledgeService) ListDocsByVisibility(userID string, isSystemAdmin bool, page int, pageSize int) ([]*domainknowledge.KnowledgeDoc, int64, error) {
-	ret := _m.Called(userID, isSystemAdmin, page, pageSize)
+// ListDocsByVisibility provides a mock function with given fields: userID, isSystemAdmin, q, page, pageSize
+func (_m *KnowledgeService) ListDocsByVisibility(userID string, isSystemAdmin bool, q string, page int, pageSize int) ([]*domainknowledge.KnowledgeDoc, int64, error) {
+	ret := _m.Called(userID, isSystemAdmin, q, page, pageSize)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListDocsByVisibility")
@@ -197,25 +197,25 @@ func (_m *KnowledgeService) ListDocsByVisibility(userID string, isSystemAdmin bo
 	var r0 []*domainknowledge.KnowledgeDoc
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(string, bool, int, int) ([]*domainknowledge.KnowledgeDoc, int64, error)); ok {
-		return rf(userID, isSystemAdmin, page, pageSize)
+	if rf, ok := ret.Get(0).(func(string, bool, string, int, int) ([]*domainknowledge.KnowledgeDoc, int64, error)); ok {
+		return rf(userID, isSystemAdmin, q, page, pageSize)
 	}
-	if rf, ok := ret.Get(0).(func(string, bool, int, int) []*domainknowledge.KnowledgeDoc); ok {
-		r0 = rf(userID, isSystemAdmin, page, pageSize)
+	if rf, ok := ret.Get(0).(func(string, bool, string, int, int) []*domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(userID, isSystemAdmin, q, page, pageSize)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*domainknowledge.KnowledgeDoc)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, bool, int, int) int64); ok {
-		r1 = rf(userID, isSystemAdmin, page, pageSize)
+	if rf, ok := ret.Get(1).(func(string, bool, string, int, int) int64); ok {
+		r1 = rf(userID, isSystemAdmin, q, page, pageSize)
 	} else {
 		r1 = ret.Get(1).(int64)
 	}
 
-	if rf, ok := ret.Get(2).(func(string, bool, int, int) error); ok {
-		r2 = rf(userID, isSystemAdmin, page, pageSize)
+	if rf, ok := ret.Get(2).(func(string, bool, string, int, int) error); ok {
+		r2 = rf(userID, isSystemAdmin, q, page, pageSize)
 	} else {
 		r2 = ret.Error(2)
 	}

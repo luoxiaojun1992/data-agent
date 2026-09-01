@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
@@ -54,8 +55,16 @@ func (r *SessionRepository) ListByUser(ctx context.Context, userID string) ([]*r
 }
 
 // ListByUserPaged returns paginated sessions sorted by updated_at DESC.
-func (r *SessionRepository) ListByUserPaged(ctx context.Context, userID string, skip, limit int64) ([]*repository.SessionRecord, int64, error) {
+// q filters by title/_id (case-insensitive $regex, quote-meta escaped).
+func (r *SessionRepository) ListByUserPaged(ctx context.Context, userID string, q string, skip, limit int64) ([]*repository.SessionRecord, int64, error) {
 	filter := bson.M{"user_id": userID, "deleted_at": bson.M{"$exists": false}}
+	if q != "" {
+		qre := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
+		filter["$or"] = []bson.M{
+			{"title": qre},
+			{"_id": qre},
+		}
+	}
 	total, _ := r.coll.CountDocuments(ctx, filter)
 	opts := options.Find().
 		SetSort(bson.D{{Key: "updated_at", Value: -1}}).

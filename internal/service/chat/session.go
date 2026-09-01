@@ -143,7 +143,8 @@ func (m *Manager) ListByUser(userID string) ([]*domainchat.Session, error) {
 }
 
 // ListByUserPaged returns paginated sessions sorted by created_at DESC.
-func (m *Manager) ListByUserPaged(userID string, page, pageSize int) ([]*domainchat.Session, int64, error) {
+// q filters by title/id at the DB layer (SPEC-075); empty = no filter.
+func (m *Manager) ListByUserPaged(userID string, q string, page, pageSize int) ([]*domainchat.Session, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -151,7 +152,7 @@ func (m *Manager) ListByUserPaged(userID string, page, pageSize int) ([]*domainc
 		pageSize = 20
 	}
 	skip := int64((page - 1) * pageSize)
-	recs, total, err := m.repo.ListByUserPaged(context.Background(), userID, skip, int64(pageSize))
+	recs, total, err := m.repo.ListByUserPaged(context.Background(), userID, q, skip, int64(pageSize))
 	if err != nil {
 		return nil, 0, err
 	}

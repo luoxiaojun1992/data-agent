@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"regexp"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
@@ -193,16 +194,30 @@ func (r *KBRepository) UpdateChunkVisibility(ctx context.Context, docID string, 
 
 // ListDocsByVisibility returns docs visible to the current user.
 // System admin: all docs. Regular user: own docs + public docs.
-func (r *KBRepository) ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
-	var filter bson.M
+// q filters by title/file_name (case-insensitive $regex, quote-meta escaped).
+func (r *KBRepository) ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, q string, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
+	var visibility bson.M
 	if isSystemAdmin {
-		filter = bson.M{}
+		visibility = bson.M{}
 	} else {
-		filter = bson.M{
+		visibility = bson.M{
 			"$or": []bson.M{
 				{"user_id": userID},
 				{"is_public": true},
 			},
+		}
+	}
+	filter := visibility
+	if q != "" {
+		qre := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
+		qFilter := bson.M{"$or": []bson.M{
+			{"title": qre},
+			{"file_name": qre},
+		}}
+		if len(visibility) == 0 {
+			filter = qFilter
+		} else {
+			filter = bson.M{"$and": []bson.M{visibility, qFilter}}
 		}
 	}
 	total, _ := r.db.Collection("knowledge_docs").CountDocuments(ctx, filter)

@@ -183,7 +183,8 @@ func (s *Service) ListDocs(userID string, page, pageSize int) ([]*knowledge.Know
 }
 
 // ListDocsByVisibility returns docs visible to the user based on role.
-func (s *Service) ListDocsByVisibility(userID string, isSystemAdmin bool, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error) {
+// q filters by title/file_name at the DB layer (SPEC-075); empty = no filter.
+func (s *Service) ListDocsByVisibility(userID string, isSystemAdmin bool, q string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -191,7 +192,7 @@ func (s *Service) ListDocsByVisibility(userID string, isSystemAdmin bool, page, 
 		pageSize = 20
 	}
 	skip := int64((page - 1) * pageSize)
-	return s.kb.ListDocsByVisibility(context.Background(), userID, isSystemAdmin, skip, int64(pageSize))
+	return s.kb.ListDocsByVisibility(context.Background(), userID, isSystemAdmin, q, skip, int64(pageSize))
 }
 
 // ListAllDocs returns paginated docs globally (admin).

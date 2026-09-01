@@ -43,6 +43,7 @@ func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler, rbacSvc *rbac
 
 func (h *SessionHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
+	q := c.Query("q")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "15"))
 	if page < 1 {
@@ -51,7 +52,7 @@ func (h *SessionHandler) List(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 15
 	}
-	sessions, total, err := h.mgr.ListByUserPaged(userID, page, pageSize)
+	sessions, total, err := h.mgr.ListByUserPaged(userID, q, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

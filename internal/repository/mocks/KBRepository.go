@@ -249,9 +249,9 @@ func (_m *KBRepository) ListDocs(ctx context.Context, userID string, skip int64,
 	return r0, r1, r2
 }
 
-// ListDocsByVisibility provides a mock function with given fields: ctx, userID, isSystemAdmin, skip, limit
-func (_m *KBRepository) ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, skip int64, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
-	ret := _m.Called(ctx, userID, isSystemAdmin, skip, limit)
+// ListDocsByVisibility provides a mock function with given fields: ctx, userID, isSystemAdmin, q, skip, limit
+func (_m *KBRepository) ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, q string, skip int64, limit int64) ([]*knowledge.KnowledgeDoc, int64, error) {
+	ret := _m.Called(ctx, userID, isSystemAdmin, q, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListDocsByVisibility")
@@ -260,25 +260,25 @@ func (_m *KBRepository) ListDocsByVisibility(ctx context.Context, userID string,
 	var r0 []*knowledge.KnowledgeDoc
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, bool, int64, int64) ([]*knowledge.KnowledgeDoc, int64, error)); ok {
-		return rf(ctx, userID, isSystemAdmin, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool, string, int64, int64) ([]*knowledge.KnowledgeDoc, int64, error)); ok {
+		return rf(ctx, userID, isSystemAdmin, q, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, bool, int64, int64) []*knowledge.KnowledgeDoc); ok {
-		r0 = rf(ctx, userID, isSystemAdmin, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool, string, int64, int64) []*knowledge.KnowledgeDoc); ok {
+		r0 = rf(ctx, userID, isSystemAdmin, q, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*knowledge.KnowledgeDoc)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, bool, int64, int64) int64); ok {
-		r1 = rf(ctx, userID, isSystemAdmin, skip, limit)
+	if rf, ok := ret.Get(1).(func(context.Context, string, bool, string, int64, int64) int64); ok {
+		r1 = rf(ctx, userID, isSystemAdmin, q, skip, limit)
 	} else {
 		r1 = ret.Get(1).(int64)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, string, bool, int64, int64) error); ok {
-		r2 = rf(ctx, userID, isSystemAdmin, skip, limit)
+	if rf, ok := ret.Get(2).(func(context.Context, string, bool, string, int64, int64) error); ok {
+		r2 = rf(ctx, userID, isSystemAdmin, q, skip, limit)
 	} else {
 		r2 = ret.Error(2)
 	}

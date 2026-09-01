@@ -88,7 +88,7 @@
 | SPEC-072 | Dashboard 统计重构（MongoDB 小时粒度计数 + 统一统计组件：全局统计、stats_hourly 每小时一条、日/周/月/年聚合、token/LLM调用/API调用/产出物/task run/ROI） | **P15** | [spec-072-dashboard-stats-mongo-hourly.md](spec-072-dashboard-stats-mongo-hourly.md) | ✅ 已实现 |
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
 | SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | ✅ 已实现 |
-| SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | 📐 设计已定稿 |
+| SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | ✅ 已实现 |
 | SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计已定稿 |
 | SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计已定稿 |
 | SPEC-078 | 前端列表页 UI 规范统一（分页组件 / 顶部主按钮 / 弹窗玻璃样式） | **P15** | [spec-078-frontend-list-ui-consistency.md](spec-078-frontend-list-ui-consistency.md) | 📐 设计已定稿 |
@@ -330,10 +330,13 @@ SPEC-006│               │
                     修复: SetSort 多键 map→有序 bson.D;
                     依赖 SPEC-062/064/066 已实现)
 
-[P15] SPEC-075 ─── 前端列表搜索/分页后端化重构 (设计已定稿)
+[P15] SPEC-075 ─── 前端列表搜索/分页后端化重构 ✅ 已实现
                    (排查所有前端列表页的搜索/过滤/分页;
                     前端本地 filter/slice 一律重构为后端 DB 层筛选分页;
-                    整改清单: 知识库/模型/任务/会话/RBAC父角色/权限/用户角色 8 处;
+                    整改清单: 知识库/模型/会话 3 处后端化 + RBAC父角色/权限/用户角色 4 处
+                    SPEC-074 已完成后端化; tasks/roles 页面已删除消除;
+                    知识库/会话新增 q 参数 $regex+QuoteMeta DB 层过滤;
+                    模型搜索复用 SPEC-074 q 走 Search 模式;
                     依赖 SPEC-074(模型q搜索/父角色过滤复用))
 
 [P15] SPEC-076 ─── 前端主题切换 + 蓝白 Light 主题 (设计已定稿)
@@ -369,7 +372,7 @@ SPEC-006│               │
 | 顺序 | Spec | 标题 | 理由 |
 |:---:|------|------|------|
 | 1 | SPEC-074 | ✅ 可搜索下拉选择器（含 5.6/5.7 bug 修复） | 已完成（2026-09-01）；含 2 个线上可见 bug 修复（用户管理空下拉 / rbac-roles 弹窗 404+前端 filter 违规）；是 075 的前置 |
-| 2 | SPEC-075 | 前端列表搜索/分页后端化 | 依赖 074 的 q/limit DB 层搜索模式 |
+| 2 | SPEC-075 | ✅ 前端列表搜索/分页后端化 | 依赖 074 的 q/limit DB 层搜索模式；已完成（2026-09-01）：知识库/会话新增 q 后端过滤 + 模型搜索复用 074 |
 | 3 | SPEC-078 | 前端列表 UI 规范统一 | 纯前端样式收敛，设计已定稿；075 改造后统一分页组件 |
 | 4 | SPEC-077 | Chat 附件 PDF | 独立小功能，随时可插队 |
 | 5 | SPEC-076 | 前端主题切换 | 纯前端；放 078 后（078 已定稿不考虑多主题，076 落地时对 078 引入的色值做变量化收尾） |

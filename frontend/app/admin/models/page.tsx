@@ -78,6 +78,7 @@ export default function ModelsPage() {
   const [showEditKey, setShowEditKey] = useState(false);
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set()); // model ids whose key is visible in list
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Hermes config state (独立卡片)
@@ -96,8 +97,15 @@ export default function ModelsPage() {
 
   const fetchLLMList = useCallback(async () => {
     try {
-      const size = search ? 100 : PAGE;
-      const res = await apiFetch(`/models/list?page=${llmPage}&page_size=${size}`);
+      const params = new URLSearchParams();
+      if (debouncedSearch) {
+        params.set('q', debouncedSearch);
+        params.set('limit', '100');
+      } else {
+        params.set('page', String(llmPage));
+        params.set('page_size', String(PAGE));
+      }
+      const res = await apiFetch(`/models/list?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setLLMList(data.models || []);
@@ -106,12 +114,19 @@ export default function ModelsPage() {
     } catch (err) {
       console.error('fetchLLMList:', err);
     }
-  }, [apiFetch, llmPage, search]);
+  }, [apiFetch, llmPage, debouncedSearch]);
 
   const fetchEmbeddingList = useCallback(async () => {
     try {
-      const size = search ? 100 : PAGE;
-      const res = await apiFetch(`/admin/models/embedding?page=${embeddingPage}&page_size=${size}`);
+      const params = new URLSearchParams();
+      if (debouncedSearch) {
+        params.set('q', debouncedSearch);
+        params.set('limit', '100');
+      } else {
+        params.set('page', String(embeddingPage));
+        params.set('page_size', String(PAGE));
+      }
+      const res = await apiFetch(`/admin/models/embedding?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setEmbeddingList(data.models || []);
@@ -120,7 +135,17 @@ export default function ModelsPage() {
     } catch (err) {
       console.error('fetchEmbeddingList:', err);
     }
-  }, [apiFetch, embeddingPage, search]);
+  }, [apiFetch, embeddingPage, debouncedSearch]);
+
+  // 搜索防抖（SPEC-075：后端化）。
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setLLMPage(1);
+      setEmbeddingPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchHermesConfig = useCallback(async () => {
     try {
@@ -362,13 +387,6 @@ export default function ModelsPage() {
     } catch (e: any) { showToast(e?.message || '保存失败', 'error'); }
   };
 
-  const matches = (m: ModelEntry) =>
-    !search ||
-    m.name?.toLowerCase().includes(search.toLowerCase()) ||
-    m.id?.toLowerCase().includes(search.toLowerCase());
-  const filteredLLM = llmList.filter(matches);
-  const filteredEmbedding = embeddingList.filter(matches);
-
   return (
     <AppLayout>
       <div className="animate-fade-in">
@@ -417,12 +435,12 @@ export default function ModelsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredLLM.length === 0 && (
+                {llmList.length === 0 && (
                   <tr><td colSpan={8} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }} data-testid="model-list-empty">
                     暂无模型 — 点击右上角「+ 新增模型」创建
                   </td></tr>
                 )}
-                {filteredLLM.map((m, i) => {
+                {llmList.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
                   const isRevealed = revealedKeys.has(rowId);
@@ -521,10 +539,10 @@ export default function ModelsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredEmbedding.length === 0 && (
+                {embeddingList.length === 0 && (
                   <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }} data-testid="embedding-list-empty">暂无 embedding 模型 — 新增模型时选 Embedding 类型</td></tr>
                 )}
-                {filteredEmbedding.map((m, i) => {
+                {embeddingList.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
                   const isRevealed = revealedKeys.has(rowId);

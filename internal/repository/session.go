@@ -13,7 +13,9 @@ type SessionRepository interface {
 	Get(ctx context.Context, id string) (*SessionRecord, error)
 	Renew(ctx context.Context, id string, newExpiry time.Time) error
 	ListByUser(ctx context.Context, userID string) ([]*SessionRecord, error)
-	ListByUserPaged(ctx context.Context, userID string, skip, limit int64) ([]*SessionRecord, int64, error)
+	// ListByUserPaged returns paginated sessions. q filters by title/_id
+	// (DB-layer $regex), empty = no keyword filter (SPEC-075).
+	ListByUserPaged(ctx context.Context, userID string, q string, skip, limit int64) ([]*SessionRecord, int64, error)
 	Cleanup(ctx context.Context, before time.Time) (int64, error)
 	Delete(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error

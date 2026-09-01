@@ -139,6 +139,7 @@ export default function ChatPage() {
   const PAGE_SIZE = 15;
   const [showSessions, setShowSessions] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
+  const [debouncedSessionSearch, setDebouncedSessionSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
   const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -203,16 +204,27 @@ export default function ChatPage() {
   const fetchSessions = useCallback(async () => {
     if (!auth.token) return;
     try {
-      const res = await apiFetch(`/sessions?page=${sessionsPage}&page_size=${PAGE_SIZE}`);
+      const params = new URLSearchParams({ page: String(sessionsPage), page_size: String(PAGE_SIZE) });
+      if (debouncedSessionSearch) params.set('q', debouncedSessionSearch);
+      const res = await apiFetch(`/sessions?${params.toString()}`);
       const data = await res.json();
       setSessions(data.sessions || []);
       setSessionsTotal(data.total || 0);
     } catch { /* ignore */ }
-  }, [sessionsPage, auth.token]);
+  }, [sessionsPage, debouncedSessionSearch, auth.token]);
+
+  // 会话搜索防抖（SPEC-075：后端化）。
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSessionSearch(sessionSearch);
+      setSessionsPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [sessionSearch]);
 
   useEffect(() => {
     if (showSessions) fetchSessions();
-  }, [showSessions, sessionsPage]);
+  }, [showSessions, sessionsPage, debouncedSessionSearch, fetchSessions]);
 
   // Reload session artifacts whenever the active session changes.
   useEffect(() => {
@@ -735,7 +747,7 @@ export default function ChatPage() {
                   ))}
                 </div>
               )}
-              {sessions.filter(s => !sessionSearch || (s.title || s.id).toLowerCase().includes(sessionSearch.toLowerCase())).map(s => (
+              {sessions.map(s => (
                   <button key={s.id} onClick={() => selectSession(s.id)}
                     className={`w-full text-left px-2 py-1.5 text-xs hover:bg-white/5 rounded transition-colors ${s.id === sessionId ? 'bg-[var(--accent)]/10' : ''}`}
                     data-testid={`session-item-${s.id}`}>

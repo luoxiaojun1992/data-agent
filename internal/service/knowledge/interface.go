@@ -15,7 +15,7 @@ type KnowledgeService interface {
 	GetDoc(id string) (*knowledge.KnowledgeDoc, error)
 	DeleteDoc(id string) error
 	ListDocs(userID string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
-	ListDocsByVisibility(userID string, isSystemAdmin bool, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
+	ListDocsByVisibility(userID string, isSystemAdmin bool, q string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
 	ListAllDocs(page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
 	AddChunks(docID string, texts []string) error
 	Search(userID, query string, topK int, isSystemAdmin bool) ([]knowledge.SearchResult, error)

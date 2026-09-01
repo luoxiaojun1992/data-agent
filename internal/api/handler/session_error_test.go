@@ -106,7 +106,7 @@ func TestRegisterSessionRoutes(t *testing.T) {
 
 	r := gin.New()
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("ListByUserPaged", "u1", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
+	mgr.On("ListByUserPaged", "u1", "", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
 	mgr.On("Create", "u1", "chat", "").Return(&domainchat.Session{ID: "s2", ExpiresAt: time.Now().Add(time.Hour)}, nil)
 	h := NewSessionHandler(mgr)
 	api := r.Group("/api/v1/sessions")

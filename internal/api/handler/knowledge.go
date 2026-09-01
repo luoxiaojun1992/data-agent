@@ -138,12 +138,14 @@ func (h *KnowledgeHandler) DeleteDoc(c *gin.Context) {
 
 // ListDocs lists documents visible to the current user.
 // System admin: all docs. Regular user: own docs + public docs.
+// q filters by title/file_name at the DB layer (SPEC-075).
 func (h *KnowledgeHandler) ListDocs(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	role, _ := c.Get("role")
+	q := c.Query("q")
 	page, pageSize := parsePage(c)
 	isSystemAdmin := role == "system_admin"
-	docs, total, err := h.svc.ListDocsByVisibility(userID.(string), isSystemAdmin, page, pageSize)
+	docs, total, err := h.svc.ListDocsByVisibility(userID.(string), isSystemAdmin, q, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

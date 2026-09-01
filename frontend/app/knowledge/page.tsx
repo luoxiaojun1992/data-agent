@@ -27,8 +27,8 @@ export default function KnowledgePage() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [tagFilter, setTagFilter] = useState('');
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -45,31 +45,31 @@ export default function KnowledgePage() {
 
   const fetchDocs = useCallback(async () => {
     try {
-      const res = await apiFetch(`/knowledge/docs?page=${page}&page_size=${PAGE_SIZE}`);
+      const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
+      if (debouncedSearch) params.set('q', debouncedSearch);
+      const res = await apiFetch(`/knowledge/docs?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setDocs(data.docs || []);
         setTotal(data.total || 0);
       }
     } catch { /* ignore */ }
-  }, [apiFetch, page]);
+  }, [apiFetch, page, debouncedSearch]);
+
+  // 搜索防抖：输入停止 300ms 后再发起后端 q 过滤（SPEC-075：后端化）。
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     if (auth.hydrated) fetchDocs();
   }, [auth.hydrated, fetchDocs]);
 
-  const filtered = docs
-    .filter((d) => {
-      if (search) {
-        const q = search.toLowerCase();
-        return (d.title || '').toLowerCase().includes(q) || (d.file_name || '').toLowerCase().includes(q);
-      }
-      return true;
-    })
-    .filter((d) => (tagFilter ? (d.tags || []).includes(tagFilter) : true));
-
-  const totalPages = Math.max(1, Math.ceil((search || tagFilter ? filtered.length : total) / PAGE_SIZE));
-  const paged = (search || tagFilter) ? filtered : docs;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // 上传一个 txt 文档（multipart）
   const uploadTxtDoc = async (title: string, fileName: string, content: string) => {
@@ -196,8 +196,6 @@ export default function KnowledgePage() {
     }
   };
 
-  const allTags = Array.from(new Set(docs.flatMap((d) => d.tags || [])));
-
   return (
     <AppLayout>
       <div className="animate-fade-in" data-testid="kb-page-header">
@@ -278,24 +276,9 @@ export default function KnowledgePage() {
           accept=".txt,.pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
           style={{ display: 'none' }} onChange={handleFileSelect} />
 
-        {/* Tag Filter */}
-        {allTags.length > 0 && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            {allTags.map((tag) => (
-              <button key={tag} data-testid={`kb-tag-filter-${tag}`}
-                onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
-                style={{ padding: '4px 14px', borderRadius: '20px', cursor: 'pointer', fontSize: '12px',
-                  background: tagFilter === tag ? 'var(--accent)' : 'rgba(255,255,255,0.06)',
-                  color: tagFilter === tag ? '#fff' : '#7A7A7A', border: 'none' }}>
-                {tag}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Document Cards */}
         <div data-testid="kb-search-results">
-          {paged.map((doc) => (
+          {docs.map((doc) => (
             <div key={doc.id} data-testid={`kb-doc-card-${doc.id}`} className="glass"
               style={{ padding: '20px 24px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '10px',
@@ -341,7 +324,7 @@ export default function KnowledgePage() {
               </button>
             </div>
           ))}
-          {paged.length === 0 && (
+          {docs.length === 0 && (
             <div className="glass p-12 text-center">
               <p className="text-sm text-[var(--text-secondary)]">暂无文档，点击「+ 上传文档」开始</p>
             </div>
@@ -354,7 +337,7 @@ export default function KnowledgePage() {
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
               style={pageBtnStyle}>上一页</button>
             <span style={{ padding: '8px 12px', fontSize: '13px', color: '#7A7A7A' }}>
-              {page} / {totalPages}（共 {search || tagFilter ? filtered.length : total} 条）
+              {page} / {totalPages}（共 {total} 条）
             </span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
               style={pageBtnStyle}>下一页</button>

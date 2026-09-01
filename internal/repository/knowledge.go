@@ -16,8 +16,9 @@ type KBRepository interface {
 	DeleteDoc(ctx context.Context, id string) error
 	ListDocs(ctx context.Context, userID string, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
 	// ListDocsByVisibility returns docs visible to the user: own docs + public docs for
-	// regular users; all docs for system admins.
-	ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
+	// regular users; all docs for system admins. q filters by title/file_name
+	// (DB-layer $regex), empty = no keyword filter (SPEC-075).
+	ListDocsByVisibility(ctx context.Context, userID string, isSystemAdmin bool, q string, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
 	ListAllDocs(ctx context.Context, skip, limit int64) ([]*knowledge.KnowledgeDoc, int64, error)
 	UpdateDocStatus(ctx context.Context, id string, status knowledge.DocStatus, chunkCount, progressPercent int) error
 	SetPublicFlag(ctx context.Context, id string, isPublic bool) error

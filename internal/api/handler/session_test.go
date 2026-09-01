@@ -29,7 +29,7 @@ func newSessionGin(method, path string) (*gin.Context, *httptest.ResponseRecorde
 
 func TestSessionHandler_List(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("ListByUserPaged", "u1", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
+	mgr.On("ListByUserPaged", "u1", "", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("GET", "/sessions")
 	c.Set("user_id", "u1")
@@ -42,6 +42,19 @@ func TestSessionHandler_List(t *testing.T) {
 	sessions, _ := resp["sessions"].([]any)
 	if len(sessions) != 1 {
 		t.Errorf("sessions = %v", sessions)
+	}
+}
+
+func TestSessionHandler_List_WithQ(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	// q 应原样透传到 service 层（SPEC-075：DB 层过滤）
+	mgr.On("ListByUserPaged", "u1", "销售", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("GET", "/sessions?q=%E9%94%80%E5%94%AE")
+	c.Set("user_id", "u1")
+	h.List(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
 

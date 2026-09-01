@@ -259,7 +259,7 @@ func TestListDocs_Success(t *testing.T) {
 		{ID: "kbdoc_2", Title: "Doc 2", UserID: "user-1"},
 	}
 
-	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(docs, int64(3), nil)
+	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(docs, int64(3), nil)
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
@@ -275,7 +275,7 @@ func TestListDocs_Error(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), fmt.Errorf("db error"))
+	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
@@ -291,7 +291,7 @@ func TestListDocs_Empty(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*knowledge.KnowledgeDoc{}, int64(0), nil)
+	svc.On("ListDocsByVisibility", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*knowledge.KnowledgeDoc{}, int64(0), nil)
 
 	c, w := newGinContext("GET", "/knowledge/docs", "")
 	c.Set("user_id", "user-1")
@@ -300,6 +300,25 @@ func TestListDocs_Empty(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestListDocs_WithQ(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	docs := []*knowledge.KnowledgeDoc{{ID: "kbdoc_1", Title: "报告", UserID: "user-1"}}
+
+	// q 应原样透传到 service 层（SPEC-075：DB 层过滤）
+	svc.On("ListDocsByVisibility", "user-1", false, "报告", 1, 20).Return(docs, int64(1), nil)
+
+	c, w := newGinContext("GET", "/knowledge/docs?q=%E6%8A%A5%E5%91%8A", "")
+	c.Set("user_id", "user-1")
+	c.Set("role", "user")
+	h.ListDocs(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

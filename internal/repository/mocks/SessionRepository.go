@@ -140,9 +140,9 @@ func (_m *SessionRepository) ListByUser(ctx context.Context, userID string) ([]*
 	return r0, r1
 }
 
-// ListByUserPaged provides a mock function with given fields: ctx, userID, skip, limit
-func (_m *SessionRepository) ListByUserPaged(ctx context.Context, userID string, skip int64, limit int64) ([]*repository.SessionRecord, int64, error) {
-	ret := _m.Called(ctx, userID, skip, limit)
+// ListByUserPaged provides a mock function with given fields: ctx, userID, q, skip, limit
+func (_m *SessionRepository) ListByUserPaged(ctx context.Context, userID string, q string, skip int64, limit int64) ([]*repository.SessionRecord, int64, error) {
+	ret := _m.Called(ctx, userID, q, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListByUserPaged")
@@ -151,25 +151,25 @@ func (_m *SessionRepository) ListByUserPaged(ctx context.Context, userID string,
 	var r0 []*repository.SessionRecord
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) ([]*repository.SessionRecord, int64, error)); ok {
-		return rf(ctx, userID, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int64) ([]*repository.SessionRecord, int64, error)); ok {
+		return rf(ctx, userID, q, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64) []*repository.SessionRecord); ok {
-		r0 = rf(ctx, userID, skip, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int64) []*repository.SessionRecord); ok {
+		r0 = rf(ctx, userID, q, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*repository.SessionRecord)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int64) int64); ok {
-		r1 = rf(ctx, userID, skip, limit)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int64, int64) int64); ok {
+		r1 = rf(ctx, userID, q, skip, limit)
 	} else {
 		r1 = ret.Get(1).(int64)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, string, int64, int64) error); ok {
-		r2 = rf(ctx, userID, skip, limit)
+	if rf, ok := ret.Get(2).(func(context.Context, string, string, int64, int64) error); ok {
+		r2 = rf(ctx, userID, q, skip, limit)
 	} else {
 		r2 = ret.Error(2)
 	}
