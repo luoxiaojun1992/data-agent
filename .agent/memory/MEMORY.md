@@ -2,6 +2,19 @@
 
 > 按日期追加的工程决策记录。新条目追加在顶部，最新在前。
 
+## 2026-09-02: sysconfig description 走 DB + _id UUID + 模型下拉 use_case 过滤
+
+- **上下文**: 晓军要求系统设置页描述列走 DB 而非前端兜底，并系统 review 修复是否严格符合 4 规则（字段走 DB / _id 用 uuid / 必要唯一索引 / 用 _id 查询更新）。
+- **决策**:
+  1. `SystemConfig.Description` 作为 DB 字段贯穿全链路，前端删硬编码 `BUILTIN_CONFIGS`，seed 幂等同步内置描述（已有 key 保留用户 value、仅同步 description）
+  2. `_id` 用纯 `uuid.NewString()`（与 model_defaults 一致，无业务前缀），`key` 走独立唯一索引
+  3. `system_configs.key` 唯一索引 + `model_defaults.use_case` 唯一索引，集中定义在 client.go `EnsureIndexes`
+  4. `Upsert` 用 `_id` 作 filter（`resolveID` 复用已有 _id 或 mint UUID）
+  5. 模型下拉 `attachDefaults`/`defaultIDs` 按 use_case 过滤，chat 下拉只标 chat 默认并排最上
+- **理由**: 展示字段/描述是 DB 事实（SSOT），前端硬编码 = 双份真相；`_id` 承载业务语义违反主键铁律（见 CONVENTIONS #6/#34）。
+- **踩坑**: MongoDB 真实库名是 `data_agent`（下划线）非 `data-agent`（连字符），误用连字符查到空库差点误判「默认配置被删」。
+- **commit**: `4ea255b` + `bfdaecc`，已合并 main。
+
 ## 2026-07-17: SPEC-046 & SPEC-047 设计（UI 测试真实化 + 截图布局修复）
 
 - **上下文**: 主分支 27 张 UI 截图（`docs/manual-screenshots/`）显示 9 个真实 bug — Dashboard 全 0 数据、KB 永远"已上传"、Chat Session 面板严重重叠等。现有 E2E 用例大量「仅验证可见性」未真正验证系统可用。

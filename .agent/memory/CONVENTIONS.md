@@ -128,6 +128,10 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 34 | **`_id` 用业务语义字段（key/use_case/name 等）当主键** | `_id` 一律 uuid，业务字段单独设字段 + 唯一索引。唯一例外：seed 数据 + 有关联数据可用语义化字段值，但仍不作 `_id`。 |
 | 35 | **前端判断状态不先确认后端 DTO 实际字段** | 写前端条件判断前，先看后端 struct 的 json tag + `curl` 实测，确认字段名/语义（如 `is_default_for []string` 而非 `is_default bool`）。字段契约不一致时 JSON 缺字段不报错、静默失效，状态永不刷新。 |
 | 36 | **改实现不同步更新代码注释** | 注释里声明的行为（如 "masked / decrypt endpoint"）必须与代码一致。改实现必须同步注释，否则过时注释成为「假约束」，误导后续排查（把符合预期的行为误判成 bug）。 |
+| 37 | **展示字段（description 等）前端硬编码兜底** | 描述/标签/枚举说明等展示字段必须作为 DB 字段 + seed 同步，前端直接消费后端返回值。前端硬编码兜底 = 双份真相，后端改了前端静默失效。 |
+| 38 | **查 MongoDB 前不确认真实 db name** | 本项目数据库名是 `data_agent`（下划线），不是仓库名 `data-agent`（连字符）。查库前先 `docker exec <mongo> env | grep MONGO` 确认连接串，否则查到空库误判「数据被删」。 |
+| 39 | **加唯一索引前不查重复数据** | 对已有数据集合加唯一索引前，必须先 `aggregate $group` 查重复 key，否则 `ensureIndex({unique:true})` 因 E11000 直接失败。 |
+| 40 | **前端判断「默认」不用 use_case scope** | `is_default_for` 是 per-use-case 的。chat 下拉只标 chat 默认，否则多个 use_case 默认全标上 → 下拉出现「多个默认」。 |
 
 ## 开发工作流约定
 

@@ -694,3 +694,37 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **日期**: 2026-08-28 | **影响**: 误判「API 明文 key 泄漏违反红线」
 **根因**: `modelconfig.go` 的 `getPaginated`/`ListLLM` 注释写「API key is masked」「api_key_exists flag」「decrypt endpoint」，但代码里既没有 mask、没有 api_key_exists、也没有单独 decrypt 接口。实际设计是**后端返回明文 + 前端视觉 mask**（admin UI trusted），晓军确认「实现符合预期」。
 **教训**: 改实现必须同步更新注释，否则注释成为「过时约束」，误导后续排查（包括把符合预期的行为误判成 bug）。注释里声明了「masked / endpoint」但代码没有时，先问设计者实际意图，不要拿注释当事实。
+
+---
+
+## 2026-09-02 新增（sysconfig description 走 DB + 模型下拉默认 use_case 过滤）
+
+### MongoDB 数据库名写错 → 误判「数据被删」
+**日期**: 2026-09-02 | **影响**: 排查时一度误判「model_defaults 默认配置被删了」，虚惊一场
+**根因**: 用仓库名 `data-agent`（连字符）当 mongosh 的 `getSiblingDB()` 参数，查到的是不存在的空库。真实数据库名是 **`data_agent`**（下划线），来自后端 `MONGO_URI=mongodb://mongodb:27017` 的默认 db。
+**解决**: `docker exec <mongo> env | grep MONGO` 确认后端真实连接串，再 `getSiblingDB("data_agent")`。
+**教训**: ⛔ 查 MongoDB 前先确认真实 db name（从后端容器 env），不要凭仓库名/项目名猜。库名写错 = 查到空库 = 数据「凭空消失」的假象，极易误判成删除事故。
+
+### 展示字段（description）前端硬编码兜底 = 双份真相
+**日期**: 2026-09-02 | **影响**: sysconfig 页面描述列为空（前端硬编码 map 与后端 DB 不一致）
+**根因**: 前端 `BUILTIN_CONFIGS` 硬编码了 13 个配置的描述，但后端 DB 没有 `description` 字段 → 前端展示靠硬编码，后端新增/改配置后前端永远对不上。
+**解决**: `description` 作为 DB 字段贯穿 model→converter→repo→service→handler→前端，seed 幂等同步内置描述（已有 key 保留用户 value、仅同步 description），前端删掉硬编码直接消费后端返回值。
+**教训**: ⛔ 展示字段/标签/描述一律作为 DB 字段 + seed 同步，前端只消费后端返回值。前端硬编码兜底 = 双份真相，任何一端改了另一端静默失效。
+
+### 加唯一索引前必须先查重复数据
+**日期**: 2026-09-02 | **影响**: `model_defaults.use_case` 加唯一索引前，需确认现有数据无重复 use_case
+**根因**: 若集合里已有重复 `use_case`（「两个默认」的根源），`ensureIndex({unique:true})` 会直接失败（E11000 duplicate key），导致后端启动失败。
+**解决**: 先 `aggregate([{$group:{_id:"$use_case",n:{$sum:1}}},{$match:{n:{$gt:1}}}])` 查重复，确认空结果再建索引。
+**教训**: ⛔ 对已有数据集合加唯一索引前，必须 aggregate group-by 查重复 key。这是前置检查，不是事后补救。
+
+### 前端「默认」标记必须按 use_case scope
+**日期**: 2026-09-02 | **影响**: 模型下拉出现「两个默认」（deepseek chat + qwen kb_image 都标默认）
+**根因**: 后端 `attachDefaults` 之前把所有 use_case 的默认模型 ID 都塞进 `is_default_for`，chat 下拉拿到的是全量默认集合 → qwen3-vl-plus 的 kb_image 默认也被误标到 chat 下拉。
+**解决**: `attachDefaults`/`defaultIDs` 按 use_case 过滤（chat 下拉只标 chat 默认并排序最上）；admin 列表传空 use_case 返回完整图景。
+**教训**: `is_default_for` 是 per-use-case 的。前端下拉/选择器判断「默认」时必须传目标 use_case scope，否则多个 use_case 的默认全标上。
+
+### 改索引定义后，MongoDB 不会自动删旧索引
+**日期**: 2026-09-02 | **影响**: 代码把 `system_configs` 唯一索引从 `(namespace,key)` 改成 `key` 后，旧复合索引 `namespace_1_key_1` 仍残留
+**根因**: `EnsureIndexes` 只负责创建新索引，不会 drop 已存在的旧索引。
+**解决**: 手动 `dropIndex("namespace_1_key_1")` 清理冗余旧索引。
+**教训**: 代码里改索引定义 ≠ DB 里旧索引自动消失。schema 演进后要检查并手动清理残留旧索引。
