@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '@/lib/api';
+import Pagination from '../../components/Pagination';
+import { modalOverlayStyle } from '../../components/ui';
 
 interface SkillItem {
   name: string;
@@ -198,24 +200,15 @@ export default function SkillsAdminPage() {
         </div>
 
         {total > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>上一页</button>
-            <span style={{ padding: '4px 8px', fontSize: '12px', color: '#7A7A7A' }}>{page} / {Math.ceil(total / PAGE)}（共 {total} 条）</span>
-            <button onClick={() => setPage(p => Math.min(Math.ceil(total / PAGE), p + 1))} disabled={page >= Math.ceil(total / PAGE)}
-              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>下一页</button>
-          </div>
+          <Pagination page={page} total={total} pageSize={PAGE} onChange={setPage} />
         )}
 
         {/* Edit Modal */}
         {editingName && (
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 999,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }} onClick={closeEdit}>
+          <div style={{ ...modalOverlayStyle, zIndex: 999 }} onClick={closeEdit}>
             <div style={{
-              background: 'var(--bg-card, #1a1a2e)',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-glass)',
               borderRadius: '12px',
               padding: '24px',
               width: '560px',

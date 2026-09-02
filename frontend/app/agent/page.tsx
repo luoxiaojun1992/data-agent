@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import ModelSelector from '../components/ModelSelector';
+import Pagination from '../components/Pagination';
 import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, type Attachment } from '@/lib/attachment';
 
@@ -247,19 +248,7 @@ export default function AgentPage() {
             ))}
 
             {/* Pagination */}
-        <div className="flex items-center justify-between mt-4" data-testid="agent-task-pagination">
-          <span className="text-xs text-[var(--text-secondary)]">
-            共 {total} 个任务 · 第 {page} / {Math.max(1, Math.ceil(total / pageSize))} 页
-          </span>
-          <div className="flex gap-2">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-              className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30"
-              data-testid="agent-page-prev">← 上一页</button>
-            <button onClick={() => setPage(p => p + 1)} disabled={page * pageSize >= total}
-              className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30"
-              data-testid="agent-page-next">下一页 →</button>
-          </div>
-        </div>
+            <Pagination page={page} total={total} pageSize={pageSize} onChange={setPage} testIdPrefix="agent-task" />
           </div>
         )}
       </div>

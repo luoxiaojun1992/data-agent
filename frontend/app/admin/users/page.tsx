@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
+import Pagination from '../../components/Pagination';
+import { primaryButtonStyle } from '../../components/ui';
 
 interface User {
   id: string;
@@ -218,8 +220,6 @@ export default function UsersPage() {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
   const handleSort = (column: string) => {
     if (sortBy !== column) { setSortBy(column); setSortOrder('desc'); }
     else if (sortOrder === 'desc') setSortOrder('asc');
@@ -257,19 +257,7 @@ export default function UsersPage() {
             <button
               data-testid="user-add-btn"
               onClick={() => { resetForm(); setShowAddModal(true); }}
-              style={{
-                background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '8px 20px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
+              style={{ ...primaryButtonStyle, display: 'flex', alignItems: 'center', gap: '6px' }}
             >
               <span>+</span> 添加用户
             </button>
@@ -417,62 +405,22 @@ export default function UsersPage() {
 
         {/* Pagination */}
         {total > 0 && (
-          <div data-testid="user-pagination" style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginTop: '16px', fontSize: '13px', color: 'var(--text-secondary)',
-          }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {selected.size > 0 && (
-                <span data-testid="user-select-count" style={{ color: '#5c7cfa' }}>已选 {selected.size} 项</span>
-              )}
-              <span>共{total}条</span>
-            </div>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <select
-                data-testid="user-page-size-select"
-                value={pageSize}
-                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '6px', padding: '4px 8px',
-                  color: 'var(--text-primary)', fontSize: '13px',
-                }}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-              <button data-testid="user-pagination-prev" onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)',
-                  background: 'transparent', color: 'var(--text-secondary)', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: page === 1 ? 0.4 : 1 }}>
-                上一页
-              </button>
-              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => (
-                <button
-                  key={i}
-                  data-testid={`user-page-${i + 1}`}
-                  onClick={() => setPage(i + 1)}
-                  style={{
-                    padding: '4px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: page === i + 1 ? 'var(--accent)' : 'transparent',
-                    color: page === i + 1 ? '#fff' : 'var(--text-secondary)',
-                    cursor: 'pointer', fontSize: '13px',
-                  }}
-                >
-                  {i + 1}
-                </button>
-              ))}
-              <button data-testid="user-pagination-next" onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)',
-                  background: 'transparent', color: 'var(--text-secondary)', cursor: page >= totalPages ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: page >= totalPages ? 0.4 : 1 }}>
-                下一页
-              </button>
-            </div>
+          <div style={{ marginTop: '16px' }}>
+            {selected.size > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                <span data-testid="user-select-count" style={{ color: '#5c7cfa', fontSize: '13px' }}>
+                  已选 {selected.size} 项
+                </span>
+              </div>
+            )}
+            <Pagination
+              page={page}
+              total={total}
+              pageSize={pageSize}
+              onChange={setPage}
+              onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+              testIdPrefix="user"
+            />
           </div>
         )}
 
@@ -699,8 +647,8 @@ const iconBtnStyle: React.CSSProperties = {
 };
 
 const modalStyle: React.CSSProperties = {
-  background: '#1a1a2e',
-  border: '1px solid rgba(255,255,255,0.1)',
+  background: 'var(--bg-secondary)',
+  border: '1px solid var(--border-glass)',
   borderRadius: '16px',
   padding: '28px',
   maxWidth: '420px',

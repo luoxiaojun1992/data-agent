@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
+import Pagination from '../../components/Pagination';
+import { primaryButtonStyle, modalOverlayStyle } from '../../components/ui';
 
 interface AuditLog {
   id: string;
@@ -15,13 +17,12 @@ interface AuditLog {
   created_at: string;
 }
 
-const PAGE_SIZE = 20;
-
 export default function AuditPage() {
   const { auth, apiFetch } = useAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [filterAction, setFilterAction] = useState('');
   const [filterUser, setFilterUser] = useState('');
   const [dateStart, setDateStart] = useState('');
@@ -40,8 +41,8 @@ export default function AuditPage() {
   const fetchLogs = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      params.set('skip', String((page - 1) * PAGE_SIZE));
-      params.set('limit', String(PAGE_SIZE));
+      params.set('skip', String((page - 1) * pageSize));
+      params.set('limit', String(pageSize));
       if (filterAction) params.set('action', filterAction);
       if (filterUser) params.set('user_id', filterUser);
       if (dateStart) params.set('start', dateStart);
@@ -59,7 +60,7 @@ export default function AuditPage() {
     } catch (err: any) {
       setError(`审计日志加载失败 — ${err?.message || err?.status || '未知错误'} (${err?.status ? `HTTP ${err.status}` : '/api/v1/audit'})`);
     }
-  }, [apiFetch, page, filterAction, filterUser, dateStart, dateEnd]);
+  }, [apiFetch, page, pageSize, filterAction, filterUser, dateStart, dateEnd]);
 
   useEffect(() => {
     if (auth.hydrated) fetchLogs();
@@ -103,16 +104,13 @@ export default function AuditPage() {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
   return (
     <AppLayout>
       <div className="animate-fade-in" data-testid="audit-page-header">
         <div className="mb-8" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 className="text-2xl font-bold text-[var(--text-primary)]">审计日志</h2>
           <button data-testid="audit-export-btn" onClick={() => setShowExport(true)}
-            style={{ padding: '8px 20px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)', color: '#fff',
-              border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+            style={primaryButtonStyle}>
             导出日志
           </button>
         </div>
@@ -200,17 +198,18 @@ export default function AuditPage() {
         </div>
 
         {/* Pagination */}
-        <div data-testid="audit-pagination" style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px', alignItems: 'center' }}>
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-            style={pageBtnStyle}>上一页</button>
-          <span style={{ fontSize: '13px', color: '#7A7A7A' }}>第 {page}/{totalPages} 页（共 {total} 条）</span>
-          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-            style={pageBtnStyle}>下一页</button>
-        </div>
+        <Pagination
+          page={page}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+          testIdPrefix="audit"
+        />
 
         {/* Export Modal */}
         {showExport && (
-          <div data-testid="audit-export-modal" style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          <div data-testid="audit-export-modal" style={{ ...modalOverlayStyle, zIndex: 999 }}
             onClick={(e) => { if (e.target === e.currentTarget) setShowExport(false); }}>
             <div className="glass" style={{ padding: '24px', maxWidth: '440px', width: '90%' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>导出审计日志</h3>
@@ -270,4 +269,3 @@ const inputStyle: React.CSSProperties = {
 };
 const thStyle: React.CSSProperties = { padding: '12px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#666', borderBottom: '1px solid rgba(255,255,255,0.06)' };
 const tdStyle: React.CSSProperties = { padding: '10px', fontSize: '13px', color: '#7A7A7A' };
-const pageBtnStyle: React.CSSProperties = { padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' };

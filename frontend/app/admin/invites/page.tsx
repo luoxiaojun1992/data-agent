@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '@/lib/api';
+import Pagination from '../../components/Pagination';
+import { primaryButtonStyle } from '../../components/ui';
 
 interface InviteItem {
   invite_id: string;
@@ -137,8 +139,7 @@ function InvitesContent() {
         </div>
         <button
           onClick={() => { setShowForm(!showForm); setGeneratedURL(''); setCreateError(''); }}
-          className="px-4 py-2 rounded-xl font-medium text-sm transition-all"
-          style={{ background: 'linear-gradient(135deg, #B1E2FF, #9381FF)', color: '#000' }}
+          style={primaryButtonStyle}
           data-testid="invites-create-btn"
         >
           + 生成邀请
@@ -281,38 +282,7 @@ function InvitesContent() {
           </div>
 
           {total > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>上一页</button>
-              <span style={{ padding: '8px 12px', fontSize: '13px', color: '#7A7A7A' }}>
-                {page} / {Math.max(1, Math.ceil(total / 20))}（共 {total} 条）
-              </span>
-              <button onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(total / 20)), p + 1))} disabled={page >= Math.max(1, Math.ceil(total / 20))}
-                style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>下一页</button>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {total > 20 && (
-            <div className="flex justify-between items-center mt-4">
-              <span className="text-xs text-[var(--text-secondary)]">共 {total} 条</span>
-              <div className="flex gap-2">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                  className="px-3 py-1 rounded text-xs text-[var(--text-secondary)] disabled:opacity-30"
-                >
-                  上一页
-                </button>
-                <button
-                  disabled={page * 20 >= total}
-                  onClick={() => setPage(page + 1)}
-                  className="px-3 py-1 rounded text-xs text-[var(--text-secondary)] disabled:opacity-30"
-                >
-                  下一页
-                </button>
-              </div>
-            </div>
+            <Pagination page={page} total={total} pageSize={20} onChange={setPage} />
           )}
         </>
       )}
