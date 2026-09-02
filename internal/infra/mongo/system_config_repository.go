@@ -92,9 +92,9 @@ func (r *SystemConfigRepository) Count(ctx context.Context) (int64, error) {
 }
 
 // Upsert writes the (key, value, description) document. The `_id` is a UUID:
-// when the key already exists we reuse its existing _id; otherwise we
-// allocate a fresh `cfg_<uuid>`. Writes use the `_id` as the filter so the
-// primary key drives updates.
+// when the key already exists we reuse its existing _id; otherwise we mint a
+// fresh UUID. Writes use the `_id` as the filter so the primary key drives
+// updates.
 func (r *SystemConfigRepository) Upsert(ctx context.Context, key, value, description string) error {
 	id, err := r.resolveID(ctx, key)
 	if err != nil {
@@ -117,7 +117,7 @@ func (r *SystemConfigRepository) Upsert(ctx context.Context, key, value, descrip
 }
 
 // resolveID returns the existing _id for the given key, or a freshly minted
-// `cfg_<uuid>` when the key is not yet persisted.
+// UUID when the key is not yet persisted.
 func (r *SystemConfigRepository) resolveID(ctx context.Context, key string) (string, error) {
 	existing, err := r.Get(ctx, key)
 	if err != nil {
@@ -126,7 +126,7 @@ func (r *SystemConfigRepository) resolveID(ctx context.Context, key string) (str
 	if existing != nil && existing.ID != "" {
 		return existing.ID, nil
 	}
-	return "cfg_" + uuid.NewString(), nil
+	return uuid.NewString(), nil
 }
 
 // Delete removes a config value by key. Idempotent: returns nil if the
