@@ -728,3 +728,22 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **根因**: `EnsureIndexes` 只负责创建新索引，不会 drop 已存在的旧索引。
 **解决**: 手动 `dropIndex("namespace_1_key_1")` 清理冗余旧索引。
 **教训**: 代码里改索引定义 ≠ DB 里旧索引自动消失。schema 演进后要检查并手动清理残留旧索引。
+
+### 巡检脚本的交互检查必须恢复初始状态（tab/弹窗/路由）
+**日期**: 2026-09-02 | **影响**: SPEC-078 冒烟回归时 rbac 弹窗检查误报 FAIL
+**根因**: 脚本先做了「切到权限列表 tab 验证按钮」的 extra 检查，切 tab 后没有切回「角色管理」，紧接着的 modal 检查（点 `rbac-add-role-btn`）因按钮不在当前 tab 而 click 超时 → 误报页面 bug。
+**解决**: extra 检查结束时显式切回原 tab（并 sleep 等渲染），再执行后续检查。
+**教训**: 巡检/冒烟脚本中任何改变页面状态的检查（tab 切换、路由跳转、弹窗开关）必须在检查后**恢复初始状态**，否则后续检查拿到的是脏状态，误报会浪费排查时间。同时**检查项断言必须对齐真实 DOM 结构**（按钮在哪个 tab、页面真实标题是什么），写错断言同样制造假失败。
+
+### 本地访问测试服务器可能被网络过滤器拦截（Web Filter Block Override）
+**日期**: 2026-09-02 | **影响**: 本地 playwright/curl 访问部署服务器拿到 HTML 拦截页（title 变「Web Filter Block Override」），误以为 nginx/后端坏了
+**根因**: 本地网络出口的过滤层拦截对外部 IP 的 HTTP 请求；服务器内部 curl 验证一切正常。
+**排查顺序**: ① 服务器内 `curl 127.0.0.1` 验证服务本身 → ② 本地 `curl` 看返回 title 是否被劫持 → ③ 切网络或换出口再试。
+**解决**: 备选方案 SSH 隧道 `ssh -N -L 18080:127.0.0.1:80 <server>`，浏览器/curl 走 `127.0.0.1:18080` 绕过过滤层。
+**教训**: 本地拿到的「奇怪 HTML 响应」先怀疑网络过滤层劫持，不要直接断定服务端问题。先做服务器内自测定位故障边界。
+
+### playwright 版本与缓存浏览器不匹配 → 显式 executablePath
+**日期**: 2026-09-02 | **影响**: playwright launch 报「Executable doesn't exist at chromium_headless_shell-1228」
+**根因**: node_modules 的 playwright 版本期望的浏览器 build 与本机 `~/Library/Caches/ms-playwright/` 缓存版本不一致（多项目各装各的版本）。
+**解决**: 在 launch 时显式指定已缓存浏览器路径（如 chromium-1234 的 Google Chrome for Testing.app/Contents/MacOS/...），或先 `npx playwright install chromium` 对齐版本。
+**教训**: 换目录/换项目跑 playwright 时先检查 `playwright/package.json` 版本与 ms-playwright 缓存目录是否匹配，不匹配就用 executablePath 硬指定，别默认 launch。
