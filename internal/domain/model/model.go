@@ -147,12 +147,14 @@ type Notification struct {
 }
 
 // SystemConfig represents a system-wide configuration entry.
-// Namespace is removed — each key is a standalone document in system_configs.
+// `_id` is a UUID (auto-allocated on insert); `key` is the business
+// identifier carried by a separate unique index.
 type SystemConfig struct {
-	ID        string    `json:"id"`
-	Key       string    `json:"key"`
-	Value     string    `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          string    `bson:"_id" json:"id"`
+	Key         string    `bson:"key" json:"key"`
+	Value       string    `bson:"value" json:"value"`
+	Description string    `bson:"description" json:"description"`
+	UpdatedAt   time.Time `bson:"updated_at" json:"updated_at"`
 }
 
 const (

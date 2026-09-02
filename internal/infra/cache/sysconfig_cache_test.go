@@ -150,11 +150,11 @@ func TestUpsert_Success_UpdatesCache(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	// DB upsert succeeds → cache.Set (single) + cache.Delete (aggregate).
-	repoMock.On("Upsert", mock.Anything, "models", "new-val").Return(nil)
+	repoMock.On("Upsert", mock.Anything, "models", "new-val", "").Return(nil)
 	cacheMock.On("Set", mock.Anything, "syscfg:models", "new-val", 600).Return(nil)
 	cacheMock.On("Delete", mock.Anything, "syscfg:all").Return(nil)
 
-	err := dec.Upsert(context.Background(), "models", "new-val")
+	err := dec.Upsert(context.Background(), "models", "new-val", "")
 	require.NoError(t, err)
 }
 
@@ -163,9 +163,9 @@ func TestUpsert_DBError_NoCacheTouch(t *testing.T) {
 	dec := NewSysConfigCacheRepo(repoMock, cacheMock, 0)
 
 	// DB fails → cache must NOT be touched.
-	repoMock.On("Upsert", mock.Anything, "models", "val").Return(errors.New("db down"))
+	repoMock.On("Upsert", mock.Anything, "models", "val", "").Return(errors.New("db down"))
 
-	err := dec.Upsert(context.Background(), "models", "val")
+	err := dec.Upsert(context.Background(), "models", "val", "")
 	require.Error(t, err)
 	cacheMock.AssertNotCalled(t, "Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	cacheMock.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
@@ -175,9 +175,9 @@ func TestUpsert_CacheNil_PassesThrough(t *testing.T) {
 	repoMock, _ := newMocks(t)
 	dec := NewSysConfigCacheRepo(repoMock, nil, 0)
 
-	repoMock.On("Upsert", mock.Anything, "models", "val").Return(nil)
+	repoMock.On("Upsert", mock.Anything, "models", "val", "").Return(nil)
 
-	err := dec.Upsert(context.Background(), "models", "val")
+	err := dec.Upsert(context.Background(), "models", "val", "")
 	require.NoError(t, err)
 }
 

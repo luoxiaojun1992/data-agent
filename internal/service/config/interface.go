@@ -12,7 +12,7 @@ import (
 type Service interface {
 	GetAll(ctx context.Context) ([]model.SystemConfig, error)
 	List(ctx context.Context, page, pageSize int) ([]model.SystemConfig, int64, error)
-	Upsert(ctx context.Context, key, value string) error
+	Upsert(ctx context.Context, key, value, description string) error
 	Delete(ctx context.Context, key string) error
 	SeedBuiltins(ctx context.Context) error
 }

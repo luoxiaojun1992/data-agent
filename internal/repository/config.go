@@ -27,7 +27,7 @@ type SysConfigRepository interface {
 	GetAll(ctx context.Context) ([]model.SystemConfig, error)
 	List(ctx context.Context, skip, limit int64) ([]model.SystemConfig, error)
 	Count(ctx context.Context) (int64, error)
-	Upsert(ctx context.Context, key, value string) error
+	Upsert(ctx context.Context, key, value, description string) error
 	Delete(ctx context.Context, key string) error
 }
 

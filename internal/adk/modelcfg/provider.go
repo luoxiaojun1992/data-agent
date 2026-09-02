@@ -479,29 +479,42 @@ func (p *Provider) defaultMap(ctx context.Context) map[string]string {
 }
 
 // attachDefaults assembles is_default_for onto each model entry from
-// model_defaults (response-only field, not persisted).
-func (p *Provider) attachDefaults(ctx context.Context, entries []ModelEntry) {
+// model_defaults (response-only field, not persisted). The injection is
+// scoped to the supplied use case so a chat dropdown only marks the chat
+// default — other use-case defaults (kb_image, etc.) don't bleed through
+// the LLM selector and lose their "(默认)" suffix on every page.
+//
+// When useCase is empty (admin listings), every default the model holds is
+// reported (the admin UI uses each use case as a separate checkbox).
+func (p *Provider) attachDefaults(ctx context.Context, entries []ModelEntry, useCase UseCase) {
+	for i := range entries {
+		entries[i].IsDefaultFor = nil
+	}
 	dm := p.defaultMap(ctx)
 	for i := range entries {
 		var useCases []string
 		for uc, mid := range dm {
 			if mid == entries[i].ID {
-				useCases = append(useCases, uc)
+				if useCase == "" || uc == string(useCase) {
+					useCases = append(useCases, uc)
+				}
 			}
 		}
 		entries[i].IsDefaultFor = useCases
 	}
 }
 
-// defaultIDs returns the distinct model IDs referenced by model_defaults.
-// Used to compute the "default-first" sort key in DB (SPEC-074).
-func (p *Provider) defaultIDs(ctx context.Context) []string {
+// defaultIDs returns the model IDs that are default for the given use case.
+// Used to compute the "default-first" sort key in DB (SPEC-074); only one
+// default per use case is guaranteed (model_defaults unique on use_case).
+func (p *Provider) defaultIDs(ctx context.Context, useCase UseCase) []string {
 	dm := p.defaultMap(ctx)
-	seen := make(map[string]bool, len(dm))
-	ids := make([]string, 0, len(dm))
-	for _, mid := range dm {
-		if mid != "" && !seen[mid] {
-			seen[mid] = true
+	var ids []string
+	for uc, mid := range dm {
+		if useCase != "" && uc != string(useCase) {
+			continue
+		}
+		if mid != "" {
 			ids = append(ids, mid)
 		}
 	}
@@ -509,6 +522,8 @@ func (p *Provider) defaultIDs(ctx context.Context) []string {
 }
 
 // ListEmbeddingModels returns paginated Type==embedding model entries.
+// is_default_for is scoped to embedding so the embedding dropdown only
+// marks the embedding default.
 func (p *Provider) ListEmbeddingModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if p.modelRepo == nil {
 		return nil, 0, nil
@@ -531,7 +546,7 @@ func (p *Provider) ListEmbeddingModels(ctx context.Context, page, pageSize int) 
 		p.applyEnvDefaults(&entries[i])
 		_ = p.resolveAPIKey(ctx, &entries[i])
 	}
-	p.attachDefaults(ctx, entries)
+	p.attachDefaults(ctx, entries, UseCaseEmbedding)
 	return entries, int(total), nil
 }
 
@@ -570,15 +585,18 @@ func (p *Provider) GetDefaultEmbeddingModel(ctx context.Context) (*ModelEntry, e
 	return nil, fmt.Errorf("no embedding model configured")
 }
 
-// ListAllModels returns every persisted model entry (decrypted) with
-// is_default_for assembled from model_defaults.
+// ListAllModels returns every persisted model entry (decrypted). Admin
+// callers want every default flag (chat/task/enhance/...), so no use case
+// is passed — attachDefaults returns the full is_default_for picture.
 func (p *Provider) ListAllModels(ctx context.Context) []ModelEntry {
 	all := p.models()
-	p.attachDefaults(ctx, all)
+	p.attachDefaults(ctx, all, "")
 	return all
 }
 
-// ListLLMModels returns the Type==llm model entries (DB paginated).
+// ListLLMModels returns the Type==llm model entries (DB paginated) for the
+// admin page. is_default_for reflects every use case this model is
+// marked as default for, so the admin sees the full picture.
 func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]ModelEntry, int, error) {
 	if p.modelRepo == nil {
 		return nil, 0, nil
@@ -601,26 +619,30 @@ func (p *Provider) ListLLMModels(ctx context.Context, page, pageSize int) ([]Mod
 		p.applyEnvDefaults(&entries[i])
 		_ = p.resolveAPIKey(ctx, &entries[i])
 	}
-	p.attachDefaults(ctx, entries)
+	p.attachDefaults(ctx, entries, "")
 	return entries, int(total), nil
 }
 
-// SearchLLMModels returns top-N LLM models matching q, with default models
-// sorted first (SPEC-074). q is empty for the initial "load topN" request.
+// SearchLLMModels returns top-N LLM models matching q, with the chat
+// default model sorted first (SPEC-074). q is empty for the initial
+// "load topN" request.
 func (p *Provider) SearchLLMModels(ctx context.Context, q string, limit int) ([]ModelEntry, int, error) {
-	return p.searchModels(ctx, ModelTypeLLM, q, limit)
+	return p.searchModels(ctx, ModelTypeLLM, UseCaseChat, q, limit)
 }
 
 // SearchEmbeddingModels returns top-N embedding models matching q, with
-// default models sorted first (SPEC-074).
+// the embedding default sorted first (SPEC-074).
 func (p *Provider) SearchEmbeddingModels(ctx context.Context, q string, limit int) ([]ModelEntry, int, error) {
-	return p.searchModels(ctx, ModelTypeEmbedding, q, limit)
+	return p.searchModels(ctx, ModelTypeEmbedding, UseCaseEmbedding, q, limit)
 }
 
-// searchModels is the shared dropdown-search implementation: it resolves the
-// default model IDs, then delegates filtering/sorting/truncation to the
-// repository's aggregation (SPEC-074 — no in-memory sort/slice here).
-func (p *Provider) searchModels(ctx context.Context, t ModelType, q string, limit int) ([]ModelEntry, int, error) {
+// searchModels is the shared dropdown-search implementation: it resolves
+// the default model IDs for the given use case, then delegates filtering,
+// sorting, and truncation to the repository's aggregation (SPEC-074 — no
+// in-memory sort/slice here). Sorting puts the use-case default first and
+// applies to both empty-q and search-q paths; the contract guarantees a
+// single chat default in the dropdown at the top of the list.
+func (p *Provider) searchModels(ctx context.Context, t ModelType, useCase UseCase, q string, limit int) ([]ModelEntry, int, error) {
 	if p.modelRepo == nil {
 		return nil, 0, nil
 	}
@@ -630,7 +652,7 @@ func (p *Provider) searchModels(ctx context.Context, t ModelType, q string, limi
 	if limit > 100 {
 		limit = 100
 	}
-	entries, total, err := p.modelRepo.Search(ctx, t, q, p.defaultIDs(ctx), 0, int64(limit))
+	entries, total, err := p.modelRepo.Search(ctx, t, q, p.defaultIDs(ctx, useCase), 0, int64(limit))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -638,7 +660,7 @@ func (p *Provider) searchModels(ctx context.Context, t ModelType, q string, limi
 		p.applyEnvDefaults(&entries[i])
 		_ = p.resolveAPIKey(ctx, &entries[i])
 	}
-	p.attachDefaults(ctx, entries)
+	p.attachDefaults(ctx, entries, useCase)
 	return entries, int(total), nil
 }
 
@@ -858,7 +880,9 @@ func (p *Provider) applyEmbeddingDefaults(e *EmbeddingEntry) {
 // endpoint (legacy flat keys removed).
 func (p *Provider) GetRawModelConfig(ctx context.Context) (map[string]any, error) {
 	models := p.models()
-	p.attachDefaults(ctx, models)
+	// Admin raw view — surface every default use case so the form can show
+	// the full per-model default lattice.
+	p.attachDefaults(ctx, models, "")
 	return map[string]any{"models": models}, nil
 }
 

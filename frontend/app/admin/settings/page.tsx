@@ -11,20 +11,6 @@ interface ConfigItem {
   description?: string;
 }
 
-const BUILTIN_CONFIGS: Omit<ConfigItem, 'value' | 'source'>[] = [
-  { key: 'MONGO_URI', description: 'MongoDB 连接 URI' },
-  { key: 'REDIS_ADDR', description: 'Redis 地址 (host:port)' },
-  { key: 'QDRANT_URL', description: 'Qdrant HTTP URL' },
-  { key: 'INVITE_HMAC_SECRET', description: '邀请 HMAC 签名密钥' },
-  { key: 'INVITE_BASE_URL', description: '邀请链接对外基地址（与内部 host:port 不同时设置）' },
-  { key: 'VAULT_ADDR', description: 'HashiCorp Vault 地址' },
-  { key: 'JWT_SECRET', description: 'JWT 签名密钥' },
-  { key: 'SESSION_TIMEOUT', description: '登录 Session 超时（小时），默认 24h' },
-  { key: 'SERVER_READ_TIMEOUT', description: 'HTTP 读超时（秒）' },
-  { key: 'SERVER_WRITE_TIMEOUT', description: 'HTTP 写超时（秒）' },
-  { key: 'WORKER_POOL_SIZE', description: 'Worker 协程池大小（并发数）' },
-];
-
 const PAGE_SIZE = 8;
 
 export default function SettingsPage() {
@@ -55,10 +41,9 @@ export default function SettingsPage() {
       const res = await apiFetch(`/admin/sysconfig/system${pageParam}`);
       if (res.ok) {
         const data = await res.json();
-        const descMap = new Map(BUILTIN_CONFIGS.map(b => [b.key, b.description]));
         const stored: ConfigItem[] = (data.configs || []).map((c: any) => ({
           key: c.key,
-          description: descMap.get(c.key) || '',
+          description: c.description || '',
           value: c.value || '',
           source: c.value ? 'stored' : 'default',
         }));
@@ -84,11 +69,12 @@ export default function SettingsPage() {
 
   const saveEdit = async () => {
     if (!editingKey) return;
+    const current = items.find(i => i.key === editingKey);
     setSaving(true);
     try {
       const res = await apiFetch('/admin/sysconfig/system', {
         method: 'PUT',
-        body: JSON.stringify({ key: editingKey, value: editValue }),
+        body: JSON.stringify({ key: editingKey, value: editValue, description: current?.description || '' }),
       });
       if (res.ok) {
         showToast('已保存', 'success');

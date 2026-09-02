@@ -48,9 +48,9 @@ func TestService_GetAll_Error(t *testing.T) {
 
 func TestService_Upsert(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
-	repo.On("Upsert", mock.Anything, "k", "v").Return(nil)
+	repo.On("Upsert", mock.Anything, "k", "v", "d").Return(nil)
 	svc := NewService(repo)
-	if err := svc.Upsert(context.Background(), "k", "v"); err != nil {
+	if err := svc.Upsert(context.Background(), "k", "v", "d"); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
 }
@@ -76,19 +76,21 @@ func TestService_Delete_Error(t *testing.T) {
 func TestService_SeedBuiltins(t *testing.T) {
 	repo := repomocks.NewSysConfigRepository(t)
 	repo.On("GetAll", mock.Anything).Return([]model.SystemConfig{{Key: "SESSION_TIMEOUT", Value: "24"}}, nil)
-	// Only the missing built-in keys get upserted.
+	// Every built-in gets upserted with its description; existing keys keep
+	// their user value, missing keys get the default.
 	for _, b := range SystemBuiltins() {
 		if b.Key == "SESSION_TIMEOUT" {
+			repo.On("Upsert", mock.Anything, b.Key, "24", b.Description).Return(nil).Once()
 			continue
 		}
-		repo.On("Upsert", mock.Anything, b.Key, b.Default).Return(nil).Maybe()
+		repo.On("Upsert", mock.Anything, b.Key, b.Default, b.Description).Return(nil).Maybe()
 	}
 	svc := NewService(repo)
 	if err := svc.SeedBuiltins(context.Background()); err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
-	// SESSION_TIMEOUT already exists → must not be overwritten.
-	repo.AssertNotCalled(t, "Upsert", mock.Anything, "SESSION_TIMEOUT", mock.Anything)
+	// SESSION_TIMEOUT already exists → value preserved, description synced.
+	repo.AssertCalled(t, "Upsert", mock.Anything, "SESSION_TIMEOUT", "24", "登录 Session 超时（小时）")
 }
 
 type errStr string

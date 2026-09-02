@@ -17,7 +17,7 @@ import (
 // service Upsert call fails.
 func TestConfigHandler_Put_ServiceError(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("Upsert", mock.Anything, "k", "v").Return(errStr("db down"))
+	cfgSvc.On("Upsert", mock.Anything, "k", "v", "").Return(errStr("db down"))
 	h := NewConfigHandler(cfgSvc, nil)
 	c, w := newCfgGin("PUT", "/sysconfig/system", `{"key":"k","value":"v"}`)
 	h.Put(c)

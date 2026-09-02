@@ -50,14 +50,15 @@ func (h *ConfigHandler) Get(c *gin.Context) {
 
 func (h *ConfigHandler) Put(c *gin.Context) {
 	var req struct {
-		Key   string `json:"key"`
-		Value string `json:"value"`
+		Key         string `json:"key"`
+		Value       string `json:"value"`
+		Description string `json:"description"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.cfgSvc.Upsert(c.Request.Context(), req.Key, req.Value); err != nil {
+	if err := h.cfgSvc.Upsert(c.Request.Context(), req.Key, req.Value, req.Description); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

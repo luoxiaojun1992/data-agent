@@ -737,6 +737,10 @@ func stringSetContains(got []string, want ...string) bool {
 
 func TestSearchLLMModels_PassesDefaultIDsAndLimit(t *testing.T) {
 	p, repo, defRepo := newProviderWithSearchRepo(t)
+	// chat defaults to m1, task defaults to m2 — the search contract
+	// scopes defaultIDs to the chat use case only, so the LLM dropdown
+	// surfaces the chat default at the top and never leaks the task
+	// default up into the chat selector.
 	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{
 		{UseCase: string(UseCaseChat), ModelID: "m1"},
 		{UseCase: string(UseCaseTask), ModelID: "m2"},
@@ -768,8 +772,10 @@ func TestSearchLLMModels_PassesDefaultIDsAndLimit(t *testing.T) {
 	if gotLimit != 30 {
 		t.Errorf("limit = %d, want 30", gotLimit)
 	}
-	if !stringSetContains(gotDefaultIDs, "m1", "m2") || len(gotDefaultIDs) != 2 {
-		t.Errorf("defaultIDs = %v, want set {m1,m2}", gotDefaultIDs)
+	// Chat-scoped defaults → only the chat default (m1) is promoted;
+	// task default (m2) stays out of the LLM dropdown.
+	if len(gotDefaultIDs) != 1 || gotDefaultIDs[0] != "m1" {
+		t.Errorf("defaultIDs = %v, want [m1] (chat default only)", gotDefaultIDs)
 	}
 	if total != 1 || len(models) != 1 || models[0].ID != "m1" {
 		t.Errorf("result = total %d len %d, want 1/1 m1", total, len(models))

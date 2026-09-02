@@ -413,19 +413,21 @@ func docToNotification(d bson.M) *model.Notification {
 
 func systemConfigToDoc(c *model.SystemConfig) bson.M {
 	return bson.M{
-		"_id":        c.ID,
-		"key":        c.Key,
-		"value":      c.Value,
-		"updated_at": c.UpdatedAt,
+		"_id":         c.ID,
+		"key":         c.Key,
+		"value":       c.Value,
+		"description": c.Description,
+		"updated_at":  c.UpdatedAt,
 	}
 }
 
 func docToSystemConfig(d bson.M) *model.SystemConfig {
 	return &model.SystemConfig{
-		ID:        getStr(d, "_id"),
-		Key:       getStr(d, "key"),
-		Value:     getStr(d, "value"),
-		UpdatedAt: getTime(d, "updated_at"),
+		ID:          getStr(d, "_id"),
+		Key:         getStr(d, "key"),
+		Value:       getStr(d, "value"),
+		Description: getStr(d, "description"),
+		UpdatedAt:   getTime(d, "updated_at"),
 	}
 }
 

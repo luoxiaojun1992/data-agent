@@ -117,17 +117,17 @@ func (_m *Service) SeedBuiltins(ctx context.Context) error {
 	return r0
 }
 
-// Upsert provides a mock function with given fields: ctx, key, value
-func (_m *Service) Upsert(ctx context.Context, key string, value string) error {
-	ret := _m.Called(ctx, key, value)
+// Upsert provides a mock function with given fields: ctx, key, value, description
+func (_m *Service) Upsert(ctx context.Context, key string, value string, description string) error {
+	ret := _m.Called(ctx, key, value, description)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Upsert")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, key, value)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = rf(ctx, key, value, description)
 	} else {
 		r0 = ret.Error(0)
 	}

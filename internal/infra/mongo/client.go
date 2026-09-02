@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/modelconfig"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -100,10 +101,15 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 			{Keys: bson.D{{Key: "status", Value: 1}}},
 			{Keys: bson.D{{Key: "created_by", Value: 1}}},
 		},
-		// SPEC-061: unique compound index on (namespace, key) for system_configs.
-		// Ensures no duplicate config entries and accelerates Get/Upsert/Delete lookups.
+		// SPEC-061: unique index on `key` for system_configs (UUID lives in
+		// `_id`; `key` is the business identifier). Guarantees one row per
+		// built-in / user override and accelerates Get/Upsert/Delete lookups.
 		model.CollSystemConfigs: {
-			{Keys: bson.D{{Key: "namespace", Value: 1}, {Key: "key", Value: 1}}, Options: options.Index().SetUnique(true)},
+			{Keys: bson.D{{Key: "key", Value: 1}}, Options: options.Index().SetUnique(true)},
+		},
+		// model_defaults: at most one default model per use case.
+		modelconfig.CollModelDefaults: {
+			{Keys: bson.D{{Key: "use_case", Value: 1}}, Options: options.Index().SetUnique(true)},
 		},
 	}
 

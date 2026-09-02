@@ -53,7 +53,7 @@ func TestModelConfigHandler_Get_Error(t *testing.T) {
 
 func TestModelConfigHandler_Put(t *testing.T) {
 	svc := configmocks.NewService(t)
-	svc.On("Upsert", mock.Anything, "key1", "val1").Return(nil)
+	svc.On("Upsert", mock.Anything, "key1", "val1", "").Return(nil)
 	h := NewModelConfigHandler(svc, nil)
 	c, w := newModelCfgGin("PUT", "/models", `{"key":"key1","value":"val1"}`)
 	h.Put(c)

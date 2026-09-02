@@ -84,30 +84,43 @@ func (s *service) List(ctx context.Context, page, pageSize int) ([]model.SystemC
 	return cfgs, total, nil
 }
 
-// SeedBuiltins ensures every built-in config key exists in the database
-// without overwriting any user-modified values. Safe to call on every startup.
+// SeedBuiltins ensures every built-in config key exists in the database with
+// its description, without overwriting any user-modified values. Safe to call
+// on every startup.
 func (s *service) SeedBuiltins(ctx context.Context) error {
 	existing, err := s.sysConfig.GetAll(ctx)
 	if err != nil {
 		return fmt.Errorf("seed: list system configs: %w", err)
 	}
-	existMap := make(map[string]bool, len(existing))
+	existMap := make(map[string]string, len(existing))
 	for _, c := range existing {
-		existMap[c.Key] = true
+		// Skip legacy empty-key rows (no business key → can't link to a builtin).
+		if c.Key == "" {
+			log.Printf("[config] seed: dropping legacy empty-key row id=%s", c.ID)
+			if err := s.sysConfig.Delete(ctx, c.Key); err != nil {
+				log.Printf("[config] seed: drop empty-key row: %v", err)
+			}
+			continue
+		}
+		existMap[c.Key] = c.Value
 	}
 	for _, b := range SystemBuiltins() {
-		if existMap[b.Key] {
-			continue // already exists — never overwrite user-modified values
+		if val, ok := existMap[b.Key]; ok {
+			// Already exists — keep user-modified value, sync description.
+			if err := s.sysConfig.Upsert(ctx, b.Key, val, b.Description); err != nil {
+				log.Printf("[config] seed %s: %v", b.Key, err)
+			}
+			continue
 		}
-		if err := s.sysConfig.Upsert(ctx, b.Key, b.Default); err != nil {
+		if err := s.sysConfig.Upsert(ctx, b.Key, b.Default, b.Description); err != nil {
 			log.Printf("[config] seed %s: %v", b.Key, err)
 		}
 	}
 	return nil
 }
 
-func (s *service) Upsert(ctx context.Context, key, value string) error {
-	return s.sysConfig.Upsert(ctx, key, value)
+func (s *service) Upsert(ctx context.Context, key, value, description string) error {
+	return s.sysConfig.Upsert(ctx, key, value, description)
 }
 
 func (s *service) Delete(ctx context.Context, key string) error {

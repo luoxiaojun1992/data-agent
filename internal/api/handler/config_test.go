@@ -48,7 +48,7 @@ func TestConfigHandler_Get_Error(t *testing.T) {
 
 func TestConfigHandler_Put(t *testing.T) {
 	cfgSvc := configmocks.NewService(t)
-	cfgSvc.On("Upsert", mock.Anything, "k", "v").Return(nil)
+	cfgSvc.On("Upsert", mock.Anything, "k", "v", "").Return(nil)
 	h := NewConfigHandler(cfgSvc, nil)
 	c, w := newCfgGin("PUT", "/sysconfig/system", `{"key":"k","value":"v"}`)
 	h.Put(c)

@@ -5,14 +5,22 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 )
 
-// SystemConfigRepository handles system configuration data (namespace removed —
-// each key is a standalone document).
+// SystemConfigRepository handles system configuration data.
+//
+// Schema:
+//   - `_id`           : UUID (string) — primary key
+//   - `key`           : business key (string) — unique index
+//   - `value`         : current user value (string)
+//   - `description`   : human-readable label (string)
+//   - `updated_at`    : last write timestamp
 type SystemConfigRepository struct {
 	coll *mongo.Collection
 }
@@ -83,17 +91,42 @@ func (r *SystemConfigRepository) Count(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
-// Upsert creates or updates a config value.
-func (r *SystemConfigRepository) Upsert(ctx context.Context, key, value string) error {
-	filter := bson.M{"key": key}
-	update := bson.M{"$set": bson.M{"value": value, "updated_at": time.Now()}}
-	opts := options.Update().SetUpsert(true)
-
-	_, err := r.coll.UpdateOne(ctx, filter, update, opts)
+// Upsert writes the (key, value, description) document. The `_id` is a UUID:
+// when the key already exists we reuse its existing _id; otherwise we
+// allocate a fresh `cfg_<uuid>`. Writes use the `_id` as the filter so the
+// primary key drives updates.
+func (r *SystemConfigRepository) Upsert(ctx context.Context, key, value, description string) error {
+	id, err := r.resolveID(ctx, key)
+	if err != nil {
+		return err
+	}
+	_, err = r.coll.UpdateOne(ctx,
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{
+			"key":         key,
+			"value":       value,
+			"description": description,
+			"updated_at":  time.Now(),
+		}},
+		options.Update().SetUpsert(true),
+	)
 	if err != nil {
 		return fmt.Errorf("upsert config: %w", err)
 	}
 	return nil
+}
+
+// resolveID returns the existing _id for the given key, or a freshly minted
+// `cfg_<uuid>` when the key is not yet persisted.
+func (r *SystemConfigRepository) resolveID(ctx context.Context, key string) (string, error) {
+	existing, err := r.Get(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	if existing != nil && existing.ID != "" {
+		return existing.ID, nil
+	}
+	return "cfg_" + uuid.NewString(), nil
 }
 
 // Delete removes a config value by key. Idempotent: returns nil if the

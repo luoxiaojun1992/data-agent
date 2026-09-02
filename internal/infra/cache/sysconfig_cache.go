@@ -139,8 +139,8 @@ func (r *SysConfigCacheRepo) GetAll(ctx context.Context) ([]model.SystemConfig, 
 
 // Upsert writes to DB first; on success, updates the single-entry cache and
 // invalidates the aggregate cache so the next GetAll re-fetches from DB.
-func (r *SysConfigCacheRepo) Upsert(ctx context.Context, key, value string) error {
-	if err := r.mongo.Upsert(ctx, key, value); err != nil {
+func (r *SysConfigCacheRepo) Upsert(ctx context.Context, key, value, description string) error {
+	if err := r.mongo.Upsert(ctx, key, value, description); err != nil {
 		return err // DB is SSOT — don't touch cache on DB failure
 	}
 	c := r.getCache()
