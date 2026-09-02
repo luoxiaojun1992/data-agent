@@ -379,3 +379,20 @@ await page.waitForTimeout(2500); // 等 SPA 渲染
 ```
 
 **前提**：必须先用 debug 脚本确认元素确实存在且渲染（排除选择器错误/页面未加载），确认后再用 `page.evaluate` 直接 click。这不是逃避 actionability 校验，而是 headless 判定不可靠时的替代触发方式。
+
+### 铁律 #9: 验证 API 前先确认后端 DTO 字段名，别凭前端 testid 猜
+
+curl/playwright 里调用后端 API 前，先看后端 struct 的 json tag（或 binding tag）确认字段名。前端 input 的 `data-testid`/placeholder 可能是业务语义名（如 `email-input`），与后端实际字段（`username`）不一致。
+
+```bash
+# ❌ 凭前端 testid 猜字段 → 400 误判成 bug
+curl -X POST .../login -d '{"email":"<login-email>","password":"<pwd>"}'
+# → 400 Field validation for 'Username' failed on the 'required' tag
+
+# ✅ 先确认后端 DTO 字段名
+grep -rn 'json:"username"\|Username' internal/...   # 找到真实字段
+curl -X POST .../login -d '{"username":"<login-email>","password":"<pwd>"}'
+# → 200 + JWT
+```
+
+**教训**: 400 + 字段级错误信息 = 后端参数校验正常工作（不是 bug）。读错误里的字段名，那是后端在告诉你哪个字段缺失/非法。

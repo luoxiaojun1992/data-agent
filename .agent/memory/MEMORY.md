@@ -180,3 +180,13 @@
 - 本地 playwright 版本与 ms-playwright 缓存不匹配 → launch 显式 `executablePath`。
 - playwright headless `locator.click()` 莫名超时（actionability 判定不可靠）→ `page.evaluate` 直接 JS click 绕过。
 - 弹窗视觉回归用 `getComputedStyle` 读运行时计算值，不要凭源码 class 名判断。
+
+### AI 免责提示（chat 输入区 + 新建任务弹窗）
+- 加「内容由 AI 生成，请仔细核实甄别」tips：`chat/page.tsx`（输入区玻璃框**外侧**下方，用户要求不在玻璃框内）+ `agent/page.tsx`（新建任务弹窗创建按钮下方）。
+- commit `cfac735`（初版，chat tips 在玻璃框内）→ `ed7dd26`（移到玻璃框外侧）。
+- 位置回归：脚本断言 tips 父元素不含 `glass`、前兄弟是玻璃容器、tips 顶 > 玻璃底。
+
+### ⚠️ 部署深坑（AI 免责提示部署时踩到）
+- 服务器连不上 `registry.npmjs.org`（curl 000），Dockerfile `npm ci` 配 npmmirror 解决（commit `d66c4b7`）。
+- BuildKit `COPY . .` 误判 CACHED：源码变了但全层 CACHED，一度误判新代码没进镜像。判断镜像新旧要查镜像内编译产物（grep `.next` / stat mtime），用 `--no-cache` 绕过 cache 误判。
+- 登录 API 验证：后端 `LoginRequest` 字段是 `username`（非 email），curl 用 email 返回 400 是正常校验，非 bug。

@@ -765,3 +765,23 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **根因**: 遮罩检测最初只匹配 `position:absolute`，漏掉 `position:fixed` 的 skills 弹窗；Tailwind 类名 `bg-black/60`/`backdrop-blur-sm` 的最终计算值必须运行时读取。
 **解决**: 回归脚本用 `getComputedStyle` 读取实际渲染值：遮罩定位匹配 `(fixed || absolute) && 黑色半透明 rgba(0,0,0,0.5/0.6) && 宽度≥1000px`；面板匹配 `boxShadow≠none && 背景非透明 && 宽度≥200`。4 处面板实测 bg=`rgb(17,17,51)`、border=`rgba(255,255,255,0.08)`、radius=16px、shadow=`rgba(0,0,0,0.5) 0 8px 32px`。
 **教训**: 视觉/样式回归断言必须针对**运行时计算样式**（`getComputedStyle`），用「定位类型 + 颜色值 + 尺寸阈值」组合定位元素，不要依赖源码 class 名或单一 `position` 值。
+
+## 2026-09-02 新增（AI 免责提示部署 + 构建缓存误判 + API 字段名验证）
+
+### 服务器连不上 registry.npmjs.org → Dockerfile npm ci 配 npmmirror
+**日期**: 2026-09-02 | **影响**: `--no-cache` 构建卡死 40+ 分钟，npm ci 下载依赖超时
+**根因**: 构建服务器无法访问 `registry.npmjs.org`（curl 000），但 `registry.npmmirror.com` 可达（200）。`--no-cache` 会强制重跑 `npm ci`，依赖下载卡死。
+**解决**: Dockerfile 显式配镜像源：`npm ci --registry=https://registry.npmmirror.com`。
+**教训**: ⛔ 长构建卡住先 `curl` 测依赖源连通性。服务器连不上 npm 官方源时 Dockerfile 显式配 npmmirror（国内镜像）。`--no-cache` 会放大网络依赖（强制 npm ci），先确认源可达再 no-cache。
+
+### BuildKit `COPY . .` 误判 CACHED → 判断镜像产物而非信 CACHED 状态
+**日期**: 2026-09-02 | **影响**: 源码已变但 `docker compose build` 全层 CACHED，一度误判「新代码没进镜像」
+**根因**: BuildKit 对 `COPY . .` 和 `npm run build` 的 cache 判定偶发误判（context 增量 3.56kB 仍命中 CACHED）。CACHED 状态 ≠ 镜像旧。
+**解决**: 直接查镜像编译产物：`docker run --rm --entrypoint sh <image> -c "grep -rl '<新文字>' /app/.next"`（或 stat 编译产物 mtime）。cache 误判时用 `--no-cache` 重建彻底绕过。
+**教训**: ⛔ 判断镜像是否含新代码，必须查镜像内编译产物（grep `.next` 产物或 stat mtime），不要信构建日志的 `CACHED` 标记。部署验证最后一步永远是「查镜像产物」，而非 CACHED 状态。
+
+### 验证 API 用错字段名（email vs username）→ 先确认后端 DTO 字段
+**日期**: 2026-09-02 | **影响**: curl 登录返回 400，一度误判登录接口有 bug
+**根因**: 后端 `LoginRequest` 字段是 `username`，但前端 input 的 testid 叫 `email-input`（迷惑），用 `email` 字段名 curl → Gin binding 校验 `Field validation for 'Username' failed on the 'required' tag` 返回 400。
+**解决**: 用 `username` 字段 → 200 + JWT。400 + 字段级错误信息是**正常的参数校验**，不是 bug。
+**教训**: 验证 API 前先确认后端 DTO 的实际字段名（json tag / binding tag），别凭前端 input 的 testid/placeholder 猜字段。遇到 400 先读错误信息里的字段名，那是后端在告诉你哪个字段缺失/非法。
