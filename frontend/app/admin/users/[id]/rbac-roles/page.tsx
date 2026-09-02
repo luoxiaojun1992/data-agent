@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import AppLayout from '../../../../providers';
 import { useAuth } from '../../../../../lib/api';
 import { useDebouncedSearch, SearchableOption } from '../../../../components/SearchableSelect';
+import Pagination from '../../../../components/Pagination';
+import { primaryButtonStyle, modalOverlayStyle } from '../../../../components/ui';
 
 interface RBACRole { id: string; name: string; display_name: string; level: number; type: string; }
 
@@ -38,18 +40,8 @@ export default function UserRBACRolesPage() {
       .then(() => { showToast('已移除'); fetchRoles(); }).catch(() => showToast('移除失败'));
   };
 
-  const btnPri: React.CSSProperties = { padding: '8px 16px', background: '#5c7cfa', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
   const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
   const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const pagination = (<div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginTop: 16 }}>
-    <button disabled={page <= 1} onClick={() => setPage(page - 1)} style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13, background: 'transparent', color: 'var(--text-primary)' }}>‹</button>
-    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-      <button key={p} onClick={() => setPage(p)} style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13, background: p === page ? '#5c7cfa' : 'transparent', color: p === page ? '#fff' : 'var(--text-primary)' }}>{p}</button>
-    ))}
-    <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13, background: 'transparent', color: 'var(--text-primary)' }}>›</button>
-  </div>);
 
   return (
     <AppLayout>
@@ -59,7 +51,7 @@ export default function UserRBACRolesPage() {
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button data-testid="rbac-user-add-role-btn" onClick={() => setShowAdd(true)}
-            style={btnPri}>+ 添加角色（{roles.length}/10）</button>
+            style={primaryButtonStyle}>+ 添加角色（{roles.length}/10）</button>
         </div>
 
         {roles.length === 0 ? (
@@ -80,7 +72,7 @@ export default function UserRBACRolesPage() {
             ))}
           </div>
         )}
-        {pagination}
+        <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
 
         {showAdd && (
           <AddRoleModal apiFetch={apiFetch} userId={id} maxReached={roles.length >= 10}
@@ -113,8 +105,8 @@ function AddRoleModal({ apiFetch, userId, maxReached, onAdd, onClose }: {
   };
   const { items, loading, error, query, onSearch } = useDebouncedSearch(fetchAvail, 20);
 
-  const mo: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
-  const mc: React.CSSProperties = { background: 'var(--card-bg)', padding: 24, borderRadius: 12, minWidth: 400 };
+  const mo: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
+  const mc: React.CSSProperties = { background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', padding: 24, borderRadius: 12, minWidth: 400 };
   const inp: React.CSSProperties = { width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box' };
   const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
   const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };

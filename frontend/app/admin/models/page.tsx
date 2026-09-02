@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
+import Pagination from '../../components/Pagination';
+import { primaryButtonStyle } from '../../components/ui';
 
 const MASK = '••••••••••';
 
@@ -395,7 +397,7 @@ export default function ModelsPage() {
           <button
             data-testid="model-add-btn"
             onClick={openAdd}
-            className="px-4 py-2 text-sm rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
+            style={primaryButtonStyle}
           >+ 新增模型</button>
         </div>
 
@@ -515,13 +517,7 @@ export default function ModelsPage() {
         </div>
 
         {!search && llmTotal > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
-            <button onClick={() => setLLMPage(p => Math.max(1, p - 1))} disabled={llmPage === 1}
-              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>上一页</button>
-            <span style={{ padding: '4px 8px', fontSize: '12px', color: '#7A7A7A' }}>{llmPage} / {Math.ceil(llmTotal / PAGE)}（共 {llmTotal} 条）</span>
-            <button onClick={() => setLLMPage(p => Math.min(Math.ceil(llmTotal / PAGE), p + 1))} disabled={llmPage >= Math.ceil(llmTotal / PAGE)}
-              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>下一页</button>
-          </div>
+          <Pagination page={llmPage} total={llmTotal} pageSize={PAGE} onChange={setLLMPage} />
         )}
 
         {/* Embedding Model List */}
@@ -633,13 +629,7 @@ export default function ModelsPage() {
         </div>
 
         {!search && embeddingTotal > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
-            <button onClick={() => setEmbeddingPage(p => Math.max(1, p - 1))} disabled={embeddingPage === 1}
-              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>上一页</button>
-            <span style={{ padding: '4px 8px', fontSize: '12px', color: '#7A7A7A' }}>{embeddingPage} / {Math.ceil(embeddingTotal / PAGE)}（共 {embeddingTotal} 条）</span>
-            <button onClick={() => setEmbeddingPage(p => Math.min(Math.ceil(embeddingTotal / PAGE), p + 1))} disabled={embeddingPage >= Math.ceil(embeddingTotal / PAGE)}
-              style={{ padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', background: 'transparent', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>下一页</button>
-          </div>
+          <Pagination page={embeddingPage} total={embeddingTotal} pageSize={PAGE} onChange={setEmbeddingPage} />
         )}
 
         {/* Hermes 独立配置卡片 */}

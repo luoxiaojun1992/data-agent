@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '@/lib/api';
+import Pagination from '../../components/Pagination';
 
 interface ConfigItem {
   key: string;
@@ -110,7 +111,6 @@ export default function SettingsPage() {
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // Backend handles pagination — items is already the current page.
   const paged = items;
 
@@ -197,15 +197,7 @@ export default function SettingsPage() {
         </div>
 
         {items.length > 0 && (
-          <div data-testid="settings-pagination" style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              style={{ padding: '6px 14px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', background: 'transparent', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>上一页</button>
-            <span style={{ padding: '8px 12px', fontSize: '13px', color: '#7A7A7A' }}>
-              {page} / {totalPages}（共 {total} 条）
-            </span>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-              style={{ padding: '6px 14px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', background: 'transparent', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer' }}>下一页</button>
-          </div>
+          <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} testIdPrefix="settings" />
         )}
       </div>
 

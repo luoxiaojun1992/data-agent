@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import AppLayout from '../../../../../providers';
 import { useAuth } from '../../../../../../lib/api';
 import { useDebouncedSearch, SearchableOption } from '../../../../../components/SearchableSelect';
+import { primaryButtonStyle, modalOverlayStyle } from '../../../../../components/ui';
 
 interface RBACPermission { id: string; key: string; name: string; module: string; type: string; }
 
@@ -50,7 +51,6 @@ export default function RolePermissionsPage() {
     padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500,
     background: l === 0 ? '#ef4444' : l === 1 ? '#f59e0b' : '#34d399', color: '#fff', marginLeft: 8,
   });
-  const btnPri: React.CSSProperties = { padding: '8px 16px', background: '#5c7cfa', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
   const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
 
   const pagination = () => {
@@ -71,7 +71,7 @@ export default function RolePermissionsPage() {
         <a href="/admin/rbac" style={{ color: '#5c7cfa', fontSize: 13 }}>← 返回 RBAC 管理</a>
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: '8px 0' }}>{roleName}<span style={badge(level)}>L{level}</span></h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>已关联 {total} 个权限</p>
-        <button data-testid="rbac-role-add-perm-btn" onClick={() => setShowAdd(true)} style={{ ...btnPri, marginBottom: 16 }}>+ 添加权限</button>
+        <button data-testid="rbac-role-add-perm-btn" onClick={() => setShowAdd(true)} style={{ ...primaryButtonStyle, marginBottom: 16 }}>+ 添加权限</button>
 
         <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
@@ -128,8 +128,8 @@ function AddPermModal({ apiFetch, roleId, onAdd, onClose }: {
   };
   const { items, loading, error, query, onSearch } = useDebouncedSearch(fetchAvail, 20);
 
-  const mo: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
-  const mc: React.CSSProperties = { background: 'var(--card-bg)', padding: 24, borderRadius: 12, minWidth: 450 };
+  const mo: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
+  const mc: React.CSSProperties = { background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', padding: 24, borderRadius: 12, minWidth: 450 };
   const inp: React.CSSProperties = { width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box' };
   const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
   const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };

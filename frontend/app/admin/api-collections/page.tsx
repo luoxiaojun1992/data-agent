@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
+import Pagination from '../../components/Pagination';
+import { primaryButtonStyle, modalOverlayStyle } from '../../components/ui';
 
 const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   pending: { text: '待审核', color: '#f59e0b' },
@@ -23,14 +25,14 @@ export default function APICollectionsPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const PAGE_SIZE = 20;
+  const [pageSize, setPageSize] = useState(20);
 
   const load = useCallback(async () => {
-    const res = await apiFetch(`/admin/api-collections?page=${page}&page_size=${PAGE_SIZE}`);
+    const res = await apiFetch(`/admin/api-collections?page=${page}&page_size=${pageSize}`);
     const data = await res.json();
     setCollections(data.items || []);
     setTotal(data.total || 0);
-  }, [apiFetch, page]);
+  }, [apiFetch, page, pageSize]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -68,14 +70,16 @@ export default function APICollectionsPage() {
       <div className="animate-fade-in">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-[var(--text-primary)]">API 管理</h2>
-          <button onClick={() => setShowUpload(true)} className="px-4 py-2 bg-[#B1E2FF] text-black rounded-lg text-sm font-medium hover:opacity-80">
+          <button onClick={() => setShowUpload(true)} style={primaryButtonStyle}>
             + 上传 OpenAPI 文件
           </button>
         </div>
 
         {showUpload && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowUpload(false)}>
-            <div className="bg-[var(--bg-primary)] border border-white/10 rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div style={modalOverlayStyle} onClick={() => setShowUpload(false)}>
+            <div className="rounded-xl p-6 w-full max-w-md"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)' }}
+              onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">上传 API 集合</h3>
               <div className="space-y-3">
                 <div>
@@ -132,16 +136,14 @@ export default function APICollectionsPage() {
             </tbody>
           </table>
         </div>
-        {total > PAGE_SIZE && (
-          <div className="flex justify-center gap-2 mt-4">
-            {Array.from({ length: Math.ceil(total / PAGE_SIZE) }, (_, i) => (
-              <button key={i} onClick={() => setPage(i + 1)}
-                className={`px-3 py-1 rounded text-sm ${page === i + 1 ? 'bg-[#B1E2FF] text-black' : 'bg-white/5 text-[var(--text-secondary)] hover:bg-white/10'}`}>
-                {i + 1}
-              </button>
-            ))}
-          </div>
-        )}
+        <Pagination
+          page={page}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+          testIdPrefix="api-collections"
+        />
       </div>
     </AppLayout>
   );

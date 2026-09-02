@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, type Attachment } from '@/lib/attachment';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
+import Pagination from '../components/Pagination';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -765,17 +766,7 @@ export default function ChatPage() {
               </div>
 
               {/* Pagination */}
-              {sessionsTotal > PAGE_SIZE && (
-                <div className="flex items-center justify-between mt-2 text-xs" data-testid="session-pagination">
-                  <button onClick={() => setSessionsPage(p => Math.max(1, p - 1))} disabled={sessionsPage === 1}
-                    className="px-2 py-1 rounded border border-[var(--border-glass)] disabled:opacity-40 text-[var(--text-secondary)]">上一页</button>
-                  <span className="text-[var(--text-secondary)]">
-                    {sessionsPage} / {Math.ceil(sessionsTotal / PAGE_SIZE)}（共 {sessionsTotal} 条）
-                  </span>
-                  <button onClick={() => setSessionsPage(p => Math.min(Math.ceil(sessionsTotal / PAGE_SIZE), p + 1))} disabled={sessionsPage >= Math.ceil(sessionsTotal / PAGE_SIZE)}
-                    className="px-2 py-1 rounded border border-[var(--border-glass)] disabled:opacity-40 text-[var(--text-secondary)]">下一页</button>
-                </div>
-              )}
+              <Pagination page={sessionsPage} total={sessionsTotal} pageSize={PAGE_SIZE} onChange={setSessionsPage} testIdPrefix="session" />
             </div>
           </div>
         )}

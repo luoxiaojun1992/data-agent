@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../providers';
+import Pagination from '../components/Pagination';
+import { primaryButtonStyle, modalOverlayStyle } from '../components/ui';
 import { useAuth } from '../../lib/api';
 import { parsePdf, isPdfFile, isTxtFile, isImageFile, imageMimeType } from '../../lib/pdf';
 
@@ -68,8 +70,6 @@ export default function KnowledgePage() {
   useEffect(() => {
     if (auth.hydrated) fetchDocs();
   }, [auth.hydrated, fetchDocs]);
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // 上传一个 txt 文档（multipart）
   const uploadTxtDoc = async (title: string, fileName: string, content: string) => {
@@ -215,8 +215,7 @@ export default function KnowledgePage() {
         {/* Toolbar: Upload + Search */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <button data-testid="kb-upload-btn" onClick={() => setShowUpload(true)}
-            style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
-              color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+            style={primaryButtonStyle}>
             + 上传文档
           </button>
           <input data-testid="kb-search-input" placeholder="搜索文档..." value={search}
@@ -227,8 +226,7 @@ export default function KnowledgePage() {
 
         {/* Upload Modal */}
         {showUpload && (
-          <div data-testid="kb-upload-modal" style={{ position: 'fixed', inset: 0, zIndex: 999,
-            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          <div data-testid="kb-upload-modal" style={{ ...modalOverlayStyle, zIndex: 999 }}
             onClick={(e) => { if (e.target === e.currentTarget) { setShowUpload(false); setSelectedFiles([]); } }}>
             <div className="glass" style={{ padding: '24px', maxWidth: '420px', width: '90%' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
@@ -332,17 +330,7 @@ export default function KnowledgePage() {
         </div>
 
         {/* Pagination */}
-        {total > 0 && (
-          <div data-testid="kb-pagination" style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '24px' }}>
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-              style={pageBtnStyle}>上一页</button>
-            <span style={{ padding: '8px 12px', fontSize: '13px', color: '#7A7A7A' }}>
-              {page} / {totalPages}（共 {total} 条）
-            </span>
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              style={pageBtnStyle}>下一页</button>
-          </div>
-        )}
+        <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} testIdPrefix="kb" />
       </div>
     </AppLayout>
   );
@@ -365,10 +353,6 @@ const statusBg = (s: string) => {
 const statusColor = (s: string) => {
   const m: Record<string, string> = { ready: '#34D399', indexing: '#FBBF24', uploaded: '#3b82f6', failed: '#FB7185' };
   return m[s] || '#6b7280';
-};
-const pageBtnStyle: React.CSSProperties = {
-  padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '8px', color: '#7A7A7A', fontSize: '13px', cursor: 'pointer',
 };
 
 // File → base64 data URL（浏览器端读取图片）。

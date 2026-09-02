@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import SearchableSelect, { SearchableOption } from '../../components/SearchableSelect';
+import Pagination from '../../components/Pagination';
+import { primaryButtonStyle, modalOverlayStyle } from '../../components/ui';
 
 interface RBACRole {
   id: string; name: string; display_name: string; description: string;
@@ -88,7 +90,7 @@ export default function RBACPage() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             {parentFilter && <button onClick={clearFilter} data-testid="rbac-clear-filter-btn"
               style={btnSec}>← 返回全部</button>}
-            <button data-testid="rbac-add-role-btn" onClick={() => setShowAddRole(true)} style={btnPri}>+ 新建角色</button>
+            <button data-testid="rbac-add-role-btn" onClick={() => setShowAddRole(true)} style={primaryButtonStyle}>+ 新建角色</button>
           </div>
 
           {roles.map(r => (
@@ -120,12 +122,12 @@ export default function RBACPage() {
               </div>
             </div>
           ))}
-          <Pagination page={rolePage} total={roleTotal} pageSize={PAGE_SIZE} onPage={setRolePage} />
+          <Pagination page={rolePage} total={roleTotal} pageSize={PAGE_SIZE} onChange={setRolePage} />
         </>)}
 
         {/* Permissions Tab */}
         {tab === 'permissions' && (<>
-          <button data-testid="rbac-add-perm-btn" onClick={() => setShowAddPerm(true)} style={btnPri}>+ 新建权限</button>
+          <button data-testid="rbac-add-perm-btn" onClick={() => setShowAddPerm(true)} style={primaryButtonStyle}>+ 新建权限</button>
           <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <thead>
@@ -155,7 +157,7 @@ export default function RBACPage() {
               </tbody>
             </table>
           </div>
-          <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onPage={setPermPage} />
+          <Pagination page={permPage} total={permTotal} pageSize={PAGE_SIZE} onChange={setPermPage} />
         </>)}
 
         {toast && <div style={{ position: 'fixed', bottom: 20, right: 20, padding: '10px 20px', borderRadius: 8,
@@ -172,29 +174,11 @@ export default function RBACPage() {
   );
 }
 
-function Pagination({ page, total, pageSize, onPage }: { page: number; total: number; pageSize: number; onPage: (p: number) => void }) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pp = page; /* use p to avoid shadow */
-  return (
-    <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginTop: 16 }}>
-      <button disabled={pp <= 1} onClick={() => onPage(pp - 1)}
-        style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13, background: 'transparent', color: 'var(--text-primary)' }}>‹</button>
-      {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-        <button key={p} onClick={() => onPage(p)}
-          style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-            background: p === pp ? '#5c7cfa' : 'transparent', color: p === pp ? '#fff' : 'var(--text-primary)' }}>{p}</button>
-      ))}
-      <button disabled={pp >= totalPages} onClick={() => onPage(pp + 1)}
-        style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13, background: 'transparent', color: 'var(--text-primary)' }}>›</button>
-    </div>
-  );
-}
-
 const btnPri: React.CSSProperties = { padding: '8px 16px', background: '#5c7cfa', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
 const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
 const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
-const mOverlay: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
-const mContent: React.CSSProperties = { background: 'var(--card-bg)', padding: 24, borderRadius: 12, minWidth: 400 };
+const mOverlay: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
+const mContent: React.CSSProperties = { background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', padding: 24, borderRadius: 12, minWidth: 400 };
 const inLabel: React.CSSProperties = { display: 'block', fontSize: 13, marginBottom: 8, color: 'var(--text-secondary)' };
 const inStyle: React.CSSProperties = { display: 'block', width: '100%', marginTop: 4, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14 };
 
@@ -295,8 +279,8 @@ function AddPermModal({ apiFetch, onClose, onSuccess, showToast }: any) {
       showToast('权限已创建'); onSuccess();
     } catch (e: any) { showToast(e?.message || '创建失败'); }
   };
-  const mo: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 };
-  const mc: React.CSSProperties = { background: 'var(--card-bg)', padding: 24, borderRadius: 12, minWidth: 450 };
+  const mo: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
+  const mc: React.CSSProperties = { background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', padding: 24, borderRadius: 12, minWidth: 450 };
   return (
     <div style={mo} onClick={onClose}>
       <div style={mc} onClick={e => e.stopPropagation()}>
