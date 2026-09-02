@@ -60,3 +60,6 @@ tmp/
 temp/
 /hermes
 mockllm/mockllm
+
+# 冒烟回归脚本（含测试服务器凭据，禁 push）
+tests/ui/smoke-spec078.mjs
