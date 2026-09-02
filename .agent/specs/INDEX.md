@@ -91,7 +91,7 @@
 | SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | ✅ 已实现 |
 | SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计已定稿 |
 | SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计已定稿 |
-| SPEC-078 | 前端列表页 UI 规范统一（分页组件 / 顶部主按钮 / 弹窗玻璃样式） | **P15** | [spec-078-frontend-list-ui-consistency.md](spec-078-frontend-list-ui-consistency.md) | 📐 设计已定稿 |
+| SPEC-078 | 前端列表页 UI 规范统一（分页组件 / 顶部主按钮 / 弹窗玻璃样式） | **P15** | [spec-078-frontend-list-ui-consistency.md](spec-078-frontend-list-ui-consistency.md) | ✅ 已实现（14 页分页/按钮/弹窗收敛，4 处弹窗视觉完全统一） |
 
 ## Phase 对应与依赖
 
@@ -352,7 +352,7 @@ SPEC-006│               │
                     解析图限制与图片附件等价(≤5张/≤2MiB);
                     后端 ChatRequest 加 pdfs 字段)
 
-[P15] SPEC-078 ─── 前端列表页 UI 规范统一 (设计已定稿)
+[P15] SPEC-078 ─── 前端列表页 UI 规范统一 (已实现)
                    (分页组件收敛到 Pagination.tsx 唯一组件; 非 skill 定义;
                     每页条数下拉统一内嵌进分页组件(10/20/50/100);
                     API 管理页补标准分页;
@@ -373,7 +373,7 @@ SPEC-006│               │
 |:---:|------|------|------|
 | 1 | SPEC-074 | ✅ 可搜索下拉选择器（含 5.6/5.7 bug 修复） | 已完成（2026-09-01）；含 2 个线上可见 bug 修复（用户管理空下拉 / rbac-roles 弹窗 404+前端 filter 违规）；是 075 的前置 |
 | 2 | SPEC-075 | ✅ 前端列表搜索/分页后端化 | 依赖 074 的 q/limit DB 层搜索模式；已完成（2026-09-01）：知识库/会话新增 q 后端过滤 + 模型搜索复用 074 |
-| 3 | SPEC-078 | 前端列表 UI 规范统一 | 纯前端样式收敛，设计已定稿；075 改造后统一分页组件 |
+| 3 | SPEC-078 | ✅ 前端列表 UI 规范统一 | 已完成（2026-09-02）：分页收敛到 Pagination.tsx、主按钮渐变 #5c7cfa→#7c3aed、弹窗玻璃样式统一（模型/skill/飞书/提示词 4 处视觉完全一致） |
 | 4 | SPEC-077 | Chat 附件 PDF | 独立小功能，随时可插队 |
 | 5 | SPEC-076 | 前端主题切换 | 纯前端；放 078 后（078 已定稿不考虑多主题，076 落地时对 078 引入的色值做变量化收尾） |
 | 6 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
