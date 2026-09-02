@@ -716,8 +716,8 @@ export default function ChatPage() {
                 data-testid="chat-send-btn"
               >{streaming ? '发送中...' : '发送'}</button>
             </div>
-            <p className="text-center text-[11px] text-[var(--text-secondary)] mt-2" data-testid="chat-ai-tips">内容由 AI 生成，请仔细核实甄别</p>
           </div>
+          <p className="text-center text-[11px] text-[var(--text-secondary)] mt-2" data-testid="chat-ai-tips">内容由 AI 生成，请仔细核实甄别</p>
         </div>
 
         {/* Session Panel */}
