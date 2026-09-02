@@ -384,6 +384,7 @@ export default function AgentPage() {
                   className="flex-1 px-4 py-2 text-sm rounded-xl bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40"
                   data-testid="agent-task-create-btn" disabled={!newTask.title.trim() || (newTask.cronEnabled && !(newTask.cron || newTask.scheduledAt))}>创建任务</button>
               </div>
+              <p className="text-center text-[11px] text-[var(--text-secondary)]" data-testid="agent-task-ai-tips">内容由 AI 生成，请仔细核实甄别</p>
             </div>
           </div>
         </div>
