@@ -132,6 +132,8 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 38 | **查 MongoDB 前不确认真实 db name** | 本项目数据库名是 `data_agent`（下划线），不是仓库名 `data-agent`（连字符）。查库前先 `docker exec <mongo> env | grep MONGO` 确认连接串，否则查到空库误判「数据被删」。 |
 | 39 | **加唯一索引前不查重复数据** | 对已有数据集合加唯一索引前，必须先 `aggregate $group` 查重复 key，否则 `ensureIndex({unique:true})` 因 E11000 直接失败。 |
 | 40 | **前端判断「默认」不用 use_case scope** | `is_default_for` 是 per-use-case 的。chat 下拉只标 chat 默认，否则多个 use_case 默认全标上 → 下拉出现「多个默认」。 |
+| 41 | **同类弹窗/面板视觉混用不同 class（`.glass` 半透明 vs 实色 `var(--bg-secondary)`）** | 弹窗面板必须统一视觉：遮罩 `rgba(0,0,0,0.6)`+blur(4px)、面板 `var(--bg-secondary)` 实色 + `var(--border-glass)` 边框 + 16px 圆角 + `0 8px 32px rgba(0,0,0,0.5)` 阴影。集中用 `components/ui.ts` 的 `modalOverlayStyle`/`modalPanelStyle` 常量，禁用 `.glass` 用于弹窗面板（半透明+blur(20px) 与实色面板观感不一致）。 |
+| 42 | **视觉/样式回归只凭源码 class 名判断** | 样式一致性回归必须读 `getComputedStyle` 运行时计算值（定位类型+颜色值+尺寸阈值组合定位元素），Tailwind `bg-black/60` 等类名的最终值、`position:fixed/absolute` 差异只能在运行时确定。 |
 
 ## 开发工作流约定
 

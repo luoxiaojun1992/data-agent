@@ -361,3 +361,21 @@ cd tests && npx playwright test
 冒烟/巡检脚本（非 spec 套件的辅助脚本）中：
 1. 任何改变页面状态的检查（tab 切换、路由跳转、弹窗打开）在检查结束后必须**恢复初始状态**，否则后续检查在脏状态下误报。
 2. 检查项断言必须对齐真实 DOM 结构——按钮是否在未激活的 tab 内、页面真实标题/文案是什么、条件渲染组件在数据不足时是否出现。写错断言制造假失败，浪费排查时间。
+
+### 铁律 #8: 弹窗/按钮触发——headless actionability 不可靠时用 `page.evaluate` 直接 click
+
+`locator.click()` 依赖 actionability 判定（visible/stable/enabled/receives-events），headless 下偶发不满足（元素实际可见但判定不通过）→ `Timeout 10000ms exceeded`。
+
+```typescript
+// ❌ 卡在 actionability 判定（元素实际存在仍超时）
+await page.locator('#model-add-btn').waitFor({ state: 'visible' });
+await page.locator('#model-add-btn').click();
+
+// ✅ 先确认元素存在（debug 脚本 dump），再直接 JS click 绕过 actionability
+const exists = await page.evaluate((sel) => !!document.querySelector(sel), '#model-add-btn');
+// 确认 exists === true 后：
+await page.evaluate((sel) => { document.querySelector(sel)?.click(); }, '#model-add-btn');
+await page.waitForTimeout(2500); // 等 SPA 渲染
+```
+
+**前提**：必须先用 debug 脚本确认元素确实存在且渲染（排除选择器错误/页面未加载），确认后再用 `page.evaluate` 直接 click。这不是逃避 actionability 校验，而是 headless 判定不可靠时的替代触发方式。

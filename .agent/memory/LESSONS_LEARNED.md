@@ -747,3 +747,21 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **根因**: node_modules 的 playwright 版本期望的浏览器 build 与本机 `~/Library/Caches/ms-playwright/` 缓存版本不一致（多项目各装各的版本）。
 **解决**: 在 launch 时显式指定已缓存浏览器路径（如 chromium-1234 的 Google Chrome for Testing.app/Contents/MacOS/...），或先 `npx playwright install chromium` 对齐版本。
 **教训**: 换目录/换项目跑 playwright 时先检查 `playwright/package.json` 版本与 ms-playwright 缓存目录是否匹配，不匹配就用 executablePath 硬指定，别默认 launch。
+
+### playwright headless 下 `locator.click()` 莫名超时 → `page.evaluate` 直接 JS click
+**日期**: 2026-09-02 | **影响**: 弹窗视觉回归脚本里 `model-add-btn`/`feishu-add-btn`/`prompt-btn` 的 `click()` 报 `Timeout 10000ms exceeded`，但 debug 脚本证实元素实际存在且已渲染
+**根因**: playwright 的 `locator.click()` 依赖 actionability 判定（visible/stable/enabled/receives-events），headless 环境下偶发不满足（元素实际可见但判定不通过），非元素缺失。用 `waitFor visible` 后 `click` 同样会卡在 actionability。
+**解决**: 改用 `page.evaluate((sel) => { document.querySelector(sel)?.click(); }, selector)` 直接派发 click 事件，绕过 actionability 判定；配合 `await sleep(2500)` 等 SPA 渲染完成。
+**教训**: 弹窗/按钮触发类巡检脚本中，元素「确实存在但 click 超时」时，先确认不是选择器错误或页面未渲染（用 debug 脚本 dump 元素），确认后改用 `page.evaluate` 直接 JS click。这不是测试逃避，而是 headless actionability 判定不可靠时的替代触发方式。
+
+### `.glass` 半透明毛玻璃面板与 admin 弹窗实色面板视觉不一致
+**日期**: 2026-09-02 | **影响**: 飞书集成（新增+编辑）和 chat 提示词弹窗用 `.glass` 半透明毛玻璃（`--glass-bg: rgba(255,255,255,0.04)` + `backdrop-filter: blur(20px)`），与模型/skill 配置弹窗的 `var(--bg-secondary)`（#111133 不透明）观感明显不同，视觉不统一
+**根因**: 同一系统的弹窗面板混用了两套视觉体系：`.glass`（半透明 + 强 blur）vs 实色 `var(--bg-secondary)` + `var(--border-glass)` 边框。`.glass` 定位为「玻璃卡片」场景（列表卡、导航），不适合弹窗面板。
+**解决**: 弹窗视觉收敛到 SPEC-078 统一标准——遮罩 `rgba(0,0,0,0.6)` + `backdrop-filter: blur(4px)`；面板 `var(--bg-secondary)` 实色 + `var(--border-glass)` 边框 + 16px 圆角 + `0 8px 32px rgba(0,0,0,0.5)` 阴影。飞书/chat 弹窗去掉 `.glass`，改用共享常量 `modalOverlayStyle`/`modalPanelStyle`（`components/ui.ts`）。回归脚本读 `getComputedStyle` 验证 4 处面板 computed style 100% 一致。
+**教训**: 统一 UI 规范时，弹窗/面板类组件视觉值（遮罩透明度、面板底色、圆角、阴影）应集中定义为共享 CSS 变量 + 共享样式常量，逐处收敛，别让同类组件各自用不同的 class（`.glass` vs 内联实色）。回归验证用 `getComputedStyle` 比对最终计算值，而非仅看源码。
+
+### 弹窗视觉一致性回归：用 `getComputedStyle` 而非源码判断
+**日期**: 2026-09-02 | **影响**: 单看源码无法确认遮罩真实背景色——models 遮罩是 `position:absolute`、skills 遮罩是 `position:fixed`，且 Tailwind `bg-black/60` 最终编译值需实测
+**根因**: 遮罩检测最初只匹配 `position:absolute`，漏掉 `position:fixed` 的 skills 弹窗；Tailwind 类名 `bg-black/60`/`backdrop-blur-sm` 的最终计算值必须运行时读取。
+**解决**: 回归脚本用 `getComputedStyle` 读取实际渲染值：遮罩定位匹配 `(fixed || absolute) && 黑色半透明 rgba(0,0,0,0.5/0.6) && 宽度≥1000px`；面板匹配 `boxShadow≠none && 背景非透明 && 宽度≥200`。4 处面板实测 bg=`rgb(17,17,51)`、border=`rgba(255,255,255,0.08)`、radius=16px、shadow=`rgba(0,0,0,0.5) 0 8px 32px`。
+**教训**: 视觉/样式回归断言必须针对**运行时计算样式**（`getComputedStyle`），用「定位类型 + 颜色值 + 尺寸阈值」组合定位元素，不要依赖源码 class 名或单一 `position` 值。

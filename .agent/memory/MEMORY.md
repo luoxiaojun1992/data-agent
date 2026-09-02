@@ -155,3 +155,28 @@
 
 ### commit 时间线
 538661e（UI 首次优化）→ 9ba0f85（Portal + 列宽压缩）→ 080b168（列宽再压缩 + nowrap）→ a51b1c0（embedding 默认判断修复）。
+
+## 2026-09-02: sysconfig 走 DB + 模型下拉默认过滤 + SPEC-078 前端列表页 UI 统一
+
+### sysconfig description 走 DB（SSOT）+ `_id` UUID
+- **决策**: `description`/`skill` 等展示字段一律作为 DB 字段贯穿 model→converter→repo→service→handler→前端，前端删除硬编码 `BUILTIN_CONFIGS` 直接消费后端；开发测试阶段不做数据迁移。
+- **`_id` 规则**: `resolveID` 返回纯 `uuid.NewString()`（无前缀）；更新用 `_id`；必要唯一索引保留（`system_configs.key`、`model_defaults.use_case`）。
+- **⚠️ 库名**: MongoDB 数据库名是 `data_agent`（下划线），非仓库名 `data-agent`（连字符）。排查 mongosh 一律 `db.getSiblingDB("data_agent")`，先 `docker exec <mongo> env | grep MONGO` 确认。
+
+### 模型下拉「默认」过滤
+- `attachDefaults`/`defaultIDs` 按 use_case 过滤：chat 下拉只标 chat 默认并排序最上；`is_default_for` 是 per-use-case 的，前端判断默认必须传目标 use_case scope。
+
+### SPEC-078 前端列表页 UI 规范统一（纯前端）
+- 三件事：① 分页统一到公共 `components/Pagination.tsx`；② 顶部主按钮统一渐变 `#5c7cfa→#7c3aed`（`ui.ts` 的 `primaryButtonStyle`）；③ 弹窗统一玻璃样式（`modalOverlayStyle`/`modalPanelStyle`）。
+- 改造 14 个页面（admin 7 + 用户侧 5 + rbac 子页 2）；保留 data-testid 前缀对齐 SPEC-035 防 UI E2E 失效。
+
+### 弹窗视觉完全统一（模型/skill/飞书/提示词）
+- **统一标准**: 遮罩 `rgba(0,0,0,0.6)` + blur(4px)；面板 `var(--bg-secondary)`(#111133 实色) + `var(--border-glass)` 边框 + 16px 圆角 + `0 8px 32px rgba(0,0,0,0.5)` 阴影。
+- **消灭 `.glass` 弹窗面板**: 飞书（新增+编辑）和 chat 提示词弹窗原用 `.glass`（半透明 `rgba(255,255,255,0.04)` + blur(20px)），与 admin 弹窗实色面板视觉不一致 → 统一改为 `var(--bg-secondary)`。`.glass` 定位为玻璃卡片（列表卡/导航），不用于弹窗面板。
+- commit `6e3de85`（4 files +9/-9）+ `dc1e9dc`（忽略含凭据回归脚本）。
+
+### ⚠️ 环境教训（部署/回归）
+- 本地访问测试服务器可能被网络过滤器拦截（"Web Filter Block Override"），curl 拿 HTML 假响应；服务器内自测 + SSH 隧道 `ssh -N -L 18080:127.0.0.1:80` 绕行。
+- 本地 playwright 版本与 ms-playwright 缓存不匹配 → launch 显式 `executablePath`。
+- playwright headless `locator.click()` 莫名超时（actionability 判定不可靠）→ `page.evaluate` 直接 JS click 绕过。
+- 弹窗视觉回归用 `getComputedStyle` 读运行时计算值，不要凭源码 class 名判断。
