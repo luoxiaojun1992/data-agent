@@ -679,7 +679,7 @@ export default function ModelsPage() {
         {(editingId !== null || showAddModal) && editForm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center" data-testid="model-edit-modal">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeEdit} />
-            <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-glass)] p-6 rounded-2xl max-w-lg w-full mx-4 space-y-3 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-glass)] p-6 rounded-2xl max-w-lg w-full mx-4 space-y-3 max-h-[90vh] overflow-y-auto" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
                 {editingId !== null ? '编辑模型' : '新增模型'}
               </h3>

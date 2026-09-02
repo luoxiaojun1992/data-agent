@@ -774,8 +774,8 @@ export default function ChatPage() {
         {/* Prompt Modal */}
         {showPromptModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="prompt-modal">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowPromptModal(false)} />
-            <div className="relative glass p-6 rounded-2xl max-w-md w-full mx-4 space-y-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPromptModal(false)} />
+            <div className="relative p-6 rounded-2xl max-w-md w-full mx-4 space-y-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)]">提示词</h3>
                 <button onClick={() => setShowPromptModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]" data-testid="prompt-modal-close">✕</button>

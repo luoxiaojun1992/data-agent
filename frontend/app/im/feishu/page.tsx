@@ -210,8 +210,8 @@ export default function FeishuConfigPage() {
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="feishu-create-modal">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
-          <div className="relative glass p-6 rounded-2xl max-w-lg w-full mx-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
+          <div className="relative p-6 rounded-2xl max-w-lg w-full mx-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">新增飞书配置</h3>
               <button onClick={() => setShowCreateModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">&times;</button>
@@ -260,8 +260,8 @@ export default function FeishuConfigPage() {
       {/* Edit Modal */}
       {editingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="feishu-edit-modal">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setEditingId(null); setShowSecret(false); }} />
-          <div className="relative glass p-6 rounded-2xl max-w-lg w-full mx-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setEditingId(null); setShowSecret(false); }} />
+          <div className="relative p-6 rounded-2xl max-w-lg w-full mx-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">编辑飞书配置</h3>
               <button onClick={() => { setEditingId(null); setShowSecret(false); }} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">&times;</button>

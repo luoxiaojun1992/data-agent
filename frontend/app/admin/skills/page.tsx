@@ -209,12 +209,12 @@ export default function SkillsAdminPage() {
             <div style={{
               background: 'var(--bg-secondary)',
               border: '1px solid var(--border-glass)',
-              borderRadius: '12px',
+              borderRadius: '16px',
               padding: '24px',
               width: '560px',
               maxHeight: '80vh',
               overflow: 'auto',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
             }} onClick={e => e.stopPropagation()}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 16px 0' }}>
                 配置 <code style={{ color: 'var(--accent)' }}>{editingName}</code>
