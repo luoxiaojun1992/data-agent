@@ -2,17 +2,25 @@
 
 > **SPEC-082** | Status: 设计中
 
+> **术语约定（红线）**：**取消 ≠ 删除**。
+> - **取消（cancel）**：只针对 **run 执行单元**，置 `StatusCancelled`，记录保留。
+> - **删除（delete）**：只针对 **task 定义**，物理删除（DeleteOne），不可恢复。
+> - **启停（enabled）**：task 的开关字段，控制是否创建 run。
+> 三者正交，禁止混用。「取消」永不作用于 task 定义，「删除」永不作用于 run 执行。
+
 ## 1. 目标
 
 1. **Chat 取消**：前端发送中显示「停止」按钮，点击后中断与后端的 SSE 连接；后端 runtime 调用**继承上层 ctx**（现状已透传，本次只补兜底），客户端断开 → 请求 ctx 取消 → 底层 ADK 运行随之终止（**不侵入、不修改底层 ADK 的 ctx 用法**）。
 
-2. **Task 启停统一为开关字段**：**删除 task 级「取消」（现为 DeleteOne 物理删除）**，非定时 task 与定时 task 统一使用同一开关字段 `ScheduledEnabled`（`scheduled_enabled`）。**关闭开关 → 不再创建 run**；开关语义从「仅定时任务」泛化为「所有 task 的启停开关」。
+2. **Task 启停统一为开关字段**：非定时 task 与定时 task 统一使用同一开关字段 `ScheduledEnabled`（`scheduled_enabled`），**关闭开关 → 不再创建 run**；开关语义从「仅定时任务」泛化为「所有 task 的启停开关」。
 
-3. **Task Run 取消**：取消状态只落在 **run 上**（`StatusCancelled` 已存在）。已创建的 run 分两条路径取消：
+3. **Task 删除正名**：原 `CancelTask`（`PUT /tasks/:id/cancel`）实为 `DeleteOne` 物理删除，**命名错误**——正名为「删除 task」（`DELETE /tasks/:id`），删除能力保留，与「取消」彻底区分。
+
+4. **Task Run 取消**：取消状态只落在 **run 上**（`StatusCancelled` 已存在）。已创建的 run 分两条路径取消：
    - **未执行**（pending/queued）：执行前判断 DB，直接跳过；
    - **执行中**（running）：executor 内**轮询 DB** 对应 run 的状态（`for select case`），发现已取消 → `cancel()` 子 ctx → 继承的子 ctx 使底层运行终止（**不侵入底层 ADK**）。
 
-4. **完成临界点**：取消是**尽力而为**。一旦 run 走到「执行完成」——即使只差把结果写回 DB（`save_task_result` 已置 `completed`）——就**当作已完成**，不再响应取消。
+5. **完成临界点**：取消是**尽力而为**。一旦 run 走到「执行完成」——即使只差把结果写回 DB（`save_task_result` 已置 `completed`）——就**当作已完成**，不再响应取消。
 
 ## 1.5. 前置依赖检查
 
@@ -28,8 +36,8 @@
 | 现状 | 缺口 |
 |------|------|
 | `ScheduledEnabled` 开关字段已存在，前端 agent 页已有 ON/OFF 切换 UI（`PATCH /admin/tasks/:id/scheduled-enabled`）；调度器 `ListScheduled` 已按 `scheduled_enabled != false` 过滤 | **语义只覆盖定时 task**：非定时 task 无启停概念；`CreateRun` 未检查开关，关闭后手动触发仍会建 run |
-| `CancelTask`（`PUT /tasks/:task_id/cancel`）= `TaskDefRepository.Cancel` = **DeleteOne 物理删除** | **task 级「取消」是物理删除**，与「开关」语义重复且不可恢复——应删除，统一改用开关 |
-| `PauseTask`/`ResumeTask` 存在但语义混乱（PauseTask 误把 task_id 当 run_id 调 `CancelRun`），前端未调用 | 应随 task 级取消一并清理 |
+| `CancelTask`（`PUT /tasks/:task_id/cancel`）= `TaskDefRepository.Cancel` = **DeleteOne 物理删除** | **命名错误**：这是「删除 task」而非「取消」，与「取消」概念混淆——正名为 `DELETE /tasks/:id`（删除能力保留），「取消」只属于 run |
+| `PauseTask`/`ResumeTask` 存在但语义混乱（PauseTask 误把 task_id 当 run_id 调 `CancelRun`），前端未调用 | 与开关语义重复，应删除 |
 | `StatusCancelled` + `service.CancelRun` + `TaskRunRepository.Cancel` 已存在 | **run 级取消无 HTTP 路由**；`Cancel` 条件仅 `[queued, pending]`，**不支持执行中取消** |
 | `AgentExecutor.Execute` 入口检查 `StatusCancelled`（执行前判断 ✅）；事后 `wasRunCancelled` 保护 ✅ | **执行中无法响应取消**：`RunAndCollectContent` 阻塞期间取消不生效 |
 | chat ctx 链路已透传：`c.Request.Context() → Stream → streamOnce → RunContent` ✅ | **前端无取消按钮/AbortController**；`streamOnce` 无 `ctx.Done` 兜底；取消后可能误入 relevance 重试计数 |
@@ -47,10 +55,10 @@
 │     relevance 重试，避免取消被计入 retry 计数）             │
 └──────────────────────────────────────────────────────────┘
 
-┌─ Task 启停（开关，替代原 task 级取消）─────────────────────┐
+┌─ Task 删除与启停（task 层无「取消」）─────────────────────┐
+│ DELETE /tasks/:task_id → 物理删除 task 定义（原 cancel 正名）│
 │ PATCH /tasks/:task_id/enabled {enabled:false} → 关闭       │
 │   → CreateRun / 调度器 检查开关 → 不创建 run                │
-│ （删除 PUT /tasks/:task_id/cancel 的 DeleteOne 语义）       │
 └──────────────────────────────────────────────────────────┘
 
 ┌─ Task Run 取消 ─────────────────────────────────────────┐
@@ -70,16 +78,19 @@
 
 ## 4. API 设计
 
-### 4.1 变更：Task 启停开关（删除 task 级取消）
+### 4.1 Task 删除正名 + 启停开关（task 层无取消）
 
 | Method | Path | 变更 | Description |
 |--------|------|------|-------------|
+| DELETE | `/api/v1/tasks/:task_id` | **正名** | 物理删除 task 定义（原 `PUT /tasks/:id/cancel` 的 DeleteOne 能力保留，REST 语义改为「删除」；JWT 认证） |
 | PATCH | `/api/v1/tasks/:task_id/enabled` | **新增** | 统一启停开关（JWT 认证；body `{"enabled": bool}`；非定时/定时 task 通用） |
-| PUT | `/api/v1/tasks/:task_id/cancel` | **删除** | 原 DeleteOne 物理删除，废弃 |
+| PUT | `/api/v1/tasks/:task_id/cancel` | **删除** | 命名错误（实为删除），由 `DELETE /tasks/:id` 取代 |
 | PUT | `/api/v1/tasks/:task_id/pause` | **删除** | 语义混乱（误把 task_id 当 run_id），废弃 |
 | PUT | `/api/v1/tasks/:task_id/resume` | **删除** | 与开关重复，废弃 |
 
 > 现有 admin 侧 `PATCH /admin/tasks/:id/scheduled-enabled` 由新用户侧接口替代；前端 agent 页的 ON/OFF 切换改调 `/tasks/:task_id/enabled`。字段名 `ScheduledEnabled`（bson `scheduled_enabled`）保留（前端已按此渲染），仅语义泛化为「所有 task 启停开关，默认开启」。
+>
+> **删除 vs 取消**：`DELETE /tasks/:id` 删除 task **定义**（不可恢复）；`PUT /task-runs/:id/cancel` 取消 run **执行**（状态置 cancelled，记录保留）。两者对象不同、语义不同、不可混用。
 >
 > 关闭开关的语义：**不删除、不置终态，仅停止后续创建 run**。已有 run 不受影响（继续跑完或按 §4.2 单独取消）。
 
@@ -118,9 +129,10 @@ chat 取消由「客户端断开 SSE」表达，无需新端点（取消语义 =
 - `Stream` 的 relevance 重试段：进入前检查 `ctx.Err() != nil` 则跳过（**取消不触发 `RecordAndShouldRetry` 计数**，避免取消被误判为「不相关」消耗重试额度）。
 - 取消产生的 partial 内容落库：按现有流式事件机制处理，**不新增特殊分支**。
 
-### 5.3 Task 启停开关（替代 task 级取消）
+### 5.3 Task 删除正名 + 启停开关
 
-- **删除**：`TaskHandler.CancelTask`、`TaskHandler.PauseTask`、`TaskHandler.ResumeTask` + 对应路由；`service.CancelTask`；`TaskDefRepository.Cancel`（DeleteOne 语义）。
+- **正名「删除 task」**：`TaskHandler.CancelTask` → `DeleteTask`（路由 `DELETE /tasks/:id`）；`service.CancelTask` → `DeleteTask`；`TaskDefRepository.Cancel`（DeleteOne 语义）→ `Delete`。删除能力保留，仅更正命名与 REST 语义。
+- **删除废弃接口**：`TaskHandler.PauseTask`、`TaskHandler.ResumeTask` + 对应路由（语义混乱/与开关重复，前端未调用）。
 - **泛化** `ScheduledEnabled`：语义从「仅定时任务开关」改为「所有 task 启停开关」，`CreateTask` 已默认 `ScheduledEnabled = true`（保留）；非定时 task 同样可切换。
 - **新增** `service.SetEnabled`（复用现有 `SetScheduledEnabled` 逻辑，语义不变）+ `PATCH /api/v1/tasks/:task_id/enabled`（用户侧，替代 admin `scheduled-enabled`）。
 - **建 run 前置检查**（关键）：`CreateRun` 加载 task 后先判 `!task.ScheduledEnabled → 返回错误（409，语义「task 已停用」），不创建 run、不入队`。调度器 `ListScheduled` 已过滤 `scheduled_enabled != false`（保留），关闭的定时 task 不再被派发。
@@ -193,54 +205,55 @@ go func() {
 - 现状：`Execute` 入口 `if run.Status == StatusCancelled { return nil }`（执行前判断 ✅，保留）。
 - 兜底：`pool.dispatch` 在 `Execute` 前加一道 DB 状态复核（拉最新 run，cancelled 则跳过执行并 ack 消息）——覆盖「入队后被取消、派发时内存对象过期」的窗口。
 
-### 5.8 前端 agent 任务取消按钮
+### 5.8 前端 agent 任务操作
 
-- agent 任务详情页（`agent/tasks/[taskId]`）运行列表：状态为 `pending/queued/running` 的行显示「取消」按钮（`data-testid="run-cancel-{runId}"`）。
-- 点击 → 二次确认 → PUT `/task-runs/:run_id/cancel` → 刷新列表（状态变 cancelled）。
-- 终态（completed/failed/cancelled）行不显示按钮。
-- 前端 agent 任务列表 ON/OFF 开关改调 `/tasks/:task_id/enabled`（替代 `/admin/tasks/:id/scheduled-enabled`）；移除 `cancelTask`（调 `/tasks/:task_id/cancel`）的入口。
+- **运行列表「取消」按钮**：agent 任务详情页（`agent/tasks/[taskId]`）运行列表，状态为 `pending/queued/running` 的行显示「取消」按钮（`data-testid="run-cancel-{runId}"`）；点击 → 二次确认 → PUT `/task-runs/:run_id/cancel` → 刷新列表（状态变 cancelled）；终态行不显示按钮。
+- **任务列表「删除」入口**：agent 任务列表（`agent/page.tsx`）原 `cancelTask`（调 `/tasks/:id/cancel`）改调 `DELETE /tasks/:id`，二次确认文案为「删除」（而非「取消」）。
+- **任务列表 ON/OFF 开关**：改调 `/tasks/:task_id/enabled`（替代 `/admin/tasks/:id/scheduled-enabled`）。
 
 ## 6. 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
 | 是否需要新 DB 集合 | No（复用 task 的 `scheduled_enabled` 与 task_runs 的 `status`） |
-| 是否影响现有 API | Yes（删除 task 级 cancel/pause/resume；新增 `/tasks/:id/enabled` 与 `/task-runs/:id/cancel`；chat 无 API 变更） |
-| 数据迁移 | 无 schema 变更（`scheduled_enabled` 已存在且默认 true；`TaskDefRepository.Cancel` 删除后旧「已删除」数据自然停止使用） |
+| 是否影响现有 API | Yes（task 级 cancel 正名为 DELETE `/tasks/:id`、删 pause/resume；新增 `/tasks/:id/enabled` 与 `/task-runs/:id/cancel`；chat 无 API 变更） |
+| 数据迁移 | 无 schema 变更（`scheduled_enabled` 已存在且默认 true；`TaskDefRepository.Cancel` 仅改名 `Delete`，存储行为不变） |
 | 性能影响 | 极低（每个执行中 run 多一个 2s ticker goroutine，run 结束或终态即回收） |
 | 是否需要新增 Skill | No |
 | 是否需要改 ADK 底层 | **No**（红线：不修改、不侵入 vendor_adk 的 ctx 处理） |
-| 风险 | ① LLM 取消的即时性取决于底层对 ctx 的响应速度——可能延迟到当前 token 生成结束，可接受；② 取消后 partial 内容落库与正常中断一致，前端已展示内容不回滚；③ task 级取消改为开关后，历史前端若仍调 `/tasks/:task_id/cancel` 会 404——需同步前端（本次一并改） |
+| 风险 | ① LLM 取消的即时性取决于底层对 ctx 的响应速度——可能延迟到当前 token 生成结束，可接受；② 取消后 partial 内容落库与正常中断一致，前端已展示内容不回滚；③ task 级 `cancel` 正名为 DELETE 后，历史前端若仍调 `/tasks/:task_id/cancel` 会 404——需同步前端（本次一并改） |
 
 ## 7. 相关文件
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `internal/domain/task/model.go` | `ScheduledEnabled` 注释语义泛化（字段名保留） | Tiny |
-| `internal/infra/mongo/task_def_repository.go` | 删除 `TaskDefRepository.Cancel`（DeleteOne）；`TaskRunRepository.Cancel` 条件扩展含 running | Small |
-| `internal/repository/` 接口 + mocks | 删 `TaskRepository.Cancel`；`TaskRunRepository.Cancel` 签名不变 | Small |
-| `internal/service/task/service.go` | 删 `CancelTask`；`CreateRun` 加 `ScheduledEnabled` 前置检查 | Small |
+| `internal/infra/mongo/task_def_repository.go` | `TaskDefRepository.Cancel`（DeleteOne）正名 `Delete`；`TaskRunRepository.Cancel` 条件扩展含 running | Small |
+| `internal/repository/` 接口 + mocks | `TaskRepository.Cancel` 正名 `Delete`；`TaskRunRepository.Cancel` 签名不变 | Small |
+| `internal/service/task/service.go` | `CancelTask` 正名 `DeleteTask`；`CreateRun` 加 `ScheduledEnabled` 前置检查 | Small |
 | `internal/logic/agent/executor.go` | 子 ctx + 轮询监督 goroutine（含完成临界点退出）；runCtx 贯穿全流程 | Medium |
 | `internal/worker/pool.go` | dispatch 前 DB 状态复核（未执行取消兜底） | Small |
-| `internal/api/handler/task.go` + `routes.go` | 删 cancel/pause/resume；新增 `PATCH /tasks/:id/enabled` + `PUT /task-runs/:id/cancel` | Small |
+| `internal/api/handler/task.go` + `routes.go` | `CancelTask` 正名 `DeleteTask`（DELETE）；删 pause/resume；新增 `PATCH /tasks/:id/enabled` + `PUT /task-runs/:id/cancel` | Small |
 | `internal/service/chat/chat_service.go` | `streamOnce` ctx.Done 兜底；relevance 段取消短路 | Small |
-| `frontend/app/agent/page.tsx` | ON/OFF 改调 `/tasks/:id/enabled`；移除 `cancelTask` | Small |
+| `frontend/app/agent/page.tsx` | ON/OFF 改调 `/tasks/:id/enabled`；`cancelTask` 改调 `DELETE /tasks/:id`（文案「删除」） | Small |
 | `frontend/app/agent/tasks/[taskId]/page.tsx` | 运行列表「取消」按钮 + 二次确认 + 刷新 | Medium |
 | `frontend/app/chat/page.tsx` | 「停止」按钮 + AbortController + 状态复位 | Medium |
 | `internal/logic/agent/executor_test.go` 等 | 轮询取消（ticker 触发 cancel）/ 完成临界点退出 / ctx 传导单测 | Medium |
-| `tests/ui/chat.spec.ts` / `agent*.spec.ts` | E2E：停止按钮中断 / run 取消 / 开关停用后不建 run | Medium |
+| `tests/ui/chat.spec.ts` / `agent*.spec.ts` | E2E：停止按钮中断 / run 取消 / 删除 task / 开关停用后不建 run | Medium |
 
 ## 8. 测试策略
 
 1. **Unit tests**（Go）：
    - executor：运行中调用 `CancelRun`（mock 状态置 cancelled）→ 轮询触发 `cancel()` → 底层调用收到 ctx 取消（可注入可取消的 fake runtime 验证 ctx.Done 传导）；**完成临界点**：run 置 completed/failed 后轮询退出、不再 cancel；轮询 goroutine 在 runCtx.Done 后退出（无泄漏，goroutine 计数断言）；
    - 未执行取消：Execute 入口 cancelled 直接 return；dispatch 复核跳过；
-   - 开关：`CreateRun` 在 `ScheduledEnabled=false` 时返回错误且不建 run、不入队；`CancelRun` 对 completed/failed/cancelled run 不生效（matched=0）；
+   - 开关：`CreateRun` 在 `ScheduledEnabled=false` 时返回错误且不建 run、不入队；
+   - 删除 vs 取消：`DeleteTask` 物理删除 task 定义、不影响 run 记录；`CancelRun` 只置 run 状态、不删任何记录；`CancelRun` 对 completed/failed/cancelled run 不生效（matched=0）；
    - chat：`streamOnce` 在 ctx 取消时提前退出且不 panic；relevance 段 ctx 取消时短路、`RecordAndShouldRetry` 未被调用；
-   - handler：`PATCH /tasks/:id/enabled`、run 级取消路由（404/409/200）+ 归属校验；删除的 cancel/pause/resume 路由 404。
+   - handler：`DELETE /tasks/:id`（删除 task）、`PATCH /tasks/:id/enabled`、run 级取消路由（404/409/200）+ 归属校验；废弃的 pause/resume 路由 404。
 2. **E2E tests**（`tests/ui/`，编号 UI-XXX）：
    - chat 发送中点击「停止」→ SSE 中断、按钮复位、消息区保留已流出内容；
    - agent 任务运行中点击「取消」→ 状态变 cancelled、按钮消失；
+   - agent 任务列表「删除」task → 定义消失、其历史 run 记录仍可查（删除 ≠ 取消）；
    - agent 任务关闭 ON/OFF 开关后手动触发 run → 被拒（不建 run）。
 3. **审计**：`.agent/skills/go-ut-audit`。
 
@@ -285,7 +298,7 @@ go func() {
 1. chat 发送中点击「停止」：SSE 立即中断（浏览器网络层 fetch aborted）、按钮复位、「已停止生成」提示、已流出内容保留；后端日志无错误栈、relevance 重试计数未增加。
 2. 客户端强断（关标签页/断网）与点按钮等价：后端 `streamOnce` 通过 `ctx.Done` 提前退出，不再写 SSE、不再调 LLM。
 3. task 关闭开关后：`CreateRun` 返回 409 且不建 run、不入队；调度器不再派发该定时 task；已有 run 不受影响。
-4. 删除的 task 级接口 `PUT /tasks/:id/cancel`、`/pause`、`/resume` 返回 404；`PATCH /tasks/:id/enabled` 正常切换且前端 ON/OFF 同步。
+4. `DELETE /tasks/:id` 物理删除 task 定义（原 cancel 正名），**不级联删除历史 run 记录**；废弃的 `/pause`、`/resume` 返回 404；`PATCH /tasks/:id/enabled` 正常切换且前端 ON/OFF 同步。
 5. task run 未执行时取消：worker 派发后立即跳过（Execute 返回 nil，状态保持 cancelled），无 LLM 调用。
 6. task run 执行中取消：2s 内（一个轮询周期）底层 LLM 调用收到 ctx 取消并终止；run 最终状态 = cancelled（不被 completed/failed 覆盖）。
 7. **完成临界点**：run 已 `completed`/`failed` 时，`PUT /task-runs/:id/cancel` 返回 409 且状态不变；执行中轮询检测到终态即退出、不 cancel。
