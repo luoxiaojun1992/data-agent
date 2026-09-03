@@ -55,7 +55,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <main className={`flex-1 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60'} ml-0`} data-testid="main-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px 0 24px' }}>
+        {/* 右侧预留 96px（24 边距 + 66 指示灯宽 + 6 间距）给全局在线指示灯（SPEC-079），避免遮挡通知铃铛 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 96px 0 24px' }}>
           {/* Hamburger button — visible only on mobile */}
           <button
             className="lg:hidden p-2 rounded-lg hover:bg-[var(--glass-bg)] text-[var(--text-primary)]"
