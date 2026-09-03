@@ -40,7 +40,7 @@
 { "status": "ok", "time": "2026-09-02T12:00:00Z" }
 ```
 
-不 ping 任何依赖，无法反映 MongoDB / Redis / Vault / Qdrant / ArcadeDB / SeaweedFS 的真实可用性。
+不 ping 任何依赖，无法反映 MongoDB / Redis / Vault / Qdrant / ArcadeDB / SeaweedFS / Presidio 的真实可用性（MySQL 为 sql_executor 按需连接、非常驻，探活语义见 §5.1.1.2）。
 
 ### 2.3 登录页 toast 重叠
 
@@ -66,7 +66,8 @@
                     ┌─────────────────────────────────────────────┐
                     │  handler.HealthCheck → monitor.HealthService  │
                     │   并发 Probe: mongo/redis/vault/qdrant/       │
-                    │   arcadedb/seaweedfs  (各自 2s 超时)           │
+                    │   seaweedfs (+ 条件: arcadedb/presidio/mysql) │
+                    │   (各自 2s 超时)                               │
                     └─────────────────────────────────────────────┘
 ```
 
@@ -100,23 +101,35 @@
   "version": "v1.5.0",
   "uptime_seconds": 86400,
   "dependencies": {
-    "mongodb":    { "status": "up", "latency_ms": 3 },
-    "redis":      { "status": "up", "latency_ms": 2 },
-    "vault":      { "status": "up", "latency_ms": 12 },
-    "qdrant":     { "status": "up", "latency_ms": 8 },
-    "arcadedb":   { "status": "up", "latency_ms": 15 },
-    "seaweedfs":  { "status": "down", "latency_ms": 0, "error": "connection refused" }
+    "mongodb":    { "status": "up",    "latency_ms": 3 },
+    "redis":      { "status": "up",    "latency_ms": 2 },
+    "vault":      { "status": "up",    "latency_ms": 12 },
+    "qdrant":     { "status": "up",    "latency_ms": 8 },
+    "arcadedb":   { "status": "up",    "latency_ms": 15 },
+    "seaweedfs":  { "status": "down",  "latency_ms": 0, "error": "connection refused" },
+    "presidio":   { "status": "up",    "latency_ms": 18 },
+    "mysql":      { "status": "skipped" }
   }
 }
 ```
+
+> 依赖清单与逐项探活方式、探活语义见 §5.1.1。`status:"skipped"` 表示该依赖按当前配置未接入/未启用，跳过探测且不参与 degraded 判定。
 
 **状态语义**（HTTP 恒 200，语义在 `status` 字段）：
 
 | `status` | 含义 | 前端指示灯 |
 |----------|------|-----------|
-| `ok` | 进程存活 + 全部依赖 up | 🟢 绿 |
-| `degraded` | 进程存活 + 至少一个依赖 down | 🟡 黄 |
+| `ok` | 进程存活 + 全部「必探」依赖 up（skipped 不影响判定） | 🟢 绿 |
+| `degraded` | 进程存活 + 至少一个「必探」依赖 down | 🟡 黄 |
 | （请求失败/超时） | 后端不可达 | 🔴 红 |
+
+**依赖项 `status` 语义**：
+
+| 依赖项 `status` | 含义 |
+|----------------|------|
+| `up` | 探活通过 |
+| `down` | 探活失败，`error` 字段给出脱敏后的原因 |
+| `skipped` | 该依赖未配置/未启用，跳过探测，不参与整体判定 |
 
 > 设计取舍：不用 503 表达 degraded，因为前端 `fetch` 对非 2xx 会走 catch，反而丢失依赖明细；用 200 + `status` 字段承载语义，前端一套逻辑通吃。基础设施探活若需要非 200，可另加 `?strict=1` 返回 503（可选，暂不实现）。
 
@@ -143,6 +156,40 @@ type HealthResponse struct {
 
 ### 5.1 后端：HealthService（service 层，零 infra 依赖）
 
+#### 5.1.1 探针清单：与 docker-compose healthcheck 对齐
+
+健康探针的**清单与探测端点必须与 `docker-compose.yml` 中 `data-agent` 服务的 `depends_on`（`condition: service_healthy`）逐项对齐**，否则会出现「compose 认为健康、后端探针却报 down（或反之）」的割裂。完整映射：
+
+| # | 组件 | compose healthcheck 探测 | 后端连接方式 | 后端探活端点（对齐 compose） | 探活语义 |
+|---|------|------------------------|-------------|---------------------------|---------|
+| 1 | mongodb | `mongosh --eval "db.runCommand('ping').ok"` | 常驻 `mongoClient`（硬依赖） | `c.client.Ping(ctx, nil)`（需补 `Ping` wrapper） | **必探** |
+| 2 | redis | `redis-cli ping` | 常驻 `redisClient`（连不上→cache/queue 降级） | `c.Client().Ping(ctx).Err()`（需补 `Ping` wrapper） | **必探** |
+| 3 | qdrant | `GET /readyz` → HTTP 200 | 常驻 `qdrantClient` | `GET /readyz`（需新增 `Health`，**对齐 compose 的 `/readyz`**） | **必探** |
+| 4 | vault | `vault status`（即 `/v1/sys/health`） | 常驻 `vaultClient`（连不上→加密降级） | `IsAvailable(ctx)`（读 `/v1/sys/health`，已有） | **必探** |
+| 5 | arcadedb | `wget http://localhost:2480/` | 常驻 `graphRepo`（`ARCADE_URI` 为空则无） | `GET http://<arcade>:2480/`（需新增 `Ping`，**对齐 compose 的 HTTP 2480**） | **条件探**（配了 `ARCADE_URI` 才探） |
+| 6 | seaweedfs | `curl -f http://localhost:9333/cluster/status` | 常驻 `swClient` | `GET /cluster/status`（需新增 `Health`，**对齐 compose 的 `/cluster/status`**） | **必探** |
+| 7 | presidio | `curl -f http://localhost:3000/health`（analyzer / anonymizer 各一） | 常驻 `PIIRedactor`（HTTP client，按需调用） | `GET /health` ×2（需新增 `Health`，**对齐 compose 的 `/health`**） | **条件探**（受 `pii_redaction_enabled` 开关控制） |
+| 8 | mysql | `mysqladmin ping -h localhost` | **按需**（sql_executor 工具每次用 skill config DSN 动态 `gorm.Open`，无全局连接） | `sqlDB.Ping(ctx)`（需新增） | **条件探**（见 §5.1.1.2） |
+| — | ollama | `ollama list` | **按需**（embedding baseURL 由 admin UI 配置，可能指向外部 MaaS） | — | **不探**（见 §5.1.1.2） |
+| — | mockllm | `curl -f http://localhost:8082/health` | 仅开发桩（生产走 MaaS deepseek-v4-pro） | — | **不探** |
+
+#### 5.1.1.2 三档探活语义（避免误报）
+
+| 档位 | 依赖 | 判定规则 |
+|------|------|---------|
+| **必探** | mongodb / redis / qdrant / vault / seaweedfs | 任一 `down` → 整体 `degraded`（黄灯） |
+| **条件探** | arcadedb / presidio / mysql | 按配置启用才注入 Probe；未启用→`skipped`，不影响整体判定 |
+| **不探** | ollama / mockllm | 不注入 Probe，不出现在 `dependencies` 中 |
+
+**关键决策说明（防止误报）**：
+
+1. **mysql 是工具级按需依赖，非常驻**。`sql_executor` 工具在 `internal/logic/sql/executor.go` 中每次执行时才用 skill config 里的 DSN `gorm.Open`，且当前 **`MYSQL_DSN` 环境变量后端并未读取**（`internal/` 全量 grep 无引用）。因此 MySQL 挂掉只影响 `sql_executor` 这一个工具，不应让全局指示灯变黄。**条件探**：仅当存在「全局默认 MySQL DSN」（后续可作为系统配置项 `SQL_DEFAULT_DSN` 引入）时才注入 Probe；无默认 DSN → `skipped`。
+2. **presidio 受开关控制**。`pii_redaction_enabled=false` 时 PII 脱敏已关闭，presidio 不可达不影响业务，应 `skipped` 而非 `down`。
+3. **ollama/embedding 不探**。embedding baseURL 由 admin 模型配置动态决定（可能是本地 Ollama，也可能是外部 MaaS embedding API），不是固定 docker 依赖，纳入固定探针会误报。
+4. **mockllm 不探**。它是 `MOCK_` 前缀的开发桩，生产环境 LLM 走 MaaS `deepseek-v4-pro`，健康检查不应绑定开发桩。
+
+> ⚠️ **现状不一致（follow-up，非本 spec 阻塞项）**：`docker-compose.yml` 中 `data-agent` 声明了 `depends_on: mysql: service_healthy` 并注入 `MYSQL_DSN`，但后端既不读 `MYSQL_DSN`、也不建立全局 MySQL 连接。落地本 spec 时需二选一：**(a)** 引入系统配置 `SQL_DEFAULT_DSN` + 在 `initServer` 建立全局连接（此时 mysql 升为「必探」）；**(b)** 保持 sql_executor 按需连接，并从 `data-agent.depends_on` 移除 `mysql`（避免 compose 启动被 mysql 无谓阻塞）。当前设计默认 **(b)**，mysql 落在「条件探」。
+
 遵循 DDD 铁律——`service` 层不 import `mongo-driver` 等 infra 具体类型，改用**闭包 Probe** 注入：
 
 ```go
@@ -168,23 +215,37 @@ func (s *HealthService) Check(ctx context.Context) HealthResponse
 
 ```go
 probes := []monitor.Probe{
-    {Name: "mongodb",   Check: mongoClient.Ping},          // 已有
-    {Name: "redis",     Check: redisClient.Ping},          // 已有
-    {Name: "vault",     Check: vaultClient.IsAvailableErr},// 包装 IsAvailable(bool)→error
-    {Name: "qdrant",    Check: qdrantClient.Health},       // 需新增
-    {Name: "arcadedb",  Check: arcadeClient.Ping},         // 需新增
-    {Name: "seaweedfs", Check: seaweedClient.Health},      // 需新增
+    {Name: "mongodb",   Check: mongoClient.Ping},   // 需补 Ping wrapper（内部 c.client.Ping）
+    {Name: "redis",     Check: redisClient.Ping},   // 需补 Ping wrapper（内部 c.Client().Ping）
+    {Name: "vault",     Check: vaultProbe(vaultClient)}, // 包装 IsAvailable(bool)→error
+    {Name: "qdrant",    Check: qdrantClient.Health},    // 需新增，GET /readyz（对齐 compose）
+    {Name: "seaweedfs", Check: seaweedClient.Health},   // 需新增，GET /cluster/status（对齐 compose）
+}
+
+// 条件探：按配置启用时才追加（未启用 → skipped，不参与 degraded 判定）
+if deps.graphRepo != nil { // ARCADE_URI 已配置
+    probes = append(probes, monitor.Probe{Name: "arcadedb", Check: arcadeClient.Ping}) // GET :2480/
+}
+if deps.piiEnabled != nil && deps.piiEnabled() { // pii_redaction_enabled=true
+    probes = append(probes, monitor.Probe{Name: "presidio", Check: deps.piiRedactor.Health}) // GET /health ×2
+}
+if deps.sqlDefaultDB != nil { // 仅当配置了全局默认 MySQL DSN（见 §5.1.1.2 follow-up）
+    probes = append(probes, monitor.Probe{Name: "mysql", Check: deps.sqlDefaultDB.Ping})
 }
 ```
 
-**需新增的探活方法**（暂不实现，仅登记）：
+**需新增/补全的探活方法**（暂不实现，仅登记；探测端点对齐 compose healthcheck）：
 
-| 组件 | 现状 | 需新增 |
-|------|------|--------|
-| `infra/qdrant` | 仅 HTTP client | `Health(ctx) error`（GET `/healthz` 或集合列表） |
-| `infra/arcadedb` | Bolt driver | `Ping(ctx) error`（Bolt Ping 或 HTTP `GET /api/v1/ping`） |
-| `infra/seaweedfs` | HTTP client | `Health(ctx) error`（GET master `/status`） |
-| `infra/vault` | `IsAvailable(ctx) bool` | `IsAvailableErr(ctx) error` 薄包装（或闭包内 `if !ok { return err }`） |
+| 组件 | 现状 | 需新增/补全 |
+|------|------|-------------|
+| `infra/mongo` | `Client` 仅暴露 `DB()`，内部 `c.client`（mongo.Client 有 `Ping`） | `Ping(ctx) error` wrapper（`c.client.Ping(ctx, nil)`），对齐 compose `mongosh ping` |
+| `infra/redis` | `Client` 仅暴露 `Client()`（底层 go-redis 有 `Ping`） | `Ping(ctx) error` wrapper（`c.Client().Ping(ctx).Err()`），对齐 compose `redis-cli ping` |
+| `infra/qdrant` | 仅 HTTP client | `Health(ctx) error`（**GET `/readyz`**，对齐 compose 的 `/readyz`，非 `/healthz`） |
+| `infra/arcadedb` | Bolt driver | `Ping(ctx) error`（**HTTP `GET http://<arcade>:2480/`**，对齐 compose 的 `wget :2480/`） |
+| `infra/seaweedfs` | HTTP client | `Health(ctx) error`（**GET master `/cluster/status`**，对齐 compose，非 `/status`） |
+| `service/pii` | `PIIRedactor` 持有 HTTP client | `Health(ctx) error`（GET analyzer/anonymizer **`/health`** ×2，对齐 compose） |
+| `logic/sql` | 无全局连接（按需 `gorm.Open`） | 若走 §5.1.1.2 方案 (a)：全局 `sqlDB.Ping(ctx)`；方案 (b) 则无需 |
+| `infra/vault` | `IsAvailable(ctx) bool`（已有） | `vaultProbe` 薄包装 `bool→error`（闭包内 `if !ok { return err }`） |
 
 `handler.HealthCheck` 改为接收 `*monitor.HealthService`（经 `RouteDeps` 注入），调用 `Check(ctx)` 返回 JSON。
 
@@ -248,6 +309,7 @@ import OnlineIndicator from './components/OnlineIndicator';
 | 是否影响现有 API | 增强 `/health` 返回结构（新增字段，向后兼容）；新增 `/api/v1/health`（无认证） |
 | 是否需新增 Skill | No |
 | 性能影响 | 极低：每次探测并发 + 2s 超时，前端 15s 一轮；健康检查本身无 DB 写 |
+| 探针清单对齐 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐（§5.1.1）；mysql 因非常驻连接默认落在「条件探/不探」（follow-up 待定） |
 | 分层合规 | `service/monitor` 用闭包 Probe，零 infra import；handler 仅调用 service |
 | 安全 | `/api/v1/health` 无认证但只暴露「up/down + latency + 版本」，无敏感数据（不返回连接串/账号/密钥）；`error` 字段仅返回连接错误文案，需脱敏处理 |
 | 兼容性 | 保留 `/health` 路径，nginx 现有探活不中断 |
@@ -261,11 +323,15 @@ import OnlineIndicator from './components/OnlineIndicator';
 | `internal/api/handler/health.go` | 改：HealthCheck 注入 HealthService，返回逐依赖状态 | Modify |
 | `internal/api/handler/routes.go` | 改：public 区新增 `GET /api/v1/health` | Small |
 | `internal/api/handler/routes_test.go` / `health_test.go` | 改：断言新路由 + 新响应结构 | Modify |
-| `internal/infra/qdrant/client.go` | 新增 `Health(ctx)` 探活 | Small |
-| `internal/infra/arcadedb/graph_store.go` | 新增 `Ping(ctx)` 探活 | Small |
-| `internal/infra/seaweedfs/client.go` | 新增 `Health(ctx)` 探活 | Small |
-| `internal/infra/vault/client.go` | 新增 `IsAvailableErr(ctx)`（或闭包内包装） | Small |
-| `internal/wire.go`（或 main.go 依赖组装处） | 组装 Probe 切片 + 注入 HealthService | Modify |
+| `internal/infra/mongo/client.go` | 新增 `Ping(ctx) error` wrapper | Small |
+| `internal/infra/redis/client.go` | 新增 `Ping(ctx) error` wrapper | Small |
+| `internal/infra/qdrant/client.go` | 新增 `Health(ctx)`（GET `/readyz`） | Small |
+| `internal/infra/arcadedb/graph_store.go` | 新增 `Ping(ctx)`（GET `:2480/`） | Small |
+| `internal/infra/seaweedfs/client.go` | 新增 `Health(ctx)`（GET `/cluster/status`） | Small |
+| `internal/service/pii/redactor.go` | 新增 `Health(ctx)`（GET analyzer/anonymizer `/health`） | Small |
+| `internal/infra/vault/client.go` | 探活闭包 `vaultProbe`（包装 `IsAvailable(bool)→error`） | Small |
+| `internal/logic/sql/`（可选，方案 a） | 全局 MySQL 连接 + `Ping(ctx)` | Optional |
+| `internal/wire.go`（或 main.go 依赖组装处） | 组装 Probe 切片 + 条件探逻辑 + 注入 HealthService | Modify |
 | `frontend/app/components/OnlineIndicator.tsx` | New：全局在线指示灯组件 | New |
 | `frontend/app/layout.tsx` | 改：RootLayout body 挂载 OnlineIndicator | Small |
 | `frontend/app/login/page.tsx` | 改：两个 toast 移入堆叠容器、下移 top-14 | Modify |
@@ -336,3 +402,4 @@ import OnlineIndicator from './components/OnlineIndicator';
 | 6 | 登录页两个 toast 同时出现时不重叠，且不与指示灯重叠 | E2E 断言 bounding box 不相交 |
 | 7 | `/health` 旧路径仍 200（向后兼容） | curl `/health` 200 |
 | 8 | 覆盖率 ≥ 98%，CI 全绿 | `ut-workflow.yml` + `ui-tests.yml` |
+| 9 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐 | 逐项比对 §5.1.1 映射表：必探 5 项 + 条件探 3 项（arcadedb/presidio/mysql）+ 排除 2 项（ollama/mockllm） |
