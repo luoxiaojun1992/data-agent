@@ -141,6 +141,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 47 | **亚毫秒耗时 + omitempty 吞掉 latency 字段** | 耗时用 `Milliseconds()` 时，<1ms 会截断为 0；若字段带 `omitempty`，JSON 直接丢字段。健康检查 up 依赖必须恒有 latency_ms：`elapsed > 0 && ms == 0` 时向上取整为 1。单测必须包含「JSON 序列化含字段」断言，防 omitempty 回归。 |
 | 48 | **含凭据/隧道地址的本地回归脚本入库** | 本地冒烟/回归脚本（含测试服务器凭据、SSH 隧道地址、公网 IP）禁止提交。`.gitignore` 用通配统一忽略（`tests/ui/smoke-*.mjs`、`tests/ui/*-verify.mjs`），不要逐条添加。已提交的测试脚本不得硬编码隧道/服务器地址；playwright baseURL 走 `process.env.UI_BASE_URL` 注入。 |
 | 49 | **对同一文件并行发多个 Edit（工具竞态丢编辑）** | 并行 Edit 同一文件存在竞态：工具返回 success 但部分编辑未落盘（本项目已两次实测：spec-079 并行 8 个丢 7 处、spec-082 并行 5 个丢 3 处）。同文件多处修改必须**串行逐个 Edit**，或 Read 全文 + Write 一次性重写。改完必须 grep/Read **复核实际落盘结果**，禁止只信工具返回（防假性完成）。 |
+| 50 | **新增全局 fixed 元素不检查是否遮蔽 header 已有图标/按钮** | 在线指示灯 `fixed top-4 right-4 z-[60]` 盖住 header 右上角铃铛（用户误判「站内信图标没了」）。新增/调整全局 fixed（高 z-index）元素后，必须 `elementFromPoint`/`getComputedStyle` 运行时验证不遮蔽 header 原有可点击元素，固定头部预留 padding 空间。用户报「图标没了」先查「是否被盖住」而非「组件被删」。 |
 
 ## 开发工作流约定
 

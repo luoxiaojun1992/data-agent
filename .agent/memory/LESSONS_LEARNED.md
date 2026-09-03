@@ -812,6 +812,12 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **解决**: SSH 隧道 `ssh -f -N -L 18080:localhost:80 root@<server>`，本地全部走 `http://localhost:18080`（curl 和 playwright BASE 都改）。判定「假 HTML」的快速方法：`curl ... | grep -c <业务关键词>` 为 0 + HTTP 头是拦截页特征。
 **教训**: ⛔ ① 本地访问公网服务器先验证「拿到的是不是真页面」（grep 业务关键词），否则会在假页面上做无效断言；② **含隧道地址/服务器凭据的冒烟脚本禁止提交仓库**——统一通配 ignore（`tests/ui/smoke-*.mjs`），已提交的测试脚本一律走 env 注入（`UI_BASE_URL`），不得硬编码隧道地址。
 
+### 站内信铃铛被全局 fixed 在线指示灯遮蔽（用户误判「图标没了」）
+**日期**: 2026-09-03 | **影响**: 晓军发现站内信通知图标「没了」——实际组件/后端都在（NotificationBell 挂 AppLayout header、`/api/v1/notifications` 路由完整），是 SPEC-079 在线指示灯把铃铛盖住了
+**根因**: 在线指示灯 `fixed top-4 right-4 z-[60]` 与 header 右上角铃铛位置重叠，指示灯层级更高 → 🔔 被完全覆盖（`elementFromPoint` 实测命中指示灯「在线」span）。登录页无铃铛故不受影响。
+**解决**: AppLayout header `padding-right` 24px→96px（24 边距 + 66 指示灯宽 + 6 间距），给指示灯预留固定空间。验证：bell x 1386→1314、重叠=false、顶层元素=notif-bell-icon、点击 dropdown 正常。
+**教训**: ⛔ 新增/调整全局 `fixed`（高 z-index）元素后，必须用 `elementFromPoint`/`getComputedStyle` 运行时验证它**没有遮蔽 header 原有可点击元素**（铃铛/头像/按钮）；固定头部要预留 padding 空间，不能靠「加 z-index 谁高谁赢」的侥幸。用户报「图标没了」先查「是不是被盖住」而非「组件被删」。
+
 ## 2026-09-04 新增（SPEC-082 取消语义 + 工具使用）
 
 ### 并行 Edit 同一文件丢编辑（竞态）
