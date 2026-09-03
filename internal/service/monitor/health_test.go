@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -67,6 +68,32 @@ func TestHealthService_AnyDown_StatusDegraded(t *testing.T) {
 	}
 	if got := resp.Dependencies["mongodb"].Status; got != "up" {
 		t.Errorf("mongodb status = %q, want up", got)
+	}
+}
+
+// TestHealthService_UpSubMillisecond_KeepsLatency guards against a real
+// regression found on the test server: a sub-millisecond probe (docker-network
+// redis PING) rounds to 0ms and omitempty then drops latency_ms from the JSON,
+// so the frontend showed no latency for redis. Up dependencies must always
+// carry a positive latency_ms in the serialized payload.
+func TestHealthService_UpSubMillisecond_KeepsLatency(t *testing.T) {
+	svc := NewHealthService("v1", Probe{Name: "redis", Check: okProbe})
+	resp := svc.Check(context.Background())
+
+	d := resp.Dependencies["redis"]
+	if d.Status != "up" {
+		t.Fatalf("redis status = %q, want up", d.Status)
+	}
+	if d.LatencyMS < 1 {
+		t.Errorf("up dependency latency should be >= 1ms (sub-ms rounded up), got %d", d.LatencyMS)
+	}
+
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"latency_ms"`) {
+		t.Errorf("up dependency JSON must include latency_ms (omitempty must not swallow it): %s", b)
 	}
 }
 

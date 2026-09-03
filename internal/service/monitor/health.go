@@ -97,7 +97,13 @@ func (s *HealthService) Check(ctx context.Context) HealthResponse {
 			defer cancel()
 			t0 := time.Now()
 			err := p.Check(probeCtx)
-			st := DependencyStatus{Status: "up", LatencyMS: time.Since(t0).Milliseconds()}
+			elapsed := time.Since(t0)
+			st := DependencyStatus{Status: "up", LatencyMS: elapsed.Milliseconds()}
+			if elapsed > 0 && st.LatencyMS == 0 {
+				// 亚毫秒探活（如 docker 内网 redis PING）向上取整到 1ms，
+				// 否则 omitempty 会吞掉 latency_ms=0，前端看不到该依赖的延时。
+				st.LatencyMS = 1
+			}
 			if err != nil {
 				st.Status = "down"
 				st.LatencyMS = 0
