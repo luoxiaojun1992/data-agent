@@ -138,19 +138,18 @@ func (c *Client) Ping(ctx context.Context) error {
 	return fmt.Errorf("vault unavailable")
 }
 
-// IsAvailable checks if Vault is reachable by calling sys/health.
+// IsAvailable checks if Vault is reachable, initialized and unsealed by calling sys/health.
+// Uses Sys().HealthWithContext because sys/health returns a flat JSON body (not the
+// {data:...} secret envelope), which Logical().Read does not decode into resp.Data.
 func (c *Client) IsAvailable(ctx context.Context) bool {
-	// Strip trailing "v1/" if any
-	path := "/v1/sys/health"
-	resp, err := c.client.Logical().ReadWithContext(ctx, path)
-	if err != nil {
+	if c == nil || c.client == nil {
 		return false
 	}
-	if resp == nil {
+	health, err := c.client.Sys().HealthWithContext(ctx)
+	if err != nil || health == nil {
 		return false
 	}
-	init, _ := resp.Data["initialized"].(bool)
-	return init
+	return health.Initialized && !health.Sealed
 }
 
 // MaskValue returns a masked representation of a sensitive value.
