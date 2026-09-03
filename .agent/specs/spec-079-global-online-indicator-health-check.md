@@ -254,7 +254,7 @@ if deps.piiEnabled != nil && deps.piiEnabled() { // pii_redaction_enabled=true
 - 状态机：`ok`（绿）/ `degraded`（黄）/ `down`（红，fetch 失败或超时）。
 - 轮询：首次挂载立即请求，之后 `setInterval` 15s 一次；用 `AbortController` 设 3s 超时。
 - 请求：原生 `fetch('/api/v1/health')`（相对路径走 nginx 代理，复用 `/api/v1` 前缀）。
-- 视觉：圆点（`w-2 h-2 rounded-full`）+ 文案（绿=「在线」/ 黄=「服务降级」/ 红=「服务离线」），沿用 `var(--*)` 配色；hover 出 tooltip 展示各依赖 up/down 明细。
+- 视觉：圆点（`w-2 h-2 rounded-full`）+ 文案（绿=「在线」/ 黄=「服务降级」/ 红=「服务离线」），沿用 `var(--*)` 配色；hover 出 tooltip 泡泡框展示各依赖探活结果（详见 §5.2.1）。
 - 容器：`fixed top-4 right-4 z-[60]`，`data-testid="global-online-indicator"`，圆点 `data-testid="global-online-dot"`。
 
 **挂载点：`frontend/app/layout.tsx`（RootLayout）** 的 `<body>` 内、`{children}` 之前：
@@ -269,6 +269,67 @@ import OnlineIndicator from './components/OnlineIndicator';
 ```
 
 > 选 RootLayout 而非 AppLayout 的原因：`providers.tsx` 的 `AppLayout` 有 `if (!auth.hydrated) return null` 与 `if (!auth.token) return <>{children}</>` 的提前返回，且登录/注册页根本不走 AppLayout。RootLayout 是唯一的「所有页面必经」出口，一处改动全覆盖。
+
+#### 5.2.1 Hover Tooltip：依赖探活泡泡框
+
+用户鼠标 hover 到指示灯上时，弹出一个泡泡框（tooltip），逐项展示各依赖服务的实时探活结果——**只显示「在线 / 离线」即可，不显示 latency_ms / error 明细**。
+
+**触发与交互**：
+
+- `onMouseEnter` / `onMouseLeave`（辅以 `onFocus` / `onBlur` 保证键盘可达）切换显隐；移出立即收起，不设延时。
+- 落地用 React state 控制显隐（而非纯 `group-hover`），便于 E2E 对 `data-testid` 的显隐断言。
+
+**内容（只显示在线/离线，不显示 latency）**：
+
+| 依赖项 `status` | 文案 | 状态色 |
+|----------------|------|--------|
+| `up` | 在线 | 🟢 `emerald-400` |
+| `down` | 离线 | 🔴 `red-400` |
+| `skipped` | 未启用 | ⚪ `gray-400` |
+
+- 逐行列出 `dependencies` 中每一项：`<服务名> — <在线/离线/未启用>`，每行一个状态圆点 + 状态文案。
+- 排序：必探项在前、条件探项次之（与 §5.1.1 表序一致），保证阅读稳定。
+- **红灯（后端不可达）时**：`dependencies` 为空，tooltip 显示单行「后端服务不可达」，不渲染空列表。
+
+**定位与样式**：
+
+- 指示灯外层套 `relative` 容器；tooltip 为 `absolute top-full right-0 mt-2`——**向下展开、右缘对齐指示灯**（右上角固定布局下，向右展开会溢出视口，故右对齐 + 向下展开）。
+- 玻璃面板样式，沿用 SPEC-078 弹窗视觉规范：`var(--bg-secondary)` + `var(--border-glass)` + `rounded-xl` + `px-4 py-3` + `shadow` + `backdrop-blur`。
+- 宽度 `w-max min-w-[180px]`，层级 `z-[70]`（高于指示灯 `z-[60]`，确保泡泡框浮于其上）。
+- 每行 `flex items-center justify-between gap-3 text-xs`：服务名 `text-(--text-secondary)`，状态文案按上表着色（颜色做主题变量化，兼容 SPEC-076 深色主题）。
+
+**testid**：
+
+- 泡泡框：`data-testid="global-online-tooltip"`
+- 每行依赖项：`data-testid="tooltip-dep-<name>"`（如 `tooltip-dep-mongodb`）
+
+**示例结构（伪代码）**：
+
+```tsx
+<div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+  {/* 指示灯圆点 + 文案 */}
+  {open && (
+    <div data-testid="global-online-tooltip"
+         className="absolute top-full right-0 mt-2 z-[70] w-max min-w-[180px]
+                    rounded-xl border border-(--border-glass) bg-(--bg-secondary)
+                    px-4 py-3 shadow backdrop-blur">
+      {deps.length === 0 ? (
+        <span className="text-xs">后端服务不可达</span>
+      ) : (
+        deps.map(d => (
+          <div key={d.name} data-testid={`tooltip-dep-${d.name}`}
+               className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-(--text-secondary)">{d.name}</span>
+            <span className={statusColor(d.status)}>
+              {d.status === 'up' ? '在线' : d.status === 'down' ? '离线' : '未启用'}
+            </span>
+          </div>
+        ))
+      )}
+    </div>
+  )}
+</div>
+```
 
 ### 5.3 登录页 toast 布局治理（解决重叠）
 
@@ -349,6 +410,9 @@ import OnlineIndicator from './components/OnlineIndicator';
 
 - [ ] **必须** 新增 `OnlineIndicator` 时同步编写 E2E 用例（`tests/ui/`，编号 `UI-XXX`）
 - [ ] **必须** 指示灯加 `data-testid="global-online-indicator"` / `global-online-dot`
+- [ ] **必须** tooltip 泡泡框加 `data-testid="global-online-tooltip"`，每行依赖项加 `data-testid="tooltip-dep-<name>"`
+- [ ] **必须** hover 指示灯断言 tooltip 弹出，逐项断言依赖「在线/离线/未启用」文案与 `tooltip-dep-*` 一一对应
+- [ ] **必须** 红灯（后端不可达）时 tooltip 显示「后端服务不可达」而非空列表
 - [ ] **必须** 登录页 toast 堆叠容器加 `data-testid="login-toast-stack"`
 - [ ] **必须** 覆盖三类页面断言指示灯存在：登录页、Dashboard、Chat（及至少一个 admin 页）
 - [ ] **必须** mock 健康检查 API 返回 ok/degraded/超时 三态，断言指示灯颜色/文案切换
@@ -401,3 +465,4 @@ import OnlineIndicator from './components/OnlineIndicator';
 | 7 | `/health` 旧路径仍 200（向后兼容） | curl `/health` 200 |
 | 8 | 覆盖率 ≥ 98%，CI 全绿 | `ut-workflow.yml` + `ui-tests.yml` |
 | 9 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐 | 逐项比对 §5.1.1 映射表：必探 6 项（含 mysql）+ 条件探 2 项（arcadedb/presidio）+ 排除 2 项（ollama/mockllm） |
+| 10 | hover 指示灯弹出 tooltip，逐依赖显示在线/离线（不显示 latency） | E2E hover 断言 `tooltip-dep-*` 状态文案；红灯时显示「后端服务不可达」 |
