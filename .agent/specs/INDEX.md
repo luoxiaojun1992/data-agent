@@ -95,6 +95,7 @@
 | SPEC-079 | 全局在线指示灯 + 后端健康检查 API（统一右上角在线指示灯，关联后端健康检查；治理登录页 toast 重叠） | **P15** | [spec-079-global-online-indicator-health-check.md](spec-079-global-online-indicator-health-check.md) | ✅ 已实现（部署验证 19/19；vault 探活 Sys().HealthWithContext；亚毫秒 latency 向上取整） |
 | SPEC-080 | 时间 + 规划 skill + Plan 意图隐藏引导（get_current_time / get_plan_method；意图三分类；hidden 提示不进前端聊天记录） | **P15** | [spec-080-time-plan-skills.md](spec-080-time-plan-skills.md) | 📐 设计已定稿 |
 | SPEC-081 | KB 支持 URL 导入（后端 headless 解析含 JS 渲染 + SSRF 防护 + 统一上传限制：文本 5MB / 图片 10 张 × 1MB） | **P15** | [spec-081-kb-url-import.md](spec-081-kb-url-import.md) | 📐 设计已定稿 |
+| SPEC-082 | Chat 与 Agent Task 支持取消（chat 停止按钮+SSE 中断+ctx 透传兜底；task run 级取消+执行中轮询 DB+子 ctx 取消；不侵入 ADK） | **P15** | [spec-082-chat-task-cancel.md](spec-082-chat-task-cancel.md) | 📐 设计已定稿 |
 
 ## Phase 对应与依赖
 
@@ -381,6 +382,7 @@ SPEC-006│               │
                     ↘ 079 ✅ 已实现
 080 时间+规划 skill（独立可插队）
 081 KB URL 导入（独立可插队）
+082 chat/task 取消（独立可插队）
 ```
 
 | 顺序 | Spec | 标题 | 理由 |
@@ -393,5 +395,6 @@ SPEC-006│               │
 | 6 | SPEC-079 | ✅ 全局在线指示灯 + 后端健康检查 API | 已实现并部署验证（2026-09-03，commit 55209fd/ca69db0/7f344d9）；依赖 076 落地后指示灯色值做变量化收尾 |
 | 7 | SPEC-080 | 📐 时间 + 规划 skill + Plan 意图隐藏引导 | 独立可插队；2 个无依赖 function tool + guard 三分类 + hidden 事件机制，不动 Runtime/use case |
 | 8 | SPEC-081 | 📐 KB URL 导入 | 独立可插队；后端 headless 渲染 + SSRF 防护 + 统一上传限制；复用 CreateDoc/GridFS/索引管道 |
-| 9 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
+| 9 | SPEC-082 | 📐 Chat 与 Task 取消 | 独立可插队；chat 停止按钮 + task 轮询 DB 取消，均不侵入 ADK 底层 |
+| 10 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
