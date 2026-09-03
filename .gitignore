@@ -69,3 +69,4 @@ tests/ui/modal-verify.mjs
 
 # AI 免责提示回归脚本（含凭据，禁 push）
 tests/ui/tips-verify.mjs
+tests/ui/smoke-spec079.mjs
