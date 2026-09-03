@@ -61,12 +61,6 @@ temp/
 /hermes
 mockllm/mockllm
 
-# 冒烟回归脚本（含测试服务器凭据，禁 push）
-tests/ui/smoke-spec078.mjs
-
-# 弹窗视觉回归脚本（含凭据，禁 push）
-tests/ui/modal-verify.mjs
-
-# AI 免责提示回归脚本（含凭据，禁 push）
-tests/ui/tips-verify.mjs
-tests/ui/smoke-spec079.mjs
+# 本地回归/冒烟脚本（含测试服务器凭据或隧道地址，禁 push，统一通配忽略）
+tests/ui/smoke-*.mjs
+tests/ui/*-verify.mjs
