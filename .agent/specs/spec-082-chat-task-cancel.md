@@ -12,7 +12,7 @@
 
 1. **Chat 取消**：前端发送中显示「停止」按钮，点击后中断与后端的 SSE 连接；后端 runtime 调用**继承上层 ctx**（现状已透传，本次只补兜底），客户端断开 → 请求 ctx 取消 → 底层 ADK 运行随之终止（**不侵入、不修改底层 ADK 的 ctx 用法**）。
 
-2. **Task 启停统一为开关字段**：非定时 task 与定时 task 统一使用同一开关字段 `ScheduledEnabled`（`scheduled_enabled`），**关闭开关 → 不再创建 run**；开关语义从「仅定时任务」泛化为「所有 task 的启停开关」。
+2. **Task 启停统一为开关字段**：非定时 task 与定时 task 统一使用同一开关字段 `ScheduledEnabled`（`scheduled_enabled`），**关闭开关 → 不再创建 run**；开关语义从「仅定时任务」泛化为「所有 task 的启停开关」。**同步删除 pause/resume 功能**（太复杂、无需求，由启停开关取代）。
 
 3. **Task 删除正名**：原 `CancelTask`（`PUT /tasks/:id/cancel`）实为 `DeleteOne` 物理删除，**命名错误**——正名为「删除 task」（`DELETE /tasks/:id`），删除能力保留，与「取消」彻底区分。
 
@@ -37,7 +37,7 @@
 |------|------|
 | `ScheduledEnabled` 开关字段已存在，前端 agent 页已有 ON/OFF 切换 UI（`PATCH /admin/tasks/:id/scheduled-enabled`）；调度器 `ListScheduled` 已按 `scheduled_enabled != false` 过滤 | **语义只覆盖定时 task**：非定时 task 无启停概念；`CreateRun` 未检查开关，关闭后手动触发仍会建 run |
 | `CancelTask`（`PUT /tasks/:task_id/cancel`）= `TaskDefRepository.Cancel` = **DeleteOne 物理删除** | **命名错误**：这是「删除 task」而非「取消」，与「取消」概念混淆——正名为 `DELETE /tasks/:id`（删除能力保留），「取消」只属于 run |
-| `PauseTask`/`ResumeTask` 存在但语义混乱（PauseTask 误把 task_id 当 run_id 调 `CancelRun`），前端未调用 | 与开关语义重复，应删除 |
+| `PauseTask`/`ResumeTask` 存在但语义混乱（PauseTask 误把 task_id 当 run_id 调 `CancelRun`），前端未调用 | **太复杂、无需求，删除** |
 | `StatusCancelled` + `service.CancelRun` + `TaskRunRepository.Cancel` 已存在 | **run 级取消无 HTTP 路由**；`Cancel` 条件仅 `[queued, pending]`，**不支持执行中取消** |
 | `AgentExecutor.Execute` 入口检查 `StatusCancelled`（执行前判断 ✅）；事后 `wasRunCancelled` 保护 ✅ | **执行中无法响应取消**：`RunAndCollectContent` 阻塞期间取消不生效 |
 | chat ctx 链路已透传：`c.Request.Context() → Stream → streamOnce → RunContent` ✅ | **前端无取消按钮/AbortController**；`streamOnce` 无 `ctx.Done` 兜底；取消后可能误入 relevance 重试计数 |
@@ -85,8 +85,8 @@
 | DELETE | `/api/v1/tasks/:task_id` | **正名** | 物理删除 task 定义（原 `PUT /tasks/:id/cancel` 的 DeleteOne 能力保留，REST 语义改为「删除」；JWT 认证） |
 | PATCH | `/api/v1/tasks/:task_id/enabled` | **新增** | 统一启停开关（JWT 认证；body `{"enabled": bool}`；非定时/定时 task 通用） |
 | PUT | `/api/v1/tasks/:task_id/cancel` | **删除** | 命名错误（实为删除），由 `DELETE /tasks/:id` 取代 |
-| PUT | `/api/v1/tasks/:task_id/pause` | **删除** | 语义混乱（误把 task_id 当 run_id），废弃 |
-| PUT | `/api/v1/tasks/:task_id/resume` | **删除** | 与开关重复，废弃 |
+| PUT | `/api/v1/tasks/:task_id/pause` | **删除** | 太复杂、无需求，删除 |
+| PUT | `/api/v1/tasks/:task_id/resume` | **删除** | 太复杂、无需求，删除 |
 
 > 现有 admin 侧 `PATCH /admin/tasks/:id/scheduled-enabled` 由新用户侧接口替代；前端 agent 页的 ON/OFF 切换改调 `/tasks/:task_id/enabled`。字段名 `ScheduledEnabled`（bson `scheduled_enabled`）保留（前端已按此渲染），仅语义泛化为「所有 task 启停开关，默认开启」。
 >
@@ -132,7 +132,7 @@ chat 取消由「客户端断开 SSE」表达，无需新端点（取消语义 =
 ### 5.3 Task 删除正名 + 启停开关
 
 - **正名「删除 task」**：`TaskHandler.CancelTask` → `DeleteTask`（路由 `DELETE /tasks/:id`）；`service.CancelTask` → `DeleteTask`；`TaskDefRepository.Cancel`（DeleteOne 语义）→ `Delete`。删除能力保留，仅更正命名与 REST 语义。
-- **删除废弃接口**：`TaskHandler.PauseTask`、`TaskHandler.ResumeTask` + 对应路由（语义混乱/与开关重复，前端未调用）。
+- **删除废弃接口**：`TaskHandler.PauseTask`、`TaskHandler.ResumeTask` + 对应路由（**太复杂、无需求，直接删除**，不提供替代；前端未调用）。
 - **泛化** `ScheduledEnabled`：语义从「仅定时任务开关」改为「所有 task 启停开关」，`CreateTask` 已默认 `ScheduledEnabled = true`（保留）；非定时 task 同样可切换。
 - **新增** `service.SetEnabled`（复用现有 `SetScheduledEnabled` 逻辑，语义不变）+ `PATCH /api/v1/tasks/:task_id/enabled`（用户侧，替代 admin `scheduled-enabled`）。
 - **建 run 前置检查**（关键）：`CreateRun` 加载 task 后先判 `!task.ScheduledEnabled → 返回错误（409，语义「task 已停用」），不创建 run、不入队`。调度器 `ListScheduled` 已过滤 `scheduled_enabled != false`（保留），关闭的定时 task 不再被派发。
