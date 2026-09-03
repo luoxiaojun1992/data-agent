@@ -223,4 +223,30 @@ test.describe('ONLINE INDICATOR — SPEC-079 (多页面存在)', () => {
     await expect(indicator(page)).toBeVisible({ timeout: 5000 });
     await expect(dot(page)).toBeVisible();
   });
+
+  // 回归：SPEC-079 上线后曾把 AppLayout header 的站内信铃铛整体盖住
+  // （fixed right-4 指示灯与铃铛位置重叠且 z-60 更高），header 已预留 96px 让位。
+  test('[UI-249] Indicator — 站内信铃铛与指示灯不重叠、可点击', async ({ page }) => {
+    await page.goto('/');
+    await expect(indicator(page)).toBeVisible({ timeout: 5000 });
+
+    const bell = page.locator('[data-testid="notif-bell-icon"]');
+    await expect(bell).toBeVisible();
+
+    const indBox = await indicator(page).boundingBox();
+    const bellBox = await bell.boundingBox();
+    expect(indBox).not.toBeNull();
+    expect(bellBox).not.toBeNull();
+    const overlaps = !(
+      indBox!.x + indBox!.width <= bellBox!.x ||
+      bellBox!.x + bellBox!.width <= indBox!.x ||
+      indBox!.y + indBox!.height <= bellBox!.y ||
+      bellBox!.y + bellBox!.height <= indBox!.y
+    );
+    expect(overlaps, `indicator=${JSON.stringify(indBox)} bell=${JSON.stringify(bellBox)}`).toBe(false);
+
+    // 铃铛未被遮挡：可点击并展开通知下拉
+    await bell.click();
+    await expect(page.locator('[data-testid="notif-dropdown"]')).toBeVisible();
+  });
 });
