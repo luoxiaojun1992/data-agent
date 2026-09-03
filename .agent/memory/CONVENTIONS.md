@@ -140,6 +140,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 46 | **健康探活用错 API 语义（Logical().Read 解析 sys/health）** | vault 探活必须用 `Sys().HealthWithContext`。`Logical().Read` 只解析 `{data:...}` secret 信封，sys/health 返回扁平 JSON → `initialized` 断言恒 false → 误报 down。规则：探活类端点先确认响应体形状，选匹配的 client API；密封状态也要判（`Initialized && !Sealed`）。 |
 | 47 | **亚毫秒耗时 + omitempty 吞掉 latency 字段** | 耗时用 `Milliseconds()` 时，<1ms 会截断为 0；若字段带 `omitempty`，JSON 直接丢字段。健康检查 up 依赖必须恒有 latency_ms：`elapsed > 0 && ms == 0` 时向上取整为 1。单测必须包含「JSON 序列化含字段」断言，防 omitempty 回归。 |
 | 48 | **含凭据/隧道地址的本地回归脚本入库** | 本地冒烟/回归脚本（含测试服务器凭据、SSH 隧道地址、公网 IP）禁止提交。`.gitignore` 用通配统一忽略（`tests/ui/smoke-*.mjs`、`tests/ui/*-verify.mjs`），不要逐条添加。已提交的测试脚本不得硬编码隧道/服务器地址；playwright baseURL 走 `process.env.UI_BASE_URL` 注入。 |
+| 49 | **对同一文件并行发多个 Edit（工具竞态丢编辑）** | 并行 Edit 同一文件存在竞态：工具返回 success 但部分编辑未落盘（本项目已两次实测：spec-079 并行 8 个丢 7 处、spec-082 并行 5 个丢 3 处）。同文件多处修改必须**串行逐个 Edit**，或 Read 全文 + Write 一次性重写。改完必须 grep/Read **复核实际落盘结果**，禁止只信工具返回（防假性完成）。 |
 
 ## 开发工作流约定
 

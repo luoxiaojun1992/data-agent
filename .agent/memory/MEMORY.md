@@ -2,6 +2,16 @@
 
 > 按日期追加的工程决策记录。新条目追加在顶部，最新在前。
 
+## 2026-09-04: SPEC-082 删除 task pause/resume 功能
+
+- **上下文**: 晓军在 spec-082 评审中拍板：task 不需要 pause/resume（暂停/恢复），太复杂、无需求。
+- **决策**:
+  1. 删除 `PauseTask`/`ResumeTask` handler + `/pause`、`/resume` 路由，**不提供替代**。
+  2. 删除理由统一为「太复杂、无需求」（此前 spec 写的是「语义混乱/与开关重复」），目标 §2 显式声明「同步删除 pause/resume，由启停开关取代」。
+  3. 启停诉求由 `enabled` 开关覆盖（暂停建 run）；执行中取消由 run 级 `PUT /task-runs/:id/cancel` 覆盖。
+- **理由**: 功能复杂且无真实使用场景，pause/resume 与启停开关语义重叠，砍掉降低实现复杂度与心智负担。术语红线「取消 ≠ 删除 ≠ 启停」保持不变。
+- **commit**: `831974b`，已 push main。
+
 ## 2026-09-02: sysconfig description 走 DB + _id UUID + 模型下拉 use_case 过滤
 
 - **上下文**: 晓军要求系统设置页描述列走 DB 而非前端兜底，并系统 review 修复是否严格符合 4 规则（字段走 DB / _id 用 uuid / 必要唯一索引 / 用 _id 查询更新）。
