@@ -175,12 +175,7 @@ export default function MainPage() {
         </div>
 
         <div className="text-center pb-6">
-          <span data-testid="dashboard-realtime-badge"
-            className="inline-flex items-center gap-2 text-xs text-[var(--text-secondary)] bg-[var(--glass-bg)] px-3 py-1.5 rounded-full"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            数据实时更新
-          </span>
+          {/* 在线状态统一由全局 OnlineIndicator 组件显示（SPEC-079），此处硬编码徽章已移除 */}
         </div>
       </div>
     </AppLayout>

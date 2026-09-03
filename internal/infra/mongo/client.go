@@ -50,6 +50,15 @@ func (c *Client) Collection(name string) *mongo.Collection {
 	return c.db.Collection(name)
 }
 
+// Ping verifies MongoDB connectivity (SPEC-079 health probe, aligned with the
+// docker-compose healthcheck `mongosh --eval "db.runCommand('ping').ok"`).
+func (c *Client) Ping(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("mongo client not initialized")
+	}
+	return c.client.Ping(ctx, nil)
+}
+
 // Disconnect closes the MongoDB connection.
 func (c *Client) Disconnect(ctx context.Context) error {
 	return c.client.Disconnect(ctx)

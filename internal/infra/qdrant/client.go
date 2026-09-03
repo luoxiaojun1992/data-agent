@@ -2,6 +2,7 @@ package qdrant
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -99,6 +100,29 @@ func (c *Client) CreateCollection(collection string, vectorSize int, distance st
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("qdrant create collection %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// Health verifies Qdrant reachability via GET /readyz (SPEC-079 health probe,
+// aligned with the docker-compose healthcheck). Returns an error when the
+// server is unreachable or reports a non-200 status.
+func (c *Client) Health(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("qdrant client not initialized")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/readyz", nil)
+	if err != nil {
+		return fmt.Errorf("create qdrant health request: %w", err)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("qdrant health: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("qdrant health %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
 }

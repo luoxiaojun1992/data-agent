@@ -76,8 +76,8 @@ test.describe('DASHBOARD — System Overview', () => {
     await expect(page.locator('[data-testid="chart-roi-dual"]')).toBeVisible();
   });
 
-  test('[UI-074] Dashboard — real-time badge', async ({ page }) => {
-    await expect(page.locator('[data-testid="dashboard-realtime-badge"]')).toBeVisible();
-    await expect(page.locator('[data-testid="dashboard-realtime-badge"]')).toContainText('实时');
+  test('[UI-074] Dashboard — global online indicator', async ({ page }) => {
+    await expect(page.locator('[data-testid="global-online-indicator"]')).toBeVisible();
+    await expect(page.locator('[data-testid="global-online-dot"]')).toBeVisible();
   });
 });

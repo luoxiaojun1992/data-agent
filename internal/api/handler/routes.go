@@ -55,6 +55,9 @@ type RouteDeps struct {
 	MemoryService memory.Service
 	// MetricsCounter increments api_calls for /api/v1/* requests (SPEC-072).
 	MetricsCounter metrics.Counter
+	// HealthService powers the enhanced /health and /api/v1/health endpoints
+	// (SPEC-079). May be nil — both routes fall back to the legacy HealthCheck.
+	HealthService *monitor.HealthService
 }
 
 // RegisterAllRoutes wires the complete HTTP route table onto the router.
@@ -71,7 +74,14 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	}
 
 	// Public routes (no auth).
-	router.GET("/health", HealthCheck)
+	// SPEC-079: enhanced dependency health check (no auth). Both /health and
+	// /api/v1/health serve the same payload; "degraded" is carried in the
+	// status field (not the HTTP code) so the frontend always gets the
+	// per-dependency detail. Falls back to the legacy HealthCheck when no
+	// HealthService is wired.
+	healthHandler := NewHealthHandler(deps.HealthService)
+	router.GET("/health", healthHandler.Check)
+	router.GET("/api/v1/health", healthHandler.Check)
 	if deps.IMWebhook != nil {
 		router.POST("/api/v1/im/feishu/webhook", gin.WrapF(deps.IMWebhook))
 	}

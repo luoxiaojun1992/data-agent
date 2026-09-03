@@ -7,8 +7,10 @@ package arcadedb
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 
@@ -28,16 +30,24 @@ var schemaDDL = []string{
 type GraphStore struct {
 	driver   neo4j.DriverWithContext
 	database string
-	mu       sync.Mutex // serializes writes; Bolt sessions are cheap, ordering matters for edges
+	httpURL  string       // ArcadeDB HTTP root (http://<host>:2480) for the health probe
+	httpCli  *http.Client // shared HTTP client for the health probe
+	mu       sync.Mutex   // serializes writes; Bolt sessions are cheap, ordering matters for edges
 }
 
-// NewGraphStore wraps an existing driver (created once at wire time) and the
-// target database name.
-func NewGraphStore(driver neo4j.DriverWithContext, database string) *GraphStore {
+// NewGraphStore wraps an existing driver (created once at wire time), the
+// target database name, and the ArcadeDB HTTP root used by the health probe
+// (SPEC-079, aligned with the compose healthcheck `wget http://<arcade>:2480/`).
+func NewGraphStore(driver neo4j.DriverWithContext, database, httpURL string) *GraphStore {
 	if database == "" {
 		database = "kbgraph"
 	}
-	return &GraphStore{driver: driver, database: database}
+	return &GraphStore{
+		driver:   driver,
+		database: database,
+		httpURL:  httpURL,
+		httpCli:  &http.Client{Timeout: 5 * time.Second},
+	}
 }
 
 // NewDriver creates the global Bolt driver singleton for ArcadeDB.
@@ -85,6 +95,35 @@ func (g *GraphStore) EnsureSchema(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// Ping verifies ArcadeDB liveness (SPEC-079 health probe). It aligns with the
+// docker-compose healthcheck by probing the HTTP port :2480 when the HTTP root
+// is configured, and falls back to Bolt VerifyConnectivity otherwise (both
+// reflect the same server's liveness).
+func (g *GraphStore) Ping(ctx context.Context) error {
+	if g == nil {
+		return fmt.Errorf("arcadedb not initialized")
+	}
+	if g.httpURL != "" && g.httpCli != nil {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.httpURL, nil)
+		if err != nil {
+			return fmt.Errorf("arcadedb health request: %w", err)
+		}
+		resp, err := g.httpCli.Do(req)
+		if err != nil {
+			return fmt.Errorf("arcadedb health: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("arcadedb health %d", resp.StatusCode)
+		}
+		return nil
+	}
+	if g.driver == nil {
+		return fmt.Errorf("arcadedb driver not initialized")
+	}
+	return g.driver.VerifyConnectivity(ctx)
 }
 
 func isAlreadyExistsErr(err error) bool {

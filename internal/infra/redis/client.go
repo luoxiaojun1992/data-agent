@@ -33,6 +33,15 @@ func (c *Client) Client() *redis.Client {
 	return c.client
 }
 
+// Ping verifies Redis connectivity (SPEC-079 health probe, aligned with the
+// docker-compose healthcheck `redis-cli ping`).
+func (c *Client) Ping(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("redis client not initialized")
+	}
+	return c.client.Ping(ctx).Err()
+}
+
 // Close closes the Redis connection.
 func (c *Client) Close() error {
 	return c.client.Close()

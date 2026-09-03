@@ -2,6 +2,7 @@ package seaweedfs
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,29 @@ func NewClient(masterURL, filerURL string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// Health verifies SeaweedFS master reachability via GET /cluster/status
+// (SPEC-079 health probe, aligned with the docker-compose healthcheck).
+// Returns an error when the master is unreachable or reports a non-200 status.
+func (c *Client) Health(ctx context.Context) error {
+	if c == nil || c.httpClient == nil {
+		return fmt.Errorf("seaweedfs client not initialized")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.masterURL+"/cluster/status", nil)
+	if err != nil {
+		return fmt.Errorf("create seaweedfs health request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("seaweedfs health: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("seaweedfs health %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
 }
 
 // Upload stores a file and returns the file size.

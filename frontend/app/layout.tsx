@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import OnlineIndicator from './components/OnlineIndicator';
 
 export const metadata: Metadata = {
   title: 'DataAgent — 企业数据分析平台',
@@ -12,7 +13,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <OnlineIndicator />
+        {children}
+      </body>
     </html>
   );
 }

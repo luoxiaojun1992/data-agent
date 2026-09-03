@@ -125,6 +125,19 @@ func GetAddr() string {
 	return addr
 }
 
+// Ping verifies Vault reachability via sys/health (SPEC-079 health probe,
+// aligned with the docker-compose healthcheck `vault status`). Returns an error
+// when the server is unreachable or reports uninitialized.
+func (c *Client) Ping(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("vault client not initialized")
+	}
+	if c.IsAvailable(ctx) {
+		return nil
+	}
+	return fmt.Errorf("vault unavailable")
+}
+
 // IsAvailable checks if Vault is reachable by calling sys/health.
 func (c *Client) IsAvailable(ctx context.Context) bool {
 	// Strip trailing "v1/" if any

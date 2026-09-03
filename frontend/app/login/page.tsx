@@ -73,24 +73,29 @@ function LoginForm() {
       style={{ backgroundColor: '#000000' }}
       data-testid="login-card"
     >
-      {/* Error toast */}
-      {sessionExpired && (
-        <div
-          className="fixed top-4 right-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm z-50"
-          data-testid="login-session-expired-toast"
-        >
-          登录已过期，请重新登录
-        </div>
-      )}
+      {/* Toast stack (SPEC-079): 两个 toast 纵向堆叠、下移 top-14 避开右上角在线指示灯 */}
+      <div
+        className="fixed top-14 right-4 z-50 flex flex-col gap-2 items-end"
+        data-testid="login-toast-stack"
+      >
+        {sessionExpired && (
+          <div
+            className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+            data-testid="login-session-expired-toast"
+          >
+            登录已过期，请重新登录
+          </div>
+        )}
 
-      {generalError && (
-        <div
-          className="fixed top-4 right-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm z-50"
-          data-testid="login-error-toast"
-        >
-          {generalError}
-        </div>
-      )}
+        {generalError && (
+          <div
+            className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+            data-testid="login-error-toast"
+          >
+            {generalError}
+          </div>
+        )}
+      </div>
 
       {/* Aurora glow backdrop */}
       <div className="fixed inset-0 pointer-events-none">

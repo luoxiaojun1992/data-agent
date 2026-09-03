@@ -26,11 +26,13 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/config"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	arcadedbinfra "github.com/luoxiaojun1992/data-agent/internal/infra/arcadedb"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/cache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmcache"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	mysqlinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mysql"
 	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
@@ -48,6 +50,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
+	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/service/pii"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
@@ -110,6 +113,7 @@ type serverDependencies struct {
 	kbService          *knowledge.Service
 	kbHandler          *handler.KnowledgeHandler
 	graphRepo          repository.GraphRepository // SPEC-070: ArcadeDB graph (nil = disabled)
+	graphStore         *arcadedbinfra.GraphStore  // SPEC-079: concrete type for the health Ping probe
 	vectorStore        *qdrantinfra.VectorStore   // SPEC-070: shared vector store (graph skill content lookup)
 	kbEmbedFn          knowledge.EmbeddingFunc    // SPEC-070: embed fn for the graph skill anchor search
 	skillConfigSvc     *skillsvc.ConfigService
@@ -126,6 +130,9 @@ type serverDependencies struct {
 	notifSvc           *notifsvc.Service
 	notifHandler       *handler.NotificationHandler
 	apiCollectionSvc   *apicollectionsvc.Service
+	// SPEC-079: global online indicator / health-check wiring.
+	mysqlHealthClient *mysqlinfra.Client   // health-check-only MySQL singleton (nil if MYSQL_DSN unset)
+	healthService     *monitor.HealthService
 }
 
 func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDependencies) {
@@ -204,6 +211,11 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initEnhance(&deps)
 	initIM(&deps)
 
+	// SPEC-079: health service runs last — it snapshots every infra client's
+	// probe closure, so it must execute after all clients are initialized.
+	initMySQLHealthClient(&deps, logger)
+	initHealthService(&deps, logger)
+
 	return cfg, logger, mongoClient, deps
 }
 
@@ -220,6 +232,12 @@ func cleanup(logger *zap.Logger, mongoClient *mongoinfra.Client, deps *serverDep
 	}
 	if deps.redisClient != nil {
 		deps.redisClient.Close()
+	}
+	// SPEC-079: release the health-check-only MySQL singleton on shutdown.
+	if deps.mysqlHealthClient != nil {
+		if err := deps.mysqlHealthClient.Close(); err != nil {
+			logger.Error("Failed to close MySQL health client", zap.Error(err))
+		}
 	}
 	// SPEC-072: flush buffered metrics on shutdown so the last few seconds of
 	// counts are not lost.

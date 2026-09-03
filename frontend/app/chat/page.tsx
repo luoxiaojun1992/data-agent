@@ -482,10 +482,6 @@ export default function ChatPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-2" data-testid="chat-online-badge">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" data-testid="chat-online-dot" />
-                <span className="text-xs text-[var(--text-secondary)]">在线</span>
-              </span>
               <button
                 onClick={newSession}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"

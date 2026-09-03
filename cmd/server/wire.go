@@ -8,6 +8,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
 	mongoinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mongo"
+	mysqlinfra "github.com/luoxiaojun1992/data-agent/internal/infra/mysql"
 	qdrantinfra "github.com/luoxiaojun1992/data-agent/internal/infra/qdrant"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/seaweedfs"
@@ -51,6 +53,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
+	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
 	notifsvc "github.com/luoxiaojun1992/data-agent/internal/service/notification"
 	"github.com/luoxiaojun1992/data-agent/internal/service/pii"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
@@ -491,11 +494,96 @@ func initGraphStore(deps *serverDependencies) {
 		log.Printf("[kb] WARNING: failed to create ArcadeDB driver: %v", err)
 		return
 	}
-	graphStore := arcadedbinfra.NewGraphStore(driver, getEnvOrDefault("ARCADE_DATABASE", "kbgraph"))
+	graphStore := arcadedbinfra.NewGraphStore(driver, getEnvOrDefault("ARCADE_DATABASE", "kbgraph"), arcadeHTTPURL(arcadeURI))
 	if err := graphStore.EnsureSchema(context.Background()); err != nil {
 		log.Printf("[kb] WARNING: failed to ensure ArcadeDB schema: %v", err)
 	}
 	deps.graphRepo = graphStore
+	deps.graphStore = graphStore // SPEC-079: concrete type for the health Ping probe
+}
+
+// arcadeHTTPURL derives the ArcadeDB HTTP root from the Bolt URI so the health
+// probe can align with the compose healthcheck (wget http://<arcade>:2480/)
+// without an extra redundant env var. bolt://arcadedb:7687 → http://arcadedb:2480.
+func arcadeHTTPURL(boltURI string) string {
+	u, err := url.Parse(boltURI)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	return "http://" + u.Hostname() + ":2480"
+}
+
+// initMySQLHealthClient builds the health-check-only MySQL singleton (SPEC-079).
+// It reads MYSQL_DSN from the environment (injected by docker-compose) and is
+// used ONLY by the health probe — business queries still go through the
+// sql_executor skill config DSN, so no connection pool or business handle is
+// ever built here. Nil when MYSQL_DSN is unset (MySQL probe then skipped).
+func initMySQLHealthClient(deps *serverDependencies, logger *zap.Logger) {
+	dsn := os.Getenv("MYSQL_DSN")
+	if dsn == "" {
+		logger.Info("MYSQL_DSN unset — MySQL health probe disabled")
+		return
+	}
+	client, err := mysqlinfra.NewClient(dsn)
+	if err != nil {
+		logger.Warn("Failed to open MySQL health client", zap.Error(err))
+		return
+	}
+	deps.mysqlHealthClient = client
+	logger.Info("MySQL health client initialized (health-check only)")
+}
+
+// initHealthService assembles the SPEC-079 dependency health probes. Required
+// deps (mongodb/redis/qdrant/vault/seaweedfs/mysql) probe whenever their client
+// is non-nil; conditional deps (arcadedb/presidio) probe only when enabled and
+// are reported "skipped" otherwise. Every probe is a closure so the service
+// stays free of infra imports (DDD layering rule).
+func initHealthService(deps *serverDependencies, logger *zap.Logger) {
+	probes := []monitor.Probe{}
+
+	if deps.mongoClient != nil {
+		probes = append(probes, monitor.Probe{Name: "mongodb", Check: deps.mongoClient.Ping})
+	}
+	if deps.redisClient != nil {
+		probes = append(probes, monitor.Probe{Name: "redis", Check: deps.redisClient.Ping})
+	}
+	if deps.qdrantClient != nil {
+		probes = append(probes, monitor.Probe{Name: "qdrant", Check: deps.qdrantClient.Health})
+	}
+	if deps.vaultClient != nil {
+		probes = append(probes, monitor.Probe{Name: "vault", Check: deps.vaultClient.Ping})
+	}
+	if deps.swClient != nil {
+		probes = append(probes, monitor.Probe{Name: "seaweedfs", Check: deps.swClient.Health})
+	}
+	if deps.mysqlHealthClient != nil {
+		probes = append(probes, monitor.Probe{Name: "mysql", Check: deps.mysqlHealthClient.Ping})
+	}
+
+	// Conditional deps (SPEC-079 §5.1.1.2): arcadedb only when ARCADE_URI is
+	// configured, presidio only when pii_redaction_enabled is on. Configured-out
+	// deps are reported "skipped" and never affect the degraded aggregation.
+	if deps.graphStore != nil {
+		probes = append(probes, monitor.Probe{Name: "arcadedb", Check: deps.graphStore.Ping})
+	}
+	if deps.piiRedactor != nil && deps.piiEnabled != nil && deps.piiEnabled() {
+		probes = append(probes, monitor.Probe{Name: "presidio", Check: deps.piiRedactor.Health})
+	}
+
+	deps.healthService = monitor.NewHealthService(getEnvOrDefault("APP_VERSION", ""), probes...)
+
+	skipped := 0
+	if deps.graphStore == nil {
+		deps.healthService.MarkSkipped("arcadedb")
+		skipped++
+	}
+	if deps.piiRedactor == nil || deps.piiEnabled == nil || !deps.piiEnabled() {
+		deps.healthService.MarkSkipped("presidio")
+		skipped++
+	}
+
+	logger.Info("Health service initialized",
+		zap.Int("probes", len(probes)), zap.Int("skipped", skipped))
 }
 
 func initAuditAndNotifications(deps *serverDependencies, mongoClient *mongoinfra.Client) {
@@ -657,6 +745,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		AppName:        appName,
 		MetricsCounter: deps.metricsCounter,
 		MemoryService:  deps.memoryService,
+		HealthService:  deps.healthService,
 	}
 }
 

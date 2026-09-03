@@ -52,11 +52,10 @@ test.describe('CHAT — Complete', () => {
     await page.waitForURL('**/chat', { timeout: 5000 });
   });
 
-  // ═══ UI-018: 在线状态 Badge ═══
-  test('[UI-018] Chat — online status badge', async ({ page }) => {
-    await expect(page.locator('[data-testid="chat-online-badge"]')).toBeVisible();
-    await expect(page.locator('[data-testid="chat-online-dot"]')).toBeVisible();
-    await expect(page.locator('[data-testid="chat-online-badge"]')).toContainText('在线');
+  // ═══ UI-018: 全局在线指示灯 ═══
+  test('[UI-018] Chat — global online indicator', async ({ page }) => {
+    await expect(page.locator('[data-testid="global-online-indicator"]')).toBeVisible();
+    await expect(page.locator('[data-testid="global-online-dot"]')).toBeVisible();
   });
 
   // ═══ UI-019: 新对话按钮 ═══

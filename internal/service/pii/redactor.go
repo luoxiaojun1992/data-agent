@@ -158,5 +158,38 @@ func (r *PIIRedactor) anonymize(ctx context.Context, text string, results []anal
 	return out.Text, nil
 }
 
+// Health probes both Presidio services' /health endpoints (SPEC-079, aligned
+// with the docker-compose healthchecks). Returns an error when either service
+// is unconfigured or unhealthy. When the redaction switch is off, callers
+// should mark this dependency "skipped" instead of probing.
+func (r *PIIRedactor) Health(ctx context.Context) error {
+	if r == nil || r.analyzerURL == "" || r.anonymizerURL == "" {
+		return fmt.Errorf("presidio services not configured")
+	}
+	if err := healthEndpoint(ctx, r.client, r.analyzerURL); err != nil {
+		return fmt.Errorf("presidio analyzer: %w", err)
+	}
+	if err := healthEndpoint(ctx, r.client, r.anonymizerURL); err != nil {
+		return fmt.Errorf("presidio anonymizer: %w", err)
+	}
+	return nil
+}
+
+func healthEndpoint(ctx context.Context, client *http.Client, baseURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/health", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Compile-time assertion: PIIRedactor implements security.Redactor.
 var _ security.Redactor = (*PIIRedactor)(nil)
