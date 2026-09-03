@@ -40,7 +40,7 @@
 { "status": "ok", "time": "2026-09-02T12:00:00Z" }
 ```
 
-不 ping 任何依赖，无法反映 MongoDB / Redis / Vault / Qdrant / ArcadeDB / SeaweedFS / Presidio 的真实可用性（MySQL 为 sql_executor 按需连接、非常驻，探活语义见 §5.1.1.2）。
+不 ping 任何依赖，无法反映 MongoDB / Redis / Vault / Qdrant / ArcadeDB / SeaweedFS / Presidio / MySQL 的真实可用性。
 
 ### 2.3 登录页 toast 重叠
 
@@ -66,7 +66,7 @@
                     ┌─────────────────────────────────────────────┐
                     │  handler.HealthCheck → monitor.HealthService  │
                     │   并发 Probe: mongo/redis/vault/qdrant/       │
-                    │   seaweedfs (+ 条件: arcadedb/presidio/mysql) │
+                    │   seaweedfs/mysql (+ 条件: arcadedb/presidio)  │
                     │   (各自 2s 超时)                               │
                     └─────────────────────────────────────────────┘
 ```
@@ -107,8 +107,8 @@
     "qdrant":     { "status": "up",    "latency_ms": 8 },
     "arcadedb":   { "status": "up",    "latency_ms": 15 },
     "seaweedfs":  { "status": "down",  "latency_ms": 0, "error": "connection refused" },
-    "presidio":   { "status": "up",    "latency_ms": 18 },
-    "mysql":      { "status": "skipped" }
+    "mysql":      { "status": "up",    "latency_ms": 5 },
+    "presidio":   { "status": "up",    "latency_ms": 18 }
   }
 }
 ```
@@ -169,7 +169,7 @@ type HealthResponse struct {
 | 5 | arcadedb | `wget http://localhost:2480/` | 常驻 `graphRepo`（`ARCADE_URI` 为空则无） | `GET http://<arcade>:2480/`（需新增 `Ping`，**对齐 compose 的 HTTP 2480**） | **条件探**（配了 `ARCADE_URI` 才探） |
 | 6 | seaweedfs | `curl -f http://localhost:9333/cluster/status` | 常驻 `swClient` | `GET /cluster/status`（需新增 `Health`，**对齐 compose 的 `/cluster/status`**） | **必探** |
 | 7 | presidio | `curl -f http://localhost:3000/health`（analyzer / anonymizer 各一） | 常驻 `PIIRedactor`（HTTP client，按需调用） | `GET /health` ×2（需新增 `Health`，**对齐 compose 的 `/health`**） | **条件探**（受 `pii_redaction_enabled` 开关控制） |
-| 8 | mysql | `mysqladmin ping -h localhost` | **按需**（sql_executor 工具每次用 skill config DSN 动态 `gorm.Open`，无全局连接） | `sqlDB.Ping(ctx)`（需新增） | **条件探**（见 §5.1.1.2） |
+| 8 | mysql | `mysqladmin ping -h localhost` | **health-check 专用全局单例 client**（读 `MYSQL_DSN`，仅探活；业务连接仍由 sql_executor skill config 自带 DSN 按需建立） | `sqlDB.Ping(ctx)`（新增单例 client + `Ping`） | **必探** |
 | — | ollama | `ollama list` | **按需**（embedding baseURL 由 admin UI 配置，可能指向外部 MaaS） | — | **不探**（见 §5.1.1.2） |
 | — | mockllm | `curl -f http://localhost:8082/health` | 仅开发桩（生产走 MaaS deepseek-v4-pro） | — | **不探** |
 
@@ -177,18 +177,18 @@ type HealthResponse struct {
 
 | 档位 | 依赖 | 判定规则 |
 |------|------|---------|
-| **必探** | mongodb / redis / qdrant / vault / seaweedfs | 任一 `down` → 整体 `degraded`（黄灯） |
-| **条件探** | arcadedb / presidio / mysql | 按配置启用才注入 Probe；未启用→`skipped`，不影响整体判定 |
+| **必探** | mongodb / redis / qdrant / vault / seaweedfs / mysql | 任一 `down` → 整体 `degraded`（黄灯） |
+| **条件探** | arcadedb / presidio | 按配置启用才注入 Probe；未启用→`skipped`，不影响整体判定 |
 | **不探** | ollama / mockllm | 不注入 Probe，不出现在 `dependencies` 中 |
 
 **关键决策说明（防止误报）**：
 
-1. **mysql 是工具级按需依赖，非常驻**。`sql_executor` 工具在 `internal/logic/sql/executor.go` 中每次执行时才用 skill config 里的 DSN `gorm.Open`，且当前 **`MYSQL_DSN` 环境变量后端并未读取**（`internal/` 全量 grep 无引用）。因此 MySQL 挂掉只影响 `sql_executor` 这一个工具，不应让全局指示灯变黄。**条件探**：仅当存在「全局默认 MySQL DSN」（后续可作为系统配置项 `SQL_DEFAULT_DSN` 引入）时才注入 Probe；无默认 DSN → `skipped`。
+1. **mysql 用 health-check 专用单例 client 探活，业务连接仍按需**。为把 MySQL 纳入健康检查，新增一个**全局 MySQL 单例 client（`*sql.DB`，连接串来自 compose 已注入的 `MYSQL_DSN` 环境变量），仅用于 health check 的 `Ping` 探活，不承载任何业务查询、不建连接池**。sql_executor 的业务连接仍走 skill config 自带的 DSN 按需 `gorm.Open`，两者互不干扰、无冗余配置。因此 mysql 落「必探」：MySQL 挂掉 → 整体指示灯黄（degraded）。
 2. **presidio 受开关控制**。`pii_redaction_enabled=false` 时 PII 脱敏已关闭，presidio 不可达不影响业务，应 `skipped` 而非 `down`。
 3. **ollama/embedding 不探**。embedding baseURL 由 admin 模型配置动态决定（可能是本地 Ollama，也可能是外部 MaaS embedding API），不是固定 docker 依赖，纳入固定探针会误报。
 4. **mockllm 不探**。它是 `MOCK_` 前缀的开发桩，生产环境 LLM 走 MaaS `deepseek-v4-pro`，健康检查不应绑定开发桩。
 
-> ⚠️ **现状不一致（follow-up，非本 spec 阻塞项）**：`docker-compose.yml` 中 `data-agent` 声明了 `depends_on: mysql: service_healthy` 并注入 `MYSQL_DSN`，但后端既不读 `MYSQL_DSN`、也不建立全局 MySQL 连接。落地本 spec 时需二选一：**(a)** 引入系统配置 `SQL_DEFAULT_DSN` + 在 `initServer` 建立全局连接（此时 mysql 升为「必探」）；**(b)** 保持 sql_executor 按需连接，并从 `data-agent.depends_on` 移除 `mysql`（避免 compose 启动被 mysql 无谓阻塞）。当前设计默认 **(b)**，mysql 落在「条件探」。
+> ✅ **落地需补齐（本 spec 实施项）**：当前后端不读 `MYSQL_DSN`、也无全局 MySQL 连接。落地本 spec 时需：**新增 health-check 专用全局 MySQL 单例 client**（`sql.Open("mysql", cfg.MYSQL_DSN)`，仅用于 `Ping`，不建连接池、不承载业务）。`depends_on: mysql: service_healthy` 与 `MYSQL_DSN` 环境变量**均保留**（后者是健康探活的连接源）。业务连接（sql_executor）仍用 skill config 自带 DSN，不经过该单例。
 
 遵循 DDD 铁律——`service` 层不 import `mongo-driver` 等 infra 具体类型，改用**闭包 Probe** 注入：
 
@@ -220,6 +220,7 @@ probes := []monitor.Probe{
     {Name: "vault",     Check: vaultProbe(vaultClient)}, // 包装 IsAvailable(bool)→error
     {Name: "qdrant",    Check: qdrantClient.Health},    // 需新增，GET /readyz（对齐 compose）
     {Name: "seaweedfs", Check: seaweedClient.Health},   // 需新增，GET /cluster/status（对齐 compose）
+    {Name: "mysql",     Check: mysqlHealthClient.Ping}, // health-check 专用单例 client（读 MYSQL_DSN）
 }
 
 // 条件探：按配置启用时才追加（未启用 → skipped，不参与 degraded 判定）
@@ -228,9 +229,6 @@ if deps.graphRepo != nil { // ARCADE_URI 已配置
 }
 if deps.piiEnabled != nil && deps.piiEnabled() { // pii_redaction_enabled=true
     probes = append(probes, monitor.Probe{Name: "presidio", Check: deps.piiRedactor.Health}) // GET /health ×2
-}
-if deps.sqlDefaultDB != nil { // 仅当配置了全局默认 MySQL DSN（见 §5.1.1.2 follow-up）
-    probes = append(probes, monitor.Probe{Name: "mysql", Check: deps.sqlDefaultDB.Ping})
 }
 ```
 
@@ -244,7 +242,7 @@ if deps.sqlDefaultDB != nil { // 仅当配置了全局默认 MySQL DSN（见 §5
 | `infra/arcadedb` | Bolt driver | `Ping(ctx) error`（**HTTP `GET http://<arcade>:2480/`**，对齐 compose 的 `wget :2480/`） |
 | `infra/seaweedfs` | HTTP client | `Health(ctx) error`（**GET master `/cluster/status`**，对齐 compose，非 `/status`） |
 | `service/pii` | `PIIRedactor` 持有 HTTP client | `Health(ctx) error`（GET analyzer/anonymizer **`/health`** ×2，对齐 compose） |
-| `logic/sql` | 无全局连接（按需 `gorm.Open`） | 若走 §5.1.1.2 方案 (a)：全局 `sqlDB.Ping(ctx)`；方案 (b) 则无需 |
+| `infra/mysql`（新） | 当前无 mysql client | 新增 health-check 专用全局单例 client（`sql.Open("mysql", cfg.MYSQL_DSN)`）+ `Ping(ctx)`；仅探活，不承载业务 |
 | `infra/vault` | `IsAvailable(ctx) bool`（已有） | `vaultProbe` 薄包装 `bool→error`（闭包内 `if !ok { return err }`） |
 
 `handler.HealthCheck` 改为接收 `*monitor.HealthService`（经 `RouteDeps` 注入），调用 `Check(ctx)` 返回 JSON。
@@ -309,7 +307,7 @@ import OnlineIndicator from './components/OnlineIndicator';
 | 是否影响现有 API | 增强 `/health` 返回结构（新增字段，向后兼容）；新增 `/api/v1/health`（无认证） |
 | 是否需新增 Skill | No |
 | 性能影响 | 极低：每次探测并发 + 2s 超时，前端 15s 一轮；健康检查本身无 DB 写 |
-| 探针清单对齐 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐（§5.1.1）；mysql 因非常驻连接默认落在「条件探/不探」（follow-up 待定） |
+| 探针清单对齐 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐（§5.1.1）；mysql 经 health-check 专用单例 client 落「必探」 |
 | 分层合规 | `service/monitor` 用闭包 Probe，零 infra import；handler 仅调用 service |
 | 安全 | `/api/v1/health` 无认证但只暴露「up/down + latency + 版本」，无敏感数据（不返回连接串/账号/密钥）；`error` 字段仅返回连接错误文案，需脱敏处理 |
 | 兼容性 | 保留 `/health` 路径，nginx 现有探活不中断 |
@@ -330,7 +328,7 @@ import OnlineIndicator from './components/OnlineIndicator';
 | `internal/infra/seaweedfs/client.go` | 新增 `Health(ctx)`（GET `/cluster/status`） | Small |
 | `internal/service/pii/redactor.go` | 新增 `Health(ctx)`（GET analyzer/anonymizer `/health`） | Small |
 | `internal/infra/vault/client.go` | 探活闭包 `vaultProbe`（包装 `IsAvailable(bool)→error`） | Small |
-| `internal/logic/sql/`（可选，方案 a） | 全局 MySQL 连接 + `Ping(ctx)` | Optional |
+| `internal/infra/mysql/client.go` | New：health-check 专用全局单例 client + `Ping(ctx)`（仅探活） | New |
 | `internal/wire.go`（或 main.go 依赖组装处） | 组装 Probe 切片 + 条件探逻辑 + 注入 HealthService | Modify |
 | `frontend/app/components/OnlineIndicator.tsx` | New：全局在线指示灯组件 | New |
 | `frontend/app/layout.tsx` | 改：RootLayout body 挂载 OnlineIndicator | Small |
@@ -402,4 +400,4 @@ import OnlineIndicator from './components/OnlineIndicator';
 | 6 | 登录页两个 toast 同时出现时不重叠，且不与指示灯重叠 | E2E 断言 bounding box 不相交 |
 | 7 | `/health` 旧路径仍 200（向后兼容） | curl `/health` 200 |
 | 8 | 覆盖率 ≥ 98%，CI 全绿 | `ut-workflow.yml` + `ui-tests.yml` |
-| 9 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐 | 逐项比对 §5.1.1 映射表：必探 5 项 + 条件探 3 项（arcadedb/presidio/mysql）+ 排除 2 项（ollama/mockllm） |
+| 9 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐 | 逐项比对 §5.1.1 映射表：必探 6 项（含 mysql）+ 条件探 2 项（arcadedb/presidio）+ 排除 2 项（ollama/mockllm） |
