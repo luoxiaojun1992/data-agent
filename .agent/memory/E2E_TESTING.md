@@ -396,3 +396,12 @@ curl -X POST .../login -d '{"username":"<login-email>","password":"<pwd>"}'
 ```
 
 **教训**: 400 + 字段级错误信息 = 后端参数校验正常工作（不是 bug）。读错误里的字段名，那是后端在告诉你哪个字段缺失/非法。
+
+### 铁律 #10: 本地直连被网络过滤时走 SSH 隧道；含凭据/隧道地址的冒烟脚本禁入库
+
+本地访问测试服务器可能被网络过滤层拦截（返回「假 HTML」：HTTP 200 但内容是无关拦截页）。判断方法：`curl -s <url> | grep -c <业务关键词>` 为 0 + HTTP 头非 Next.js 特征 → 假页面。此时：
+
+1. **SSH 隧道绕行**：`ssh -f -N -L 18080:localhost:80 root@<server>`，本地 curl/playwright 全部改走 `http://localhost:18080`。
+2. **playwright 浏览器版本不匹配**：`browserType.launch: Executable doesn't exist` → 用 `executablePath` 指向已安装版本（`chromium_headless_shell-*/chrome-headless-shell-mac-x64/chrome-headless-shell`），不重新下载。
+3. **⛔ 含凭据/隧道地址的冒烟脚本禁止提交仓库**：这类脚本（服务器密码、admin 凭据、隧道端口）统一 `.gitignore` 通配忽略（`tests/ui/smoke-*.mjs`）。**已提交**的测试/回归脚本一律走环境变量注入（如 playwright `baseURL: process.env.UI_BASE_URL`），不得硬编码隧道地址或服务器地址。
+4. **冒烟断言走真实 DOM 与运行时值**：选择器用 `data-testid`（不是 input type，登录 email input 是 `type="text"`）；颜色断言用 `getComputedStyle` 的实际 rgb 值（emerald-400 = rgb(52,211,153)）；位置断言用 `boundingBox` 计算几何关系（不重叠/纵向堆叠），右对齐堆叠的两元素 x 坐标不同是正常的，只断言 y 纵向关系。

@@ -785,3 +785,29 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **根因**: 后端 `LoginRequest` 字段是 `username`，但前端 input 的 testid 叫 `email-input`（迷惑），用 `email` 字段名 curl → Gin binding 校验 `Field validation for 'Username' failed on the 'required' tag` 返回 400。
 **解决**: 用 `username` 字段 → 200 + JWT。400 + 字段级错误信息是**正常的参数校验**，不是 bug。
 **教训**: 验证 API 前先确认后端 DTO 的实际字段名（json tag / binding tag），别凭前端 input 的 testid/placeholder 猜字段。遇到 400 先读错误信息里的字段名，那是后端在告诉你哪个字段缺失/非法。
+
+## 2026-09-03 新增（SPEC-079 部署回归：探活语义 / latency 精度 / 同步与网络方案）
+
+### vault 探活用 `Logical().Read` 解析 sys/health → 误报 down
+**日期**: 2026-09-03 | **影响**: `/api/v1/health` 部署后 vault 恒 down，但容器 healthy、`curl 127.0.0.1:8200/v1/sys/health` 返回 `initialized:true`
+**根因**: `Logical().Read("/v1/sys/health")` 按 secret 信封（`{data:...}`）解析响应，而 sys/health 返回**扁平 JSON**（`{"initialized":true,...}`），`resp.Data` 为空 → `initialized` 断言恒 false。
+**解决**: 改用 `c.client.Sys().HealthWithContext(ctx)`（vault client 专为 sys/health 设计，带 uninitcode=299 参数 + flat 解析），判定 `health.Initialized && !health.Sealed`（密封也视为不可用）。新增 5 个 httptest 单测（up/sealed/uninitialized/unreachable/nil）。
+**教训**: 探活/状态类端点先确认响应体形状再选 client API。通用 KV 读取 API 不适用于非信封响应；「容器 healthy 但探活 down」先对比「容器内 curl 探活端点」与「探活代码用的 API」的差异，而不是怀疑网络。
+
+### 亚毫秒探活耗时 + omitempty → up 依赖丢失 latency_ms
+**日期**: 2026-09-03 | **影响**: 线上健康检查 redis 恒无 latency_ms（其余 7 依赖都有），前端 tooltip 里 redis 行不显示延时
+**根因**: `LatencyMS int64 json:"latency_ms,omitempty"` + `time.Duration.Milliseconds()` 截断。redis 走 docker 内网，PING 往返 <1ms → `Milliseconds()` 返回 0 → `omitempty` 序列化时把整个字段吞掉。HTTP/TCP 探活天然 >1ms 所以只有 redis 中招（偶发）。
+**解决**: `elapsed > 0 && ms == 0` 时向上取整为 1ms（亚毫秒 → 1ms）。down 保持 0 + omitempty 不显示。单测断言「up 依赖 LatencyMS ≥ 1 且 JSON 序列化含 latency_ms 字段」。
+**教训**: 任何 `omitempty` 数值字段都要考虑「合法值恰好是零值」的场景。毫秒级精度对亚毫秒耗时不够用——要么向上取整，要么用微秒/浮点。回归验证要用「连续多次请求」抓偶发（redis 5 次采样 1/4/1/1/1ms），单次验证可能恰好 >1ms 掩盖问题。
+
+### 部署服务器无法直连 GitHub → git bundle + scp 增量同步
+**日期**: 2026-09-03 | **影响**: 测试服务器 `git pull` 超时（443 Empty reply/Connection timed out，被墙），无法同步新 commit
+**根因**: 部署服务器无外网 GitHub 访问能力，也没有可用代理。
+**解决**: 本地 `git bundle create /tmp/x.bundle <server-head>..HEAD`（增量几十 KB）→ scp 上传 → 服务器 `git fetch /tmp/x.bundle HEAD && git merge --ff-only FETCH_HEAD`。
+**教训**: ⛔ 三个坑必须记住：① bundle 内 ref 是 `HEAD` 不是 `refs/heads/main`，`git pull bundle main` 会报 "couldn't find remote ref main"；② 非 bare 仓库不能 `git fetch bundle 'HEAD:refs/heads/main'`（Refusing to fetch into current branch），必须 FETCH_HEAD + merge；③ 增量 bundle 基线必须是**服务器当前 HEAD**，否则报 "Repository lacks these prerequisite commits"——先在服务器 `git log --oneline -1` 确认基线再打 bundle。
+
+### 本地直连测试服务器被网络过滤 → SSH 隧道 + 脚本地址规范
+**日期**: 2026-09-03 | **影响**: 本地 curl/playwright 访问测试服务器 80 端口拿到「假 HTML」（HTTP 200 但内容是完全无关的拦截页），一度误判部署失败；服务器内部 curl localhost 一切正常
+**根因**: 本地网络出口对公网 80 端口有过滤/替换层，`--noproxy '*'` 也绕不过。
+**解决**: SSH 隧道 `ssh -f -N -L 18080:localhost:80 root@<server>`，本地全部走 `http://localhost:18080`（curl 和 playwright BASE 都改）。判定「假 HTML」的快速方法：`curl ... | grep -c <业务关键词>` 为 0 + HTTP 头是拦截页特征。
+**教训**: ⛔ ① 本地访问公网服务器先验证「拿到的是不是真页面」（grep 业务关键词），否则会在假页面上做无效断言；② **含隧道地址/服务器凭据的冒烟脚本禁止提交仓库**——统一通配 ignore（`tests/ui/smoke-*.mjs`），已提交的测试脚本一律走 env 注入（`UI_BASE_URL`），不得硬编码隧道地址。
