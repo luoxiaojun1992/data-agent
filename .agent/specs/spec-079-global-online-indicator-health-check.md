@@ -100,6 +100,7 @@
   "time": "2026-09-02T12:00:00Z",
   "version": "v1.5.0",
   "uptime_seconds": 86400,
+  "latency_ms": 24,
   "dependencies": {
     "mongodb":    { "status": "up",    "latency_ms": 3 },
     "redis":      { "status": "up",    "latency_ms": 2 },
@@ -113,7 +114,7 @@
 }
 ```
 
-> 依赖清单与逐项探活方式、探活语义见 §5.1.1。`status:"skipped"` 表示该依赖按当前配置未接入/未启用，跳过探测且不参与 degraded 判定。
+> 顶层 `latency_ms` 为整次健康检查探测的总耗时（后端 API 延时，见 §5.1 `Check` 实现）。依赖清单与逐项探活方式、探活语义见 §5.1.1。`status:"skipped"` 表示该依赖按当前配置未接入/未启用，跳过探测且不参与 degraded 判定。
 
 **状态语义**（HTTP 恒 200，语义在 `status` 字段）：
 
@@ -148,6 +149,7 @@ type HealthResponse struct {
     Time         string                     `json:"time"`
     Version      string                     `json:"version,omitempty"`
     UptimeSec    int64                      `json:"uptime_seconds"`
+    LatencyMS    int64                      `json:"latency_ms"`  // 整次 Check 总耗时（后端 API 延时）
     Dependencies map[string]DependencyStatus `json:"dependencies"`
 }
 ```
@@ -207,7 +209,7 @@ type HealthService struct {
 
 func NewHealthService(version string, probes ...Probe) *HealthService
 
-// Check 并发探测所有依赖（每个 2s 超时），聚合结果。
+// Check 并发探测所有依赖（每个 2s 超时），聚合结果，并记录整次探测总耗时到 LatencyMS（后端 API 延时）。
 func (s *HealthService) Check(ctx context.Context) HealthResponse
 ```
 
@@ -272,24 +274,27 @@ import OnlineIndicator from './components/OnlineIndicator';
 
 #### 5.2.1 Hover Tooltip：依赖探活泡泡框
 
-用户鼠标 hover 到指示灯上时，弹出一个泡泡框（tooltip），逐项展示各依赖服务的实时探活结果——**只显示「在线 / 离线」即可，不显示 latency_ms / error 明细**。
+用户鼠标 hover 到指示灯上时，弹出一个泡泡框（tooltip），逐项展示**后端 API 延时**与各依赖服务的实时探活结果（含延时）——不显示 `error` 明细（down 只标「离线」）。
 
 **触发与交互**：
 
 - `onMouseEnter` / `onMouseLeave`（辅以 `onFocus` / `onBlur` 保证键盘可达）切换显隐；移出立即收起，不设延时。
 - 落地用 React state 控制显隐（而非纯 `group-hover`），便于 E2E 对 `data-testid` 的显隐断言。
 
-**内容（只显示在线/离线，不显示 latency）**：
+**内容（显示状态 + 延时，不显示 error）**：
 
-| 依赖项 `status` | 文案 | 状态色 |
-|----------------|------|--------|
-| `up` | 在线 | 🟢 `emerald-400` |
-| `down` | 离线 | 🔴 `red-400` |
-| `skipped` | 未启用 | ⚪ `gray-400` |
+顶层展示一行「后端 API 延时」——`latency_ms`（整次健康检查探测的总 wall-clock 耗时，见 §4.2/§4.3 新增字段）；其下逐项列出依赖状态与延时。
 
-- 逐行列出 `dependencies` 中每一项：`<服务名> — <在线/离线/未启用>`，每行一个状态圆点 + 状态文案。
+| 依赖项 `status` | 状态文案 | 延时显示 | 状态色 |
+|----------------|---------|---------|--------|
+| `up` | 在线 | `latency_ms`（如 `3ms`） | 🟢 `emerald-400` |
+| `down` | 离线 | 不显示（`latency_ms` 为 0 无意义） | 🔴 `red-400` |
+| `skipped` | 未启用 | 不显示 | ⚪ `gray-400` |
+
+- 顶部一行：`后端 API · <latency_ms>ms`（`data-testid="tooltip-api-latency"`）。
+- 逐行列出 `dependencies` 中每一项：`<服务名> · <在线/离线/未启用>[ · <latency_ms>ms]`，每行一个状态圆点 + 状态文案 + （up 时）延时。
 - 排序：必探项在前、条件探项次之（与 §5.1.1 表序一致），保证阅读稳定。
-- **红灯（后端不可达）时**：`dependencies` 为空，tooltip 显示单行「后端服务不可达」，不渲染空列表。
+- **红灯（后端不可达）时**：`dependencies` 为空、无 `latency_ms`，tooltip 显示单行「后端服务不可达」，不渲染 API 延时行与空列表。
 
 **定位与样式**：
 
@@ -301,6 +306,7 @@ import OnlineIndicator from './components/OnlineIndicator';
 **testid**：
 
 - 泡泡框：`data-testid="global-online-tooltip"`
+- 后端 API 延时行：`data-testid="tooltip-api-latency"`
 - 每行依赖项：`data-testid="tooltip-dep-<name>"`（如 `tooltip-dep-mongodb`）
 
 **示例结构（伪代码）**：
@@ -316,15 +322,27 @@ import OnlineIndicator from './components/OnlineIndicator';
       {deps.length === 0 ? (
         <span className="text-xs">后端服务不可达</span>
       ) : (
-        deps.map(d => (
-          <div key={d.name} data-testid={`tooltip-dep-${d.name}`}
-               className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-(--text-secondary)">{d.name}</span>
-            <span className={statusColor(d.status)}>
-              {d.status === 'up' ? '在线' : d.status === 'down' ? '离线' : '未启用'}
-            </span>
+        <>
+          <div data-testid="tooltip-api-latency"
+               className="flex items-center justify-between gap-3 text-xs border-b border-(--border-glass) pb-2 mb-2">
+            <span className="text-(--text-secondary)">后端 API</span>
+            <span className="text-(--text-primary)">{latency_ms}ms</span>
           </div>
-        ))
+          {deps.map(d => (
+            <div key={d.name} data-testid={`tooltip-dep-${d.name}`}
+                 className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-(--text-secondary)">{d.name}</span>
+              <span className="flex items-center gap-1.5">
+                <span className={statusColor(d.status)}>
+                  {d.status === 'up' ? '在线' : d.status === 'down' ? '离线' : '未启用'}
+                </span>
+                {d.status === 'up' && (
+                  <span className="text-(--text-muted)">{d.latency_ms}ms</span>
+                )}
+              </span>
+            </div>
+          ))}
+        </>
       )}
     </div>
   )}
@@ -412,6 +430,7 @@ import OnlineIndicator from './components/OnlineIndicator';
 - [ ] **必须** 指示灯加 `data-testid="global-online-indicator"` / `global-online-dot`
 - [ ] **必须** tooltip 泡泡框加 `data-testid="global-online-tooltip"`，每行依赖项加 `data-testid="tooltip-dep-<name>"`
 - [ ] **必须** hover 指示灯断言 tooltip 弹出，逐项断言依赖「在线/离线/未启用」文案与 `tooltip-dep-*` 一一对应
+- [ ] **必须** tooltip 顶部显示后端 API 延时（`tooltip-api-latency`）；up 依赖显示 `latency_ms`，down/skipped 不显示延时
 - [ ] **必须** 红灯（后端不可达）时 tooltip 显示「后端服务不可达」而非空列表
 - [ ] **必须** 登录页 toast 堆叠容器加 `data-testid="login-toast-stack"`
 - [ ] **必须** 覆盖三类页面断言指示灯存在：登录页、Dashboard、Chat（及至少一个 admin 页）
@@ -465,4 +484,5 @@ import OnlineIndicator from './components/OnlineIndicator';
 | 7 | `/health` 旧路径仍 200（向后兼容） | curl `/health` 200 |
 | 8 | 覆盖率 ≥ 98%，CI 全绿 | `ut-workflow.yml` + `ui-tests.yml` |
 | 9 | 探针清单/端点与 `docker-compose.yml` `depends_on` 的 healthcheck 逐项对齐 | 逐项比对 §5.1.1 映射表：必探 6 项（含 mysql）+ 条件探 2 项（arcadedb/presidio）+ 排除 2 项（ollama/mockllm） |
-| 10 | hover 指示灯弹出 tooltip，逐依赖显示在线/离线（不显示 latency） | E2E hover 断言 `tooltip-dep-*` 状态文案；红灯时显示「后端服务不可达」 |
+| 10 | hover 指示灯弹出 tooltip，显示后端 API 延时 + 逐依赖在线/离线/延时（不显示 error） | E2E hover 断言 `tooltip-api-latency` 与 `tooltip-dep-*`（up 含 latency，down/skipped 无）；红灯显示「后端服务不可达」 |
+| 11 | 后端 API 延时 `latency_ms` 为整次 Check 总耗时 | curl 断言顶层 `latency_ms` 字段存在且 > 0 |
