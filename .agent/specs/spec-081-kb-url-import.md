@@ -128,9 +128,14 @@ KB Handler（新增 ImportURL）
 - 标题规则：`<页面标题或 URL host>-text` 与 `-img-{n}`，与 PDF 上传的 `-{编号}` 风格一致。
 - 后续索引（chunking/embedding/Qdrant/ArcadeDB 图写入）**零改动**。
 
-### 5.4 前端 KB 页 URL 导入 UI
+### 5.4 前端 KB 页 URL 导入 UI（独立按钮 + 独立弹窗）
 
-- 上传弹窗增加「导入网址」入口：输入 URL → POST `/knowledge/import-url` → 成功后刷新列表 + toast「导入完成（N 个文档）」（跳过图片数 >0 时提示）。
+- **独立按钮**：KB 页顶部新增「导入网址」按钮（`data-testid="kb-import-url-btn"`），与现有「上传文档」按钮并列，样式沿用 SPEC-078 `primaryButtonStyle` 体系的次级按钮。不侵入现有上传弹窗。
+- **独立弹窗**（`data-testid="kb-import-url-modal"`）：
+  - URL 输入框（`data-testid="kb-import-url-input"`）+ 「导入」提交按钮（`kb-import-url-submit`）+ 取消；
+  - 弹窗内状态流转：空 URL 禁用提交；提交中显示 loading 并禁用按钮（导入为后端渲染，耗时可能达 120s，必须有进行中反馈）；
+  - 成功后：关闭弹窗 + 刷新列表 + toast「导入完成（N 个文档）」，`skipped_images > 0` 时附加「（跳过 M 张超限图片）」提示；
+  - 失败：弹窗内/ toast 展示后端错误语义（URL 非法 / SSRF 拦截 / 抓取失败 / 渲染服务不可用），弹窗不关闭，允许修改 URL 重试。
 - **浏览器上传侧同步加限制**（与后端一致，避免上传后才被拒）：
   - txt/PDF 文本 >5MB → 前端拒绝并提示；
   - 图片：单张 >1MB 拒绝；单批次（含 PDF 解析出的图片）>10 张时超出的跳过并提示；
@@ -176,7 +181,7 @@ KB Handler（新增 ImportURL）
    - 内容提取：HTML→文字（空白压缩、5MB 截断）、图片 URL 提取（src/srcset/去重/数量上限）；
    - `CreateFromText` / `CreateFromImage`：与 UploadDoc 路径行为一致（mock GridFS/service）。
 2. **Integration tests**：SSRF/渲染走 mock（httptest 假渲染服务），不依赖真实 chrome。
-3. **E2E tests**（`tests/ui/`，编号 UI-XXX）：KB 页 URL 导入成功建 doc、超限文本被拒、导入后列表刷新。
+3. **E2E tests**（`tests/ui/`，编号 UI-XXX）：KB 页「导入网址」独立按钮/弹窗交互（打开、提交、成功关闭+列表刷新、失败留窗可重试）、超限文本被拒。
 4. **审计**：`.agent/skills/go-ut-audit`。
 
 ## 9. UI Test / E2E 验收规则
@@ -224,4 +229,5 @@ KB Handler（新增 ImportURL）
 5. 渲染服务宕机 → import-url 返回 503，KB 其他功能（上传/列表/搜索）不受影响。
 6. 浏览器上传路径：>5MB 文本、>1MB 图片被前后端一致拒绝；PDF 一次解析出 12 张图时仅前 10 张创建。
 7. 导入产生的 doc 与上传产生的 doc 在列表、索引、删除（级联向量+图）行为完全一致。
-8. `go test ./internal/...` 全绿；覆盖率 ≥98%；E2E 通过。
+8. KB 页「导入网址」为独立按钮 + 独立弹窗（testid：`kb-import-url-btn` / `kb-import-url-modal` / `kb-import-url-input` / `kb-import-url-submit`），上传弹窗不受影响。
+9. `go test ./internal/...` 全绿；覆盖率 ≥98%；E2E 通过。
