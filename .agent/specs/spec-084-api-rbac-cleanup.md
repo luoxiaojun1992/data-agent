@@ -1,0 +1,272 @@
+# API 权限整理与废弃接口清理
+
+> **SPEC-084** | Status: 设计中
+
+## 1. 目标
+
+全面整理 data-agent 的 HTTP API 权限体系：① 删除所有不再使用的 API（无前端页面/无前端调用/重构后遗留，飞书回调除外）；② 清理主动注册（保留邀请注册，走临时 token）；③ 补齐用户管理/通知/知识库/artifact/task/统计分析等接口的 RBAC 权限与数据隔离；④ 前端通知 UI 区分「定向发送」与「广播」。
+
+**权限总原则**（晓军确认）：除「token refresh / 查看 me 信息 / 查看 me 权限 / 修改密码 / 登录 / 被邀请注册」外，**其余所有 API 都必须有对应的 RBAC 权限限制与校验**。
+
+## 2. 前置依赖检查
+
+| 前置 Spec | 状态 | 备注 |
+|-----------|:---:|------|
+| SPEC-064 RBAC 角色权限管理系统 | ✅ | 权限枚举 `domain/model/rbac.go` + `RequirePermission` middleware + `rbac_seed.go` 已就绪 |
+| SPEC-044 邀请注册系统 | ✅ | HMAC 邀请 token 已实现，`IsInviteEnabled()` 就绪 |
+| SPEC-072 Dashboard 统计重构 | ✅ | `/dashboard` + `/dashboard/trends` 已实现（当前 JWT-only） |
+| SPEC-082 Chat/Task 取消 | ✅ | 已定稿删除 `pause/resume`（本 spec 落地其删除动作） |
+| SPEC-083 用户中心与改密 | ✅ | 改密迁 `/auth/change-password`，登录即可（无 RBAC） |
+
+> 无阻塞项。本 spec 复用已有权限常量，仅新增 2 个通知权限。
+
+## 3. 背景（现状与问题）
+
+### 3.1 现状权限分布（已排查）
+
+| 类别 | 路由 | 问题 |
+|------|------|------|
+| 无 auth | `/health` `/api/v1/health` `/im/feishu/webhook` | 合理（健康检查/飞书回调） |
+| 无 auth | `/auth/login` `/auth/register`(POST) `/auth/register`(GET verify) `/auth/complete-registration` | **`/auth/register`(POST) 主动注册已死**（IsInviteEnabled 后返回 410） |
+| 无 auth | `/api/v1/system/stats` | **无前端调用 + 泄露内存/goroutine**，SPEC-079 已有 `/health` 取代 |
+| JWT-only | `/auth/refresh` `/auth/profile` `/rbac/me/permissions` | 合理（白名单） |
+| JWT-only | `/admin/change-password` | 合理（SPEC-083 迁 `/auth/change-password`） |
+| JWT-only | `/users/*` | ⚠️ **无 RBAC**（普通 user 能增删改查用户/改角色/停用） |
+| JWT-only | `/notifications/*` | ⚠️ **无 RBAC**（含 POST 定向 + `/broadcast` 广播） |
+| JWT-only | `/knowledge/*` | ⚠️ 权限常量 `kb:*` 已定义但路由未挂 |
+| JWT-only | `/artifacts/*` | ⚠️ 权限常量 `artifact:*` 已定义但路由未挂 |
+| JWT-only | `/workspace/:session_id/files` | ⚠️ **前端无调用**（agent 走 `fsops` 本地目录，不走 HTTP） |
+| JWT-only | `/tasks/*` `/runs/:id` | ⚠️ **无 RBAC**（task 管理未挂 `agent:*`） |
+| JWT-only | `/im/feishu/configs/*` | ⚠️ 权限常量 `im:*` 已定义但路由未挂 |
+| JWT-only | `/dashboard` `/dashboard/trends` | ⚠️ `stats:view` 常量存在但 `RequirePermission` 是**死代码**（见 3.2） |
+| RBAC | `/chat/*` `/agent/*` `/sessions/*` `/tools/api/*` `/admin/*` | `/agent/*` 疑似遗留（见 3.3） |
+
+### 3.2 dashboard 死代码
+
+`routes.go` 中 `dashRoutes` group 挂了 `RequirePermission(stats:view)`，但 `RegisterDashboardRoutes(router, ...)` 传入的是全局 `router`（而非 `dashRoutes`），实际只走 JWT。需二选一：删除死代码、或真正挂上 `stats:view`（本 spec 选择后者）。
+
+### 3.3 疑似遗留 API（待确认后删除）
+
+- **`/api/v1/agent/*`**（`/agent/tasks` `/agent/tasks/:id` `/agent/skills` `/agent/skills/search`）：前端 agent 页面已改用 `/tasks/*`（TaskHandler），AgentHandler 这 4 个 HTTP 端点**无前端调用**（前端 `/agent/tasks/...` 均为 Next.js 页面路由，非 API 调用）。
+- **`/api/v1/tools/api/*`**（`/tools/api/search|summary|method|call`）：agent 的 `external_api_*` 走 ADK functiontool 直接调 deps（`tools.go`），不经 HTTP；此 4 个 HTTP 路由**无前端/内部调用**。
+- **前端坏调用**：`/vault/decrypt`（`admin/models/page.tsx`）指向不存在后端路由；`/change-password`（SPEC-083 已改 `/auth/change-password`）。
+
+## 4. 权限全景与目标
+
+### 4.1 角色级别约定
+
+| 级别 | RBAC 角色 | 说明 |
+|------|----------|------|
+| 普通用户 | `user_role` | 基本查看/使用 |
+| 普通管理员 | `admin_role` | 管理用户/任务/审计等 |
+| 系统管理员 | `system_admin_role` | 全部权限（继承 admin） |
+
+### 4.2 权限白名单（规则 5，仅 JWT 无需 RBAC）
+
+| 路由 | 说明 |
+|------|------|
+| `POST /auth/refresh` | token 刷新 |
+| `GET /auth/profile` | 查看 me 信息 |
+| `GET /rbac/me/permissions` | 查看 me 权限 |
+| `POST /auth/change-password` | 修改自己密码（SPEC-083） |
+| `POST /auth/login` | 登录（无 auth） |
+| `GET /auth/register?token` + `POST /auth/complete-registration` | 被邀请注册（无 auth，临时 invite token） |
+| `GET /health` `/api/v1/health` | 健康检查（无 auth） |
+| `POST /im/feishu/webhook` | 飞书回调（无 auth，规则 1 明确除外） |
+
+### 4.3 RBAC 映射（目标态）
+
+| 路由 | 权限 | 级别 |
+|------|------|:---:|
+| `GET /users` | `user:view` | admin |
+| `POST /users` / `PUT /users/:id` / `PATCH /users/:id/status` | `user:create` / `user:edit` | admin |
+| `DELETE /users/:id` | `user:delete` | admin |
+| `POST /notifications`（定向） | `notification:send`（**新增**） | user |
+| `POST /notifications/broadcast`（广播） | `notification:broadcast`（**新增**） | admin |
+| `GET /knowledge/docs` `/docs/:id` `/search` | `kb:view` | user |
+| `POST /knowledge/docs` | `kb:upload` | user |
+| `PUT /knowledge/docs/:id/public` | `kb:upload`（发布） | user |
+| `DELETE /knowledge/docs/:id` | `kb:delete` | user |
+| `GET /artifacts/*` `/artifacts/:id/download*` | `artifact:view` | user |
+| `POST /artifacts/upload` | `artifact:view`（上传=使用） | user |
+| `DELETE /artifacts/:id` | `artifact:delete` | user |
+| `GET /tasks` `/tasks/:id` `/tasks/:id/runs*` `/runs/:id` `/tasks/:id/artifacts/download` | `agent:view` | admin |
+| `POST /tasks` | `agent:create` | admin |
+| `POST /tasks/:id/run` | `agent:edit` | admin |
+| `PUT /tasks/:id/cancel` | `agent:edit` | admin |
+| `DELETE /tasks/:id` | `agent:delete` | admin |
+| `GET /dashboard` `/dashboard/trends` | `stats:view` | user |
+| `GET/POST/PUT/DELETE /im/feishu/configs/*` | `im:view` / `im:edit` / `im:delete` | user |
+| `POST /chat` + `/chat/enhance` | `chat:view`（已有） | user |
+
+> 通知的读取侧（`GET /notifications` `/unread-count` `/read` `/read-all`）是「查自己的通知」，纳入白名单，**不加 RBAC**（人人可查自己的通知）。
+
+## 5. API 设计
+
+### 5.1 删除清单（规则 1 / 2）
+
+| 路由/方法 | 理由 |
+|-----------|------|
+| `POST /api/v1/auth/register` | 主动注册已废弃（邀请制） |
+| `GET /api/v1/system/stats` | 无前端调用 + 信息泄露；`/health` 已取代 |
+| `GET/PUT /api/v1/workspace/:session_id/files*` | 前端无调用；agent 走 `fsops` 本地目录 |
+| `PUT /api/v1/tasks/:task_id/pause` | SPEC-082 已决定删除（太复杂、无需求） |
+| `PUT /api/v1/tasks/:task_id/resume` | SPEC-082 已决定删除 |
+| `GET/POST /api/v1/agent/tasks*` `/agent/skills*` | 遗留（前端已改用 `/tasks`），**确认后删除** |
+| `GET/POST /api/v1/tools/api/*` | 遗留（agent 走 functiontool），**确认后删除** |
+
+前端坏调用清理：
+
+| 文件 | 清理 |
+|------|------|
+| `frontend/app/admin/models/page.tsx` | 删除 `/vault/decrypt` 调用（后端无此路由，mask 由视觉层做） |
+| `frontend/app/change-password/page.tsx` | 路径修正 `/change-password` → `/auth/change-password`（SPEC-083） |
+
+### 5.2 新增权限
+
+| 权限 Key | 常量名 | 名称 | 模块 | 默认角色 |
+|----------|--------|------|------|:--------:|
+| `notification:send` | `PermNotificationSend` | 定向发送通知 | notification | user_role |
+| `notification:broadcast` | `PermNotificationBroadcast` | 广播通知 | notification | admin_role |
+
+## 6. 详细设计
+
+### 6.1 用户管理数据隔离（规则 3）
+
+- 权限：`/users/*` 挂 `user:view/create/edit/delete`（均 admin 级，seed 已配）。
+- **数据隔离**：`List` 按当前角色过滤——
+  - `system_admin`：返回全部用户；
+  - `admin`：仅返回 `role == "user"` 的普通用户（**看不到其他 admin / system_admin**）。
+- 现有 handler 内 `denyAdminManagingAdmin`（admin 只能管 user 角色）保留，作为写操作的第二道防线。
+- `UserHandler.List` 增加 `c.GetString("role")` 读取，透传 role 过滤给 `service.List`。
+
+### 6.2 通知权限 + 前端 UI 区分（规则 4）
+
+- 后端：
+  - `POST /notifications`（定向 `SendNotification`，带 `target_ids`）→ `RequirePermission(notification:send)`（user 级）。
+  - `POST /notifications/broadcast`（`BroadcastNotification`）→ `RequirePermission(notification:broadcast)`（admin 级）。
+  - 读取侧（`GET /notifications` 等）保持 JWT-only（查自己的通知）。
+- 前端：
+  - 通知发送 UI 根据 `canAccess('notification:send')` 显示「定向发送」，根据 `canAccess('notification:broadcast')` 显示「广播」入口。
+  - `SIDEBAR_PERMS` / 权限常量同步新增 `notification:send` / `notification:broadcast`。
+
+### 6.3 seed 增量补齐（关键）
+
+现有 `seedPermissions` 是「全有或全无」——`CountDocuments > 0` 即 `return`，**存量库升级不会补新增权限**。本 spec 新增 2 个权限，必须升级为**逐权限增量补齐**（参考 `SeedSkills` 的 `existMap + Upsert` 模式）：
+
+```go
+// seedPermissions 升级：
+// 1. 查出现有权限 key 集合（existingKeys map[string]bool）
+// 2. 遍历 perms 数组，缺失的 key → InsertOne 权限文档 + 逐 roleID 插入 RBACRolePermission
+// 3. 同步更新各角色 permission_count（对新增的角色-权限关联累加）
+```
+
+- 全新部署（空库）：自然插入全部权限（含 2 个新通知权限）。
+- 存量库升级：缺失的 `notification:send` / `notification:broadcast` 被增量补入并关联到 `user_role` / `admin_role`，无需重建库。
+
+### 6.4 dashboard 死代码修复（规则 10）
+
+- `RegisterDashboardRoutes` 改为挂 `RequirePermission(stats:view)`（user 级，seed 已配 `rbac_perm_stats_view`）。
+- 删除 `dashRoutes` 死代码 group，统一在 `RegisterDashboardRoutes` 内挂 auth + RBAC。
+
+### 6.5 权限常量与路由落位
+
+- `internal/domain/model/rbac.go`：新增 `PermNotificationSend` / `PermNotificationBroadcast` 常量。
+- `internal/api/handler/routes.go` 各 `register*Routes`：按 §4.3 映射表补 `RequirePermission`。
+- `internal/api/handler/notification.go`：`SendNotification` / `BroadcastNotification` 两个 handler 不动（权限在路由层挂）。
+
+## 7. 可行性分析
+
+| 检查项 | 结论 |
+|--------|------|
+| 是否需要新 DB 集合 | No（复用 rbac_permissions / rbac_role_permissions） |
+| 是否影响现有 API | Yes（删除 7 组废弃路由 + 为约 20 个端点补 RBAC；前端需同步清理坏调用 + 通知 UI） |
+| 是否需要新增 RBAC 权限 | Yes（`notification:send` + `notification:broadcast`，含 seed 增量补齐） |
+| 性能影响 | 忽略（RBAC 权限为内存查询；seed 启动时一次 O(n) 增量补齐） |
+| 是否需要新增 Skill | No |
+| 是否修改其他功能 | 边界内（仅删废弃 + 补权限 + 通知 UI 区分） |
+
+## 8. 相关文件
+
+| File | Role | Change Magnitude |
+|------|------|-----------------|
+| `internal/domain/model/rbac.go` | 新增 2 个通知权限常量 | 极小 |
+| `internal/api/handler/routes.go` | 删废弃路由 + 各端点补 `RequirePermission` | 大 |
+| `internal/api/handler/auth.go` | 删 `Register`（主动注册） | 小 |
+| `internal/api/handler/task.go` | 删 `PauseTask`/`ResumeTask` | 小 |
+| `internal/api/handler/user.go` | List 加 role 过滤（数据隔离） | 中 |
+| `internal/api/handler/dashboard.go` | `RegisterDashboardRoutes` 挂 `stats:view` | 小 |
+| `internal/api/handler/agent.go` | 删 `/agent/*` 路由（确认后） | 小 |
+| `internal/api/handler/api_tools.go` | 删 `/tools/api/*`（确认后） | 小 |
+| `internal/api/handler/notification.go` | 无改动（权限在路由层） | — |
+| `cmd/server/migration/rbac_seed.go` | 新增 2 权限 + `seedPermissions` 增量补齐 | 中 |
+| `cmd/server/migration/rbac_seed_test.go` | seed 增量补齐单测 | 中 |
+| `internal/service/user/*` | List 支持 role 过滤参数 | 中 |
+| `internal/service/auth/*` | 删 Register 相关（确认无引用后） | 小 |
+| 各 `*_test.go` / `routes_error_test.go` | 路由断言更新 + 权限测试 | 中 |
+| `frontend/lib/api.ts` | 权限常量 + `canAccess` 通知权限 | 小 |
+| `frontend/app/admin/models/page.tsx` | 删 `/vault/decrypt` 坏调用 | 极小 |
+| `frontend/app/change-password/page.tsx` | 路径修正（SPEC-083） | 极小 |
+| 通知发送 UI 组件 | 区分定向/广播 | 中 |
+
+## 9. 测试策略
+
+1. **Unit tests**（Go）：
+   - `rbac_seed.go`：seed 增量补齐——① 空库全量插入（含 2 新权限）；② 存量库仅补齐缺失、不重复插入；③ role_permissions 关联 + permission_count 正确；④ 幂等（二次运行零新增）。
+   - `user/service`：`List` 角色过滤（admin 只见 user / system_admin 见全部）。
+   - `routes`：各端点挂权限后，无权限返回 403、有权限放行。
+   - 删除接口：`/auth/register`(POST)、`/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume` 返回 404。
+   - 覆盖率底线见 SPEC-045：L1 100% / L3 98%。
+2. **E2E tests**（前端）：
+   - `tests/ui/`：通知发送 UI 按权限区分定向/广播；无 `notification:broadcast` 的用户看不到广播入口。
+   - 用户管理数据隔离：admin 登录后列表只显示普通用户。
+
+## 10. UI Test / E2E 验收规则
+
+> 开发任务完成后必须编写真实 E2E 用例并通过 CI（sonar-check + ui-tests）。
+
+- [ ] **必须** 通知 UI 权限区分 + 用户管理数据隔离时同步编写对应 E2E 用例（`tests/ui/`，编号 `UI-XXX`）
+- [ ] **必须** 修改 UI 组件时更新 `data-testid` 属性
+- [ ] **必须** CI Pipeline 中 sonar-check 和 ui-tests 均通过才可合并
+- [ ] **严禁** 删除/降级测试用例、修改业务逻辑绕过测试
+- [ ] **严禁** 以占位用例顶替真实功能测试
+
+参考: `.agent/memory/E2E_TESTING.md`
+
+## 11. Go Unit Test 验收规则
+
+> 开发任务完成后必须编写 Go 单元测试并通过 CI（ut-workflow）。
+
+### 覆盖率底线
+
+| Tier | 特征 | 目标 | 示例 |
+|:---:|------|:---:|------|
+| L2 | 依赖接口，可 mock | **100%** | `service/user` List 过滤 |
+| L3 | 依赖 MongoDB | **98%** | `migration/rbac_seed.go`（增量补齐） |
+| Overall | 全量 | ≥98% | CI `ut-workflow.yml` gate |
+
+### 断言质量要求
+
+- [ ] **必须** seed 增量补齐 Success 测试验证：插入条数、缺失补齐、role_permissions 关联、幂等（二次运行零新增）
+- [ ] **必须** 数据隔离测试验证：admin 查询返回结果中不含 admin/system_admin 角色用户
+- [ ] **严禁** `t.Skip()` 绕过无法测试的场景
+- [ ] **严禁** Success 测试只验证 `err == nil` 而不验证操作的实际结果
+
+### CI 门禁
+
+- [ ] `go test -race -gcflags=all=-l -coverprofile=coverage.out ./internal/... ./skills/...` 全部通过
+- [ ] 覆盖率 ≥ 98%（`ut-workflow.yml` gate）
+- [ ] `go vet` 无警告
+
+## 12. 验证标准
+
+1. `POST /auth/register` 返回 404（已删）；`GET /auth/register?token` + `POST /auth/complete-registration` 正常（临时 token，无 RBAC）。
+2. `GET /api/v1/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume` 返回 404。
+3. 普通用户调用 `/users/*` 返回 403（无 `user:*` 权限）；admin 可访问但列表仅含普通用户（数据隔离）；system_admin 见全部。
+4. 普通用户可定向发通知（`notification:send`），无广播权限则 `/notifications/broadcast` 返回 403；admin 可广播。
+5. `/knowledge/*`、`/artifacts/*`、`/im/feishu/configs/*` 普通用户可访问（`kb:*`/`artifact:*`/`im:*`），无权限返回 403。
+6. `/tasks/*` 普通用户返回 403，admin 可管理（`agent:*`）。
+7. `/dashboard` `/dashboard/trends` 普通用户可访问（`stats:view`），未登录/无权限返回 401/403。
+8. 白名单（refresh/profile/me permissions/change-password）仅 JWT 可访问，不因角色变化受限。
+9. 存量库升级后 `rbac_permissions` 新增 2 个通知权限，`rbac_role_permissions` 关联到 user_role / admin_role；全新部署空库 seed 完整插入。
+10. CI（sonar-check + ui-tests + ut-workflow）全绿。
