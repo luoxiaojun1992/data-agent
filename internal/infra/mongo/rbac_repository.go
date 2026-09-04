@@ -365,8 +365,9 @@ func (r *RBACRepository) RemoveRolePermission(ctx context.Context, roleID, permi
 
 
 // GetAllRoleIDsWithAncestors returns the given role IDs plus all ancestor role IDs
-// traversed via parent_id. Used for perm inheritance: a role inherits perms
-// from its parent chain (admin inherits from user, sysAdmin inherits from admin).
+// traversed via parent_id. Useful when membership of a role should imply
+// membership of its parent chain (NOT the canonical perm inheritance direction —
+// see GetAllDescendantRoleIDs).
 func (r *RBACRepository) GetAllRoleIDsWithAncestors(ctx context.Context, roleIDs []string) ([]string, error) {
 	result := make(map[string]bool)
 	for _, rid := range roleIDs {

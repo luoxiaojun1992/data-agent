@@ -237,7 +237,7 @@ func (s *Service) RemoveRolePermission(ctx context.Context, roleID, permissionID
 }
 
 func (s *Service) GetEffectivePermissions(ctx context.Context, roleID string) ([]string, error) {
-	allIDs, err := s.repo.GetAllRoleIDsWithAncestors(ctx, []string{roleID})
+	allIDs, err := s.repo.GetAllDescendantRoleIDs(ctx, []string{roleID})
 	if err != nil {
 		return nil, err
 	}

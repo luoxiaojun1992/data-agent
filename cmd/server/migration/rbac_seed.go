@@ -48,10 +48,10 @@ func seedRoles(ctx context.Context, db *mongo.Database) error {
 
 	roles := []interface{}{
 		&model.RBACRole{
-			ID:          "rbac_role_user",
-			Name:        "user_role",
-			DisplayName: "普通用户",
-			Description: "基本功能的查看和使用权限",
+			ID:          "rbac_role_system_admin",
+			Name:        "system_admin_role",
+			DisplayName: "系统管理员",
+			Description: "拥有所有权限的超级管理员角色",
 			ParentID:    "",
 			Level:       0,
 			Type:        model.RBACRoleTypeBuiltin,
@@ -64,21 +64,22 @@ func seedRoles(ctx context.Context, db *mongo.Database) error {
 			Name:        "admin_role",
 			DisplayName: "管理员",
 			Description: "管理用户、模型、任务、审计等系统功能",
-			ParentID:    "rbac_role_user",
+			ParentID:    "rbac_role_system_admin",
 			Level:       1,
 			Type:        model.RBACRoleTypeBuiltin,
-			ChildCount:  1, // system_admin_role
+			ChildCount:  1, // user_role
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		},
 		&model.RBACRole{
-			ID:          "rbac_role_system_admin",
-			Name:        "system_admin_role",
-			DisplayName: "系统管理员",
-			Description: "拥有所有权限的超级管理员角色",
+			ID:          "rbac_role_user",
+			Name:        "user_role",
+			DisplayName: "普通用户",
+			Description: "基本功能的查看和使用权限",
 			ParentID:    "rbac_role_admin",
 			Level:       2,
 			Type:        model.RBACRoleTypeBuiltin,
+			ChildCount:  0,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		},
