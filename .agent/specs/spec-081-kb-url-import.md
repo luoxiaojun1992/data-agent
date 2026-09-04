@@ -101,9 +101,9 @@ KB Handler（新增 ImportURL）
 | `MaxKBTextBytes` | 5 MB (5×1024×1024) | txt 上传 / PDF 解析文本 / URL 导入文字 |
 | `MaxKBImageCount` | 10 | PDF 解析图片 / 直接图片上传批次 / URL 导入图片 |
 | `MaxKBImageBytes` | 1 MB (1×1024×1024) | 单张图片 |
-| `ImportURLRenderTimeout` | 30s | JS 渲染超时 |
-| `ImportURLTotalTimeout` | 120s | 整次导入（含图片下载） |
-| `ImportURLImageDownloadTimeout` | 10s/张 | 单张图片下载 |
+| `ImportURLRenderTimeout` | 30s | **整体解析网页超时**（端到端：从 headless 开始加载 URL 到取得最终渲染 DOM 的总时长；**非单个 HTTP 请求超时**） |
+| `ImportURLTotalTimeout` | 120s | 整次导入（含渲染 + 文字提取 + 图片下载 + 建 doc）的端到端总预算 |
+| `ImportURLImageDownloadTimeout` | 10s/张 | 单张图片**整体下载**超时（从发起下载到拿全该图片字节） |
 
 ## 5. 详细设计
 
@@ -119,6 +119,13 @@ KB Handler（新增 ImportURL）
 - 文字提取：渲染后 body 的 `innerText`（或可读性库抽正文），压缩空白，截断至 5MB。
 - 图片提取：DOM 中 `<img>` 的绝对 URL（src / data-src / srcset 首个），去重，跳过 data URI 中的大图与图标类（可选启发式：宽高 < 50px 跳过）。逐个下载：超 1MB 跳过、超 10 张后停止。
 - 全部子任务带超时保护（§4.3），总流程 120s 兜底。
+
+### 5.2.1 超时语义（红线：整体 vs 单请求）
+
+- `ImportURLRenderTimeout`（30s）是**「整体解析该 URL web page」的端到端超时**：计时从 headless-chrome 开始加载目标 URL 起，到页面渲染完成（网络空闲/固定延迟后取得最终 DOM）为止的**总时长**。它是一个**整体预算**，覆盖页面加载 HTML、CSS、JS、图片、XHR/fetch 等**全部子请求的累计耗时**。
+- **不是**渲染服务内部每个单独 HTTP 请求（如单张图片、单个 JS/CSS 文件、单个 XHR）各自独立设 30s 超时。子请求自身的超时（TCP 建连、单文件下载）由渲染引擎/chrome 默认网络超时控制，远小于整体预算，并受整体预算兜底。
+- `ImportURLTotalTimeout`（120s）是**整次 import-url 的端到端总预算**（渲染 ≤30s + 文字提取 + 图片逐个下载 ≤10s/张×10 + 建 doc/入队），任一步导致总时长超过 120s 即整体失败（502）。
+- `ImportURLImageDownloadTimeout`（10s）是**单张图片的整体下载超时**（从发起下载到拿全该图片字节），同样不是每个 TCP 数据包/连接的超时。
 
 ### 5.3 复用现有创建路径（红线：不得复制第二套逻辑）
 
