@@ -100,6 +100,7 @@
 | SPEC-084 | API 权限整理与废弃接口清理（删废弃 API + 全量 RBAC 补挂 + 通知权限区分定向/广播 + 用户管理数据隔离 + seed 增量补齐） | **P15** | [spec-084-api-rbac-cleanup.md](spec-084-api-rbac-cleanup.md) | 📐 设计已定稿 |
 | SPEC-085 | 前端 UI 缺陷修复（im/feishu 接入分页；RBAC 业务主角色→RBAC 角色 ID 映射；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15) 统一） | **P15** | [spec-085-ui-fixes.md](spec-085-ui-fixes.md) | ✅ 已实现 |
 | SPEC-086 | Task 常用模版（日常总结）+ memory 分页读取 + KB 文档创建 skill（kb_create_doc/memory_list；前端模版快捷入口与人工创建弹窗分开；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-086-task-template-daily-summary.md](spec-086-task-template-daily-summary.md) | 📐 设计已定稿 |
+| SPEC-087 | Task 相关 skills（task_create/task_run_list/task_run_detail；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-087-task-skills.md](spec-087-task-skills.md) | 📐 设计已定稿 |
 
 ## Phase 对应与依赖
 
@@ -408,5 +409,6 @@ SPEC-006│               │
 | 11 | SPEC-084 | 📐 API 权限整理与废弃接口清理 | 独立可插队；删废弃 API + 全量 RBAC 补挂 + 通知定向/广播权限 + 用户管理数据隔离 + seed 增量补齐 |
 | 12 | SPEC-085 | ✅ 前端 UI 缺陷修复 | 已实现（2026-09-04）；im/feishu 接入分页；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15)；RBAC 业务主角色→RBAC 角色 ID 映射 |
 | 13 | SPEC-086 | 📐 Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据 |
+| 13.5 | SPEC-087 | 📐 Task 相关 skills（task_create/run_list/run_detail） | 独立可插队；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据 |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
