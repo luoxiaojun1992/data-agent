@@ -96,7 +96,7 @@
 | SPEC-080 | 时间 + 规划 skill + Plan 意图隐藏引导（get_current_time / get_plan_method；意图三分类；hidden 提示不进前端聊天记录） | **P15** | [spec-080-time-plan-skills.md](spec-080-time-plan-skills.md) | 📐 设计已定稿 |
 | SPEC-081 | KB 支持 URL 导入（后端 headless 解析含 JS 渲染 + SSRF 防护 + 统一上传限制：文本 5MB / 图片 10 张 × 1MB） | **P15** | [spec-081-kb-url-import.md](spec-081-kb-url-import.md) | 📐 设计已定稿 |
 | SPEC-082 | Chat 与 Agent Task 支持取消（chat 停止按钮+SSE 中断+ctx 透传兜底；task run 级取消+执行中轮询 DB+子 ctx 取消；不侵入 ADK） | **P15** | [spec-082-chat-task-cancel.md](spec-082-chat-task-cancel.md) | 📐 设计已定稿 |
-| SPEC-083 | 用户中心与修改密码（side 用户中心菜单 + 改密卡片弹窗 + 改密接口迁 /api/v1/auth/ + 只能改自己 + sidebar:profile 权限默认 user + seed 增量补齐） | **P15** | [spec-083-user-center-change-password.md](spec-083-user-center-change-password.md) | 📐 设计已定稿 |
+| SPEC-083 | 用户中心与修改密码（side 用户中心菜单 + 改密卡片弹窗 + 改密接口迁 /api/v1/auth/ + 只能改自己；不配 RBAC，登录即可改） | **P15** | [spec-083-user-center-change-password.md](spec-083-user-center-change-password.md) | 📐 设计已定稿 |
 
 ## Phase 对应与依赖
 
@@ -398,6 +398,6 @@ SPEC-006│               │
 | 7 | SPEC-080 | 📐 时间 + 规划 skill + Plan 意图隐藏引导 | 独立可插队；2 个无依赖 function tool + guard 三分类 + hidden 事件机制，不动 Runtime/use case |
 | 8 | SPEC-081 | 📐 KB URL 导入 | 独立可插队；后端 headless 渲染 + SSRF 防护 + 统一上传限制；复用 CreateDoc/GridFS/索引管道 |
 | 9 | SPEC-082 | 📐 Chat 与 Task 取消 | 独立可插队；chat 停止按钮 + task 轮询 DB 取消，均不侵入 ADK 底层 |
-| 10 | SPEC-083 | 📐 用户中心与修改密码 | 独立可插队；side 用户中心菜单 + 改密卡片弹窗 + sidebar:profile 权限 + seed 增量补齐 |
+| 10 | SPEC-083 | 📐 用户中心与修改密码 | 独立可插队；side 用户中心菜单 + 改密卡片弹窗；不配 RBAC，登录即可改自己密码 |
 | 11 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
