@@ -129,6 +129,20 @@
 | `notification:send` | `PermNotificationSend` | 定向发送通知 | notification | user_role |
 | `notification:broadcast` | `PermNotificationBroadcast` | 广播通知 | notification | admin_role |
 
+### 5.3 权限变更同步铁律（三处同步，防重新部署遗漏）
+
+> ⚠️ **任何 RBAC 权限变更（新增/改名/删除/调整默认角色）必须三处同步，缺一不可**，否则全新部署（空库）会与存量库产生权限漂移：
+
+| 序号 | 同步位置 | 内容 |
+|:---:|---------|------|
+| 1 | `internal/domain/model/rbac.go` | 权限常量定义（`PermXxx` + key 字符串） |
+| 2 | `cmd/server/migration/rbac_seed.go` `perms` 数组 | **原始 seed 数据源**（全新部署空库时唯一的数据来源） |
+| 3 | 路由层 `RequirePermission` + 前端 `api.ts` 权限常量 | 实际挂载与 UI 可见性 |
+
+- **`perms` 数组是 single source of truth**：每次新增权限，若只改 `rbac.go` 常量、漏了 seed 数组，全新部署（`docker compose down -v` + up）后该权限**不会存在**，路由挂的 `RequirePermission` 会因权限不存在而对所有用户返回 403，造成功能不可用。
+- 本次新增 `notification:send` / `notification:broadcast` 时，必须同步写入 `perms` 数组（含对应 roleIDs），保证 seed 完整。
+- 后续任何 SPEC 若再动 RBAC 权限，**必须在 spec 文档中显式标注「三处同步」**，并列入验证标准。
+
 ## 6. 详细设计
 
 ### 6.1 用户管理数据隔离（规则 3）
@@ -150,9 +164,11 @@
   - 通知发送 UI 根据 `canAccess('notification:send')` 显示「定向发送」，根据 `canAccess('notification:broadcast')` 显示「广播」入口。
   - `SIDEBAR_PERMS` / 权限常量同步新增 `notification:send` / `notification:broadcast`。
 
-### 6.3 seed 增量补齐（关键）
+### 6.3 原始 seed 同步 + 增量补齐（关键）
 
-现有 `seedPermissions` 是「全有或全无」——`CountDocuments > 0` 即 `return`，**存量库升级不会补新增权限**。本 spec 新增 2 个权限，必须升级为**逐权限增量补齐**（参考 `SeedSkills` 的 `existMap + Upsert` 模式）：
+> **前提**：新增权限的原始 seed 数据（`perms` 数组）必须按 §5.3 铁律同步写入（全新部署数据源完整）。
+>
+> 现有 `seedPermissions` 是「全有或全无」——`CountDocuments > 0` 即 `return`，**存量库升级不会补新增权限**。本 spec 新增 2 个权限，必须升级为**逐权限增量补齐**（参考 `SeedSkills` 的 `existMap + Upsert` 模式）：
 
 ```go
 // seedPermissions 升级：
@@ -213,6 +229,7 @@
 
 1. **Unit tests**（Go）：
    - `rbac_seed.go`：seed 增量补齐——① 空库全量插入（含 2 新权限）；② 存量库仅补齐缺失、不重复插入；③ role_permissions 关联 + permission_count 正确；④ 幂等（二次运行零新增）。
+   - **seed 一致性校验**（§5.3 铁律）：断言 `rbac.go` 中所有 `PermXxx` 权限常量在 `perms` 数组中**一一对应**（无「常量定义但未 seed」的遗漏项，也无不存在的常量），保证重新部署不丢权限。
    - `user/service`：`List` 角色过滤（admin 只见 user / system_admin 见全部）。
    - `routes`：各端点挂权限后，无权限返回 403、有权限放行。
    - 删除接口：`/auth/register`(POST)、`/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume` 返回 404。
@@ -269,4 +286,5 @@
 7. `/dashboard` `/dashboard/trends` 普通用户可访问（`stats:view`），未登录/无权限返回 401/403。
 8. 白名单（refresh/profile/me permissions/change-password）仅 JWT 可访问，不因角色变化受限。
 9. 存量库升级后 `rbac_permissions` 新增 2 个通知权限，`rbac_role_permissions` 关联到 user_role / admin_role；全新部署空库 seed 完整插入。
-10. CI（sonar-check + ui-tests + ut-workflow）全绿。
+10. **全新部署（空库）不遗漏**：`rbac.go` 权限常量与 `rbac_seed.go` `perms` 数组一致性校验通过，空库 seed 后所有路由挂载的权限均存在、无 403 漂移。
+11. CI（sonar-check + ui-tests + ut-workflow）全绿。
