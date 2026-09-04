@@ -99,6 +99,7 @@
 | SPEC-083 | 用户中心与修改密码（side 用户中心菜单 + 改密卡片弹窗 + 改密接口迁 /api/v1/auth/ + 只能改自己；不配 RBAC，登录即可改） | **P15** | [spec-083-user-center-change-password.md](spec-083-user-center-change-password.md) | 📐 设计已定稿 |
 | SPEC-084 | API 权限整理与废弃接口清理（删废弃 API + 全量 RBAC 补挂 + 通知权限区分定向/广播 + 用户管理数据隔离 + seed 增量补齐） | **P15** | [spec-084-api-rbac-cleanup.md](spec-084-api-rbac-cleanup.md) | 📐 设计已定稿 |
 | SPEC-085 | 前端 UI 缺陷修复（im/feishu 接入分页；RBAC 业务主角色→RBAC 角色 ID 映射；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15) 统一） | **P15** | [spec-085-ui-fixes.md](spec-085-ui-fixes.md) | ✅ 已实现 |
+| SPEC-086 | Task 常用模版（日常总结）+ memory 分页读取 + KB 文档创建 skill（kb_create_doc/memory_list；前端模版快捷入口与人工创建弹窗分开；复用 task API scheduled_exec） | **P15** | [spec-086-task-template-daily-summary.md](spec-086-task-template-daily-summary.md) | 📐 设计已定稿 |
 
 ## Phase 对应与依赖
 
@@ -389,6 +390,7 @@ SPEC-006│               │
 083 用户中心与修改密码（独立可插队）
 084 API 权限整理与废弃接口清理（独立可插队）
 085 前端 UI 缺陷修复（独立可插队）
+086 Task 常用模版（日常总结）（独立可插队）
 ```
 
 | 顺序 | Spec | 标题 | 理由 |
@@ -405,5 +407,6 @@ SPEC-006│               │
 | 10 | SPEC-083 | 📐 用户中心与修改密码 | 独立可插队；side 用户中心菜单 + 改密卡片弹窗；不配 RBAC，登录即可改自己密码 |
 | 11 | SPEC-084 | 📐 API 权限整理与废弃接口清理 | 独立可插队；删废弃 API + 全量 RBAC 补挂 + 通知定向/广播权限 + 用户管理数据隔离 + seed 增量补齐 |
 | 12 | SPEC-085 | ✅ 前端 UI 缺陷修复 | 已实现（2026-09-04）；im/feishu 接入分页；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15)；RBAC 业务主角色→RBAC 角色 ID 映射 |
-| 13 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
+| 13 | SPEC-086 | 📐 Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec |
+| 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
