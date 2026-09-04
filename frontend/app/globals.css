@@ -90,7 +90,10 @@ body::before {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
+  /* 去掉 forwards：动画结束后 transform 自然恢复 none（默认值）。
+     若用 forwards 即使 to 帧写 none，Chrome 仍会保持 matrix(1,0,0,1,0,0)，
+     使元素成为 fixed 后代的 containing block → 弹窗 fixed 定位失效（SPEC-085 图2/3 根因）。 */
+  animation: fadeIn 0.5s ease-out;
 }
 
 .animate-pulse-glow {
