@@ -45,10 +45,12 @@
 
 `routes.go` 中 `dashRoutes` group 挂了 `RequirePermission(stats:view)`，但 `RegisterDashboardRoutes(router, ...)` 传入的是全局 `router`（而非 `dashRoutes`），实际只走 JWT。需二选一：删除死代码、或真正挂上 `stats:view`（本 spec 选择后者）。
 
-### 3.3 疑似遗留 API（待确认后删除）
+### 3.3 已确认删除的遗留 API
 
-- **`/api/v1/agent/*`**（`/agent/tasks` `/agent/tasks/:id` `/agent/skills` `/agent/skills/search`）：前端 agent 页面已改用 `/tasks/*`（TaskHandler），AgentHandler 这 4 个 HTTP 端点**无前端调用**（前端 `/agent/tasks/...` 均为 Next.js 页面路由，非 API 调用）。
-- **`/api/v1/tools/api/*`**（`/tools/api/search|summary|method|call`）：agent 的 `external_api_*` 走 ADK functiontool 直接调 deps（`tools.go`），不经 HTTP；此 4 个 HTTP 路由**无前端/内部调用**。
+> 晓军拍板确认（2026-09-04）：确认前端无调用 + 确认 tool 是后端程序内调用后，直接删除。
+
+- **`/api/v1/agent/*`**（`/agent/tasks` `/agent/tasks/:id` `/agent/skills` `/agent/skills/search`）：✅ **前端已确认无调用**——前端 agent 页面全部走 `apiFetch('/tasks')` / `/tasks/:id` / `/tasks/:id/run` / `/tasks/:id/cancel`（TaskHandler），`router.push('/agent/tasks/...')` 是 Next.js 页面路由跳转，非 API 调用。AgentHandler 这 4 个 HTTP 端点无任何前端调用 → **删除**。
+- **`/api/v1/tools/api/*`**（`/tools/api/search|summary|method|call`）：✅ **tool 已确认是后端程序内调用**——agent 的 `external_api_*` 走 ADK functiontool（`internal/adk/tools/tools.go`）直调 `apicollectionsvc.Service`（`SearchApproved/GetAPISummary/GetAPIMethod/CallAPI`），不经 HTTP。HTTP 层的 `APIToolsHandler`（`api_tools.go`）+ `registerAPIToolsRoutes` 是冗余的 → **删除 HTTP 路由**（保留 `tools.go` 的 functiontool，不动）。
 - **前端坏调用**：`/vault/decrypt`（`admin/models/page.tsx`）指向不存在后端路由；`/change-password`（SPEC-083 已改 `/auth/change-password`）。
 
 ## 4. 权限全景与目标
@@ -58,7 +60,7 @@
 | 级别 | RBAC 角色 | 说明 |
 |------|----------|------|
 | 普通用户 | `user_role` | 基本查看/使用 |
-| 普通管理员 | `admin_role` | 管理用户/任务/审计等 |
+| 普通管理员 | `admin_role` | 管理用户/审计/系统配置等 |
 | 系统管理员 | `system_admin_role` | 全部权限（继承 admin） |
 
 ### 4.2 权限白名单（规则 5，仅 JWT 无需 RBAC）
@@ -90,11 +92,11 @@
 | `GET /artifacts/*` `/artifacts/:id/download*` | `artifact:view` | user |
 | `POST /artifacts/upload` | `artifact:view`（上传=使用） | user |
 | `DELETE /artifacts/:id` | `artifact:delete` | user |
-| `GET /tasks` `/tasks/:id` `/tasks/:id/runs*` `/runs/:id` `/tasks/:id/artifacts/download` | `agent:view` | admin |
-| `POST /tasks` | `agent:create` | admin |
-| `POST /tasks/:id/run` | `agent:edit` | admin |
-| `PUT /tasks/:id/cancel` | `agent:edit` | admin |
-| `DELETE /tasks/:id` | `agent:delete` | admin |
+| `GET /tasks` `/tasks/:id` `/tasks/:id/runs*` `/runs/:id` `/tasks/:id/artifacts/download` | `agent:view` | user |
+| `POST /tasks` | `agent:create` | user |
+| `POST /tasks/:id/run` | `agent:edit` | user |
+| `PUT /tasks/:id/cancel` | `agent:edit` | user |
+| `DELETE /tasks/:id` | `agent:delete` | user |
 | `GET /dashboard` `/dashboard/trends` | `stats:view` | user |
 | `GET/POST/PUT/DELETE /im/feishu/configs/*` | `im:view` / `im:edit` / `im:delete` | user |
 | `POST /chat` + `/chat/enhance` | `chat:view`（已有） | user |
@@ -112,8 +114,8 @@
 | `GET/PUT /api/v1/workspace/:session_id/files*` | 前端无调用；agent 走 `fsops` 本地目录 |
 | `PUT /api/v1/tasks/:task_id/pause` | SPEC-082 已决定删除（太复杂、无需求） |
 | `PUT /api/v1/tasks/:task_id/resume` | SPEC-082 已决定删除 |
-| `GET/POST /api/v1/agent/tasks*` `/agent/skills*` | 遗留（前端已改用 `/tasks`），**确认后删除** |
-| `GET/POST /api/v1/tools/api/*` | 遗留（agent 走 functiontool），**确认后删除** |
+| `GET/POST /api/v1/agent/tasks*` `/agent/skills*` | 遗留，前端已改用 `/tasks`（已确认无前端调用，删除） |
+| `GET/POST /api/v1/tools/api/*` | 遗留，agent 走 ADK functiontool 直调 service（已确认程序内调用，删除 HTTP 路由） |
 
 前端坏调用清理：
 
@@ -141,6 +143,7 @@
 
 - **`perms` 数组是 single source of truth**：每次新增权限，若只改 `rbac.go` 常量、漏了 seed 数组，全新部署（`docker compose down -v` + up）后该权限**不会存在**，路由挂的 `RequirePermission` 会因权限不存在而对所有用户返回 403，造成功能不可用。
 - 本次新增 `notification:send` / `notification:broadcast` 时，必须同步写入 `perms` 数组（含对应 roleIDs），保证 seed 完整。
+- **本次同时有「调整默认角色」变更**：`agent:view/create/edit/delete` 与 `sidebar:agent` 的 seed `roleIDs` 从 `admin` 改为 `user`（task 权限降级，见 §6.6），也必须同步改 `perms` 数组，否则全新部署后这些权限仍是 admin 级、与存量库漂移。
 - 后续任何 SPEC 若再动 RBAC 权限，**必须在 spec 文档中显式标注「三处同步」**，并列入验证标准。
 
 ## 6. 详细设计
@@ -191,16 +194,34 @@
 - `internal/api/handler/routes.go` 各 `register*Routes`：按 §4.3 映射表补 `RequirePermission`。
 - `internal/api/handler/notification.go`：`SendNotification` / `BroadcastNotification` 两个 handler 不动（权限在路由层挂）。
 
+### 6.6 task 权限降级 + 归属校验（IDOR 防护，关键）
+
+> 晓军拍板：task 权限改成**普通用户级别**（`agent:*` 从 admin 降到 user）。因 RBAC 有祖先继承（`GetAllRoleIDsWithAncestors`），降到 user 后 admin / system_admin 自动继承，**无权限回退风险**。
+
+**副作用排查结论**：
+
+| 检查项 | 结论 |
+|--------|------|
+| `agent:*` 权限 seed 降级 | `agent:view/create/edit/delete` 的 `roleIDs` 从 `admin` → `user`（§5.3 三处同步） |
+| `sidebar:agent` 菜单权限 | 必须同步从 `admin` → `user`，否则普通用户有 `agent:*` 却看不到 Agent 侧边栏入口 |
+| 数据隔离 | task 是**个人资源**（`Task.UserID` / `Run.UserID` 存在，`ListTasks`/`CreateTask` 已按 `user_id` 过滤） |
+| ⚠️ **IDOR 越权隐患** | `GetTask(id)` / `ListRuns(taskID)` / `GetRun(id)` / `CreateRun(taskID)` / `CancelTask(id)` / `DownloadArtifacts(taskID)` **按 ID 操作、不校验归属**。降级前是 admin 级（管理员看全部无越权问题）；降级后普通用户可凭 task_id/run_id 操作他人 task → **必须补归属校验** |
+| 资源消耗 | 普通用户可创建/运行 task，消耗 LLM 配额（产品决策，接受） |
+| `/admin/tasks/:id/scheduled-enabled` | 挂 `agent:edit`，降级后普通用户可切换「自己的」定时任务开关（个人资源，合理） |
+
+**归属校验方案**：`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 增加 `userID` 参数，service 层校验 `task.UserID == userID`（或 `run.UserID == userID`），不一致返回 `ErrNotFound`（避免泄露资源存在性）或 403。handler 层从 `c.Get("user_id")` 透传。system_admin 可豁免（沿用 `CanSeeAllData` 或直接按 user 校验、管理员也只看自己的 task，二选一，默认「所有用户只看/操作自己的 task」）。
+
 ## 7. 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
 | 是否需要新 DB 集合 | No（复用 rbac_permissions / rbac_role_permissions） |
-| 是否影响现有 API | Yes（删除 7 组废弃路由 + 为约 20 个端点补 RBAC；前端需同步清理坏调用 + 通知 UI） |
+| 是否影响现有 API | Yes（删除 7 组废弃路由含 `/agent/*` `/tools/api/*` + 为约 20 个端点补 RBAC + task 权限降级为 user 级；前端同步清理坏调用 + 通知 UI） |
 | 是否需要新增 RBAC 权限 | Yes（`notification:send` + `notification:broadcast`，含 seed 增量补齐） |
+| 是否需要调整现有权限级别 | Yes（`agent:*` + `sidebar:agent` 从 admin 降为 user，同步 seed `roleIDs`） |
 | 性能影响 | 忽略（RBAC 权限为内存查询；seed 启动时一次 O(n) 增量补齐） |
 | 是否需要新增 Skill | No |
-| 是否修改其他功能 | 边界内（仅删废弃 + 补权限 + 通知 UI 区分） |
+| 是否修改其他功能 | 边界内（删废弃 + 补权限 + task 降级 + IDOR 归属校验 + 通知 UI 区分） |
 
 ## 8. 相关文件
 
@@ -209,15 +230,16 @@
 | `internal/domain/model/rbac.go` | 新增 2 个通知权限常量 | 极小 |
 | `internal/api/handler/routes.go` | 删废弃路由 + 各端点补 `RequirePermission` | 大 |
 | `internal/api/handler/auth.go` | 删 `Register`（主动注册） | 小 |
-| `internal/api/handler/task.go` | 删 `PauseTask`/`ResumeTask` | 小 |
+| `internal/api/handler/task.go` | 删 `PauseTask`/`ResumeTask` + 按 ID 操作补 `userID` 归属校验（IDOR 防护） | 中 |
 | `internal/api/handler/user.go` | List 加 role 过滤（数据隔离） | 中 |
 | `internal/api/handler/dashboard.go` | `RegisterDashboardRoutes` 挂 `stats:view` | 小 |
-| `internal/api/handler/agent.go` | 删 `/agent/*` 路由（确认后） | 小 |
-| `internal/api/handler/api_tools.go` | 删 `/tools/api/*`（确认后） | 小 |
+| `internal/api/handler/agent.go` | 删 `/agent/*` 路由（已确认无前端调用） | 小 |
+| `internal/api/handler/api_tools.go` | 删 `/tools/api/*` 路由（已确认程序内调用，保留 functiontool） | 小 |
 | `internal/api/handler/notification.go` | 无改动（权限在路由层） | — |
-| `cmd/server/migration/rbac_seed.go` | 新增 2 权限 + `seedPermissions` 增量补齐 | 中 |
-| `cmd/server/migration/rbac_seed_test.go` | seed 增量补齐单测 | 中 |
+| `cmd/server/migration/rbac_seed.go` | 新增 2 权限 + `agent:*`/`sidebar:agent` roleIDs 降级 + `seedPermissions` 增量补齐 | 中 |
+| `cmd/server/migration/rbac_seed_test.go` | seed 增量补齐 + roleIDs 降级 + 一致性校验单测 | 中 |
 | `internal/service/user/*` | List 支持 role 过滤参数 | 中 |
+| `internal/service/task/*` | 按 ID 操作增加 `userID` 归属校验参数 | 中 |
 | `internal/service/auth/*` | 删 Register 相关（确认无引用后） | 小 |
 | 各 `*_test.go` / `routes_error_test.go` | 路由断言更新 + 权限测试 | 中 |
 | `frontend/lib/api.ts` | 权限常量 + `canAccess` 通知权限 | 小 |
@@ -231,18 +253,20 @@
    - `rbac_seed.go`：seed 增量补齐——① 空库全量插入（含 2 新权限）；② 存量库仅补齐缺失、不重复插入；③ role_permissions 关联 + permission_count 正确；④ 幂等（二次运行零新增）。
    - **seed 一致性校验**（§5.3 铁律）：断言 `rbac.go` 中所有 `PermXxx` 权限常量在 `perms` 数组中**一一对应**（无「常量定义但未 seed」的遗漏项，也无不存在的常量），保证重新部署不丢权限。
    - `user/service`：`List` 角色过滤（admin 只见 user / system_admin 见全部）。
-   - `routes`：各端点挂权限后，无权限返回 403、有权限放行。
-   - 删除接口：`/auth/register`(POST)、`/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume` 返回 404。
+   - `task/service`：**归属校验（IDOR 防护）**——`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 传入非 owner `userID` 时返回 `ErrNotFound`（不泄露资源存在性），owner 正常访问。
+   - `routes`：各端点挂权限后，无权限返回 403、有权限放行；`agent:*` 降为 user 后普通用户可访问 `/tasks/*`，无权限（未登录）返回 401。
+   - 删除接口：`/auth/register`(POST)、`/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume`、`/agent/tasks*`、`/agent/skills*`、`/tools/api/*` 返回 404。
    - 覆盖率底线见 SPEC-045：L1 100% / L3 98%。
 2. **E2E tests**（前端）：
    - `tests/ui/`：通知发送 UI 按权限区分定向/广播；无 `notification:broadcast` 的用户看不到广播入口。
    - 用户管理数据隔离：admin 登录后列表只显示普通用户。
+   - task 归属隔离：普通用户 A 无法通过 task_id/run_id 访问用户 B 的 task（前端不展示、后端 404）。
 
 ## 10. UI Test / E2E 验收规则
 
 > 开发任务完成后必须编写真实 E2E 用例并通过 CI（sonar-check + ui-tests）。
 
-- [ ] **必须** 通知 UI 权限区分 + 用户管理数据隔离时同步编写对应 E2E 用例（`tests/ui/`，编号 `UI-XXX`）
+- [ ] **必须** 通知 UI 权限区分 + 用户管理数据隔离 + task 归属隔离时同步编写对应 E2E 用例（`tests/ui/`，编号 `UI-XXX`）
 - [ ] **必须** 修改 UI 组件时更新 `data-testid` 属性
 - [ ] **必须** CI Pipeline 中 sonar-check 和 ui-tests 均通过才可合并
 - [ ] **严禁** 删除/降级测试用例、修改业务逻辑绕过测试
@@ -266,6 +290,7 @@
 
 - [ ] **必须** seed 增量补齐 Success 测试验证：插入条数、缺失补齐、role_permissions 关联、幂等（二次运行零新增）
 - [ ] **必须** 数据隔离测试验证：admin 查询返回结果中不含 admin/system_admin 角色用户
+- [ ] **必须** task 归属校验测试验证：非 owner 访问他人 task/run 返回 `ErrNotFound`（不返回资源内容、不泄露存在性）
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
 - [ ] **严禁** Success 测试只验证 `err == nil` 而不验证操作的实际结果
 
@@ -278,13 +303,13 @@
 ## 12. 验证标准
 
 1. `POST /auth/register` 返回 404（已删）；`GET /auth/register?token` + `POST /auth/complete-registration` 正常（临时 token，无 RBAC）。
-2. `GET /api/v1/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume` 返回 404。
+2. `GET /api/v1/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume`、`/agent/tasks*`、`/agent/skills*`、`/tools/api/*` 返回 404。
 3. 普通用户调用 `/users/*` 返回 403（无 `user:*` 权限）；admin 可访问但列表仅含普通用户（数据隔离）；system_admin 见全部。
 4. 普通用户可定向发通知（`notification:send`），无广播权限则 `/notifications/broadcast` 返回 403；admin 可广播。
 5. `/knowledge/*`、`/artifacts/*`、`/im/feishu/configs/*` 普通用户可访问（`kb:*`/`artifact:*`/`im:*`），无权限返回 403。
-6. `/tasks/*` 普通用户返回 403，admin 可管理（`agent:*`）。
+6. `/tasks/*` 普通用户**可访问**（`agent:*` 已降为 user 级），可创建/查看/运行/取消**自己的** task；未登录返回 401；访问他人 task/run 返回 404（IDOR 归属校验）。
 7. `/dashboard` `/dashboard/trends` 普通用户可访问（`stats:view`），未登录/无权限返回 401/403。
 8. 白名单（refresh/profile/me permissions/change-password）仅 JWT 可访问，不因角色变化受限。
-9. 存量库升级后 `rbac_permissions` 新增 2 个通知权限，`rbac_role_permissions` 关联到 user_role / admin_role；全新部署空库 seed 完整插入。
+9. 存量库升级后 `rbac_permissions` 新增 2 个通知权限，`rbac_role_permissions` 关联到 user_role / admin_role；`agent:*`/`sidebar:agent` 的 role 关联从 admin_role 迁到 user_role；全新部署空库 seed 完整插入。
 10. **全新部署（空库）不遗漏**：`rbac.go` 权限常量与 `rbac_seed.go` `perms` 数组一致性校验通过，空库 seed 后所有路由挂载的权限均存在、无 403 漂移。
 11. CI（sonar-check + ui-tests + ut-workflow）全绿。
