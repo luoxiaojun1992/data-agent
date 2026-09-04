@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../../providers';
+import Pagination from '../../components/Pagination';
+import { modalPanelStyle } from '../../components/ui';
 import { useAuth } from '@/lib/api';
 
 interface FeishuConfig {
@@ -45,6 +47,9 @@ export default function FeishuConfigPage() {
   const [configs, setConfigs] = useState<FeishuConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [models, setModels] = useState<ModelEntry[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 10;
 
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -74,14 +79,15 @@ export default function FeishuConfigPage() {
   const loadConfigs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch('/im/feishu/configs?page=1&page_size=50');
+      const res = await apiFetch(`/im/feishu/configs?page=${page}&page_size=${PAGE_SIZE}`);
       if (res.ok) {
         const data = await res.json();
         setConfigs(data.configs || []);
+        setTotal(typeof data.total === 'number' ? data.total : (data.configs || []).length);
       }
     } catch (e) { console.error('[feishu] loadConfigs failed:', e); }
     setLoading(false);
-  }, [apiFetch]);
+  }, [apiFetch, page]);
 
   useEffect(() => {
     if (!auth.hydrated || !auth.token) return;
@@ -205,13 +211,14 @@ export default function FeishuConfigPage() {
             ))}
           </div>
         )}
+        <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} testIdPrefix="feishu-configs" />
       </div>
 
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="feishu-create-modal">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
-          <div className="relative p-6 rounded-2xl max-w-lg w-full mx-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
+          <div className="relative max-w-lg w-full mx-4" style={{ ...modalPanelStyle, maxHeight: '85vh', overflowY: 'auto' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">新增飞书配置</h3>
               <button onClick={() => setShowCreateModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">&times;</button>
@@ -260,8 +267,8 @@ export default function FeishuConfigPage() {
       {/* Edit Modal */}
       {editingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="feishu-edit-modal">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setEditingId(null); setShowSecret(false); }} />
-          <div className="relative p-6 rounded-2xl max-w-lg w-full mx-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setEditingId(null); setShowSecret(false); }} />
+          <div className="relative max-w-lg w-full mx-4" style={{ ...modalPanelStyle, maxHeight: '85vh', overflowY: 'auto' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">编辑飞书配置</h3>
               <button onClick={() => { setEditingId(null); setShowSecret(false); }} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">&times;</button>

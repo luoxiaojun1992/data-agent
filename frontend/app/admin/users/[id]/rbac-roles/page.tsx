@@ -6,7 +6,7 @@ import AppLayout from '../../../../providers';
 import { useAuth } from '../../../../../lib/api';
 import { useDebouncedSearch, SearchableOption } from '../../../../components/SearchableSelect';
 import Pagination from '../../../../components/Pagination';
-import { primaryButtonStyle, modalOverlayStyle } from '../../../../components/ui';
+import { primaryButtonStyle, modalOverlayStyle, modalPanelStyle, modalInputStyle } from '../../../../components/ui';
 
 interface RBACRole { id: string; name: string; display_name: string; level: number; type: string; }
 
@@ -106,8 +106,8 @@ function AddRoleModal({ apiFetch, userId, maxReached, onAdd, onClose }: {
   const { items, loading, error, query, onSearch } = useDebouncedSearch(fetchAvail, 20);
 
   const mo: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
-  const mc: React.CSSProperties = { background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', padding: 24, borderRadius: 12, minWidth: 400 };
-  const inp: React.CSSProperties = { width: '100%', padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box' };
+  const mc: React.CSSProperties = { ...modalPanelStyle, minWidth: 400 };
+  const inp: React.CSSProperties = { ...modalInputStyle };
   const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
   const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
 

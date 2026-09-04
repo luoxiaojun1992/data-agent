@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import Pagination from '../../components/Pagination';
-import { primaryButtonStyle } from '../../components/ui';
+import { primaryButtonStyle, modalOverlayStyle, modalPanelStyle, modalInputStyle } from '../../components/ui';
 
 interface User {
   id: string;
@@ -647,12 +647,10 @@ const iconBtnStyle: React.CSSProperties = {
 };
 
 const modalStyle: React.CSSProperties = {
-  background: 'var(--bg-secondary)',
-  border: '1px solid var(--border-glass)',
-  borderRadius: '16px',
-  padding: '28px',
+  ...modalPanelStyle,
+  maxHeight: '85vh',
+  overflowY: 'auto',
   maxWidth: '420px',
-  width: '100%',
 };
 
 const modalTitleStyle: React.CSSProperties = {
@@ -674,15 +672,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 12px',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '8px',
-  fontSize: '14px',
-  color: 'var(--text-primary)',
-  outline: 'none',
-  boxSizing: 'border-box',
+  ...modalInputStyle,
 };
 
 const cancelBtnStyle: React.CSSProperties = {
@@ -712,16 +702,7 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
   return (
     <div
       onClick={onClose}
-      style={{
-        position: 'fixed',
-        top: 0, left: 0, right: 0, bottom: 0,
-        background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
+      style={modalOverlayStyle}
     >
       {children}
     </div>

@@ -5,7 +5,7 @@ import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import SearchableSelect, { SearchableOption } from '../../components/SearchableSelect';
 import Pagination from '../../components/Pagination';
-import { primaryButtonStyle, modalOverlayStyle } from '../../components/ui';
+import { primaryButtonStyle, modalOverlayStyle, modalPanelStyle, modalInputStyle } from '../../components/ui';
 
 interface RBACRole {
   id: string; name: string; display_name: string; description: string;
@@ -37,12 +37,30 @@ export default function RBACPage() {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2000); };
 
+  // 业务主角色名（system_admin/admin/user）→ RBAC 角色 ID 映射（SPEC-085 §4.4）。
+  // RBAC 角色 ID 以 rbac_role_ 前缀（seed 生成的自定义 ID，非 UUID）。
+  const resolveRoleID = async (parentID: string): Promise<string> => {
+    if (parentID.startsWith('rbac_role_')) return parentID;
+    try {
+      const res = await apiFetch(`/admin/rbac/roles?q=${encodeURIComponent(parentID)}&limit=1`);
+      if (res.ok) {
+        const data = await res.json();
+        const role = (data.roles || [])[0];
+        if (role) return role.id;
+      }
+    } catch { /* fallthrough */ }
+    return parentID;
+  };
+
   const fetchRoles = () => {
-    const q = new URLSearchParams({ page: String(rolePage), page_size: String(PAGE_SIZE) });
-    if (parentFilter) q.set('parent_id', parentFilter);
-    apiFetch(`/admin/rbac/roles?${q}`).then(r => r.json()).then(data => {
-      setRoles(data.roles || []); setRoleTotal(data.total || 0);
-    }).catch(() => showToast('加载角色失败'));
+    (async () => {
+      const parentID = parentFilter ? await resolveRoleID(parentFilter) : '';
+      const q = new URLSearchParams({ page: String(rolePage), page_size: String(PAGE_SIZE) });
+      if (parentID) q.set('parent_id', parentID);
+      apiFetch(`/admin/rbac/roles?${q}`).then(r => r.json()).then(data => {
+        setRoles(data.roles || []); setRoleTotal(data.total || 0);
+      }).catch(() => showToast('加载角色失败'));
+    })();
   };
 
   const fetchPerms = () => {
@@ -178,9 +196,9 @@ const btnPri: React.CSSProperties = { padding: '8px 16px', background: '#5c7cfa'
 const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
 const btnSm: React.CSSProperties = { padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 };
 const mOverlay: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
-const mContent: React.CSSProperties = { background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', padding: 24, borderRadius: 12, minWidth: 400 };
+const mContent: React.CSSProperties = { ...modalPanelStyle, minWidth: 400 };
 const inLabel: React.CSSProperties = { display: 'block', fontSize: 13, marginBottom: 8, color: 'var(--text-secondary)' };
-const inStyle: React.CSSProperties = { display: 'block', width: '100%', marginTop: 4, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: 14 };
+const inStyle: React.CSSProperties = { ...modalInputStyle, display: 'block', marginTop: 4 };
 
 function AddRoleModal({ apiFetch, onClose, onSuccess, showToast }: any) {
   const [name, setName] = useState('');
@@ -280,7 +298,7 @@ function AddPermModal({ apiFetch, onClose, onSuccess, showToast }: any) {
     } catch (e: any) { showToast(e?.message || '创建失败'); }
   };
   const mo: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
-  const mc: React.CSSProperties = { background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', padding: 24, borderRadius: 12, minWidth: 450 };
+  const mc: React.CSSProperties = { ...modalPanelStyle, minWidth: 450 };
   return (
     <div style={mo} onClick={onClose}>
       <div style={mc} onClick={e => e.stopPropagation()}>

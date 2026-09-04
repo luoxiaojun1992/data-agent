@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import Pagination from '../../components/Pagination';
-import { primaryButtonStyle } from '../../components/ui';
+import { primaryButtonStyle, modalPanelStyle } from '../../components/ui';
 
 const MASK = '••••••••••';
 
@@ -678,8 +678,8 @@ export default function ModelsPage() {
         {/* Edit / Add Modal */}
         {(editingId !== null || showAddModal) && editForm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center" data-testid="model-edit-modal">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeEdit} />
-            <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-glass)] p-6 rounded-2xl max-w-lg w-full mx-4 space-y-3 max-h-[90vh] overflow-y-auto" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeEdit} />
+            <div className="relative max-w-lg w-full mx-4 space-y-3" style={{ ...modalPanelStyle, maxHeight: '90vh', overflowY: 'auto' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
                 {editingId !== null ? '编辑模型' : '新增模型'}
               </h3>
@@ -811,7 +811,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: '13px',
   borderRadius: '6px',
   background: 'rgba(255,255,255,0.05)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  border: '1px solid rgba(255,255,255,0.15)',
   color: 'var(--text-primary)',
   outline: 'none',
 };
