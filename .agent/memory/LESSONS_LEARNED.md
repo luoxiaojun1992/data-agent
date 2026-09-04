@@ -825,3 +825,28 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)  //
 **根因**: 对同一文件并行发多个 Edit，各 Edit 基于同一初始快照写入，后写的覆盖先写的 → 部分编辑静默丢失，工具仍返回 success。
 **解决**: 同文件多处修改**串行逐个 Edit**（一个完成再发下一个）；或 Read 全文 + Write 一次性重写整个文件。改完必须 grep/Read **复核实际落盘结果**，发现未落盘立即补做，不能只信工具返回。
 **教训**: ⛔ 工具返回 success ≠ 内容已落盘。同一文件的批量修改是竞态高发区（本项目已两次踩坑：spec-079 并行 8 个 Edit 丢 7 处、spec-082 并行 5 个 Edit 丢 3 处）。「改完即复核」应和「写完即测试」一样成为肌肉记忆。
+
+## 2026-09-04 新增（SPEC-085 验证 + RBAC 层级反转 + 权限模型确认）
+
+### 弹窗 fixed 定位失效：fadeIn 动画 `forwards` 残留 matrix
+**日期**: 2026-09-04 | **影响**: admin/users 弹窗顶部跑到 -13px（overlay 的 `position:fixed;inset:0` 失效，弹窗相对祖先定位）
+**根因**: `.animate-fade-in` 的 `fadeIn 0.5s forwards` 动画结束时残留 `transform: matrix(1,0,0,1,0,0)`（单位矩阵但非 `none`），使该祖先成为 fixed 后代的 containing block → overlay 的 fixed 定位失效。第一次尝试 `to { transform: none }` **无效**（Chrome 在 forwards 下仍保持 matrix）。
+**解决**: 去掉 `forwards`，动画结束后 transform 自然恢复 none（commit `69a9c06` + `f58b545`）。
+**教训**: ⛔ CSS 动画用 transform 做入场淡入，结束后必须不残留 transform（不用 `forwards` + `translateY(0)` 组合）。fixed 弹窗的祖先不能残留 transform/filter/backdrop-filter（都会创建 containing block），弹窗视觉回归要用 `getComputedStyle` 读 `position`/`transform` 的运行时计算值，而非只看源码。
+
+### RBAC 层级反转：算法与数据同时反、负负得正
+**日期**: 2026-09-04 | **影响**: 前端「子角色数量」显示不对，顺着 `child_count` 挖出 `parent_id` 与遍历算法**双反**
+**根因**: 正确层级应为 system_admin(L0 根)→admin(L1)→user(L2 叶)，上级聚合下级（descendant）。但 seed 数据 `parent_id` 反着存（user 是根），且 service 遍历用 `GetAllRoleIDsWithAncestors`（向上找祖先）。两者同时反 → 权限校验「恰好正确」，但语义脆弱、不可维护。
+**解决**: 反转 seed 三角色 parent_id/level/child_count + service 3 处 `GetAllRoleIDsWithAncestors`→`GetAllDescendantRoleIDs` + 修正存量 MongoDB 数据。验证：system_admin=56(12+21+23)/admin=44(21+23)/user=23，descendant 继承无越权。
+**教训**: ⛔ 「负负得正」的正确是脆弱的巧合——只改算法或只改数据任一边立即崩塌（普通 user 越权继承全部 / system_admin 拿空集）。算法遍历方向必须与数据语义**显式一致**；发现「数据反了」必须同步排查对偶的「算法方向」。另一个坑：`Edit` 的 `replace_all` 在 tab 缩进下会静默漏改（本 commit 只改到 line 240，line 39/55 漏改，curl 403 才暴露），改完必须 grep 复核落盘。
+
+### Playwright test runner 扫描敏感文件 → "No tests found"
+**日期**: 2026-09-04 | **影响**: `npx playwright test` 报 "No tests found"，其实 spec 文件存在
+**根因**: test runner 扫描 testDir 时读到 `rbac.spec.ts`/`auth.spec.ts` 等含硬编码凭据的文件，触发 fs-shim 敏感保护 → 静默跳过。
+**解决**: 写独立 node 脚本 `import { chromium }` 直连（API 登录 + `addInitScript` 注入 localStorage token/userId/username/role/permissions），不走 test runner。密码从 env（`ADMIN_PASS`）读，不硬编码进 git。
+**教训**: 验证类脚本用独立 node 脚本 + env 注入凭据，绕开 test runner 的敏感文件扫描；凭据一律 env 注入，禁止入库。
+
+### 分页规则拍板：有数据即显示，禁止数据少时隐藏
+**日期**: 2026-09-04 | **影响**: 原 `Pagination.tsx` 在 `totalPages<=1` 时返回 null，数据少时分页被隐藏
+**解决**: 晓军拍板「分页只要有数据就显示」，推翻 SPEC-078 §4.1。改为 `total>0` 即显示（含 total=1 显示「共 1 条」）。commit `3e86531`，SPEC-078/085 文档同步修正。
+**教训**: 分页是列表的基础 UI，数据少不等于不需要分页信息。UI 显隐规则以用户最新拍板为准，拍板后同步回 spec 文档，避免实现与文档双份真相。

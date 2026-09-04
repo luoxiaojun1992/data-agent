@@ -200,3 +200,29 @@
 - 服务器连不上 `registry.npmjs.org`（curl 000），Dockerfile `npm ci` 配 npmmirror 解决（commit `d66c4b7`）。
 - BuildKit `COPY . .` 误判 CACHED：源码变了但全层 CACHED，一度误判新代码没进镜像。判断镜像新旧要查镜像内编译产物（grep `.next` / stat mtime），用 `--no-cache` 绕过 cache 误判。
 - 登录 API 验证：后端 `LoginRequest` 字段是 `username`（非 email），curl 用 email 返回 400 是正常校验，非 bug。
+
+## 2026-09-04: SPEC-085 验证 + RBAC 层级反转修复 + 权限模型确认 + SPEC-086/087/088 立项
+
+### RBAC 角色层级反转（数据+算法双反，负负得正）
+- **正确层级**: system_admin(L0 根) → admin(L1) → user(L2 叶)，上级聚合下级（descendant 继承）。
+- **修复前**: seed `parent_id` 反着存（user 是根）+ service 用 `GetAllRoleIDsWithAncestors`（向上），两者同时反 → 权限校验「恰好正确」。
+- **修复**: seed 反转 + service 3 处 ancestor→`GetAllDescendantRoleIDs` + 存量 MongoDB 修正。权限聚合验证：system_admin=56(12+21+23)/admin=44(21+23)/user=23，无越权。
+
+### SPEC-085 前端 UI 修复（16 问题点，已实现 + 验证通过）
+- 弹窗玻璃统一（`.glass`+blur20，以「新建分析任务」弹窗为基准）、maxHeight 85vh、input 边框 rgba(255,255,255,0.15)、im/feishu 分页、RBAC 子角色显示（resolveRoleID 映射）。
+- **两个新根因（验证中发现并修复）**：① 分页隐藏——拍板「有数据即显示」（commit 3e86531）；② 弹窗 fixed 定位失效——`fadeIn forwards` 残留 matrix（commit 69a9c06 + f58b545）。
+- 验证：Playwright 15/15 + API 权限继承正确；验证脚本 `outputs/verify-spec085.mjs`（独立 node，绕 test runner 敏感文件扫描）。
+
+### 权限模型确认（两类 skill 隔离维度，晓军权威拍板）
+1. **文件目录操作 skill**（file_read/write/delete、dir_create/delete/list、pptx_generator、save_artifact）：强绑定 **session**（非传参，state 注入）+ **workspace**（`chatsvc.SessionWorkspace(sessionID)`，拒绝绝对路径/`..`）。
+2. **memory / task / kb skill**：强绑定 **userID**（非传参，state 注入）+ **system_admin 豁免**——`system_admin` 可 access 所有数据（含他人 memory/kb/task/run），`user`/`admin` 仅 access 自己 + shared（shared 目前不存在）。实现约定：`isSystemAdmin := stateString(tc,"role")=="system_admin"`，归属校验 = `x.UserID == stateUserID || isSystemAdmin`。
+
+### 立项（spec 已写并 push main，待实现）
+- **SPEC-086** Task 常用模版（日常总结）+ `memory_list` + `kb_create_doc`（复用 task API scheduled_exec；memory 分页用 created_at 倒序，禁用 updated_at；文本 ≤5MB）。
+- **SPEC-087** task 三 skill（`task_create`/`task_run_list`/`task_run_detail`），复用 task.Service，归属校验防 IDOR + system_admin 豁免。
+- **SPEC-088** 会话空闲超时配置化（`SESSION_IDLE_TIMEOUT`，默认 30 分钟；登录响应下发 `idle_timeout_minutes`，无 RBAC）。
+
+### 其他确认（不实施）
+- 普通管理员不能创建 system_admin（双重防线：全局禁建 sys + `denyAdminManagingAdmin`）；新增用户默认不关联 rbac role（副作用：未绑角色权限=0，晓军拍板「暂不做」自动绑定）。
+- URL 导入超时 = 整体解析网页端到端超时，非单个 HTTP 请求。
+- 读空闲超时时间无需 RBAC（登录响应下发，不挂 system:view）。

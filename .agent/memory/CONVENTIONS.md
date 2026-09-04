@@ -142,6 +142,8 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 48 | **含凭据/隧道地址的本地回归脚本入库** | 本地冒烟/回归脚本（含测试服务器凭据、SSH 隧道地址、公网 IP）禁止提交。`.gitignore` 用通配统一忽略（`tests/ui/smoke-*.mjs`、`tests/ui/*-verify.mjs`），不要逐条添加。已提交的测试脚本不得硬编码隧道/服务器地址；playwright baseURL 走 `process.env.UI_BASE_URL` 注入。 |
 | 49 | **对同一文件并行发多个 Edit（工具竞态丢编辑）** | 并行 Edit 同一文件存在竞态：工具返回 success 但部分编辑未落盘（本项目已两次实测：spec-079 并行 8 个丢 7 处、spec-082 并行 5 个丢 3 处）。同文件多处修改必须**串行逐个 Edit**，或 Read 全文 + Write 一次性重写。改完必须 grep/Read **复核实际落盘结果**，禁止只信工具返回（防假性完成）。 |
 | 50 | **新增全局 fixed 元素不检查是否遮蔽 header 已有图标/按钮** | 在线指示灯 `fixed top-4 right-4 z-[60]` 盖住 header 右上角铃铛（用户误判「站内信图标没了」）。新增/调整全局 fixed（高 z-index）元素后，必须 `elementFromPoint`/`getComputedStyle` 运行时验证不遮蔽 header 原有可点击元素，固定头部预留 padding 空间。用户报「图标没了」先查「是否被盖住」而非「组件被删」。 |
+| 51 | **CSS 入场动画 `forwards` + `transform: translateY(0)` 残留 matrix → fixed 定位失效** | 弹窗入场动画 `fadeIn 0.5s forwards` 结束时残留 `transform: matrix(1,0,0,1,0,0)`（单位矩阵但非 `none`），使祖先成为 fixed 后代的 containing block，overlay 的 `position:fixed;inset:0` 失效、弹窗顶跑到 -13px。修法：**去掉 `forwards`**（`to { transform: none }` 在 Chrome 下 forwards 仍残留 matrix，无效）。规则：用 transform 做入场动画，结束后必须不残留 transform（不用 forwards 搭配 translateY(0)）；fixed 弹窗祖先不能残留 transform/filter/backdrop-filter。 |
+| 52 | **算法方向与数据方向依赖「负负得正」的巧合对齐** | RBAC 角色层级：seed 数据 `parent_id` 反着存（user 是根）+ service 遍历用 ancestor（向上），两者**同时反**才让权限校验「恰好正确」。只改任一边立即崩塌（普通 user 越权继承全部 / system_admin 拿空集）。规则：算法遍历方向与数据语义必须**显式一致**；发现「数据反了」必须同步排查对偶的「算法方向」，不能只修一半。 |
 
 ## 开发工作流约定
 
