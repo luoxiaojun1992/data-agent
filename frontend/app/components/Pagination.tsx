@@ -34,8 +34,16 @@ export default function Pagination({
     ? totalPages
     : (hasTotal && pageSize ? Math.max(1, Math.ceil(total / pageSize)) : 1);
 
-  // totalPages <= 1 时返回 null（不渲染）；但若提供了每页条数切换，则始终渲染（保证下拉可用）。
-  if (tp <= 1 && !onPageSizeChange) return null;
+  // 分页显示规则（晓军拍板 2026-09-04）：只要有数据就显示分页，禁止因「只有 1 页/1 条」而隐藏。
+  // - 语义 B（有 total）：total > 0 就显示（含 total=1，显示「共 1 条」）
+  // - 语义 A（仅 totalPages）：totalPages >= 1 就显示
+  // - 无数据（total=0 或 totalPages=0）才隐藏
+  // - 提供每页条数切换时始终渲染（保证下拉可用）
+  if (hasTotal) {
+    if (total <= 0 && !onPageSizeChange) return null;
+  } else if (tp < 1 && !onPageSizeChange) {
+    return null;
+  }
 
   const tid = (suffix: string) => (testIdPrefix ? `${testIdPrefix}-${suffix}` : undefined);
 
