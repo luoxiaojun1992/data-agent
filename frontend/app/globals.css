@@ -79,7 +79,9 @@ body::before {
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* to 帧必须用 none 而非 translateY(0)：translateY(0) 会残留非 none 的 transform，
+     使元素成为 fixed 后代的 containing block，导致弹窗 fixed 定位失效（SPEC-085 图2/3 根因）。 */
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes pulse-glow {
