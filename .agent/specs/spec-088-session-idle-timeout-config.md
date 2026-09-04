@@ -71,7 +71,7 @@
 
 ## 4. API 设计
 
-### 4.1 登录响应扩展（无新增 API）
+### 4.1 登录响应扩展（无新增 API，且无 RBAC）
 
 `POST /api/v1/auth/login` 的响应体 `LoginResponse` 新增一个字段：
 
@@ -93,6 +93,8 @@
   "need_change_pw": false
 }
 ```
+
+> **红线（读空闲超时时间无需 RBAC）**：空闲超时时间必须通过登录响应下发，**不得**通过需要 RBAC 的 `/admin/sysconfig/system`（`GET` 挂 `system:view`）读取。原因：`IdleTimer` 是**所有登录角色**（含普通 user）都要用到的组件，而普通 user 无 `system:view` 权限，若走 admin 配置接口会拿不到值导致 idle 检测失效。`/auth/login` 是公开接口（`routes.go:214` 直接注册，无 `RequirePermission`），天然无 RBAC 门槛，所有角色登录即拿到。若未来需要独立「读取空闲超时」接口，也应只挂 JWT 认证、**不挂 RBAC permission**。
 
 ## 5. 详细设计
 
@@ -194,6 +196,7 @@ const getIdleTimeout = useCallback(() => {
 | 性能影响 | 无（登录时多一次 `configCache.Get`，已有缓存机制） |
 | 是否需要新增 Skill | No |
 | 是否需新增路由 | No |
+| 读取空闲超时是否需 RBAC | No（登录响应下发，`/auth/login` 为公开接口，无 `RequirePermission`） |
 
 ## 7. 相关文件
 
@@ -240,6 +243,7 @@ const getIdleTimeout = useCallback(() => {
 3. 管理员将 `SESSION_IDLE_TIMEOUT` 改为 `1` 后，重新登录（或刷新），前端在 1 分钟无操作时弹出「会话即将过期」警告（可用 `window.__IDLE_TIMEOUT__` 无法覆盖的 localStorage 路径做人工验证，或 E2E 注入）。
 4. 未配置/非法值时，前端回退默认 30 分钟，行为与现状一致。
 5. 现有 E2E `UI-177/178/179` 回归通过；`go test ./internal/service/auth/... ./internal/service/config/...` 通过，覆盖率 ≥98%。
+6. **无 RBAC 门槛**：普通 user 角色登录（`/auth/login`）后，`localStorage.idleTimeoutMinutes` 正常写入，无需 `system:view` 权限即可拿到空闲超时值。
 
 ## 待决策点（实现前请晓军拍板）
 
