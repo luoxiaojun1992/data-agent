@@ -215,7 +215,7 @@ useEffect(() => {
 **选项 A（推荐）**：保留现状，当数据量足够时分页自动显示
 **选项 B**：每页条数默认 10，分页始终显示（包括 1 条数据时也显示，用于 UI 一致性）
 
-晓军已确认 SPEC-078 §4.1：`totalPages <= 1` 时返回 null。本 spec **保留选项 A 行为**，仅校验现状：
+晓军 2026-09-04 修正：分页**只要有数据就显示**，禁止「数据少时隐藏」（原 SPEC-078 §4.1 的 `totalPages <= 1` 返回 null 规则作废）。本 spec 按此修正 Pagination.tsx（commit 3e86531），校验现状：
 - 列表为空时分页不渲染（合理）
 - 列表有数据且 totalPages >= 2 时分页渲染
 
@@ -481,7 +481,7 @@ const modalStyleFixed: React.CSSProperties = {
 
 ## 10. 已决策（待晓军确认）
 
-1. **8 个 URL 中 7 个已接分页**：仅 `/im/feishu` 真实缺分页，其他 7 个 URL 数据少时分页自动隐藏（SPEC-078 §4.1 已定行为，本 spec 不 改）。
+1. **8 个 URL 分页**：仅 `/im/feishu` 真实缺分页（已接入），其余 7 个已接。分页规则按晓军 2026-09-04 修正：**只要有数据就显示**（不再因数据少隐藏）。
 2. **RBAC 父角色映射走前端方案**：不改后端，前端 q=system_admin 查 RBAC 角色 ID 再用 parent_id 查子角色。
 3. **弹窗玻璃规范以「新建分析任务」弹窗（`agent/page.tsx`）为基准**：遮罩 `rgba(0,0,0,0.5)`+blur(4px)、面板 `.glass` 玻璃等效（`var(--glass-bg)` + `backdrop-filter: blur(20px)`）+`var(--border-glass)`+16px 圆角+24px padding，推广到 admin/users / admin/rbac + 子页 + rbac-roles + im/feishu + knowledge。
 4. **弹窗 input 边框统一为 `rgba(255,255,255,0.15)`**：比当前 `0.1` 更亮（晓军已确认"输入框很不明显"需修复）。

@@ -137,7 +137,7 @@ interface PaginationProps {
 - 视觉标准（现有实现已满足，保留）：
   - `上一页 [1] ... [4] [5] [6] ... [20] 下一页`（智能省略号）。
   - active 页高亮 `bg-[#B1E2FF] text-black`（保留 Tailwind 现状，仅当前主题，不做多主题 token 化）。
-  - `totalPages <= 1` 时返回 `null`（不渲染）。
+  - **分页显示规则（晓军拍板 2026-09-04 修正）**：只要有数据就显示分页，禁止因「只有 1 页/1 条」而隐藏。语义 B（有 `total`）`total > 0` 就显示（含 `total=1`，显示「共 1 条」）；语义 A（仅 `totalPages`）`totalPages >= 1` 就显示；无数据（`total=0`/`totalPages=0`）才隐藏。
 - **每页条数切换下拉（晓军已确认：统一内嵌）**：分页组件统一附带「每页条数 10/20/50/100」下拉（SPEC-035 UI-167 要求 `{page}-page-size-select`）。当前仅 users 页有该下拉，其余页无——本次统一内嵌进 `Pagination.tsx`（`onPageSizeChange` + `pageSizeOptions`），保留各页 `data-testid` 前缀兼容（见 4.5）。切换条数后由各页自行 reset 到第 1 页并重拉数据。
 
 ### 4.2 顶部主按钮统一（新增 `app/components/ui.ts`）
