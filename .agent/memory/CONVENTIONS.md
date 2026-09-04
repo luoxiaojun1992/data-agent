@@ -132,7 +132,7 @@ Types: feat, fix, docs, test, refactor, chore, style
 | 38 | **查 MongoDB 前不确认真实 db name** | 本项目数据库名是 `data_agent`（下划线），不是仓库名 `data-agent`（连字符）。查库前先 `docker exec <mongo> env | grep MONGO` 确认连接串，否则查到空库误判「数据被删」。 |
 | 39 | **加唯一索引前不查重复数据** | 对已有数据集合加唯一索引前，必须先 `aggregate $group` 查重复 key，否则 `ensureIndex({unique:true})` 因 E11000 直接失败。 |
 | 40 | **前端判断「默认」不用 use_case scope** | `is_default_for` 是 per-use-case 的。chat 下拉只标 chat 默认，否则多个 use_case 默认全标上 → 下拉出现「多个默认」。 |
-| 41 | **同类弹窗/面板视觉混用不同 class（`.glass` 半透明 vs 实色 `var(--bg-secondary)`）** | 弹窗面板必须统一视觉：遮罩 `rgba(0,0,0,0.6)`+blur(4px)、面板 `var(--bg-secondary)` 实色 + `var(--border-glass)` 边框 + 16px 圆角 + `0 8px 32px rgba(0,0,0,0.5)` 阴影。集中用 `components/ui.ts` 的 `modalOverlayStyle`/`modalPanelStyle` 常量，禁用 `.glass` 用于弹窗面板（半透明+blur(20px) 与实色面板观感不一致）。 |
+| 41 | **同类弹窗/面板视觉混用不同 class（`.glass` 半透明 vs 实色 `var(--bg-secondary)`）** | 弹窗面板统一以「新建分析任务」弹窗（`agent/page.tsx`）为**基准**：遮罩 `rgba(0,0,0,0.5)`+blur(4px)、面板 `.glass` 玻璃等效（`var(--glass-bg)` 半透明 + `backdrop-filter: blur(20px)`）+ `var(--border-glass)` 边框 + 16px 圆角 + 24px padding + `0 8px 32px rgba(0,0,0,0.5)` 阴影。集中用 `components/ui.ts` 的 `modalOverlayStyle`/`modalPanelStyle` 常量（二者需对齐基准值）。⛔ **禁用 `var(--bg-secondary)` 实心色用于弹窗面板**（会造成「透明度低偏蓝色」观感）。 |
 | 42 | **视觉/样式回归只凭源码 class 名判断** | 样式一致性回归必须读 `getComputedStyle` 运行时计算值（定位类型+颜色值+尺寸阈值组合定位元素），Tailwind `bg-black/60` 等类名的最终值、`position:fixed/absolute` 差异只能在运行时确定。 |
 | 43 | **验证 API 前不确认后端 DTO 字段名（json tag）** | 凭前端 input testid/placeholder 猜字段名 curl 验证 → 400 误判成 bug。先看后端 struct json tag + curl 实测。400 带字段级错误是正常参数校验，读错误里的字段名。 |
 | 44 | **判断镜像是否含新代码只信 CACHED 状态** | BuildKit `COPY . .` 会偶发误判 CACHED。判断镜像新旧必须查镜像内编译产物（grep `.next` / stat mtime），不凭构建日志 CACHED 标记。cache 误判用 `--no-cache` 绕过。 |

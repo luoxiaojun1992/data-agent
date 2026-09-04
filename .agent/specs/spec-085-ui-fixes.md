@@ -10,7 +10,7 @@
 2. **RBAC 子角色显示**：系统管理员为父时子角色列表为空
 3. **弹窗位置错乱**：admin/users 添加用户弹窗顶到顶部 / 掉到下面
 4. **弹窗输入框边框不明显**：rbac/rbac-roles 弹窗输入框在深色背景下看不清
-5. **弹窗样式不统一**：透明度、边框、padding 不一致，统一以玻璃弹窗为准
+5. **弹窗样式不统一**：透明度、边框、padding 不一致，统一以「新建分析任务」弹窗（`agent/page.tsx`）的玻璃样式为基准
 6. **重复项**：admin/invites 出现两次（同一页面）
 
 ## 1.5 前置依赖检查
@@ -104,18 +104,27 @@ URL `/admin/users`，弹窗「添加用户」：
 
 ### 2.5 弹窗样式不统一（玻璃 vs 不玻璃）
 
-晓军描述「有的透明度高像玻璃，有的透明度低偏蓝色。应该以玻璃弹窗为准」。
+晓军描述「有的透明度高像玻璃，有的透明度低偏蓝色。应该以玻璃弹窗为准」。晓军进一步明确：**玻璃基准 = 「新建分析任务」弹窗（`agent/page.tsx`）**。
 
-| 页面 | 遮罩 | 面板 | 边框 | 圆角 | 一致性 |
+「新建分析任务」弹窗的关键实现（agent/page.tsx:258-260）：
+
+```tsx
+<div className="fixed inset-0 z-50 flex items-center justify-center">
+  <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={...} />
+  <div className="relative glass p-6 rounded-2xl max-w-lg w-full mx-4">
+```
+
+| 页面 | 遮罩 | 面板背景 | 边框 | 圆角 | 一致性 |
 |------|------|------|------|------|:---:|
-| admin/users | `rgba(0,0,0,0.6)` + `blur(4px)` | `var(--bg-secondary)` | `var(--border-glass)` | `16px` | ✅ 玻璃（但实现方式不同，未用 ui.ts 常量） |
-| admin/rbac | `modalOverlayStyle`（ui.ts） | `var(--bg-secondary)` + `var(--border-glass)` | 同 | `12px` ⚠️ | ⚠️ 玻璃但 border 12px |
-| admin/users/{id}/rbac-roles | `modalOverlayStyle` | `var(--bg-secondary)` + `var(--border-glass)` | 同 | `12px` ⚠️ | ⚠️ 玻璃但 border 12px |
-| im/feishu | `bg-black/60 backdrop-blur-sm`（Tailwind） | `var(--bg-secondary)` | `var(--border-glass)` | `16px` | ✅ 接近玻璃 |
-| agent | `bg-black/50 backdrop-blur-sm` | `var(--bg-secondary)` | `var(--border-glass)` | `16px` | ✅ 接近玻璃 |
+| **agent（新建分析任务）** | `bg-black/50`(=rgba(0,0,0,0.5)) + `backdrop-blur-sm`(=4px) | **`.glass`** = `var(--glass-bg)`(rgba(255,255,255,0.04)) + `backdrop-filter: blur(20px)` | `var(--border-glass)` | `16px` | 🎯 **基准** |
+| admin/users | `rgba(0,0,0,0.6)` + `blur(4px)` | `var(--bg-secondary)`(#111133 不透明) | `var(--border-glass)` | `16px` | ⚠️ 面板不透明（偏蓝），遮罩 0.6 偏暗 |
+| admin/rbac | `modalOverlayStyle`（ui.ts） | `var(--bg-secondary)` + `var(--border-glass)` | 同 | `12px` ⚠️ | ⚠️ 面板不透明 + 圆角 12px |
+| admin/users/{id}/rbac-roles | `modalOverlayStyle` | `var(--bg-secondary)` + `var(--border-glass)` | 同 | `12px` ⚠️ | ⚠️ 面板不透明 + 圆角 12px |
+| im/feishu | `bg-black/60 backdrop-blur-sm`（Tailwind） | `var(--bg-secondary)` | `var(--border-glass)` | `16px` | ⚠️ 面板不透明 |
 | knowledge | `rgba(0,0,0,0.5)` 无 blur | 内联面板 | 无 | 无 | ❌ 不玻璃 |
 
 **核心问题**：
+- **面板背景不透明是最大问题**：`modalPanelStyle` 用 `var(--bg-secondary)`（#111133 实心蓝黑），而基准 `.glass` 是 `var(--glass-bg)`（半透明白 0.04）+ `backdrop-filter: blur(20px)`。前者造成「透明度低偏蓝色」。
 - admin/users 的 ModalOverlay 是**手写 inline**，没用 ui.ts 常量
 - admin/rbac 子页弹窗用了 ui.ts 但圆角 12px（不一致）
 - 输入框边框 `var(--border)` 太暗
@@ -253,16 +262,46 @@ export const modalCancelBtnStyle: React.CSSProperties = {
 };
 ```
 
-**统一后的弹窗规范**：
+**统一后的弹窗规范**（以「新建分析任务」弹窗为基准）：
 
 | 元素 | 样式 |
 |------|------|
-| 遮罩 | `modalOverlayStyle`（已有）`rgba(0,0,0,0.6)` + `blur(4px)` + flex center |
-| 面板 | `modalPanelStyle`（已有）`var(--bg-secondary)` + `var(--border-glass)` + `16px` 圆角 + `28px` padding |
+| 遮罩 | `modalOverlayStyle`：`rgba(0,0,0,0.5)`（= `bg-black/50`，由 0.6 改）+ `blur(4px)` + flex center |
+| 面板 | `modalPanelStyle`：**`.glass` 玻璃等效** —— `var(--glass-bg)`(rgba(255,255,255,0.04)) + `backdrop-filter: blur(20px)`（由 `var(--bg-secondary)` 实心色改）+ `var(--border-glass)` + `16px` 圆角 + `24px` padding（由 28px 改）+ `maxWidth: 512px`（由 480px 改） |
 | 输入框 | `modalInputStyle`（新增）`rgba(255,255,255,0.15)` 边框 |
 | Label | `modalLabelStyle`（新增） |
 | 主按钮 | `primaryButtonStyle`（已有） |
 | 取消按钮 | `modalCancelBtnStyle`（新增） |
+
+**同步修改 `ui.ts` 现有常量**（关键——否则全项目弹窗仍是实心色）：
+
+```ts
+// 弹窗遮罩层：透明度对齐 bg-black/50
+export const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 1000,
+  background: 'rgba(0,0,0,0.5)',   // 0.6 → 0.5（对齐新建分析任务弹窗 bg-black/50）
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+// 弹窗面板：对齐 .glass 玻璃透明（var(--glass-bg) + blur(20px)）
+export const modalPanelStyle: React.CSSProperties = {
+  background: 'var(--glass-bg)',          // var(--bg-secondary) → 玻璃半透明
+  backdropFilter: 'blur(20px)',           // 新增：.glass 的 backdrop-filter
+  WebkitBackdropFilter: 'blur(20px)',     // 新增：Safari 兼容
+  border: '1px solid var(--border-glass)',
+  borderRadius: '16px',
+  padding: '24px',                        // 28px → 24px（p-6）
+  maxWidth: '512px',                      // 480px → 512px（max-w-lg）
+  width: '100%',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+};
+```
 
 **面板 max-height 强制约束**（防图 2/3 弹窗超出视口）：
 
@@ -371,7 +410,8 @@ const modalStyleFixed: React.CSSProperties = {
 - ⛔ 不改后端
 - ⛔ 不改业务逻辑（弹窗内 onClick handler / 表单提交逻辑保留）
 - ⛔ 不破坏现有 `data-testid`（防 UI E2E 回归失败）
-- ⛔ 不改 `.glass` 类（用于非弹窗面板，如卡片）
+- ⛔ 不改 `.glass` 类**定义**（`.glass` 已正确，是弹窗面板玻璃基准；改的是各页面让弹窗面板**采用** `.glass` 等效样式，而非改 `.glass` 本身）
+- ⛔ 弹窗面板不得再用 `var(--bg-secondary)` 实心色（必须 `.glass` 玻璃等效）
 - ⛔ SPEC-076 多主题不涉及（沿用 SPEC-078「仅当前主题」原则）
 
 ## 5. 可行性分析
@@ -390,7 +430,7 @@ const modalStyleFixed: React.CSSProperties = {
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
-| `frontend/app/components/ui.ts` | 新增 `modalInputStyle`/`modalLabelStyle`/`modalSelectStyle`/`modalCancelBtnStyle` | Small |
+| `frontend/app/components/ui.ts` | **改** `modalOverlayStyle`(0.6→0.5) + `modalPanelStyle`(实心→玻璃) + 新增 `modalInputStyle`/`modalLabelStyle`/`modalSelectStyle`/`modalCancelBtnStyle` | Small |
 | `frontend/app/components/Pagination.tsx` | 不改 | — |
 | `frontend/app/im/feishu/page.tsx` | 接入 Pagination + 弹窗统一 | Small |
 | `frontend/app/admin/users/page.tsx` | ModalOverlay 改用常量 + modalPanelStyle + maxHeight + inputStyle 统一 | Medium |
@@ -423,7 +463,7 @@ const modalStyleFixed: React.CSSProperties = {
 - [ ] **必须** 运行时验证（红线 #42）：用 `getComputedStyle` 验证弹窗定位、边框、maxHeight
 - [ ] **必须** CI Pipeline 中 sonar-check 和 ui-tests 均通过才可合并
 - [ ] **严禁** 删除/降级测试用例、修改业务逻辑绕过测试
-- [ ] **严禁** `.glass` 类用于弹窗面板（红线 #41）
+- [ ] **严禁** 弹窗面板用 `var(--bg-secondary)` 实心色（必须 `.glass` 玻璃等效：`var(--glass-bg)` + `backdrop-filter: blur(20px)`）
 - [ ] **严禁** 弹窗 inputStyle 用 `var(--border)`（必须 `rgba(255,255,255,0.15)`）
 
 参考: `.agent/memory/E2E_TESTING.md`
@@ -435,7 +475,7 @@ const modalStyleFixed: React.CSSProperties = {
 3. **弹窗位置**：admin/users 等页面弹窗 `getBoundingClientRect()` 居中可视区（top > 0, bottom < viewport.height - headerHeight）。
 4. **弹窗 maxHeight**：所有弹窗面板 `getComputedStyle().maxHeight === '85vh'`。
 5. **弹窗 input 边框**：所有弹窗 input `getComputedStyle().borderColor` 包含 `rgba(255,255,255,0.15)`（或等价亮色）。
-6. **弹窗样式统一**：所有列表/管理类弹窗遮罩 `rgba(0,0,0,0.6)`+blur(4px)、面板 `var(--bg-secondary)`+`var(--border-glass)`+16px 圆角+28px padding。
+6. **弹窗样式统一**：所有列表/管理类弹窗遮罩 `rgba(0,0,0,0.5)`+blur(4px)、面板 `.glass` 玻璃等效（`var(--glass-bg)` + `backdrop-filter: blur(20px)`）+`var(--border-glass)`+16px 圆角+24px padding。
 7. **data-testid**：既有 E2E testid 全部保留。
 8. **CI 全绿**：sonar-check + ui-tests + ut-workflow 通过。
 
@@ -443,6 +483,6 @@ const modalStyleFixed: React.CSSProperties = {
 
 1. **8 个 URL 中 7 个已接分页**：仅 `/im/feishu` 真实缺分页，其他 7 个 URL 数据少时分页自动隐藏（SPEC-078 §4.1 已定行为，本 spec 不 改）。
 2. **RBAC 父角色映射走前端方案**：不改后端，前端 q=system_admin 查 RBAC 角色 ID 再用 parent_id 查子角色。
-3. **弹窗玻璃规范以 admin/users.md 当前 ModalOverlay 为基线**：推广到 admin/rbac + 子页 + rbac-roles + knowledge。
+3. **弹窗玻璃规范以「新建分析任务」弹窗（`agent/page.tsx`）为基准**：遮罩 `rgba(0,0,0,0.5)`+blur(4px)、面板 `.glass` 玻璃等效（`var(--glass-bg)` + `backdrop-filter: blur(20px)`）+`var(--border-glass)`+16px 圆角+24px padding，推广到 admin/users / admin/rbac + 子页 + rbac-roles + im/feishu + knowledge。
 4. **弹窗 input 边框统一为 `rgba(255,255,255,0.15)`**：比当前 `0.1` 更亮（晓军已确认"输入框很不明显"需修复）。
 5. **不改 SPEC-076 多主题**（沿用 SPEC-078 §4.4）。
