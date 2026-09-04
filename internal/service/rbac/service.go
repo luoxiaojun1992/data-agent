@@ -36,7 +36,7 @@ func (s *Service) HasPermission(ctx context.Context, userID string, perm string)
 	if len(roleIDs) == 0 {
 		return false, nil
 	}
-	allRoleIDs, err := s.repo.GetAllRoleIDsWithAncestors(ctx, roleIDs)
+	allRoleIDs, err := s.repo.GetAllDescendantRoleIDs(ctx, roleIDs)
 	if err != nil {
 		return false, err
 	}
@@ -52,7 +52,7 @@ func (s *Service) GetUserPermissionKeys(ctx context.Context, userID string) ([]s
 	if len(roleIDs) == 0 {
 		return nil, nil
 	}
-	allRoleIDs, err := s.repo.GetAllRoleIDsWithAncestors(ctx, roleIDs)
+	allRoleIDs, err := s.repo.GetAllDescendantRoleIDs(ctx, roleIDs)
 	if err != nil {
 		return nil, err
 	}
