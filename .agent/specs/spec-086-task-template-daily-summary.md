@@ -188,7 +188,7 @@ MemoryLister interface {
 | `kb_create_doc` | session state 注入 `user_id` | 空 → 拒绝（不创建） |
 
 - **非传参**：两个 tool 的参数 schema 均**不含 user_id 字段**，LLM 无法传入；userID 只能来自 session state（与 `knowledge_search` / `save_task_result` 一致）。
-- **不引入 system_admin 豁免**：LLM tool 只操作**本人**资源，管理他人资源走 admin UI。
+- **system_admin 豁免**：`system_admin`（`role` 从 session state 注入，`isSystemAdmin := stateString(tc, "role") == "system_admin"`）可 access 所有数据（含他人 memory / KB doc），符合「system_admin 权限最高」原则；`user` / `admin` 只能 access **自己**和 **shared**（shared 数据目前不存在，即现阶段仅本人）。实现与 `knowledge_search` / `knowledge_graph_search` 一致，`isSystemAdmin` 传入下层由 visibility filter 决定范围。
 - 与 SPEC-087 §5.3（task 三 skill 归属校验）同一哲学；`stateString` 为空时拒绝，避免「空 userID 退化为全量」的越权面。
 
 ### 5.3 kb_create_doc 复用重构
@@ -364,4 +364,4 @@ func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string)
 4. **UI 分离**：「常用模版」入口与「新建任务」弹窗相互独立，不共用弹窗。
 5. **回归**：`memory_search`、`/memory/list`（`updated_at` 排序）行为不变。
 6. **seed 同步**：全新空 DB 启动后 `SeedSkills` 自动补齐 `memory_list`、`kb_create_doc` 两个 skill（`/skills` 列表可见、`skill_search` 可搜到）；存量 DB 增量部署后同样补齐，不遗漏。
-7. **userID 强绑定（防 IDOR）**：`memory_list` / `kb_create_doc` 的 userID 恒等于 session state 注入的 `user_id`（LLM 无法指定他人）；session 无 `user_id` 时两个 tool 均**拒绝**（不读全量、不建 doc）；参数 schema 不含 user_id 字段。
+7. **userID 强绑定（防 IDOR）+ system_admin 豁免**：`memory_list` / `kb_create_doc` 的 userID 恒等于 session state 注入的 `user_id`（LLM 无法指定他人）；session 无 `user_id` 时两个 tool 均**拒绝**（不读全量、不建 doc）；参数 schema 不含 user_id 字段；`role==system_admin` 时豁免（可 access 所有数据），`user`/`admin` 仅 access 本人 + shared（未实现）。

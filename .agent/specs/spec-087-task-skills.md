@@ -155,10 +155,10 @@ TaskDefs domaintask.TaskService
 | tool | 校验 |
 |------|------|
 | `task_create` | `user_id` 直接取 session state 的 `user_id`（LLM 无 user_id 参数，天然隔离） |
-| `task_run_list` | 先 `TaskDefs.GetTask(task_id)`，校验 `task.UserID == stateUserID`，不匹配则报错拒绝 |
-| `task_run_detail` | `GetRun(run_id)` 得 run，校验 `run.UserID == stateUserID`，不匹配则报错拒绝 |
+| `task_run_list` | 先 `TaskDefs.GetTask(task_id)`，校验 `task.UserID == stateUserID`（`system_admin` 豁免），不匹配则报错拒绝 |
+| `task_run_detail` | `GetRun(run_id)` 得 run，校验 `run.UserID == stateUserID`（`system_admin` 豁免），不匹配则报错拒绝 |
 
-- **不引入 system_admin 豁免**：LLM tool 只操作/查询**本人**资源（最小权限），管理他人资源走 admin UI，不暴露给 LLM。与 `save_task_result`（`run_id` 从 state 注入、LLM 不能操作任意 run）的设计哲学一致。
+- **system_admin 豁免**：`system_admin`（`role` 从 session state 注入，`isSystemAdmin := stateString(tc, "role") == "system_admin"`）可 access 所有数据（含他人 task/run），符合「system_admin 权限最高」原则；`user` / `admin` 只能 access **自己**和 **shared**（shared 数据目前不存在，即现阶段仅本人）。归属校验条件：`task.UserID == stateUserID || isSystemAdmin`（`run.UserID == stateUserID || isSystemAdmin`）。与 `knowledge_search`（`isSystemAdmin` 决定 visibility filter）哲学一致。
 - `stateUserID = stateString(tc, "user_id")`；为空时拒绝（与 `save_task_result` 的「无 task 上下文」报错同款）。
 
 ### 5.4 wire.go 注入
@@ -282,7 +282,8 @@ t, run, err := deps.TaskDefs.CreateTask(
 ## 10. 验证标准
 
 1. **task_create**：LLM 传入 title/type/skill_chain/params/cron_expr → 成功创建 task，返回 task_id；scheduled_exec + cron 时 schedule_mode=recurring 且 run_id 为空；agent_exec 时 run_id 非空。user_id 恒等于 session user_id（LLM 无法指定他人）。
-2. **task_run_list**：`task_id` 必传（空则报错）；返回 `[{run_id, completed}]` 且无多余字段；top_n 默认 10、上限 50；归属不符 → 拒绝。
-3. **task_run_detail**：`run_id` 必传；返回 result/error/status/completed；归属不符 → 拒绝。
+2. **task_run_list**：`task_id` 必传（空则报错）；返回 `[{run_id, completed}]` 且无多余字段；top_n 默认 10、上限 50；归属不符且非 system_admin → 拒绝。
+3. **task_run_detail**：`run_id` 必传；返回 result/error/status/completed；归属不符且非 system_admin → 拒绝。
 4. **seed 同步**：全新空 DB 启动后 `SeedSkills` 自动补齐 3 个 skill（`/skills` 可见、`skill_search` 可搜到）；存量 DB 增量部署后同样补齐，不遗漏。
 5. **回归**：`save_task_result`、task HTTP API（创建/列表/详情）行为不变。
+6. **system_admin 豁免**：`role==system_admin` 时 `task_run_list` / `task_run_detail` 可跨用户查询（access 所有数据）；`user`/`admin` 仅 access 本人 + shared（未实现）。
