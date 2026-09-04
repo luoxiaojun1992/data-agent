@@ -410,5 +410,6 @@ SPEC-006│               │
 | 12 | SPEC-085 | ✅ 前端 UI 缺陷修复 | 已实现（2026-09-04）；im/feishu 接入分页；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15)；RBAC 业务主角色→RBAC 角色 ID 映射 |
 | 13 | SPEC-086 | 📐 Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据 |
 | 13.5 | SPEC-087 | 📐 Task 相关 skills（task_create/run_list/run_detail） | 独立可插队；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据 |
+| 13.6 | SPEC-088 | 📐 会话空闲超时配置化 | 独立可插队；新增 SESSION_IDLE_TIMEOUT 系统配置 + 登录响应下发 idle_timeout_minutes + 前端 IdleTimer 读 localStorage；复用 system_configs seed 机制 |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
