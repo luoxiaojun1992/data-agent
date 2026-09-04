@@ -156,7 +156,7 @@ ListRecent(ctx context.Context, userID string, limit, offset int) ([]adapter.Obs
 
 **② `MongoStorage` 实现：**
 
-- filter：`{app_name: s.appName, user_id: userID}`（userID 为空则全量，与现有 `List` 对齐；实际由 session state 注入的 `user_id` 保证租户隔离）
+- filter：`{app_name: s.appName, user_id: userID}`——**userID 强绑定当前 session 用户**（由 tool 层从 session state 注入，非 LLM 传参）；**userID 为空时拒绝**（不读全量，防越权，见 §5.2.1）
 - sort：`created_at` 倒序
 - `skip(offset)` + `limit(limit)`
 - 返回 total（用于 `has_more` 计算）
@@ -176,6 +176,20 @@ MemoryLister interface {
 - `limit` 默认 5、上限 50；`offset` 默认 0、下限 0。
 - 每条返回 `id`/`content`/`created_at`，`has_more = offset+len(memories) < total`。
 - 时间倒序 → 默认行为「返回最新 n 条」天然成立，兼容现有 memory_search 的默认 5 条心智。
+- **userID 强绑定**：`user_id` 从 session state 注入（LLM 无 user_id 参数、不可指定），空则拒绝（不读全量）。见 §5.2.1。
+
+### 5.2.1 租户隔离与 userID 强绑定（红线，防 IDOR）
+
+本 spec 的两个 tool 均操作**用户级资源**（memory 记忆、KB 文档），必须强绑定当前 session 用户，**禁止 LLM 传 userID**（防止 LLM 被诱导指定他人身份越权）：
+
+| tool | userID 来源 | 空值处理 |
+|------|------------|---------|
+| `memory_list` | session state 注入 `user_id`（`stateString(tc, "user_id")`） | 空 → 拒绝（不读全量） |
+| `kb_create_doc` | session state 注入 `user_id` | 空 → 拒绝（不创建） |
+
+- **非传参**：两个 tool 的参数 schema 均**不含 user_id 字段**，LLM 无法传入；userID 只能来自 session state（与 `knowledge_search` / `save_task_result` 一致）。
+- **不引入 system_admin 豁免**：LLM tool 只操作**本人**资源，管理他人资源走 admin UI。
+- 与 SPEC-087 §5.3（task 三 skill 归属校验）同一哲学；`stateString` 为空时拒绝，避免「空 userID 退化为全量」的越权面。
 
 ### 5.3 kb_create_doc 复用重构
 
@@ -290,7 +304,7 @@ func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string)
 1. **Unit tests（Go）**：覆盖率底线见 SPEC-045。重点：
    - `MongoStorage.ListRecent`：created_at 倒序、limit/offset 边界、total 正确、user_id 隔离。
    - `knowledge.Service.CreateTextDoc`：长度超限报错、脱敏调用、CreateDoc 参数正确、queue 入队（gomonkey mock EnqueueRaw）、queue 为 nil 时降级。
-   - `memory_list` / `kb_create_doc` tool：参数校验（limit 上限、offset 下限、content 必填）、session state 注入 user_id、nil 依赖降级不 panic。
+   - `memory_list` / `kb_create_doc` tool：参数校验（limit 上限、offset 下限、content 必填）、**session state 注入 user_id（无 user_id 参数、空 user_id 拒绝）**、nil 依赖降级不 panic。
 2. **Integration tests**：条件使用 Docker Compose（`go test -tags=integration`）。
 3. **E2E tests**：用例编号 `UI-XXX`（前端模版入口 → 创建 scheduled_exec 任务，断言列表出现「日常总结」+ cron 正确）。
 4. **审计**：`.agent/skills/go-ut-audit` 审查 UT 质量。
@@ -350,3 +364,4 @@ func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string)
 4. **UI 分离**：「常用模版」入口与「新建任务」弹窗相互独立，不共用弹窗。
 5. **回归**：`memory_search`、`/memory/list`（`updated_at` 排序）行为不变。
 6. **seed 同步**：全新空 DB 启动后 `SeedSkills` 自动补齐 `memory_list`、`kb_create_doc` 两个 skill（`/skills` 列表可见、`skill_search` 可搜到）；存量 DB 增量部署后同样补齐，不遗漏。
+7. **userID 强绑定（防 IDOR）**：`memory_list` / `kb_create_doc` 的 userID 恒等于 session state 注入的 `user_id`（LLM 无法指定他人）；session 无 `user_id` 时两个 tool 均**拒绝**（不读全量、不建 doc）；参数 schema 不含 user_id 字段。
