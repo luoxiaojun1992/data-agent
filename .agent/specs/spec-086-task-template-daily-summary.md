@@ -249,6 +249,17 @@ func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string)
 2. `internal/service/skill/config.go` `predefinedSkills()`：补两个 SkillConfig（name/display_name/description，供 skill 管理页 + search 发现）。
 3. `SeedSkills` 幂等自动补齐（启动时）。
 
+### 5.7 原始 seed 数据同步（红线）
+
+> 与 SPEC-084「权限变更必须同步原始 seed 数据，保证重新部署后不遗漏」同一原则：新增 skill 必须同步进原始 seed 数据。
+
+1. **`predefinedSkills()` 是 skill 的原始 seed 数据**：`memory_list`、`kb_create_doc` 两个 SkillConfig 必须补进 `internal/service/skill/config.go` 的 `predefinedSkills()`（`name`/`display_name`/`description`，供 skill 管理页 + search 发现）。
+2. **`SeedSkills` 幂等自动补齐**：wire.go 启动时调用 `skillConfigSvc.SeedSkills`，遍历 `predefinedSkills()`，对 DB 中**不存在**的 skill 执行 `Upsert`。因此：
+   - 全新部署（空 DB）→ 两个新 skill 自动插入，不遗漏；
+   - 存量部署（有 DB）→ 两个新 skill 名字全新、必不存在，自动增量补齐。
+3. **语义红线（不覆盖）**：`SeedSkills` 是「存在即跳过、不覆盖」——若某 skill 名已在 DB（用户改过配置），seed 不会覆盖。`memory_list`/`kb_create_doc` 为全新名字，必然触发 seed；但**后续若修改这两个 skill 的 description/display_name，seed 不会更新存量记录**，需手动 `Upsert` 或清 DB 重 seed（与现有全部 skill 语义一致）。
+4. **task 模版无需 DB seed**：模版（「日常总结」+ cron + params.message）是前端硬编码的快捷入口（§5.5），非持久化数据，点击即组装参数调 `POST /api/v1/tasks`，故无模版 seed 数据需要同步。
+
 ## 6. 可行性分析
 
 | 检查项 | 结论 |
@@ -338,3 +349,4 @@ func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string)
 3. **日常总结模版**：前端点模版 → 创建 `type=scheduled_exec` + `cron_expr="0 1 * * *"` 的 task；任务列表可见；scheduler 触发后 Agent 完成「读当天 memory → 总结 → 建 KB doc → save_task_result」全链路。
 4. **UI 分离**：「常用模版」入口与「新建任务」弹窗相互独立，不共用弹窗。
 5. **回归**：`memory_search`、`/memory/list`（`updated_at` 排序）行为不变。
+6. **seed 同步**：全新空 DB 启动后 `SeedSkills` 自动补齐 `memory_list`、`kb_create_doc` 两个 skill（`/skills` 列表可见、`skill_search` 可搜到）；存量 DB 增量部署后同样补齐，不遗漏。
