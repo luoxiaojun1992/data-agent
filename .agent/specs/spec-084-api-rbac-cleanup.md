@@ -203,13 +203,19 @@
 | 检查项 | 结论 |
 |--------|------|
 | `agent:*` 权限 seed 降级 | `agent:view/create/edit/delete` 的 `roleIDs` 从 `admin` → `user`（§5.3 三处同步） |
-| `sidebar:agent` 菜单权限 | 必须同步从 `admin` → `user`，否则普通用户有 `agent:*` 却看不到 Agent 侧边栏入口 |
-| 数据隔离 | task 是**个人资源**（`Task.UserID` / `Run.UserID` 存在，`ListTasks`/`CreateTask` 已按 `user_id` 过滤） |
+| `sidebar:agent` 菜单权限 | **精确同步**从 `admin` → `user`（权限常量 + seed roleIDs + 前端 `SIDEBAR_PERMS` 三处对齐），否则普通用户有 `agent:*` 却看不到 Agent 侧边栏入口 |
+| 数据隔离 | task 是**个人资源**（`Task.UserID` / `Run.UserID` 存在，`ListTasks`/`CreateTask` 已按 `user_id` 过滤）。**必须做隔离**，参考 `memory.go` / `knowledge.go` 范式：`isSystemAdmin := role == "system_admin"`，非 system_admin 强制只看自己的数据（task 无共享） |
 | ⚠️ **IDOR 越权隐患** | `GetTask(id)` / `ListRuns(taskID)` / `GetRun(id)` / `CreateRun(taskID)` / `CancelTask(id)` / `DownloadArtifacts(taskID)` **按 ID 操作、不校验归属**。降级前是 admin 级（管理员看全部无越权问题）；降级后普通用户可凭 task_id/run_id 操作他人 task → **必须补归属校验** |
-| 资源消耗 | 普通用户可创建/运行 task，消耗 LLM 配额（产品决策，接受） |
 | `/admin/tasks/:id/scheduled-enabled` | 挂 `agent:edit`，降级后普通用户可切换「自己的」定时任务开关（个人资源，合理） |
+| LLM 资源消耗 | 暂不考虑（晓军拍板） |
 
-**归属校验方案**：`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 增加 `userID` 参数，service 层校验 `task.UserID == userID`（或 `run.UserID == userID`），不一致返回 `ErrNotFound`（避免泄露资源存在性）或 403。handler 层从 `c.Get("user_id")` 透传。system_admin 可豁免（沿用 `CanSeeAllData` 或直接按 user 校验、管理员也只看自己的 task，二选一，默认「所有用户只看/操作自己的 task」）。
+**归属校验方案（参考 `memory.go` / `knowledge.go` 数据隔离范式）**：
+
+- 判定依据：`role := c.GetString("role")`（JWT 注入的 **user 角色属性** `system_admin` / `admin` / `user`，非 RBAC 角色），`isSystemAdmin := role == "system_admin"`。
+- 隔离规则（user/admin 只看自己的；system_admin 看全部）：
+  - `role != "system_admin"` → 强制校验 `task.UserID == userID`（`run.UserID == userID`），不一致返回 `ErrNotFound`（不泄露资源存在性）；
+  - `system_admin` → 豁免，可访问全部 task/run。
+- 落地：`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 增加 `userID` + `isSystemAdmin` 参数，service 层校验归属，handler 层从 `c.GetString("user_id")` / `c.GetString("role")` 透传。`ListTasks` 同样按此范式（已按 user_id 过滤，补 `isSystemAdmin` 后 system_admin 可看全部）。
 
 ## 7. 可行性分析
 
@@ -253,7 +259,7 @@
    - `rbac_seed.go`：seed 增量补齐——① 空库全量插入（含 2 新权限）；② 存量库仅补齐缺失、不重复插入；③ role_permissions 关联 + permission_count 正确；④ 幂等（二次运行零新增）。
    - **seed 一致性校验**（§5.3 铁律）：断言 `rbac.go` 中所有 `PermXxx` 权限常量在 `perms` 数组中**一一对应**（无「常量定义但未 seed」的遗漏项，也无不存在的常量），保证重新部署不丢权限。
    - `user/service`：`List` 角色过滤（admin 只见 user / system_admin 见全部）。
-   - `task/service`：**归属校验（IDOR 防护）**——`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 传入非 owner `userID` 时返回 `ErrNotFound`（不泄露资源存在性），owner 正常访问。
+   - `task/service`：**归属校验（IDOR 防护）**——`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 传入非 owner `userID` 且非 system_admin 时返回 `ErrNotFound`（不泄露资源存在性）；owner 正常访问；`system_admin` 豁免可访问全部。
    - `routes`：各端点挂权限后，无权限返回 403、有权限放行；`agent:*` 降为 user 后普通用户可访问 `/tasks/*`，无权限（未登录）返回 401。
    - 删除接口：`/auth/register`(POST)、`/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume`、`/agent/tasks*`、`/agent/skills*`、`/tools/api/*` 返回 404。
    - 覆盖率底线见 SPEC-045：L1 100% / L3 98%。
@@ -290,7 +296,7 @@
 
 - [ ] **必须** seed 增量补齐 Success 测试验证：插入条数、缺失补齐、role_permissions 关联、幂等（二次运行零新增）
 - [ ] **必须** 数据隔离测试验证：admin 查询返回结果中不含 admin/system_admin 角色用户
-- [ ] **必须** task 归属校验测试验证：非 owner 访问他人 task/run 返回 `ErrNotFound`（不返回资源内容、不泄露存在性）
+- [ ] **必须** task 归属校验测试验证：非 owner 访问他人 task/run 返回 `ErrNotFound`（不返回资源内容、不泄露存在性）；system_admin 豁免可访问全部
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
 - [ ] **严禁** Success 测试只验证 `err == nil` 而不验证操作的实际结果
 
@@ -307,7 +313,7 @@
 3. 普通用户调用 `/users/*` 返回 403（无 `user:*` 权限）；admin 可访问但列表仅含普通用户（数据隔离）；system_admin 见全部。
 4. 普通用户可定向发通知（`notification:send`），无广播权限则 `/notifications/broadcast` 返回 403；admin 可广播。
 5. `/knowledge/*`、`/artifacts/*`、`/im/feishu/configs/*` 普通用户可访问（`kb:*`/`artifact:*`/`im:*`），无权限返回 403。
-6. `/tasks/*` 普通用户**可访问**（`agent:*` 已降为 user 级），可创建/查看/运行/取消**自己的** task；未登录返回 401；访问他人 task/run 返回 404（IDOR 归属校验）。
+6. `/tasks/*` 普通用户**可访问**（`agent:*` 已降为 user 级），可创建/查看/运行/取消**自己的** task；未登录返回 401；访问他人 task/run 返回 404（IDOR 归属校验）；**system_admin 可访问全部 task/run**（豁免）。
 7. `/dashboard` `/dashboard/trends` 普通用户可访问（`stats:view`），未登录/无权限返回 401/403。
 8. 白名单（refresh/profile/me permissions/change-password）仅 JWT 可访问，不因角色变化受限。
 9. 存量库升级后 `rbac_permissions` 新增 2 个通知权限，`rbac_role_permissions` 关联到 user_role / admin_role；`agent:*`/`sidebar:agent` 的 role 关联从 admin_role 迁到 user_role；全新部署空库 seed 完整插入。
