@@ -34,6 +34,20 @@ test.describe.serial('PASSWORD — SPEC-032', () => {
     }
   });
 
+  // ═══ UI-156: 主页全局改密横幅（SPEC-083，need_change_pw=true 时全局提示）═══
+  test('[UI-156] Pwd — 主页全局改密横幅', async ({ page }) => {
+    await page.goto('/login');
+    await page.locator('[data-testid="login-email-input"]').fill(FRESH.username);
+    await page.locator('[data-testid="login-password-input"]').fill(FRESH.password);
+    await page.locator('[data-testid="login-btn"]').click();
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
+
+    // 登录后主页应显示全局改密横幅（needChangePw=true）
+    await expect(page.locator('[data-testid="change-password-banner"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="change-password-banner"]')).toContainText('初始密码');
+    await expect(page.locator('[data-testid="change-password-banner-btn"]')).toBeVisible();
+  });
+
   // ═══ UI-149: 初始密码横幅通知 ═══
   test('[UI-149] Pwd — 初始密码横幅通知', async ({ page, request }) => {
     // Login fresh user to get token
