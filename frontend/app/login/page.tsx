@@ -19,6 +19,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get('expired') === 'true';
+  const pwdChanged = searchParams.get('pwd_changed') === 'true';
 
   const validateForm = (): boolean => {
     let valid = true;
@@ -84,6 +85,15 @@ function LoginForm() {
             data-testid="login-session-expired-toast"
           >
             登录已过期，请重新登录
+          </div>
+        )}
+
+        {pwdChanged && (
+          <div
+            className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm"
+            data-testid="login-pwd-changed-toast"
+          >
+            密码修改成功，请使用新密码重新登录
           </div>
         )}
 

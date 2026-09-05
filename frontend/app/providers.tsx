@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import NotificationBell from './components/NotificationBell';
 import IdleTimer from './components/IdleTimer';
 import ScrollToTop from './components/ScrollToTop';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import { useAuth } from '@/lib/api';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showForcePwd, setShowForcePwd] = useState(false);
 
   // Close sidebar on route change (mobile UX)
   React.useEffect(() => { setSidebarOpen(false); }, [pathname]);
@@ -71,10 +73,42 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <IdleTimer />
         </div>
         <div className="p-8 pt-4">
+          {/* 首次登录未改密提示横幅（SPEC-083）：后端 need_change_pw=true 时横向提示修改 */}
+          {auth.needChangePw && (
+            <div
+              className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between gap-4 flex-wrap"
+              style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.30)' }}
+              data-testid="change-password-banner"
+            >
+              <span className="text-sm" style={{ color: '#fbbf24' }}>
+                为保障账号安全，请尽快修改初始密码
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowForcePwd(true)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                style={{ background: 'rgba(245,158,11,0.20)', color: '#fbbf24' }}
+                data-testid="change-password-banner-btn"
+              >
+                去修改
+              </button>
+            </div>
+          )}
           {children}
         </div>
       </main>
       <ScrollToTop />
+      {showForcePwd && (
+        <ChangePasswordModal
+          notice="为保障账号安全，请修改初始密码"
+          onClose={() => setShowForcePwd(false)}
+          onSuccess={() => {
+            setShowForcePwd(false);
+            logout();
+            router.push('/login?pwd_changed=true');
+          }}
+        />
+      )}
     </div>
   );
 }

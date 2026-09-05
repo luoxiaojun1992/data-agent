@@ -20,9 +20,11 @@ import {
 export default function ChangePasswordModal({
   onClose,
   onSuccess,
+  notice,
 }: {
   onClose: () => void;
   onSuccess: () => void;
+  notice?: string;
 }) {
   const { apiFetch } = useAuth();
   const [oldPwd, setOldPwd] = useState('');
@@ -63,7 +65,16 @@ export default function ChangePasswordModal({
   return (
     <div style={modalOverlayStyle} data-testid="pwd-modal" onClick={onClose}>
       <div style={modalPanelStyle} onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-5">修改密码</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">修改密码</h3>
+        {notice && (
+          <p
+            data-testid="pwd-modal-notice"
+            className="text-sm mb-4"
+            style={{ color: '#f59e0b' }}
+          >
+            {notice}
+          </p>
+        )}
 
         <div className="mb-4">
           <label style={modalLabelStyle} htmlFor="pwd-modal-old-input">旧密码</label>
