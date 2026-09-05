@@ -767,6 +767,111 @@ func TestCompleteRegistration_VerifyTokenError(t *testing.T) {
 	if err == nil { t.Fatal("expected error from VerifyInviteToken") }
 }
 
+// --- ChangePassword (SPEC-083) ---
+
+func TestChangePassword_Success(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	user := &model.User{ID: "u1", PasswordHash: "$2a$10$oldhash"}
+	repo.On("FindByID", mock.Anything, "u1").Return(user, nil)
+	repo.On("UpdatePassword", mock.Anything, "u1", mock.Anything).Return(nil)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+
+	err := svc.ChangePassword(context.Background(), "u1", "OldPass1", "NewPass1")
+	if err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+	repo.AssertCalled(t, "UpdatePassword", mock.Anything, "u1", "$2a$hashed")
+}
+
+func TestChangePassword_WeakPassword(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "OldPass1", "weak")
+	if err == nil {
+		t.Fatal("expected error for weak password")
+	}
+	if err != ErrPasswordTooWeak {
+		t.Errorf("expected ErrPasswordTooWeak, got %v", err)
+	}
+}
+
+func TestChangePassword_UserNotFound(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	repo.On("FindByID", mock.Anything, "u1").Return((*model.User)(nil), nil)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "OldPass1", "NewPass1")
+	if err == nil {
+		t.Fatal("expected error for missing user")
+	}
+	if err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestChangePassword_WrongOldPassword(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	repo.On("FindByID", mock.Anything, "u1").Return(&model.User{ID: "u1", PasswordHash: "hash"}, nil)
+	svc := newAuthSvc(repo, nil, newPwdErr(), newTokenManagerOK(), nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "WrongOld1", "NewPass1")
+	if err == nil {
+		t.Fatal("expected error for wrong old password")
+	}
+	if err != ErrWrongOldPassword {
+		t.Errorf("expected ErrWrongOldPassword, got %v", err)
+	}
+}
+
+func TestChangePassword_HashError(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	repo.On("FindByID", mock.Anything, "u1").Return(&model.User{ID: "u1", PasswordHash: "hash"}, nil)
+	// pwd.Check succeeds but pwd.Hash fails.
+	pwd := mockPasswordHasher{
+		checkFn: func(_, _ string) error { return nil },
+		hashFn:  func(_ string) (string, error) { return "", errors.New("hash failed") },
+	}
+	svc := newAuthSvc(repo, nil, pwd, newTokenManagerOK(), nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "OldPass1", "NewPass1")
+	if err == nil {
+		t.Fatal("expected error for hash failure")
+	}
+}
+
+func TestChangePassword_UpdateError(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	repo.On("FindByID", mock.Anything, "u1").Return(&model.User{ID: "u1", PasswordHash: "hash"}, nil)
+	repo.On("UpdatePassword", mock.Anything, "u1", mock.Anything).Return(errors.New("update failed"))
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "OldPass1", "NewPass1")
+	if err == nil {
+		t.Fatal("expected error for update failure")
+	}
+}
+
+func TestValidatePasswordComplexity(t *testing.T) {
+	cases := []struct {
+		pw   string
+		want bool
+	}{
+		{"Abc12345", true},
+		{"short", false},
+		{"alllowercase123", false},
+		{"ALLUPPER123", false},
+		{"NoDigitsHere", false},
+		{"Ab1", false}, // too short
+		{"", false},
+		{"Abcdefg1", true}, // exactly 8 chars valid
+		{"12345678", false},
+		{"Abcdefgh", false},
+		{"abcdefg1", false},
+		{"ABCDEFG1", false},
+	}
+	for _, c := range cases {
+		if got := validatePasswordComplexity(c.pw); got != c.want {
+			t.Errorf("validatePasswordComplexity(%q) = %v, want %v", c.pw, got, c.want)
+		}
+	}
+}
+
 // --- ComputeTokenHash ---
 
 func TestComputeTokenHash(t *testing.T) {

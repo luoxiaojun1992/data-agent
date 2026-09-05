@@ -45,6 +45,24 @@ func (_m *AuthService) CompleteRegistration(ctx context.Context, req *auth.Compl
 	return r0, r1
 }
 
+// ChangePassword provides a mock function with given fields: ctx, userID, oldPassword, newPassword
+func (_m *AuthService) ChangePassword(ctx context.Context, userID string, oldPassword string, newPassword string) error {
+	ret := _m.Called(ctx, userID, oldPassword, newPassword)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ChangePassword")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = rf(ctx, userID, oldPassword, newPassword)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // CreateInvite provides a mock function with given fields: ctx, createdBy, req
 func (_m *AuthService) CreateInvite(ctx context.Context, createdBy string, req *auth.CreateInviteRequest) (*auth.CreateInviteResponse, error) {
 	ret := _m.Called(ctx, createdBy, req)

@@ -10,6 +10,10 @@ type AuthService interface {
 	Register(ctx context.Context, req *RegisterRequest) (*RegisterResponse, error)
 	RefreshToken(ctx context.Context, userID, username, role string) (*LoginResponse, error)
 
+	// ChangePassword updates the current user's own password (SPEC-083).
+	// The target user is derived from userID (JWT claim), never from the request body.
+	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
+
 	// Invite methods
 	IsInviteEnabled() bool
 	CreateInvite(ctx context.Context, createdBy string, req *CreateInviteRequest) (*CreateInviteResponse, error)

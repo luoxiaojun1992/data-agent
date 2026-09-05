@@ -1087,3 +1087,98 @@ func TestCompleteRegistration_MissingToken(t *testing.T) {
 		t.Errorf("expected 400 for missing token, got %d", w.Code)
 	}
 }
+
+// ── ChangePassword Tests (SPEC-083) ──
+
+func TestChangePassword_Success(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	svc.On("ChangePassword", mock.Anything, "user123", "OldPass1", "NewPass1").Return(nil)
+
+	body := `{"old_password":"OldPass1","new_password":"NewPass1"}`
+	c, w := newGinContext("POST", "/auth/change-password", body)
+	c.Set("user_id", "user123")
+	h.ChangePassword(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChangePassword_InvalidBody(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	c, w := newGinContext("POST", "/auth/change-password", "not-json")
+	c.Set("user_id", "user123")
+	h.ChangePassword(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestChangePassword_WeakPassword(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	svc.On("ChangePassword", mock.Anything, "user123", "OldPass1", "weak").Return(authsvc.ErrPasswordTooWeak)
+
+	body := `{"old_password":"OldPass1","new_password":"weak"}`
+	c, w := newGinContext("POST", "/auth/change-password", body)
+	c.Set("user_id", "user123")
+	h.ChangePassword(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for weak password, got %d", w.Code)
+	}
+}
+
+func TestChangePassword_UserNotFound(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	svc.On("ChangePassword", mock.Anything, "user123", "OldPass1", "NewPass1").Return(authsvc.ErrUserNotFound)
+
+	body := `{"old_password":"OldPass1","new_password":"NewPass1"}`
+	c, w := newGinContext("POST", "/auth/change-password", body)
+	c.Set("user_id", "user123")
+	h.ChangePassword(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for missing user, got %d", w.Code)
+	}
+}
+
+func TestChangePassword_WrongOldPassword(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	svc.On("ChangePassword", mock.Anything, "user123", "WrongOld1", "NewPass1").Return(authsvc.ErrWrongOldPassword)
+
+	body := `{"old_password":"WrongOld1","new_password":"NewPass1"}`
+	c, w := newGinContext("POST", "/auth/change-password", body)
+	c.Set("user_id", "user123")
+	h.ChangePassword(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for wrong old password, got %d", w.Code)
+	}
+}
+
+func TestChangePassword_InternalError(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	svc.On("ChangePassword", mock.Anything, "user123", "OldPass1", "NewPass1").Return(fmt.Errorf("db down"))
+
+	body := `{"old_password":"OldPass1","new_password":"NewPass1"}`
+	c, w := newGinContext("POST", "/auth/change-password", body)
+	c.Set("user_id", "user123")
+	h.ChangePassword(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 for internal error, got %d", w.Code)
+	}
+}

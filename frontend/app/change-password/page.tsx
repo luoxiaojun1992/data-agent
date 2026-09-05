@@ -27,7 +27,7 @@ export default function ChangePasswordPage() {
     }
 
     try {
-      const res = await apiFetch('/change-password', {
+      const res = await apiFetch('/auth/change-password', {
         method: 'POST',
         body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
       });

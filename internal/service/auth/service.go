@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -10,6 +11,14 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
+)
+
+// Sentinel errors for ChangePassword (SPEC-083), allowing the handler to map
+// each failure to the correct HTTP status without inspecting message strings.
+var (
+	ErrPasswordTooWeak  = errors.New("password must be at least 8 chars with upper, lower and digit")
+	ErrUserNotFound     = errors.New("user not found")
+	ErrWrongOldPassword = errors.New("old password incorrect")
 )
 
 // ConfigCache is the minimal config read interface needed by auth Service.
@@ -185,6 +194,56 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*Register
 		Role:     string(user.Role),
 		Message:  "Registration successful. You can now log in.",
 	}, nil
+}
+
+// ChangePassword updates the current user's own password (SPEC-083).
+// The target user is always userID (derived from the JWT claim), never from any
+// request-body field — this is what makes "each user can only change their own
+// password" structurally enforced rather than a convention.
+//
+// Order: complexity check → resolve user → verify old password → hash new → persist.
+func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	if !validatePasswordComplexity(newPassword) {
+		return ErrPasswordTooWeak
+	}
+
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return ErrUserNotFound
+	}
+
+	if err := s.pwd.Check(user.PasswordHash, oldPassword); err != nil {
+		return ErrWrongOldPassword
+	}
+
+	newHash, err := s.pwd.Hash(newPassword)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+
+	if err := s.userRepo.UpdatePassword(ctx, userID, newHash); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
+	return nil
+}
+
+// validatePasswordComplexity enforces ≥8 chars with at least one upper, one
+// lower and one digit. Migrated from the old ConfigHandler (SPEC-083) so the
+// rule lives with the auth domain and is unit-testable without a Gin context.
+func validatePasswordComplexity(pw string) bool {
+	hasUpper, hasLower, hasDigit := false, false, false
+	for _, c := range pw {
+		switch {
+		case c >= 'A' && c <= 'Z':
+			hasUpper = true
+		case c >= 'a' && c <= 'z':
+			hasLower = true
+		case c >= '0' && c <= '9':
+			hasDigit = true
+		}
+	}
+	return len(pw) >= 8 && hasUpper && hasLower && hasDigit
 }
 
 // RefreshToken generates a new token for an existing authenticated user.

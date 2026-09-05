@@ -83,7 +83,7 @@ test.describe.serial('PASSWORD — SPEC-032', () => {
     const token = (await loginRes.json()).access_token;
 
     // Change password via API
-    const res = await request.post(`${API_BASE}/change-password`, {
+    const res = await request.post(`${API_BASE}/auth/change-password`, {
       data: { old_password: FRESH.password, new_password: 'ComplexPass1' },
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
@@ -106,7 +106,7 @@ test.describe.serial('PASSWORD — SPEC-032', () => {
     const token = (await loginRes.json()).access_token;
 
     // Direct API test for wrong old password
-    const res = await request.post(`${API_BASE}/change-password`, {
+    const res = await request.post(`${API_BASE}/auth/change-password`, {
       data: { old_password: 'WrongPassword', new_password: 'NewPass1' },
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
@@ -159,7 +159,7 @@ test.describe.serial('PASSWORD — SPEC-032', () => {
     const token = (await loginRes.json()).access_token;
 
     // Verify user can change their own password via API
-    const res = await request.post(`${API_BASE}/change-password`, {
+    const res = await request.post(`${API_BASE}/auth/change-password`, {
       data: { old_password: USER.password, new_password: 'NewUserPass1' },
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
