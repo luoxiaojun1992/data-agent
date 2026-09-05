@@ -73,8 +73,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <IdleTimer />
         </div>
         <div className="p-8 pt-4">
-          {/* 首次登录未改密提示横幅（SPEC-083）：后端 need_change_pw=true 时横向提示修改 */}
-          {auth.needChangePw && (
+          {/* 首次登录未改密提示横幅（SPEC-083）：后端 need_change_pw=true 时横向提示修改。
+              遗留 /change-password 页已自带 pwd-initial-banner，此处跳过避免重复。 */}
+          {auth.needChangePw && pathname !== '/change-password' && (
             <div
               className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between gap-4 flex-wrap"
               style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.30)' }}
