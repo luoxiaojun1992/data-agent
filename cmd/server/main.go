@@ -48,6 +48,7 @@ import (
 	enhancesvc "github.com/luoxiaojun1992/data-agent/internal/service/enhance"
 	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
+	"github.com/luoxiaojun1992/data-agent/internal/service/humanchannel"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
@@ -99,6 +100,11 @@ type serverDependencies struct {
 	chatService    *chat.Service
 	secAuditor     *security.Auditor
 	cbRegistry     *security.CircuitBreakerRegistry
+	// SPEC-089: human-in-the-loop channel (confirm/ask). hub coordinates the
+	// session-scoped SSE subscribers; gate is the blocking interface injected
+	// into the file_delete / dir_delete / ask_user tools.
+	humanHub  *humanchannel.Hub
+	humanGate humanchannel.Gate
 	piiRedactor    *pii.PIIRedactor
 	piiEnabled     func() bool
 	llmRecorder    *llmstats.Recorder

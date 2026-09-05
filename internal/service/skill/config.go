@@ -168,6 +168,13 @@ func predefinedSkills() []skill.SkillConfig {
 			ConfigJSON:  "{}",
 		},
 		{
+			Name:        "ask_user",
+			DisplayName: "用户提问",
+			Description: "通过人机交互信道向用户提问（可带候选选项），阻塞等待用户回复后继续（选项或自由文本）",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
 			Name:        "web_search",
 			DisplayName: "联网搜索",
 			Description: "通过 Bing/Baidu API 进行联网搜索。需在 Config 中配置 bing_api_key 或 baidu_api_key，未配置时降级返回空结果",

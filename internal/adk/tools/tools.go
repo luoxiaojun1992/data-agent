@@ -69,6 +69,22 @@ type Deps struct {
 	VecCol string
 	// Counter backs the task_completed埋点 (SPEC-072). Nil → no-op.
 	Counter metrics.Counter
+	// HumanGate backs the human-in-the-loop confirm/ask interactions
+	// (SPEC-089). Nil → file_delete/dir_delete run directly (compat) and
+	// ask_user returns an explanatory error.
+	HumanGate HumanGate
+}
+
+// HumanGate is the blocking human-interaction interface consumed by the
+// file_delete / dir_delete / ask_user tools. The concrete implementation lives
+// in internal/service/humanchannel and is injected via wire.
+type HumanGate interface {
+	// Confirm blocks until the user confirms (true) or denies (false) the
+	// pending action. A missing channel/subscriber, cancellation, or timeout
+	// resolves to false (never perform the action).
+	Confirm(ctx context.Context, sessionID, hint string) (bool, error)
+	// Ask blocks until the user answers the question (an option or free text).
+	Ask(ctx context.Context, sessionID, question string, options []string) (string, error)
 }
 
 // MemoryWriter writes content to long-term memory on agent request.
@@ -603,6 +619,15 @@ func specs(deps *Deps) []toolSpec {
 			},
 		})
 	}
+	if deps.HumanGate != nil {
+		out = append(out, toolSpec{
+			name:        "ask_user",
+			description: "Asks the user a question (optionally with candidate answer choices) and returns the user's answer. Use this when you need clarification or a decision from the user before proceeding. The user may pick one of the provided options or type free text.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "ask_user", Description: "Asks the user a question (optionally with candidate answer choices) and returns the user's answer. Use this when you need clarification or a decision from the user before proceeding. The user may pick one of the provided options or type free text."}, askUser(deps))
+			},
+		})
+	}
 	if deps.SessionSvc != nil {
 		out = append(out, toolSpec{
 			name:        "pptx_generator",
@@ -1026,6 +1051,18 @@ func fileDelete(deps *Deps) functiontool.Func[FileDeleteArgs, FileDeleteResult] 
 		if err != nil {
 			return FileDeleteResult{}, err
 		}
+		// SPEC-089: ask the user before deleting. A missing channel/subscriber
+		// (autonomous task mode) or a "deny" answer aborts the delete.
+		if deps.HumanGate != nil {
+			sessionID := stateString(tc, "session_id")
+			ok, gErr := deps.HumanGate.Confirm(tc, sessionID, fmt.Sprintf("删除文件 %q？", args.Path))
+			if gErr != nil {
+				return FileDeleteResult{}, fmt.Errorf("file_delete: 授权失败: %w", gErr)
+			}
+			if !ok {
+				return FileDeleteResult{}, fmt.Errorf("file_delete: 用户拒绝删除 %q", args.Path)
+			}
+		}
 		if err := fsops.RemoveFile(ws, args.Path); err != nil {
 			return FileDeleteResult{}, fmt.Errorf("file_delete: %w", err)
 		}
@@ -1054,10 +1091,58 @@ func dirDelete(deps *Deps) functiontool.Func[DirDeleteArgs, DirDeleteResult] {
 		if err != nil {
 			return DirDeleteResult{}, err
 		}
+		// SPEC-089: ask the user before recursively deleting. A missing
+		// channel/subscriber (autonomous task mode) or "deny" aborts.
+		if deps.HumanGate != nil {
+			sessionID := stateString(tc, "session_id")
+			ok, gErr := deps.HumanGate.Confirm(tc, sessionID, fmt.Sprintf("递归删除目录 %q（含其全部子目录和文件）？", args.Path))
+			if gErr != nil {
+				return DirDeleteResult{}, fmt.Errorf("dir_delete: 授权失败: %w", gErr)
+			}
+			if !ok {
+				return DirDeleteResult{}, fmt.Errorf("dir_delete: 用户拒绝删除 %q", args.Path)
+			}
+		}
 		if err := fsops.RemoveDir(ws, args.Path); err != nil {
 			return DirDeleteResult{}, fmt.Errorf("dir_delete: %w", err)
 		}
 		return DirDeleteResult{Path: args.Path}, nil
+	}
+}
+
+// ---- ask_user ----
+
+// AskUserArgs are the arguments for the ask_user tool.
+type AskUserArgs struct {
+	Question string   `json:"question" jsonschema:"The question to ask the user."`
+	Options  []string `json:"options,omitempty" jsonschema:"Optional candidate answers to present (max 10)."`
+}
+
+// AskUserResult is the outcome of ask_user.
+type AskUserResult struct {
+	Answer string `json:"answer"`
+}
+
+func askUser(deps *Deps) functiontool.Func[AskUserArgs, AskUserResult] {
+	return func(tc agent.ToolContext, args AskUserArgs) (AskUserResult, error) {
+		if strings.TrimSpace(args.Question) == "" {
+			return AskUserResult{}, fmt.Errorf("ask_user: missing required parameter 'question'")
+		}
+		if deps.HumanGate == nil {
+			return AskUserResult{}, fmt.Errorf("ask_user: human channel not configured")
+		}
+		if len(args.Options) > 10 {
+			return AskUserResult{}, fmt.Errorf("ask_user: 'options' must have at most 10 entries")
+		}
+		sessionID := stateString(tc, "session_id")
+		if sessionID == "" {
+			return AskUserResult{}, fmt.Errorf("ask_user: session context not available")
+		}
+		answer, err := deps.HumanGate.Ask(tc, sessionID, args.Question, args.Options)
+		if err != nil {
+			return AskUserResult{}, fmt.Errorf("ask_user: %w", err)
+		}
+		return AskUserResult{Answer: answer}, nil
 	}
 }
 

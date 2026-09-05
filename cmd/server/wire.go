@@ -51,6 +51,7 @@ import (
 	enhancesvc "github.com/luoxiaojun1992/data-agent/internal/service/enhance"
 	feishu_svc "github.com/luoxiaojun1992/data-agent/internal/service/feishu"
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
+	"github.com/luoxiaojun1992/data-agent/internal/service/humanchannel"
 	"github.com/luoxiaojun1992/data-agent/internal/service/im"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/service/monitor"
@@ -303,6 +304,13 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 
 	deps.apiCollectionSvc = apicollectionsvc.NewService(mongo.NewAPICollectionRepo(deps.mongoClient.DB()))
 
+	// SPEC-089: human-in-the-loop channel. The hub is shared by the SSE handler
+	// and the blocking gate; the gate is injected into the file_delete /
+	// dir_delete / ask_user tools. Timeout defaults to 5 minutes (deny on
+	// timeout).
+	deps.humanHub = humanchannel.NewHub()
+	deps.humanGate = humanchannel.NewGate(deps.humanHub, 0)
+
 	toolDeps := &adktools.Deps{
 		KBService:      deps.kbService,
 		SkillConfig:    deps.skillConfigSvc,
@@ -320,6 +328,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		EmbedFunc:  deps.kbEmbedFn,
 		VecCol:     "kb_chunks",
 		Counter:    deps.metricsCounter,
+		HumanGate:  deps.humanGate,
 	}
 	tools, err := adktools.All(toolDeps)
 	if err != nil {
@@ -708,6 +717,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 			Tasks:        deps.taskService,
 			SessionSvc:   deps.sessionManager,
 			Artifacts:    deps.artifactStorage,
+			HumanGate:    deps.humanGate,
 		})
 		if err != nil {
 			return []string{}
@@ -726,6 +736,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		SysConfig:      handler.NewConfigHandler(cfgSvc, deps.userRepo),
 		Memory:         handler.NewMemoryHandler(deps.memoryService, deps.memoryKit.Storage(), appName, deps.userRepo, deps.sessionRepo),
 		Chat:           handler.NewChatHandler(deps.chatService),
+		HumanChannel:   handler.NewHumanChannelHandler(deps.humanHub, deps.sessionManager),
 		Enhance:        handler.NewEnhanceHandler(deps.enhanceService),
 		Agent:          handler.NewAgentHandler(deps.orchestrator, deps.taskService, toolLister),
 		Session:        handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),

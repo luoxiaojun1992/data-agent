@@ -28,6 +28,7 @@ type RouteDeps struct {
 	SysConfig     *ConfigHandler
 	Memory        *MemoryHandler
 	Chat          *ChatHandler
+	HumanChannel  *HumanChannelHandler
 	Enhance       *EnhanceHandler
 	Agent         *AgentHandler
 	Session       *SessionHandler
@@ -161,6 +162,11 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 		RegisterChatRoutes(chatRoutes, deps.Chat)
 		if deps.Enhance != nil {
 			RegisterEnhanceRoute(chatRoutes, deps.Enhance)
+		}
+		if deps.HumanChannel != nil {
+			// SPEC-089: human-in-the-loop channel shares the chat permission
+			// (ordinary users) — no extra RBAC beyond the group middleware.
+			RegisterHumanChannelRoutes(chatRoutes, deps.HumanChannel)
 		}
 	}
 

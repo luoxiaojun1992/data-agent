@@ -8,6 +8,7 @@ import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, ty
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
+import HumanChannelDialog, { type HumanChannelEvent, type HumanChannelReply } from '../components/HumanChannelDialog';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -145,6 +146,8 @@ export default function ChatPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [attachError, setAttachError] = useState('');
+  // SPEC-089: human-in-the-loop prompt (confirm/ask) from the human-channel SSE.
+  const [humanEvent, setHumanEvent] = useState<HumanChannelEvent | null>(null);
   const pendingEventsRef = useRef<WireChatEvent[]>([]);
   const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -213,6 +216,68 @@ export default function ChatPage() {
       setSessionsTotal(data.total || 0);
     } catch { /* ignore */ }
   }, [sessionsPage, debouncedSessionSearch, auth.token]);
+
+  // SPEC-089: reply to the active human-channel prompt, then clear it.
+  const replyHuman = useCallback(async (reply: HumanChannelReply) => {
+    const ev = humanEvent;
+    setHumanEvent(null);
+    if (!ev || !sessionId || !auth.token) return;
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+      await fetch(`${base}/chat/${sessionId}/human-channel/${ev.request_id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify(reply),
+      });
+    } catch (e) {
+      console.error('[chat] replyHuman failed:', e);
+    }
+  }, [humanEvent, sessionId, auth.token]);
+
+  // SPEC-089: open the human-channel SSE for the active session and surface
+  // confirm/ask prompts. Closed (and re-established) with the session.
+  useEffect(() => {
+    if (!auth.token || !sessionId) {
+      setHumanEvent(null);
+      return;
+    }
+    const controller = new AbortController();
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+
+    const connect = async () => {
+      try {
+        const res = await fetch(`${base}/chat/${sessionId}/human-channel`, {
+          headers: { Authorization: `Bearer ${auth.token}` },
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (!data) continue;
+            try {
+              const ev = JSON.parse(data) as HumanChannelEvent;
+              if (ev.type === 'confirm' || ev.type === 'ask') setHumanEvent(ev);
+            } catch { /* ignore heartbeat / malformed */ }
+          }
+        }
+      } catch {
+        // Aborted on unmount / session switch / network drop — safe to ignore.
+      }
+    };
+
+    connect();
+    return () => controller.abort();
+  }, [auth.token, sessionId]);
 
   // 会话搜索防抖（SPEC-075：后端化）。
   useEffect(() => {
@@ -813,6 +878,11 @@ export default function ChatPage() {
           </div>
         )}
       </div>
+
+      {/* SPEC-089: human-in-the-loop confirm/ask dialog (glass, matches app modals) */}
+      {humanEvent && (
+        <HumanChannelDialog event={humanEvent} onReply={replyHuman} />
+      )}
     </AppLayout>
   );
 }
