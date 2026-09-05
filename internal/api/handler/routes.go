@@ -231,9 +231,11 @@ func registerAuthProtected(api *gin.RouterGroup, authHandler *AuthHandler) {
 	if authHandler != nil {
 		api.POST("/auth/refresh", authHandler.RefreshToken)
 		api.GET("/auth/profile", authHandler.GetProfile)
+		api.POST("/auth/change-password", authHandler.ChangePassword)
 	} else {
 		api.POST("/auth/refresh", DBUnavailable)
 		api.GET("/auth/profile", DBUnavailable)
+		api.POST("/auth/change-password", DBUnavailable)
 	}
 }
 

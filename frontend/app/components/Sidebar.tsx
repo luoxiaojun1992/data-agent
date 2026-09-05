@@ -15,7 +15,7 @@ interface SidebarProps {
   onCollapseToggle?: () => void;
 }
 
-const navItems = [
+const navItems: { perm?: string; href: string; label: string; icon: string; testid: string }[] = [
   { perm: 'sidebar:dashboard',
     href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard' },
   { perm: 'sidebar:chat',
@@ -31,17 +31,20 @@ const navItems = [
   { perm: 'sidebar:im',
     href: '/im', label: 'IM 集成', icon: '🗨️', testid: 'nav-im' },
   { perm: 'sidebar:memory',
-    href: '/memory', label: 'Memory 检索', icon: '🧠',
+    href: '/memory', label: 'Memory 检索', icon: '🧠', testid: 'nav-memory',
   },
   { perm: 'sidebar:admin',
     href: '/admin', label: '管理后台', icon: '🛠', testid: 'nav-admin' },
+  // 用户中心：对所有登录用户无条件可见（SPEC-083，无 perm 字段）。
+  { href: '/profile', label: '用户中心', icon: '👤', testid: 'nav-profile' },
 ];
 
 export default function Sidebar({ username, role, onLogout, onToggle, collapsed, onCollapseToggle }: SidebarProps) {
   const pathname = usePathname();
   const { canAccess } = useAuth();
 
-  const visibleItems = navItems.filter(item => canAccess(item.perm));
+  // Items without a perm field (用户中心) are always visible (SPEC-083).
+  const visibleItems = navItems.filter(item => !item.perm || canAccess(item.perm));
 
   return (
     <aside className={`${collapsed ? 'w-16' : 'w-60'} h-screen flex flex-col border-r border-[var(--border-glass)] bg-[var(--bg-secondary)] z-50 transition-all duration-300`} data-testid="sidebar">

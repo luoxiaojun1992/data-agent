@@ -733,7 +733,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		RBAC:           handler.NewRBACHandler(rbacSvc),
 		RBACService:    rbacSvc,
 		ModelConfig:    handler.NewModelConfigHandler(cfgSvc, deps.modelCfg),
-		SysConfig:      handler.NewConfigHandler(cfgSvc, deps.userRepo),
+		SysConfig:      handler.NewConfigHandler(cfgSvc),
 		Memory:         handler.NewMemoryHandler(deps.memoryService, deps.memoryKit.Storage(), appName, deps.userRepo, deps.sessionRepo),
 		Chat:           handler.NewChatHandler(deps.chatService),
 		HumanChannel:   handler.NewHumanChannelHandler(deps.humanHub, deps.sessionManager),

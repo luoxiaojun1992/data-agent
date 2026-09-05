@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -80,6 +81,39 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// ChangePassword updates the current user's own password (SPEC-083).
+// The target user is taken solely from the JWT claim (c.Get("user_id")),
+// never from a request-body field — structurally preventing any user from
+// changing another user's password.
+// POST /api/v1/auth/change-password
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	userIDStr, _ := userID.(string)
+
+	var req struct {
+		OldPassword string `json:"old_password" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码和新密码不能为空"})
+		return
+	}
+
+	err := h.authService.ChangePassword(c.Request.Context(), userIDStr, req.OldPassword, req.NewPassword)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+	case errors.Is(err, authsvc.ErrPasswordTooWeak):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 8 位，需包含大小写字母和数字"})
+	case errors.Is(err, authsvc.ErrUserNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+	case errors.Is(err, authsvc.ErrWrongOldPassword):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码不正确"})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
 }
 
 // GetProfile returns the current user's profile.
