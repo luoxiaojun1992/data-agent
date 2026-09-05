@@ -262,7 +262,9 @@ func handleFunctionCall(w http.ResponseWriter, msg *ChatMessage, model string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
-	log.Printf("[DEBUG] function_call response: name=%s", msg.FunctionCall.Name)
+	if len(msg.ToolCalls) > 0 {
+		log.Printf("[DEBUG] function_call response: name=%s", msg.ToolCalls[0].Function.Name)
+	}
 }
 
 // handleStreamFunctionCall sends tool_calls in SSE delta format.
