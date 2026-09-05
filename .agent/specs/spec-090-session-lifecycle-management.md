@@ -4,9 +4,9 @@
 
 ## 1. 目标
 
-规范化 session 的生命周期管理，补齐三个缺失能力并修正现有软删除的语义缺陷：
+规范化 session 的生命周期管理，补齐三个缺失能力并规范生命周期语义：
 
-1. **归档（软删除）**：仅标记 `deleted_at`，可恢复，**保留** workspace 与 chat history。
+1. **归档（软删除）**：标记 `deleted_at`（含 TTL），可恢复；**删除** workspace（易失资源，归档即释放），**保留** chat history。
 2. **删除（硬删除）**：彻底移除 session，同时删除 workspace 与 chat history（compacted `events` + raw `session_events`），但**不删** artifact / memory 等永久产物。
 3. **清空聊天历史**：只清除 chat history（compacted + raw），**保留** session 文档与 workspace。
 4. **永久产物隔离**：任何 session 删除操作都不得级联删除 artifact、memory（二者虽绑定 `session_id`，但已脱离 session 独立存在，是跨会话可复用的永久产物）。
@@ -25,9 +25,9 @@
 
 ## 2. 背景（现有实现不足）
 
-当前 session 生命周期存在四处问题：
+当前 session 生命周期存在三处缺陷 + 一处语义需澄清：
 
-1. **软删除语义缺陷**：`service/chat/session.go` 的 `Manager.Delete` 先 `removeWorkspace(id)` 再 `repo.Delete`（软删 `$set deleted_at`）。归档后 workspace 被删，`Restore` 恢复的 session 丢失工作区文件，恢复不完整。
+1. **归档 workspace 语义澄清**：`Manager.Delete` 先 `removeWorkspace(id)` 再软删——这是**正确**的：workspace 是易失资源，归档即释放；且归档 session 带 TTL，到期 mongo 自动删 session 文档后，若 workspace 保留会成孤儿目录。`Restore` 恢复后 workspace 为空工作区（文件不回滚），属预期行为。
 2. **无硬删除能力**：`Cleanup`（过期清理，`repo.Cleanup` → `DeleteMany expires_at < now`）只删 `sessions` 文档，不级联删 `adk_sessions` / `session_events` / workspace，产生孤儿数据。
 3. **无清空聊天历史能力**：用户无法单独清除对话记录而保留 session 与 workspace。
 4. **缺归属校验**：`SessionHandler` 的 `Get` / `Delete` / `Restore` 直接 `mgr.xxx(c.Param("id"))`，未校验 session 是否属于当前用户（IDOR 隐患，与 SPEC-084 的 IDOR 归属校验同源）。
@@ -51,8 +51,8 @@
 
 | 操作 | session 文档 | workspace | compacted(events) | raw(session_events) | artifact | memory | 子 session |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **归档（软删除）** | 标 `deleted_at` | 保留 | 保留 | 保留 | 保留 | 保留 | 保留 |
-| **恢复** | `$unset deleted_at` | 保留 | 保留 | 保留 | 保留 | 保留 | 保留 |
+| **归档（软删除）** | 标 `deleted_at` + TTL | **删** | 保留 | 保留 | 保留 | 保留 | 保留 |
+| **恢复** | `$unset deleted_at` | 不恢复（空工作区）| 保留 | 保留 | 保留 | 保留 | 保留 |
 | **删除（硬删除）** | 硬删 | 删 | 删 | 删 | 保留 | 保留 | 删（级联）|
 | **清空聊天历史** | 保留 | 保留 | 清空 | 清空 | 保留 | 保留 | 不涉及 |
 | **过期清理（Cleanup）** | 硬删 | 删 | 删 | 删 | 保留 | 保留 | 删（级联）|
@@ -61,7 +61,7 @@
 
 ### 3.3 与现有代码的关系
 
-- **归档** = 修正现有 `Manager.Delete`：去掉 `removeWorkspace` 调用，纯软删。
+- **归档** = 保持现有 `Manager.Delete` 语义（先删 workspace 再软删，正确），仅补 TTL 与归属校验。
 - **删除（硬删）** = 新增 `Manager.HardDelete`：编排 `repo.HardDelete`（物理删 `sessions`）+ `removeWorkspace` + `adkSessions.Delete`（硬删 `adk_sessions` + 级联删 `session_events` + 子 session）。
 - **清空历史** = 新增 `Manager.ClearHistory`：编排 `adkSessions.ClearHistory`（清空 `events` + `session_events`，保留 `adk_sessions` 文档与 `state`）。
 - **过期清理** = 增强 `Manager.Cleanup`：先 `List` 出过期 session ID，逐个级联删（复用 `HardDelete` 的级联路径）。
@@ -70,13 +70,13 @@
 
 | Method | Path | Description | 权限 | 归属校验 |
 |--------|------|-------------|------|:---:|
-| DELETE | `/api/v1/sessions/:id` | 归档（软删除），保留 workspace + chat history | `chat:delete` | ✅ |
+| DELETE | `/api/v1/sessions/:id` | 归档（软删除），删除 workspace、保留 chat history | `chat:delete` | ✅ |
 | POST | `/api/v1/sessions/:id/restore` | 恢复归档 session | `chat:view` | ✅ |
 | GET | `/api/v1/sessions/deleted` | 列归档 session（恢复窗口） | `chat:view` | ✅（按 user 过滤）|
 | **DELETE** | **`/api/v1/sessions/:id/history`** | **清空聊天历史**（compacted + raw），保留 session + workspace | `chat:delete` | ✅ |
 | **DELETE** | **`/api/v1/sessions/:id?permanent=true`** | **硬删除**（session + workspace + chat history + 子 session），保留 artifact/memory | `chat:delete` | ✅ |
 
-> D1 决策点：硬删除采用 query 参数 `permanent=true` 复用现有 DELETE 路由（避免新增路由 + 权限挂载复杂度），语义清晰且幂等。备选：`DELETE /api/v1/sessions/:id/forever`。默认推荐 query 参数方案。
+> D1（已拍板）：硬删除采用 query 参数 `permanent=true` 复用现有 DELETE 路由，语义清晰且幂等。
 
 ### 4.1 响应
 
@@ -92,7 +92,8 @@
 ```
 DELETE /sessions/:id
   → verifyOwnership(session.user_id)
-  → repo.Delete(id)  // $set deleted_at（不再删 workspace）
+  → removeWorkspace(id)   // 释放易失工作区（TTL 到期 session 自动删，避免 workspace 孤儿目录）
+  → repo.Delete(id)       // $set deleted_at + TTL
   → 200
 ```
 
@@ -153,7 +154,7 @@ HardDelete(ctx context.Context, id string) error // DeleteOne sessions 文档
 
 #### 5.2.3 `internal/service/chat`（chat.Manager）
 
-- 修正 `Delete`：去掉 `removeWorkspace`，纯软删。
+- `Delete` 保持现状（先删 workspace 再软删，正确，无需修改）。
 - 新增 `HardDelete(id string) error`：编排 `repo.HardDelete` + `removeWorkspace` + `adkSessions.Delete`。
 - 新增 `ClearHistory(id string) error`：编排 `adkSessions.ClearHistory`。
 - 增强 `Cleanup()`：级联清理过期 session 的 workspace + chat history。
@@ -210,7 +211,7 @@ type SessionHistoryStore interface {
 | `internal/adk/session/mongo_test.go` | `ClearHistory` 单测 | Medium |
 | `internal/repository/session.go` | 接口新增 `HardDelete` | Small |
 | `internal/infra/mongo/session_repository.go` | 实现 `HardDelete`（物理删）| Small |
-| `internal/service/chat/session.go` | 修正 `Delete`、新增 `HardDelete`/`ClearHistory`、增强 `Cleanup`、修复 `recordToSession` | Large |
+| `internal/service/chat/session.go` | `Delete` 保持现状、新增 `HardDelete`/`ClearHistory`、增强 `Cleanup`、修复 `recordToSession` | Large |
 | `internal/domain/chat/contract.go` | 新增 `SessionHistoryStore` 窄接口 + `SessionService` 接口扩展 | Medium |
 | `internal/api/handler/session.go` | `Delete` 支持 permanent、新增 `ClearHistory`、补归属校验 | Medium |
 | `internal/api/handler/session_test.go` | 新增 handler 单测 | Medium |
@@ -266,17 +267,19 @@ type SessionHistoryStore interface {
 
 ## 10. 验证标准
 
-- [ ] 归档后 session 不出现在列表，`GET /sessions/deleted` 可见，恢复后 workspace 文件仍在（当前 bug 已修复）
+- [ ] 归档后 session 不出现在列表，`GET /sessions/deleted` 可见，workspace 已释放（目录被删）；恢复后 session 可用、workspace 为空工作区（文件不回滚，属预期）
 - [ ] 硬删除后 `sessions` / `adk_sessions` / `session_events` / workspace 四者全部消失，`artifacts` / `memories` 记录仍在
 - [ ] 清空历史后 `adk_sessions.events` 与 `session_events` 为空，session 与 workspace 保留，下一轮对话从空白上下文开始
 - [ ] 跨用户删除/清空/恢复返回 403，system_admin 豁免 200
 - [ ] 过期清理不再产生孤儿 workspace / adk_sessions / session_events
 
-## 待拍板决策点（D1-D4）
+## 决策结果（D1-D4，已拍板）
 
-| 决策点 | 内容 | 推荐值 |
+| 决策点 | 内容 | 最终确定 |
 |--------|------|--------|
-| D1 | 硬删除 API 形态 | `DELETE /sessions/:id?permanent=true`（复用路由）|
-| D2 | 清空历史后是否保留 compaction summary | 不保留（events 整体清空，从空白上下文重来）|
-| D3 | 归档是否保留 workspace | 保留（软删可完整恢复；修正现有删 workspace 的 bug）|
-| D4 | 过期清理（Cleanup）是否纳入本次级联修复 | 纳入（一并修复孤儿数据）|
+| D1 | 硬删除 API 形态 | `DELETE /sessions/:id?permanent=true`（复用路由）✅ |
+| D2 | 清空历史后是否保留 compaction summary | 不保留（events 整体清空，从空白上下文重来）✅ |
+| D3 | 归档是否保留 workspace | **不保留**（删 workspace；归档 session 带 TTL，mongo 到期自动删 session 后 workspace 会成孤儿目录）✅ |
+| D4 | 过期清理（Cleanup）是否纳入本次级联修复 | 纳入（一并修复孤儿数据）✅ |
+
+> D3 说明：归档时删除 workspace 是**正确**行为——workspace 属易失资源，且归档 session 带 TTL 到期自动删除后，若 workspace 保留会成孤儿目录。`Restore` 仅恢复 session 文档 + chat history，workspace 不回滚（空工作区）。
