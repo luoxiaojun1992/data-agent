@@ -1,6 +1,6 @@
 # LLM 人机交互独立信道（Human Channel）：工具授权 + 用户提问
 
-> **SPEC-089** | Status: 设计中
+> **SPEC-089** | Status: 已实现
 
 ## 1. 目标
 
