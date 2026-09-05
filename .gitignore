@@ -64,3 +64,4 @@ mockllm/mockllm
 # 本地回归/冒烟脚本（含测试服务器凭据或隧道地址，禁 push，统一通配忽略）
 tests/ui/smoke-*.mjs
 tests/ui/*-verify.mjs
+tests/*_e2e.py
