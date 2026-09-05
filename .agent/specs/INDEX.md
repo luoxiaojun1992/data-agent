@@ -411,5 +411,6 @@ SPEC-006│               │
 | 13 | SPEC-086 | 📐 Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据 |
 | 13.5 | SPEC-087 | 📐 Task 相关 skills（task_create/run_list/run_detail） | 独立可插队；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据 |
 | 13.6 | SPEC-088 | 📐 会话空闲超时配置化 | 独立可插队；新增 SESSION_IDLE_TIMEOUT 系统配置 + 登录响应下发 idle_timeout_minutes + 前端 IdleTimer 读 localStorage；复用 system_configs seed 机制 |
+| 13.7 | SPEC-089 | 📐 LLM 人机交互独立信道（Human Channel） | 独立可插队；独立 SSE 信道（confirm 授权 + ask 提问）；file_delete/dir_delete 挂授权 + ask_user 新 skill；前端弹窗复用 .glass；RBAC 同 chat（PermChatView）+ session 归属 + system_admin 豁免 |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
