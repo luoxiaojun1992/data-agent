@@ -37,6 +37,14 @@ export const ADMIN_MENU_PERMS = {
   apiCollections: 'admin:menu:api-collections',
 } as const;
 
+// Notification action permissions (SPEC-084). 定向发送 is user-level,
+// 广播 (broadcast) is admin-level. The bell UI splits the two send entries
+// by canAccess on these keys.
+export const NOTIFICATION_PERMS = {
+  send: 'notification:send',
+  broadcast: 'notification:broadcast',
+} as const;
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 function boolLS(key: string): boolean {

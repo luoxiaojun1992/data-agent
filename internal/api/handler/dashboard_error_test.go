@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -8,9 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 
 	domainknowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	kbmocks "github.com/luoxiaojun1992/data-agent/internal/service/knowledge/mocks"
 )
 
@@ -41,15 +44,25 @@ func TestDashboardHandler_Get_AllServicesError(t *testing.T) {
 }
 
 // TestRegisterDashboardRoutes verifies that RegisterDashboardRoutes wires the
-// /api/v1/dashboard and /api/v1/dashboard/trends routes (SPEC-072).
+// /api/v1/dashboard and /api/v1/dashboard/trends routes (SPEC-072), now guarded
+// by stats:view RBAC (SPEC-084).
 func TestRegisterDashboardRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	kb := kbmocks.NewKnowledgeService(t)
 	kb.On("ListAllDocs", 1, 1).Return([]*domainknowledge.KnowledgeDoc{{ID: "d1"}}, int64(1), nil)
 	h := NewDashboardHandler(kb, nil)
-	midd := func(c *gin.Context) { c.Set("user_id", "u1"); c.Next() }
-	RegisterDashboardRoutes(r, midd, h)
+	midd := func(c *gin.Context) { c.Set("user_id", "u1"); c.Set("role", "user"); c.Next() }
+
+	// Stub HasPermission to grant stats:view so the RBAC guard passes.
+	svc := &rbacsvc.Service{}
+	patches := gomonkey.ApplyMethodFunc(svc, "HasPermission",
+		func(_ context.Context, _ string, _ string) (bool, error) {
+			return true, nil
+		})
+	t.Cleanup(patches.Reset)
+
+	RegisterDashboardRoutes(r, midd, h, svc)
 
 	req := httptest.NewRequest("GET", "/api/v1/dashboard", nil)
 	w := httptest.NewRecorder()

@@ -112,7 +112,7 @@ func TestDeleteDoc_FiveStepCascade_OrderAndIdempotency(t *testing.T) {
 	s.WithVectorIndex(vec, nil)
 	s.WithGraphIndex(graph)
 
-	assert.NoError(t, s.DeleteDoc("kbdoc_1"))
+	assert.NoError(t, s.DeleteDoc("kbdoc_1", "", true))
 
 	// 五步全部调用（顺序由 mock 断言次数保证，顺序语义靠单元步骤的幂等）。
 	vec.AssertCalled(t, "DeletePoints", mock.Anything, "kb_chunks", mock.MatchedBy(func(f map[string]interface{}) bool {
@@ -136,7 +136,7 @@ func TestDeleteDoc_AlreadyDeleted_NoopSuccess(t *testing.T) {
 	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(nil, errors.New("mongo: no documents in result"))
 
 	s := NewService(kb)
-	err := s.DeleteDoc("kbdoc_1")
+	err := s.DeleteDoc("kbdoc_1", "", true)
 	assert.NoError(t, err, "deleting an already-deleted doc must be a no-op success")
 }
 
@@ -148,7 +148,7 @@ func TestDeleteDoc_NoGraphNoVector_StillCascadesMongo(t *testing.T) {
 	kb.On("DeleteFile", mock.Anything, "").Return(nil)
 	kb.On("DeleteDoc", mock.Anything, "kbdoc_1").Return(nil)
 
-	err := NewService(kb).DeleteDoc("kbdoc_1")
+	err := NewService(kb).DeleteDoc("kbdoc_1", "", true)
 	assert.NoError(t, err)
 	kb.AssertCalled(t, "DeleteChunks", mock.Anything, "kbdoc_1")
 	kb.AssertCalled(t, "DeleteFile", mock.Anything, "")

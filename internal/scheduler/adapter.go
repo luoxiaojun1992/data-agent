@@ -20,7 +20,8 @@ func NewTaskCreatorFromService(svc *task_svc.Service) TaskCreator {
 }
 
 func (a *taskServiceAdapter) CreateRun(taskID string) (string, error) {
-	run, err := a.svc.CreateRun(taskID)
+	// SPEC-084: scheduler is a system process — exempt from ownership checks.
+	run, err := a.svc.CreateRun(taskID, "", true)
 	if err != nil {
 		return "", err
 	}

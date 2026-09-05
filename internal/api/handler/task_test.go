@@ -283,79 +283,6 @@ func TestListTasks_Empty(t *testing.T) {
 	}
 }
 
-// ── PauseTask ──
-
-func TestPauseTask_Success(t *testing.T) {
-	svc := mocktasksvc.NewTaskService(t)
-	runSvc := mocktasksvc.NewTaskRunService(t)
-	h := NewTaskHandler(svc, runSvc)
-
-	runSvc.On("CancelRun", "task_1").Return(nil)
-
-	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
-	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
-	h.PauseTask(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "paused") {
-		t.Errorf("body should contain paused: %s", w.Body.String())
-	}
-}
-
-func TestPauseTask_Error(t *testing.T) {
-	svc := mocktasksvc.NewTaskService(t)
-	runSvc := mocktasksvc.NewTaskRunService(t)
-	h := NewTaskHandler(svc, runSvc)
-
-	runSvc.On("CancelRun", "task_1").Return(fmt.Errorf("invalid status transition"))
-
-	c, w := newGinContext("POST", "/tasks/task_1/pause", "")
-	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
-	h.PauseTask(c)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-}
-
-// ── ResumeTask ──
-
-func TestResumeTask_Success(t *testing.T) {
-	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc, nil)
-
-	mockRun := &task.TaskRun{ID: "run_1"}
-	svc.On("CreateRun", "task_1").Return(mockRun, nil)
-
-	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
-	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
-	h.ResumeTask(c)
-
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "run_1") {
-		t.Errorf("body should contain run id: %s", w.Body.String())
-	}
-}
-
-func TestResumeTask_Error(t *testing.T) {
-	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc, nil)
-
-	svc.On("CreateRun", "task_1").Return(nil, fmt.Errorf("task not found"))
-
-	c, w := newGinContext("POST", "/tasks/task_1/resume", "")
-	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
-	h.ResumeTask(c)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-}
-
 // ── DownloadArtifacts ──
 // DownloadArtifacts returns a minimal ZIP stub without a GetTask lookup;
 // real artifact download is served directly from SeaweedFS via nginx.
@@ -364,8 +291,12 @@ func TestDownloadArtifacts_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
+	svc.On("GetTask", "task_1", "user-1", false).Return(&task.Task{ID: "task_1", UserID: "user-1"}, nil)
+
 	c, w := newGinContext("GET", "/tasks/task_1/artifacts", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
+	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.DownloadArtifacts(c)
 
 	if w.Code != http.StatusOK {

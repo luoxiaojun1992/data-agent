@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,6 +15,10 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
+
+// ErrNotFound is returned when a knowledge doc does not exist OR does not belong
+// to the caller (SPEC-084 §6.7 IDOR protection — existence is never leaked).
+var ErrNotFound = errors.New("not found")
 
 type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
 
@@ -106,11 +111,23 @@ func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes 
 	return doc, nil
 }
 
-func (s *Service) GetDoc(id string) (*knowledge.KnowledgeDoc, error) {
-	return s.kb.GetDoc(context.Background(), id)
+func (s *Service) GetDoc(id, userID string, isSystemAdmin bool) (*knowledge.KnowledgeDoc, error) {
+	doc, err := s.kb.GetDoc(context.Background(), id)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, nil
+	}
+	// SPEC-084 §6.7: owner 或 public 可读；system_admin 豁免。他人私有 doc
+	// 返回 ErrNotFound（不泄露资源存在性）。
+	if !isSystemAdmin && doc.UserID != userID && !doc.IsPublic {
+		return nil, ErrNotFound
+	}
+	return doc, nil
 }
 
-func (s *Service) DeleteDoc(id string) error {
+func (s *Service) DeleteDoc(id, userID string, isSystemAdmin bool) error {
 	// SPEC-070 五步级联（顺序：先删索引，再删明细，最后删主记录 doc）：
 	// ① Qdrant（索引）→ ② ArcadeDB（索引）→ ③ chunks（明细）→
 	// ④ GridFS 文件（明细）→ ⑤ doc（主记录 = 最终提交点）。
@@ -123,6 +140,15 @@ func (s *Service) DeleteDoc(id string) error {
 		// log 降级（无法拿到 GridFSFileID，后续删除无意义）。
 		log.Printf("[kb] get doc for delete id=%s: %v", id, err)
 		return nil
+	}
+	if doc == nil {
+		// 无 doc → 幂等 no-op（重试场景）。
+		return nil
+	}
+	// SPEC-084 §6.7: owner 或 public 可删；system_admin 豁免。他人私有 doc
+	// 返回 ErrNotFound（不泄露资源存在性）。
+	if !isSystemAdmin && doc.UserID != userID && !doc.IsPublic {
+		return ErrNotFound
 	}
 	// ① Qdrant 向量（索引）
 	if s.vector != nil {
@@ -520,7 +546,19 @@ type SearchResult struct {
 
 // SetPublicFlag toggles the is_public flag on a doc, its chunks in MongoDB,
 // and updates all vector payloads in Qdrant.
-func (s *Service) SetPublicFlag(ctx context.Context, docID string, isPublic bool) error {
+func (s *Service) SetPublicFlag(ctx context.Context, docID string, isPublic bool, userID string, isSystemAdmin bool) error {
+	doc, err := s.kb.GetDoc(ctx, docID)
+	if err != nil {
+		return fmt.Errorf("get doc: %w", err)
+	}
+	if doc == nil {
+		return ErrNotFound
+	}
+	// SPEC-084 §6.7: owner 或 public 可改 shared；system_admin 豁免。他人私有
+	// doc 返回 ErrNotFound（不泄露资源存在性）。
+	if !isSystemAdmin && doc.UserID != userID && !doc.IsPublic {
+		return ErrNotFound
+	}
 	if err := s.kb.SetPublicFlag(ctx, docID, isPublic); err != nil {
 		return fmt.Errorf("set public flag on doc: %w", err)
 	}

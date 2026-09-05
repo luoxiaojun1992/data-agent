@@ -30,9 +30,9 @@ func (_m *TaskRunService) CancelRun(id string) error {
 	return r0
 }
 
-// GetRun provides a mock function with given fields: id
-func (_m *TaskRunService) GetRun(id string) (*task.TaskRun, error) {
-	ret := _m.Called(id)
+// GetRun provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *TaskRunService) GetRun(id string, userID string, isSystemAdmin bool) (*task.TaskRun, error) {
+	ret := _m.Called(id, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetRun")
@@ -40,19 +40,19 @@ func (_m *TaskRunService) GetRun(id string) (*task.TaskRun, error) {
 
 	var r0 *task.TaskRun
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*task.TaskRun, error)); ok {
-		return rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) (*task.TaskRun, error)); ok {
+		return rf(id, userID, isSystemAdmin)
 	}
-	if rf, ok := ret.Get(0).(func(string) *task.TaskRun); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) *task.TaskRun); ok {
+		r0 = rf(id, userID, isSystemAdmin)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*task.TaskRun)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(id)
+	if rf, ok := ret.Get(1).(func(string, string, bool) error); ok {
+		r1 = rf(id, userID, isSystemAdmin)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -60,9 +60,9 @@ func (_m *TaskRunService) GetRun(id string) (*task.TaskRun, error) {
 	return r0, r1
 }
 
-// ListRuns provides a mock function with given fields: taskID, status, skip, limit
-func (_m *TaskRunService) ListRuns(taskID string, status string, skip int64, limit int64) ([]*task.TaskRun, int64, error) {
-	ret := _m.Called(taskID, status, skip, limit)
+// ListRuns provides a mock function with given fields: taskID, userID, isSystemAdmin, status, skip, limit
+func (_m *TaskRunService) ListRuns(taskID string, userID string, isSystemAdmin bool, status string, skip int64, limit int64) ([]*task.TaskRun, int64, error) {
+	ret := _m.Called(taskID, userID, isSystemAdmin, status, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListRuns")
@@ -71,25 +71,25 @@ func (_m *TaskRunService) ListRuns(taskID string, status string, skip int64, lim
 	var r0 []*task.TaskRun
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(string, string, int64, int64) ([]*task.TaskRun, int64, error)); ok {
-		return rf(taskID, status, skip, limit)
+	if rf, ok := ret.Get(0).(func(string, string, bool, string, int64, int64) ([]*task.TaskRun, int64, error)); ok {
+		return rf(taskID, userID, isSystemAdmin, status, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(string, string, int64, int64) []*task.TaskRun); ok {
-		r0 = rf(taskID, status, skip, limit)
+	if rf, ok := ret.Get(0).(func(string, string, bool, string, int64, int64) []*task.TaskRun); ok {
+		r0 = rf(taskID, userID, isSystemAdmin, status, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*task.TaskRun)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string, int64, int64) int64); ok {
-		r1 = rf(taskID, status, skip, limit)
+	if rf, ok := ret.Get(1).(func(string, string, bool, string, int64, int64) int64); ok {
+		r1 = rf(taskID, userID, isSystemAdmin, status, skip, limit)
 	} else {
 		r1 = ret.Get(1).(int64)
 	}
 
-	if rf, ok := ret.Get(2).(func(string, string, int64, int64) error); ok {
-		r2 = rf(taskID, status, skip, limit)
+	if rf, ok := ret.Get(2).(func(string, string, bool, string, int64, int64) error); ok {
+		r2 = rf(taskID, userID, isSystemAdmin, status, skip, limit)
 	} else {
 		r2 = ret.Error(2)
 	}

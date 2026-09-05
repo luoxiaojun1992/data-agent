@@ -64,17 +64,17 @@ func (_m *KnowledgeService) CreateDoc(userID string, title string, fileName stri
 	return r0, r1
 }
 
-// DeleteDoc provides a mock function with given fields: id
-func (_m *KnowledgeService) DeleteDoc(id string) error {
-	ret := _m.Called(id)
+// DeleteDoc provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *KnowledgeService) DeleteDoc(id string, userID string, isSystemAdmin bool) error {
+	ret := _m.Called(id, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteDoc")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) error); ok {
+		r0 = rf(id, userID, isSystemAdmin)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -82,9 +82,9 @@ func (_m *KnowledgeService) DeleteDoc(id string) error {
 	return r0
 }
 
-// GetDoc provides a mock function with given fields: id
-func (_m *KnowledgeService) GetDoc(id string) (*domainknowledge.KnowledgeDoc, error) {
-	ret := _m.Called(id)
+// GetDoc provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *KnowledgeService) GetDoc(id string, userID string, isSystemAdmin bool) (*domainknowledge.KnowledgeDoc, error) {
+	ret := _m.Called(id, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetDoc")
@@ -92,19 +92,19 @@ func (_m *KnowledgeService) GetDoc(id string) (*domainknowledge.KnowledgeDoc, er
 
 	var r0 *domainknowledge.KnowledgeDoc
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*domainknowledge.KnowledgeDoc, error)); ok {
-		return rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) (*domainknowledge.KnowledgeDoc, error)); ok {
+		return rf(id, userID, isSystemAdmin)
 	}
-	if rf, ok := ret.Get(0).(func(string) *domainknowledge.KnowledgeDoc); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) *domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(id, userID, isSystemAdmin)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*domainknowledge.KnowledgeDoc)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(id)
+	if rf, ok := ret.Get(1).(func(string, string, bool) error); ok {
+		r1 = rf(id, userID, isSystemAdmin)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -253,17 +253,17 @@ func (_m *KnowledgeService) Search(userID string, query string, topK int, isSyst
 	return r0, r1
 }
 
-// SetPublicFlag provides a mock function with given fields: ctx, docID, isPublic
-func (_m *KnowledgeService) SetPublicFlag(ctx context.Context, docID string, isPublic bool) error {
-	ret := _m.Called(ctx, docID, isPublic)
+// SetPublicFlag provides a mock function with given fields: ctx, docID, isPublic, userID, isSystemAdmin
+func (_m *KnowledgeService) SetPublicFlag(ctx context.Context, docID string, isPublic bool, userID string, isSystemAdmin bool) error {
+	ret := _m.Called(ctx, docID, isPublic, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetPublicFlag")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
-		r0 = rf(ctx, docID, isPublic)
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool, string, bool) error); ok {
+		r0 = rf(ctx, docID, isPublic, userID, isSystemAdmin)
 	} else {
 		r0 = ret.Error(0)
 	}

@@ -69,6 +69,29 @@ func (r *TaskDefRepository) List(ctx context.Context, userID string, skip, limit
 	return tasks, total, nil
 }
 
+// ListAll returns all tasks without a user filter (SPEC-084: system_admin).
+func (r *TaskDefRepository) ListAll(ctx context.Context, skip, limit int64) ([]*task.Task, int64, error) {
+	total, err := r.coll.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		return nil, 0, err
+	}
+	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetSkip(skip).SetLimit(limit)
+	cursor, err := r.coll.Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, 0, err
+	}
+	tasks := make([]*task.Task, len(docs))
+	for i, d := range docs {
+		tasks[i] = docToTaskDef(d)
+	}
+	return tasks, total, nil
+}
+
 // ---- TaskRun Repository ----
 
 type TaskRunRepository struct {

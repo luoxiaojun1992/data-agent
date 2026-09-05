@@ -55,8 +55,8 @@ func (e *KBIndexExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) 
 
 	// Branch on file_type: images are parsed by a multimodal LLM first, then
 	// indexed through the same TXT pipeline; documents go straight to text
-	// indexing.
-	doc, err := e.kb.GetDoc(docID)
+	// indexing. This is a system-internal call (ownership-exempt).
+	doc, err := e.kb.GetDoc(docID, "", true)
 	if err != nil {
 		log.Printf("[kb-index] get doc failed for doc=%s: %v", docID, err)
 		e.failRun(run, err)

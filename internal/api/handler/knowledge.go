@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -115,10 +116,13 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 	c.JSON(http.StatusCreated, doc)
 }
 
-// GetDoc retrieves a knowledge document.
+// GetDoc retrieves a knowledge document (ownership-checked).
 func (h *KnowledgeHandler) GetDoc(c *gin.Context) {
 	docID := c.Param("id")
-	doc, err := h.svc.GetDoc(docID)
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+	isSystemAdmin := role == "system_admin"
+	doc, err := h.svc.GetDoc(docID, userID.(string), isSystemAdmin)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -126,10 +130,17 @@ func (h *KnowledgeHandler) GetDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, doc)
 }
 
-// DeleteDoc removes a knowledge document and its chunks (cascade).
+// DeleteDoc removes a knowledge document and its chunks (cascade, ownership-checked).
 func (h *KnowledgeHandler) DeleteDoc(c *gin.Context) {
 	docID := c.Param("id")
-	if err := h.svc.DeleteDoc(docID); err != nil {
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+	isSystemAdmin := role == "system_admin"
+	if err := h.svc.DeleteDoc(docID, userID.(string), isSystemAdmin); err != nil {
+		if errors.Is(err, knowledge.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -172,7 +183,7 @@ func (h *KnowledgeHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"query": query, "results": results})
 }
 
-// SetPublicFlag toggles the is_public flag on a knowledge document.
+// SetPublicFlag toggles the is_public flag on a knowledge document (ownership-checked).
 func (h *KnowledgeHandler) SetPublicFlag(c *gin.Context) {
 	docID := c.Param("id")
 	var req struct {
@@ -182,7 +193,14 @@ func (h *KnowledgeHandler) SetPublicFlag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.svc.SetPublicFlag(c.Request.Context(), docID, req.IsPublic); err != nil {
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+	isSystemAdmin := role == "system_admin"
+	if err := h.svc.SetPublicFlag(c.Request.Context(), docID, req.IsPublic, userID.(string), isSystemAdmin); err != nil {
+		if errors.Is(err, knowledge.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

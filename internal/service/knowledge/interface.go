@@ -12,14 +12,14 @@ import (
 // KnowledgeService defines the knowledge management service contract.
 type KnowledgeService interface {
 	CreateDoc(userID, title, fileName, fileType string, sizeBytes int64, gridFSFileID string) (*knowledge.KnowledgeDoc, error)
-	GetDoc(id string) (*knowledge.KnowledgeDoc, error)
-	DeleteDoc(id string) error
+	GetDoc(id, userID string, isSystemAdmin bool) (*knowledge.KnowledgeDoc, error)
+	DeleteDoc(id, userID string, isSystemAdmin bool) error
 	ListDocs(userID string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
 	ListDocsByVisibility(userID string, isSystemAdmin bool, q string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
 	ListAllDocs(page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)
 	AddChunks(docID string, texts []string) error
 	Search(userID, query string, topK int, isSystemAdmin bool) ([]knowledge.SearchResult, error)
-	SetPublicFlag(ctx context.Context, docID string, isPublic bool) error
+	SetPublicFlag(ctx context.Context, docID string, isPublic bool, userID string, isSystemAdmin bool) error
 	UploadFile(fileName, contentType string, reader io.Reader) (string, error)
 	RedactText(ctx context.Context, text string) (string, error)
 }

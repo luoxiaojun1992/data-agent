@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -157,7 +158,7 @@ func TestGetDoc_Success(t *testing.T) {
 		ID: "kbdoc_test1234", Title: "My Doc", UserID: "user1", Status: knowledge.StatusIndexing,
 	}, nil)
 
-	doc, err := NewService(repo).GetDoc("kbdoc_test1234")
+	doc, err := NewService(repo).GetDoc("kbdoc_test1234", "user1", false)
 	if err != nil {
 		t.Fatalf("GetDoc failed: %v", err)
 	}
@@ -170,20 +171,66 @@ func TestGetDoc_NotFound(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
 	repo.On("GetDoc", mock.Anything, "missing").Return((*knowledge.KnowledgeDoc)(nil), fmt.Errorf("not found"))
 
-	_, err := NewService(repo).GetDoc("missing")
+	_, err := NewService(repo).GetDoc("missing", "user1", false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
 }
 
+// TestGetDoc_ForbiddenPrivateDoc verifies the SPEC-084 §6.7 IDOR protection:
+// a non-owner, non-system-admin cannot read another user's private doc.
+func TestGetDoc_ForbiddenPrivateDoc(t *testing.T) {
+	repo := mockrepo.NewKBRepository(t)
+	repo.On("GetDoc", mock.Anything, "kbdoc_private").Return(&knowledge.KnowledgeDoc{
+		ID: "kbdoc_private", UserID: "owner", IsPublic: false,
+	}, nil)
+
+	_, err := NewService(repo).GetDoc("kbdoc_private", "attacker", false)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for private doc, got %v", err)
+	}
+}
+
+// TestGetDoc_PublicDocReadableByOthers verifies public docs are readable by any user.
+func TestGetDoc_PublicDocReadableByOthers(t *testing.T) {
+	repo := mockrepo.NewKBRepository(t)
+	repo.On("GetDoc", mock.Anything, "kbdoc_public").Return(&knowledge.KnowledgeDoc{
+		ID: "kbdoc_public", UserID: "owner", IsPublic: true,
+	}, nil)
+
+	doc, err := NewService(repo).GetDoc("kbdoc_public", "attacker", false)
+	if err != nil {
+		t.Fatalf("public doc should be readable by others, got %v", err)
+	}
+	if doc.ID != "kbdoc_public" {
+		t.Errorf("ID: got %q, want kbdoc_public", doc.ID)
+	}
+}
+
+// TestGetDoc_SystemAdminExempt verifies system_admin bypasses ownership check.
+func TestGetDoc_SystemAdminExempt(t *testing.T) {
+	repo := mockrepo.NewKBRepository(t)
+	repo.On("GetDoc", mock.Anything, "kbdoc_private").Return(&knowledge.KnowledgeDoc{
+		ID: "kbdoc_private", UserID: "owner", IsPublic: false,
+	}, nil)
+
+	doc, err := NewService(repo).GetDoc("kbdoc_private", "admin", true)
+	if err != nil {
+		t.Fatalf("system_admin should be exempt, got %v", err)
+	}
+	if doc.ID != "kbdoc_private" {
+		t.Errorf("ID: got %q, want kbdoc_private", doc.ID)
+	}
+}
+
 func TestDeleteDoc_Success(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
-	repo.On("GetDoc", mock.Anything, "kbdoc_1").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_1"}, nil)
+	repo.On("GetDoc", mock.Anything, "kbdoc_1").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "user1"}, nil)
 	repo.On("DeleteDoc", mock.Anything, "kbdoc_1").Return(nil)
 	repo.On("DeleteChunks", mock.Anything, "kbdoc_1").Return(int64(0), nil)
 	repo.On("DeleteFile", mock.Anything, "").Return(nil)
 
-	if err := NewService(repo).DeleteDoc("kbdoc_1"); err != nil {
+	if err := NewService(repo).DeleteDoc("kbdoc_1", "user1", false); err != nil {
 		t.Fatalf("DeleteDoc failed: %v", err)
 	}
 }
@@ -193,8 +240,22 @@ func TestDeleteDoc_NotFound(t *testing.T) {
 	repo := mockrepo.NewKBRepository(t)
 	repo.On("GetDoc", mock.Anything, "missing").Return(nil, fmt.Errorf("not found"))
 
-	if err := NewService(repo).DeleteDoc("missing"); err != nil {
+	if err := NewService(repo).DeleteDoc("missing", "user1", false); err != nil {
 		t.Fatalf("DeleteDoc on missing doc must be idempotent no-op, got: %v", err)
+	}
+}
+
+// TestDeleteDoc_ForbiddenPrivateDoc verifies a non-owner cannot delete another
+// user's private doc (SPEC-084 §6.7 IDOR protection).
+func TestDeleteDoc_ForbiddenPrivateDoc(t *testing.T) {
+	repo := mockrepo.NewKBRepository(t)
+	repo.On("GetDoc", mock.Anything, "kbdoc_private").Return(&knowledge.KnowledgeDoc{
+		ID: "kbdoc_private", UserID: "owner", IsPublic: false,
+	}, nil)
+
+	err := NewService(repo).DeleteDoc("kbdoc_private", "attacker", false)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for private doc delete, got %v", err)
 	}
 }
 

@@ -103,7 +103,7 @@ func newTestExecutor(t *testing.T, llm model.LLM) *testExecutor {
 	// path is exercised). Tests that want success use setRunCompleted to flip
 	// the result for subsequent GetRun calls.
 	te := &testExecutor{exec: exec, registry: registry, rt: rt, runs: runs, notif: notif, patches: patches, adkSess: adkSess}
-	runs.On("GetRun", mock.Anything).Return(func(id string) *domaintask.TaskRun {
+	runs.On("GetRun", mock.Anything, mock.Anything, mock.Anything).Return(func(id string, userID string, isSystemAdmin bool) *domaintask.TaskRun {
 		if te.completed.Load() {
 			return &domaintask.TaskRun{ID: "run_1", Status: domaintask.StatusCompleted}
 		}
@@ -282,7 +282,7 @@ func TestExecute_NilNotifier(t *testing.T) {
 	runs.On("UpdateRunError", mock.Anything, mock.Anything).Return(nil)
 	// wasRunCancelled / save_task_result re-checks (returns a non-cancelled,
 	// non-completed run).
-	runs.On("GetRun", mock.Anything).Return(&domaintask.TaskRun{Status: domaintask.StatusRunning}, nil)
+	runs.On("GetRun", mock.Anything, mock.Anything, mock.Anything).Return(&domaintask.TaskRun{Status: domaintask.StatusRunning}, nil)
 
 	require.NotPanics(t, func() {
 		_ = exec.Execute(context.Background(), sampleRun())
@@ -334,7 +334,7 @@ func TestExecute_NilCircuitBreaker(t *testing.T) {
 
 	runs.On("UpdateRunStatus", mock.Anything, mock.Anything).Return(nil)
 	runs.On("UpdateRunError", mock.Anything, mock.Anything).Return(nil)
-	runs.On("GetRun", mock.Anything).Return(&domaintask.TaskRun{Status: domaintask.StatusRunning}, nil)
+	runs.On("GetRun", mock.Anything, mock.Anything, mock.Anything).Return(&domaintask.TaskRun{Status: domaintask.StatusRunning}, nil)
 	notif.On("Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 	// fakeLLM doesn't call save_task_result — the executor retries and
@@ -392,7 +392,7 @@ func TestExecute_CancelledDuringExecution(t *testing.T) {
 	runs.On("UpdateRunStatus", "run_1", domaintask.StatusRunning).Return(nil)
 	// wasRunCancelled re-check returns a CANCELLED run → executor must skip
 	// save_task_result logic and not overwrite cancelled with completed/failed.
-	runs.On("GetRun", "run_1").Return(&domaintask.TaskRun{ID: "run_1", Status: domaintask.StatusCancelled}, nil)
+	runs.On("GetRun", "run_1", mock.Anything, mock.Anything).Return(&domaintask.TaskRun{ID: "run_1", Status: domaintask.StatusCancelled}, nil)
 
 	err = exec.Execute(context.Background(), run)
 	require.NoError(t, err)

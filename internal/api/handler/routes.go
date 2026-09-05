@@ -30,7 +30,6 @@ type RouteDeps struct {
 	Chat          *ChatHandler
 	HumanChannel  *HumanChannelHandler
 	Enhance       *EnhanceHandler
-	Agent         *AgentHandler
 	Session       *SessionHandler
 	Artifact      *ArtifactHandler
 	Knowledge     *KnowledgeHandler
@@ -43,7 +42,6 @@ type RouteDeps struct {
 	FeishuConfig  *FeishuConfigHandler
 	RBAC          *RBACHandler
 	APICollection *APICollectionHandler
-	APITools      *APIToolsHandler
 	RBACService   *rbacsvc.Service // for RequirePermission middleware
 
 	// IMWebhook is the raw Feishu webhook handler (http.HandlerFunc). May be nil.
@@ -92,7 +90,6 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 		RegisterIMBindRoutes(imBindGroup, deps.IMBind, deps.RBACService)
 	}
 	RegisterHermesProxy(router, deps.HermesURL)
-	router.GET("/api/v1/system/stats", monitor.Handler())
 
 	// Auth routes (no auth).
 	registerAuthRoutes(router.Group("/api/v1/auth"), deps.Auth)
@@ -130,11 +127,6 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	// Feature routes (each guarded by auth middleware).
 	registerFeatureRoutes(router, deps)
 
-	// Skill API tools (for agent tool calling)
-	if deps.APITools != nil {
-		registerAPIToolsRoutes(router, deps.APITools, deps.JWTManager, deps.RBACService)
-	}
-
 	// RBAC routes
 	if deps.RBAC != nil {
 		registerRBACRoutes(router, deps.JWTManager, deps.RBAC, deps.RBACService)
@@ -145,7 +137,7 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 // on the authenticated API group. Extracted to reduce cognitive complexity.
 func registerProtectedAPIRoutes(api *gin.RouterGroup, deps *RouteDeps) {
 	if deps.User != nil {
-		RegisterUserRoutes(api, deps.User)
+		RegisterUserRoutes(api, deps.User, deps.RBACService)
 	}
 	if deps.Memory != nil {
 		RegisterMemoryRoute(api, deps.Memory, deps.RBACService)
@@ -170,60 +162,44 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 		}
 	}
 
-	if deps.Agent != nil {
-		agentRoutes := router.Group("/api/v1/agent")
-		agentRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermAgentView))
-		RegisterAgentRoutes(agentRoutes, deps.Agent)
-	}
 	if deps.Session != nil {
 		sessionRoutes := router.Group("/api/v1/sessions")
 		sessionRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermChatView))
 		RegisterSessionRoutes(sessionRoutes, deps.Session, deps.RBACService)
 	}
 	if deps.Artifact != nil {
-		registerArtifactRoutes(router, deps.JWTManager, deps.Artifact)
-		registerWorkspaceRoutes(router, deps.JWTManager, deps.Artifact)
+		registerArtifactRoutes(router, deps.JWTManager, deps.Artifact, deps.RBACService)
 	}
 	if deps.Knowledge != nil {
-		registerKnowledgeRoutes(router, deps.JWTManager, deps.Knowledge)
+		registerKnowledgeRoutes(router, deps.JWTManager, deps.Knowledge, deps.RBACService)
 	}
 	if deps.Audit != nil {
 		registerAuditRoutes(router, deps.JWTManager, deps.Audit, deps.RBACService)
 	}
 	if deps.Notification != nil {
-		registerNotificationRoutes(router, deps.JWTManager, deps.Notification)
+		registerNotificationRoutes(router, deps.JWTManager, deps.Notification, deps.RBACService)
 	}
 	if deps.Task != nil {
 		registerTaskRoutes(router, deps.JWTManager, deps.Task, deps.RBACService)
 	}
 	if deps.Dashboard != nil {
-		dashRoutes := router.Group("/api/v1/dashboard")
-		dashRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermDashboardView))
-		RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard)
+		RegisterDashboardRoutes(router, deps.JWTManager.AuthMiddleware(), deps.Dashboard, deps.RBACService)
 	}
 	if deps.FeishuConfig != nil {
-		registerFeishuRoutes(router, deps.JWTManager, deps.FeishuConfig)
+		registerFeishuRoutes(router, deps.JWTManager, deps.FeishuConfig, deps.RBACService)
 	}
 }
 
-// registerWorkspaceRoutes registers workspace file routes.
-func registerWorkspaceRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *ArtifactHandler) {
-	wsRoutes := router.Group("/api/v1/workspace/:session_id")
-	wsRoutes.Use(jwt.AuthMiddleware())
-	wsRoutes.GET("/files", h.ListWorkspace)
-	wsRoutes.GET("/files/:filename", h.ReadWorkspaceFile)
-	wsRoutes.PUT("/files/:filename", h.WriteWorkspaceFile)
-}
+// registerWorkspaceRoutes was removed (SPEC-084): workspace files are accessed
+// by the agent via the fsops local directory, not over HTTP.
 
 func registerAuthRoutes(authGroup *gin.RouterGroup, authHandler *AuthHandler) {
 	if authHandler != nil {
 		authGroup.POST("/login", authHandler.Login)
-		authGroup.POST(consts.PathRegister, authHandler.Register)
 		authGroup.GET(consts.PathRegister, authHandler.VerifyInvite)
 		authGroup.POST("/complete-registration", authHandler.CompleteRegistration)
 	} else {
 		authGroup.POST("/login", DBUnavailable)
-		authGroup.POST(consts.PathRegister, DBUnavailable)
 	}
 }
 
@@ -253,26 +229,26 @@ func registerAdminRoutes(admin *gin.RouterGroup, authHandler *AuthHandler, sysCo
 	}
 }
 
-func registerArtifactRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *ArtifactHandler) {
+func registerArtifactRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *ArtifactHandler, rbacSvc *rbacsvc.Service) {
 	artifactRoutes := router.Group("/api/v1/artifacts")
 	artifactRoutes.Use(jwt.AuthMiddleware())
-	artifactRoutes.POST("/upload", h.Upload)
-	artifactRoutes.GET("/:id/download", h.Download)
-	artifactRoutes.GET("/:id/download-url", h.DownloadURL)
-	artifactRoutes.DELETE("/:id", h.Delete)
-	artifactRoutes.GET("", h.ListSession)
-	artifactRoutes.GET("/user", h.ListUser)
+	artifactRoutes.POST("/upload", middleware.RequirePermission(rbacSvc, model.PermArtifactView), h.Upload)
+	artifactRoutes.GET("/:id/download", middleware.RequirePermission(rbacSvc, model.PermArtifactView), h.Download)
+	artifactRoutes.GET("/:id/download-url", middleware.RequirePermission(rbacSvc, model.PermArtifactView), h.DownloadURL)
+	artifactRoutes.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermArtifactDelete), h.Delete)
+	artifactRoutes.GET("", middleware.RequirePermission(rbacSvc, model.PermArtifactView), h.ListSession)
+	artifactRoutes.GET("/user", middleware.RequirePermission(rbacSvc, model.PermArtifactView), h.ListUser)
 }
 
-func registerKnowledgeRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *KnowledgeHandler) {
+func registerKnowledgeRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *KnowledgeHandler, rbacSvc *rbacsvc.Service) {
 	kbRoutes := router.Group("/api/v1/knowledge")
 	kbRoutes.Use(jwt.AuthMiddleware())
-	kbRoutes.POST("/docs", h.UploadDoc)
-	kbRoutes.GET("/docs", h.ListDocs)
-	kbRoutes.GET("/docs/:id", h.GetDoc)
-	kbRoutes.PUT("/docs/:id/public", h.SetPublicFlag)
-	kbRoutes.DELETE("/docs/:id", h.DeleteDoc)
-	kbRoutes.GET("/search", h.Search)
+	kbRoutes.POST("/docs", middleware.RequirePermission(rbacSvc, model.PermKBUpload), h.UploadDoc)
+	kbRoutes.GET("/docs", middleware.RequirePermission(rbacSvc, model.PermKBView), h.ListDocs)
+	kbRoutes.GET("/docs/:id", middleware.RequirePermission(rbacSvc, model.PermKBView), h.GetDoc)
+	kbRoutes.PUT("/docs/:id/public", middleware.RequirePermission(rbacSvc, model.PermKBUpload), h.SetPublicFlag)
+	kbRoutes.DELETE("/docs/:id", middleware.RequirePermission(rbacSvc, model.PermKBDelete), h.DeleteDoc)
+	kbRoutes.GET("/search", middleware.RequirePermission(rbacSvc, model.PermKBView), h.Search)
 }
 
 func registerAuditRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *AuditHandler, rbacSvc *rbacsvc.Service) {
@@ -282,30 +258,30 @@ func registerAuditRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *Audi
 	auditRoutes.POST("/export", h.ExportAuditLogs)
 }
 
-func registerNotificationRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *NotificationHandler) {
+func registerNotificationRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *NotificationHandler, rbacSvc *rbacsvc.Service) {
 	notifRoutes := router.Group("/api/v1/notifications")
 	notifRoutes.Use(jwt.AuthMiddleware())
+	// 读取侧：查自己的通知，JWT-only（白名单，不加 RBAC）。
 	notifRoutes.GET("", h.ListNotifications)
 	notifRoutes.GET("/unread-count", h.UnreadCount)
 	notifRoutes.PUT("/:id/read", h.MarkRead)
 	notifRoutes.PUT("/read-all", h.MarkAllRead)
-	notifRoutes.POST("", h.SendNotification)
-	notifRoutes.POST("/broadcast", h.BroadcastNotification)
+	// 写侧：定向发送（user 级）/ 广播（admin 级）需 RBAC。
+	notifRoutes.POST("", middleware.RequirePermission(rbacSvc, model.PermNotificationSend), h.SendNotification)
+	notifRoutes.POST("/broadcast", middleware.RequirePermission(rbacSvc, model.PermNotificationBroadcast), h.BroadcastNotification)
 }
 
 func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskHandler, rbacSvc *rbacsvc.Service) {
 	taskRoutes := router.Group("/api/v1/tasks")
 	taskRoutes.Use(jwt.AuthMiddleware())
-	taskRoutes.POST("", h.CreateTask)
-	taskRoutes.GET("", h.ListTasks)
-	taskRoutes.GET("/:task_id", h.GetTask)
-	taskRoutes.POST("/:task_id/run", h.CreateRun)
-	taskRoutes.GET("/:task_id/runs", h.ListRuns)
-	taskRoutes.GET("/:task_id/runs/:run_id", h.GetRun)
-	taskRoutes.PUT("/:task_id/cancel", h.CancelTask)
-	taskRoutes.PUT("/:task_id/pause", h.PauseTask)
-	taskRoutes.PUT("/:task_id/resume", h.ResumeTask)
-	taskRoutes.GET("/:task_id/artifacts/download", h.DownloadArtifacts)
+	taskRoutes.POST("", middleware.RequirePermission(rbacSvc, model.PermAgentCreate), h.CreateTask)
+	taskRoutes.GET("", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.ListTasks)
+	taskRoutes.GET("/:task_id", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.GetTask)
+	taskRoutes.POST("/:task_id/run", middleware.RequirePermission(rbacSvc, model.PermAgentEdit), h.CreateRun)
+	taskRoutes.GET("/:task_id/runs", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.ListRuns)
+	taskRoutes.GET("/:task_id/runs/:run_id", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.GetRun)
+	taskRoutes.PUT("/:task_id/cancel", middleware.RequirePermission(rbacSvc, model.PermAgentEdit), h.CancelTask)
+	taskRoutes.GET("/:task_id/artifacts/download", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.DownloadArtifacts)
 
 	// Scheduled-enabled toggle — also used by the /agent page.
 	adminTasksWrite := router.Group("/api/v1/admin/tasks")
@@ -315,18 +291,18 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	// Standalone run endpoint — useful for the run-detail page where the
 	// client only has run_id (task_id is in URL state).
 	runRoutes := router.Group("/api/v1/runs")
-	runRoutes.Use(jwt.AuthMiddleware())
+	runRoutes.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentView))
 	runRoutes.GET("/:run_id", h.GetRun)
 }
 
-func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *FeishuConfigHandler) {
+func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *FeishuConfigHandler, rbacSvc *rbacsvc.Service) {
 	feishuRoutes := router.Group("/api/v1/im/feishu/configs")
 	feishuRoutes.Use(jwt.AuthMiddleware())
-	feishuRoutes.POST("", h.Create)
-	feishuRoutes.GET("", h.List)
-	feishuRoutes.GET("/:id", h.Get)
-	feishuRoutes.PUT("/:id", h.Update)
-	feishuRoutes.DELETE("/:id", h.Delete)
+	feishuRoutes.POST("", middleware.RequirePermission(rbacSvc, model.PermIMEdit), h.Create)
+	feishuRoutes.GET("", middleware.RequirePermission(rbacSvc, model.PermIMView), h.List)
+	feishuRoutes.GET("/:id", middleware.RequirePermission(rbacSvc, model.PermIMView), h.Get)
+	feishuRoutes.PUT("/:id", middleware.RequirePermission(rbacSvc, model.PermIMEdit), h.Update)
+	feishuRoutes.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermIMDelete), h.Delete)
 }
 
 func registerRBACRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *RBACHandler, rbacSvc *rbacsvc.Service) {
@@ -375,13 +351,4 @@ func registerAPICollectionRoutes(admin *gin.RouterGroup, h *APICollectionHandler
 	apiCol.PUT("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionEdit), h.Update)
 	apiCol.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermAPICollectionDelete), h.Delete)
 	apiCol.POST("/:id/approve", middleware.RequirePermission(rbacSvc, model.PermAPICollectionApprove), h.Approve)
-}
-
-func registerAPIToolsRoutes(router *gin.Engine, h *APIToolsHandler, jwt *middleware.JWTManager, rbacSvc *rbacsvc.Service) {
-	tools := router.Group("/api/v1/tools/api")
-	tools.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermChatView))
-	tools.GET("/search", h.Search)
-	tools.GET("/summary", h.Summary)
-	tools.GET("/method", h.Method)
-	tools.POST("/call", h.Call)
 }

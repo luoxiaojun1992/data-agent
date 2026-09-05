@@ -187,10 +187,12 @@ func TestGetDoc_Success(t *testing.T) {
 		Status:   knowledge.StatusReady,
 	}
 
-	svc.On("GetDoc", mock.Anything).Return(mockDoc, nil)
+	svc.On("GetDoc", mock.Anything, mock.Anything, mock.Anything).Return(mockDoc, nil)
 
 	c, w := newGinContext("GET", "/knowledge/docs/kbdoc_1", "")
 	c.Params = gin.Params{{Key: "id", Value: "kbdoc_1"}}
+	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.GetDoc(c)
 
 	if w.Code != http.StatusOK {
@@ -202,10 +204,12 @@ func TestGetDoc_NotFound(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("GetDoc", mock.Anything).Return(nil, fmt.Errorf("not found"))
+	svc.On("GetDoc", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/knowledge/docs/missing", "")
 	c.Params = gin.Params{{Key: "id", Value: "missing"}}
+	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.GetDoc(c)
 
 	if w.Code != http.StatusNotFound {
@@ -219,10 +223,12 @@ func TestDeleteDoc_Success(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("DeleteDoc", mock.Anything).Return(nil)
+	svc.On("DeleteDoc", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	c, w := newGinContext("DELETE", "/knowledge/docs/kbdoc_1", "")
 	c.Params = gin.Params{{Key: "id", Value: "kbdoc_1"}}
+	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.DeleteDoc(c)
 
 	if w.Code != http.StatusOK {
@@ -237,10 +243,12 @@ func TestDeleteDoc_Error(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("DeleteDoc", mock.Anything).Return(fmt.Errorf("db error"))
+	svc.On("DeleteDoc", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("db error"))
 
 	c, w := newGinContext("DELETE", "/knowledge/docs/kbdoc_1", "")
 	c.Params = gin.Params{{Key: "id", Value: "kbdoc_1"}}
+	c.Set("user_id", "user-1")
+	c.Set("role", "user")
 	h.DeleteDoc(c)
 
 	if w.Code != http.StatusInternalServerError {

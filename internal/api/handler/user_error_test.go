@@ -1,16 +1,19 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	usersvc "github.com/luoxiaojun1992/data-agent/internal/service/user"
 	usermocks "github.com/luoxiaojun1992/data-agent/internal/service/user/mocks"
 )
@@ -266,8 +269,19 @@ func TestRegisterUserRoutes(t *testing.T) {
 		Return([]model.User{{ID: "u1"}}, int64(1), nil)
 	svc.On("Get", mock.Anything, "u1").Return(&model.User{ID: "u1", Username: "alice"}, nil)
 	h := NewUserHandler(svc)
+
+	// Stub HasPermission to grant user:view so the RBAC guard passes, and set
+	// user_id so the middleware does not reject the unauthenticated request.
+	rbac := &rbacsvc.Service{}
+	patches := gomonkey.ApplyMethodFunc(rbac, "HasPermission",
+		func(_ context.Context, _ string, _ string) (bool, error) {
+			return true, nil
+		})
+	t.Cleanup(patches.Reset)
+
 	api := r.Group("/api/v1")
-	RegisterUserRoutes(api, h)
+	api.Use(func(c *gin.Context) { c.Set("user_id", "u1"); c.Set("role", "admin"); c.Next() })
+	RegisterUserRoutes(api, h, rbac)
 
 	// GET /api/v1/users → 200 (List)
 	req := httptest.NewRequest("GET", "/api/v1/users", nil)

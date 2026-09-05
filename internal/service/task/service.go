@@ -2,12 +2,17 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 	"time"
 )
+
+// ErrNotFound is returned when a task/run does not exist OR does not belong to
+// the caller (SPEC-084 §6.6 IDOR protection — existence is never leaked).
+var ErrNotFound = errors.New("not found")
 
 // Service manages task definitions and runs.
 type Service struct {
@@ -66,11 +71,14 @@ func (s *Service) CreateTask(userID, taskType string, skillChain []string, param
 
 // CreateRun creates a new run from the task definition, enqueues it, and
 // atomically bumps run_count + last_run_at on the parent task.
-func (s *Service) CreateRun(taskID string) (*task.TaskRun, error) {
+func (s *Service) CreateRun(taskID, userID string, isSystemAdmin bool) (*task.TaskRun, error) {
 	ctx := context.Background()
 	t, err := s.repo.Get(ctx, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("task %s not found", taskID)
+	}
+	if !isSystemAdmin && t.UserID != userID {
+		return nil, ErrNotFound
 	}
 	run := task.NewTaskRun(t)
 	run.Status = task.StatusQueued
@@ -87,29 +95,67 @@ func (s *Service) CreateRun(taskID string) (*task.TaskRun, error) {
 	return run, nil
 }
 
-func (s *Service) GetTask(id string) (*task.Task, error) {
-	return s.repo.Get(context.Background(), id)
+func (s *Service) GetTask(id, userID string, isSystemAdmin bool) (*task.Task, error) {
+	t, err := s.repo.Get(context.Background(), id)
+	if err != nil {
+		return nil, fmt.Errorf("task not found: %w", err)
+	}
+	if !isSystemAdmin && t.UserID != userID {
+		return nil, ErrNotFound
+	}
+	return t, nil
 }
 
-func (s *Service) CancelTask(id string) error {
+func (s *Service) CancelTask(id, userID string, isSystemAdmin bool) error {
+	t, err := s.repo.Get(context.Background(), id)
+	if err != nil {
+		return fmt.Errorf("task not found: %w", err)
+	}
+	if !isSystemAdmin && t.UserID != userID {
+		return ErrNotFound
+	}
 	return s.repo.Cancel(context.Background(), id)
 }
 
-func (s *Service) SetScheduledEnabled(taskID string, enabled bool) error {
+func (s *Service) SetScheduledEnabled(taskID, userID string, isSystemAdmin bool, enabled bool) error {
+	t, err := s.repo.Get(context.Background(), taskID)
+	if err != nil {
+		return fmt.Errorf("task not found: %w", err)
+	}
+	if !isSystemAdmin && t.UserID != userID {
+		return ErrNotFound
+	}
 	return s.repo.SetScheduledEnabled(context.Background(), taskID, enabled)
 }
 
-func (s *Service) ListTasks(userID string, skip, limit int64) ([]*task.Task, int64, error) {
+func (s *Service) ListTasks(userID string, isSystemAdmin bool, skip, limit int64) ([]*task.Task, int64, error) {
+	if isSystemAdmin {
+		return s.repo.ListAll(context.Background(), skip, limit)
+	}
 	return s.repo.List(context.Background(), userID, skip, limit)
 }
 
 // ---- Run-level methods used by executors ----
 
-func (s *Service) GetRun(id string) (*task.TaskRun, error) {
-	return s.runRepo.Get(context.Background(), id)
+func (s *Service) GetRun(id, userID string, isSystemAdmin bool) (*task.TaskRun, error) {
+	run, err := s.runRepo.Get(context.Background(), id)
+	if err != nil {
+		return nil, fmt.Errorf("run not found: %w", err)
+	}
+	if !isSystemAdmin && run.UserID != userID {
+		return nil, ErrNotFound
+	}
+	return run, nil
 }
 
-func (s *Service) ListRuns(taskID string, status string, skip, limit int64) ([]*task.TaskRun, int64, error) {
+func (s *Service) ListRuns(taskID, userID string, isSystemAdmin bool, status string, skip, limit int64) ([]*task.TaskRun, int64, error) {
+	t, err := s.repo.Get(context.Background(), taskID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("task not found: %w", err)
+	}
+	if !isSystemAdmin && t.UserID != userID {
+		return nil, 0, ErrNotFound
+	}
 	return s.runRepo.List(context.Background(), taskID, status, skip, limit)
 }
 

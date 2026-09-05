@@ -141,9 +141,9 @@ func TestCreateTask_QueueError_BestEffort(t *testing.T) {
 
 func TestGetTask_Success(t *testing.T) {
 	s, repo, _, _ := newTestService(t)
-	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1"}, nil)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "user1"}, nil)
 
-	tsk, err := s.GetTask("task_1")
+	tsk, err := s.GetTask("task_1", "user1", false)
 	if err != nil {
 		t.Fatalf("GetTask: %v", err)
 	}
@@ -154,18 +154,20 @@ func TestGetTask_Success(t *testing.T) {
 
 func TestCancelTask_Success(t *testing.T) {
 	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "user1"}, nil)
 	repo.On("Cancel", mock.Anything, "task_1").Return(nil)
 
-	if err := s.CancelTask("task_1"); err != nil {
+	if err := s.CancelTask("task_1", "user1", false); err != nil {
 		t.Fatalf("CancelTask: %v", err)
 	}
 }
 
 func TestSetScheduledEnabled_Success(t *testing.T) {
 	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "user1"}, nil)
 	repo.On("SetScheduledEnabled", mock.Anything, "task_1", false).Return(nil)
 
-	if err := s.SetScheduledEnabled("task_1", false); err != nil {
+	if err := s.SetScheduledEnabled("task_1", "user1", false, false); err != nil {
 		t.Fatalf("SetScheduledEnabled: %v", err)
 	}
 }
@@ -176,7 +178,7 @@ func TestListTasks_Success(t *testing.T) {
 		[]*task.Task{{ID: "t1"}, {ID: "t2"}}, int64(2), nil,
 	)
 
-	tasks, total, err := s.ListTasks("user1", 0, 50)
+	tasks, total, err := s.ListTasks("user1", false, 0, 50)
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -194,7 +196,7 @@ func TestCreateRun_Success(t *testing.T) {
 	repo.On("UpdateLastRun", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	queue.On("Enqueue", mock.Anything, mock.Anything).Return(nil)
 
-	run, err := s.CreateRun("task_1")
+	run, err := s.CreateRun("task_1", "u1", false)
 	if err != nil {
 		t.Fatalf("CreateRun: %v", err)
 	}
@@ -208,16 +210,16 @@ func TestCreateRun_NotFound(t *testing.T) {
 	s, repo, _, _ := newTestService(t)
 	repo.On("Get", mock.Anything, "missing").Return((*task.Task)(nil), fmt.Errorf("not found"))
 
-	if _, err := s.CreateRun("missing"); err == nil {
+	if _, err := s.CreateRun("missing", "u1", false); err == nil {
 		t.Fatal("expected error for missing task")
 	}
 }
 
 func TestGetRun_Success(t *testing.T) {
 	s, _, runRepo, _ := newTestService(t)
-	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1"}, nil)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1", UserID: "u1"}, nil)
 
-	run, err := s.GetRun("run_1")
+	run, err := s.GetRun("run_1", "u1", false)
 	if err != nil {
 		t.Fatalf("GetRun: %v", err)
 	}
@@ -227,12 +229,13 @@ func TestGetRun_Success(t *testing.T) {
 }
 
 func TestListRuns_Success(t *testing.T) {
-	s, _, runRepo, _ := newTestService(t)
+	s, repo, runRepo, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "user1"}, nil)
 	runRepo.On("List", mock.Anything, "task_1", "", int64(0), int64(20)).Return(
 		[]*task.TaskRun{{ID: "r1"}, {ID: "r2"}}, int64(2), nil,
 	)
 
-	runs, total, err := s.ListRuns("task_1", "", 0, 20)
+	runs, total, err := s.ListRuns("task_1", "user1", false, "", 0, 20)
 	if err != nil {
 		t.Fatalf("ListRuns: %v", err)
 	}
@@ -293,4 +296,94 @@ func TestCancelRun_Success(t *testing.T) {
 	if err := s.CancelRun("run_1"); err != nil {
 		t.Fatalf("CancelRun: %v", err)
 	}
+}
+
+// ── SPEC-084 §6.6 IDOR ownership (归属校验) ──
+
+func TestGetTask_ForbiddenNonOwner(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
+
+	if _, err := s.GetTask("task_1", "attacker", false); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound (no existence leak), got %v", err)
+	}
+}
+
+func TestGetTask_SystemAdminExempt(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
+
+	tsk, err := s.GetTask("task_1", "admin", true)
+	if err != nil {
+		t.Fatalf("system_admin should be exempt, got %v", err)
+	}
+	if tsk.ID != "task_1" {
+		t.Errorf("ID = %s", tsk.ID)
+	}
+}
+
+func TestCancelTask_ForbiddenNonOwner(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
+
+	if err := s.CancelTask("task_1", "attacker", false); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	repo.AssertNotCalled(t, "Cancel", mock.Anything, "task_1")
+}
+
+func TestCreateRun_ForbiddenNonOwner(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
+
+	if _, err := s.CreateRun("task_1", "attacker", false); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetRun_ForbiddenNonOwner(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1", UserID: "owner"}, nil)
+
+	if _, err := s.GetRun("run_1", "attacker", false); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetRun_SystemAdminExempt(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1", UserID: "owner"}, nil)
+
+	run, err := s.GetRun("run_1", "admin", true)
+	if err != nil {
+		t.Fatalf("system_admin should be exempt, got %v", err)
+	}
+	if run.ID != "run_1" {
+		t.Errorf("ID = %s", run.ID)
+	}
+}
+
+func TestListRuns_ForbiddenNonOwner(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
+
+	if _, _, err := s.ListRuns("task_1", "attacker", false, "", 0, 20); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestListTasks_SystemAdminUsesListAll(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("ListAll", mock.Anything, int64(0), int64(50)).Return(
+		[]*task.Task{{ID: "t1"}, {ID: "t2"}, {ID: "t3"}}, int64(3), nil,
+	)
+
+	tasks, total, err := s.ListTasks("admin", true, 0, 50)
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(tasks) != 3 || total != 3 {
+		t.Fatalf("got %d tasks (total=%d), want 3", len(tasks), total)
+	}
+	repo.AssertNotCalled(t, "List", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

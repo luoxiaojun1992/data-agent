@@ -176,7 +176,7 @@ func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
 			_ = p.queue.Ack(context.Background(), msg.ID)
 			return
 		}
-		run, err := p.runSvc.GetRun(atp.RunID)
+		run, err := p.runSvc.GetRun(atp.RunID, "", true)
 		if err != nil || run == nil {
 			log.Printf("Failed to load run %s: %v", atp.RunID, err)
 			_ = p.queue.Ack(context.Background(), msg.ID)

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '@/lib/api';
+import { useAuth, NOTIFICATION_PERMS } from '@/lib/api';
 
 interface Notif {
   id: string;
@@ -12,14 +12,21 @@ interface Notif {
   read: boolean;
 }
 
+type SendMode = 'direct' | 'broadcast';
+
 export default function NotificationBell() {
-  const { auth, apiFetch } = useAuth();
+  const { auth, apiFetch, canAccess } = useAuth();
   const [unread, setUnread] = useState(0);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [open, setOpen] = useState(false);
-  const [showSend, setShowSend] = useState(false);
+  const [sendMode, setSendMode] = useState<SendMode | null>(null);
   const [sendForm, setSendForm] = useState({ title: '', content: '', type: 'info', target: '' });
   const ref = useRef<HTMLDivElement>(null);
+
+  // SPEC-084 §6.2: 定向发送 is user-level, 广播 is admin-level. The bell
+  // only renders each send entry when the user holds the matching permission.
+  const canSend = canAccess(NOTIFICATION_PERMS.send);
+  const canBroadcast = canAccess(NOTIFICATION_PERMS.broadcast);
 
   const fetchCount = useCallback(async () => {
     if (!auth.token) return;
@@ -73,17 +80,27 @@ export default function NotificationBell() {
     setUnread(0);
   };
 
+  const openSend = (mode: SendMode) => {
+    setSendForm({ title: '', content: '', type: 'info', target: '' });
+    setSendMode(mode);
+  };
+
   const handleSend = async () => {
     try {
-      const res = await apiFetch('/notifications', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: sendForm.title, content: sendForm.content, type: sendForm.type,
-          target_ids: sendForm.target ? [sendForm.target] : [],
-        }),
-      });
+      const res = sendMode === 'broadcast'
+        ? await apiFetch('/notifications/broadcast', {
+            method: 'POST',
+            body: JSON.stringify({ title: sendForm.title, content: sendForm.content, type: sendForm.type }),
+          })
+        : await apiFetch('/notifications', {
+            method: 'POST',
+            body: JSON.stringify({
+              title: sendForm.title, content: sendForm.content, type: sendForm.type,
+              target_ids: sendForm.target ? [sendForm.target] : [],
+            }),
+          });
       if (res.ok) {
-        setShowSend(false);
+        setSendMode(null);
         setSendForm({ title: '', content: '', type: 'info', target: '' });
         fetchCount();
       }
@@ -111,17 +128,25 @@ export default function NotificationBell() {
           <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>通知</span>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {unread > 0 && (
                 <button data-testid="notif-mark-all-read" onClick={handleMarkAllRead}
                   style={{ fontSize: '12px', color: '#5c7cfa', background: 'none', border: 'none', cursor: 'pointer' }}>
                   全部已读
                 </button>
               )}
-              <button onClick={() => setShowSend(true)}
-                style={{ fontSize: '12px', color: '#34D399', background: 'none', border: 'none', cursor: 'pointer' }}>
-                + 发送
-              </button>
+              {canSend && (
+                <button data-testid="notif-send-direct-btn" onClick={() => openSend('direct')}
+                  style={{ fontSize: '12px', color: '#34D399', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  定向发送
+                </button>
+              )}
+              {canBroadcast && (
+                <button data-testid="notif-broadcast-btn" onClick={() => openSend('broadcast')}
+                  style={{ fontSize: '12px', color: '#F59E0B', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  广播
+                </button>
+              )}
             </div>
           </div>
           {notifs.length === 0 ? (
@@ -147,16 +172,21 @@ export default function NotificationBell() {
         </div>
       )}
 
-      {/* Send Modal */}
-      {showSend && (
-        <div data-testid="notif-send-modal" style={{ position: 'fixed', inset: 0, zIndex: 2000,
+      {/* Send Modal (direct 定向 / broadcast 广播) */}
+      {sendMode && (
+        <div data-testid={sendMode === 'broadcast' ? 'notif-broadcast-modal' : 'notif-send-modal'}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000,
           background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowSend(false); }}>
+          onClick={(e) => { if (e.target === e.currentTarget) setSendMode(null); }}>
           <div className="glass" style={{ padding: '24px', maxWidth: '440px', width: '90%' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px' }}>发送站内信</h3>
-            <input data-testid="notif-send-recipient" placeholder="接收人 ID（留空为广播）" value={sendForm.target}
-              onChange={(e) => setSendForm({ ...sendForm, target: e.target.value })}
-              style={inputStyle} />
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px' }}>
+              {sendMode === 'broadcast' ? '广播通知' : '定向发送站内信'}
+            </h3>
+            {sendMode === 'direct' && (
+              <input data-testid="notif-send-recipient" placeholder="接收人 ID" value={sendForm.target}
+                onChange={(e) => setSendForm({ ...sendForm, target: e.target.value })}
+                style={inputStyle} />
+            )}
             <input data-testid="notif-send-subject" placeholder="标题" value={sendForm.title}
               onChange={(e) => setSendForm({ ...sendForm, title: e.target.value })}
               style={{ ...inputStyle, marginTop: '8px' }} />
@@ -164,7 +194,7 @@ export default function NotificationBell() {
               onChange={(e) => setSendForm({ ...sendForm, content: e.target.value })}
               style={{ ...inputStyle, marginTop: '8px', height: '80px', resize: 'vertical' }} />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-              <button onClick={() => setShowSend(false)} style={secondaryBtn}>取消</button>
+              <button onClick={() => setSendMode(null)} style={secondaryBtn}>取消</button>
               <button data-testid="notif-send-submit" onClick={handleSend} style={primaryBtn}>发送</button>
             </div>
           </div>

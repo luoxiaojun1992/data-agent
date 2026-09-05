@@ -57,9 +57,9 @@ func newTestPool(t *testing.T, execErr error, run *domaintask.TaskRun, runErr er
 	exec := &mockExecutor{err: execErr}
 	runs := domaintaskmocks.NewTaskRunService(t)
 	if runErr != nil {
-		runs.On("GetRun", mock.Anything).Return((*domaintask.TaskRun)(nil), runErr)
+		runs.On("GetRun", mock.Anything, mock.Anything, mock.Anything).Return((*domaintask.TaskRun)(nil), runErr)
 	} else {
-		runs.On("GetRun", mock.Anything).Return(run, nil)
+		runs.On("GetRun", mock.Anything, mock.Anything, mock.Anything).Return(run, nil)
 	}
 	pool := NewPool(q, nil, 1, exec, runs)
 	return pool, q, exec, runs
@@ -86,7 +86,7 @@ func TestProcessWorkerMessage_Success_LoadsFromDBAndExecutes(t *testing.T) {
 
 	// SPEC-063: run loaded from DB (GetRun called), executor invoked with the
 	// DB-loaded run, message acknowledged.
-	runs.AssertCalled(t, "GetRun", "run_1")
+	runs.AssertCalled(t, "GetRun", "run_1", "", true)
 	require.Equal(t, 1, exec.calls)
 	assert.Equal(t, "run_1", exec.last.ID)
 	assert.Equal(t, []string{"msg-1"}, q.ackIDs)

@@ -100,14 +100,6 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		Options: options.Index().SetUnique(true).SetName("rbac_perm_key_unique"),
 	})
 
-	count, err := permColl.CountDocuments(ctx, bson.M{})
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
 	type permSeed struct {
 		perm    model.RBACPermission
 		roleIDs []string
@@ -121,10 +113,12 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		// admin_role
 		{perm: RBACPerm("rbac_perm_dashboard_view", model.PermDashboardView, "查看仪表盘", "dashboard"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_chat_delete", model.PermChatDelete, "删除对话", "chat"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_agent_view", model.PermAgentView, "查看 Agent 任务", "agent"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_agent_create", model.PermAgentCreate, "创建 Agent 任务", "agent"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_agent_edit", model.PermAgentEdit, "操作 Agent 任务（切换/执行/取消）", "agent"), roleIDs: []string{admin}},
-		{perm: RBACPerm("rbac_perm_agent_delete", model.PermAgentDelete, "删除 Agent 任务", "agent"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_agent_view", model.PermAgentView, "查看 Agent 任务", "agent"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_agent_create", model.PermAgentCreate, "创建 Agent 任务", "agent"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_agent_edit", model.PermAgentEdit, "操作 Agent 任务（切换/执行/取消）", "agent"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_agent_delete", model.PermAgentDelete, "删除 Agent 任务", "agent"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_notification_send", model.PermNotificationSend, "定向发送通知", "notification"), roleIDs: []string{user}},
+		{perm: RBACPerm("rbac_perm_notification_broadcast", model.PermNotificationBroadcast, "广播通知", "notification"), roleIDs: []string{admin}},
 		{perm: RBACPerm("rbac_perm_kb_delete", model.PermKBDelete, "删除知识库文档", "knowledge"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_artifact_delete", model.PermArtifactDelete, "删除产出物", "artifact"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_im_view", model.PermIMView, "查看 IM 配置", "im"), roleIDs: []string{user}},
@@ -164,7 +158,7 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_sidebar_dashboard", model.PermSidebarDashboard, "仪表盘菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_chat", model.PermSidebarChat, "对话菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_hermes", model.PermSidebarHermes, "Hermes菜单", "sidebar"), roleIDs: []string{user}},
-		{perm: RBACPerm("rbac_perm_sidebar_agent", model.PermSidebarAgent, "Agent菜单", "sidebar"), roleIDs: []string{admin}},
+		{perm: RBACPerm("rbac_perm_sidebar_agent", model.PermSidebarAgent, "Agent菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_knowledge", model.PermSidebarKnowledge, "知识库菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_artifact", model.PermSidebarArtifact, "产出物菜单", "sidebar"), roleIDs: []string{user}},
 		{perm: RBACPerm("rbac_perm_sidebar_im", model.PermSidebarIM, "飞书菜单", "sidebar"), roleIDs: []string{user}},
@@ -181,25 +175,24 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		{perm: RBACPerm("rbac_perm_admin_menu_settings", model.PermAdminMenuSettings, "系统设置入口", "admin"), roleIDs: []string{sysAdmin}},
 	}
 
-	permDocs := make([]interface{}, 0, len(perms))
-	rolePermDocs := make([]interface{}, 0)
-
-	for _, ps := range perms {
-		permDocs = append(permDocs, &ps.perm)
-		for _, roleID := range ps.roleIDs {
-			rolePermDocs = append(rolePermDocs, &model.RBACRolePermission{
-				ID:           "rbac_rp_" + uuid.New().String()[:8],
-				RoleID:       roleID,
-				PermissionID: ps.perm.ID,
-				CreatedAt:    time.Now(),
-			})
-		}
-	}
-
-	if _, err := permColl.InsertMany(ctx, permDocs); err != nil {
-		log.Printf("[rbac-seed] permissions insert error: %v", err)
+	// 逐权限增量补齐 + 角色关联完全同步（SPEC-084 §6.3）：
+	// 1. 查出现有权限 key 集合，缺失的 key → InsertOne 权限文档
+	// 2. 角色关联同步：期望 roleIDs 缺失 → 插入；多余 → 删除（迁移 agent:*/sidebar:agent 从 admin 到 user）
+	// 3. 最后全量重算各角色 permission_count（幂等）
+	existingPerms, err := permColl.Find(ctx, bson.M{})
+	if err != nil {
 		return err
 	}
+	existingKeys := map[string]bool{}
+	for existingPerms.Next(ctx) {
+		var p model.RBACPermission
+		if err := existingPerms.Decode(&p); err != nil {
+			existingPerms.Close(ctx)
+			return err
+		}
+		existingKeys[p.Key] = true
+	}
+	existingPerms.Close(ctx)
 
 	rpColl := db.Collection("rbac_role_permissions")
 	rpColl.Indexes().CreateOne(ctx, mongo.IndexModel{
@@ -207,26 +200,113 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 		Options: options.Index().SetUnique(true).SetName("rp_role_perm_unique"),
 	})
 
-	if _, err := rpColl.InsertMany(ctx, rolePermDocs); err != nil {
-		log.Printf("[rbac-seed] role-permissions insert error: %v", err)
+	insertedPerms := 0
+	insertedLinks := 0
+
+	for _, ps := range perms {
+		// 1. 权限文档缺失则插入
+		if !existingKeys[ps.perm.Key] {
+			if _, err := permColl.InsertOne(ctx, &ps.perm); err != nil {
+				if !mongo.IsDuplicateKeyError(err) {
+					log.Printf("[rbac-seed] permission %s insert error: %v", ps.perm.Key, err)
+					return err
+				}
+			} else {
+				insertedPerms++
+			}
+		}
+
+		// 2. 角色关联同步：查该权限现有的 role_id 集合
+		existingRoleIDs := map[string]bool{}
+		cur, err := rpColl.Find(ctx, bson.M{"permission_id": ps.perm.ID})
+		if err != nil {
+			return err
+		}
+		for cur.Next(ctx) {
+			var rp model.RBACRolePermission
+			if err := cur.Decode(&rp); err != nil {
+				cur.Close(ctx)
+				return err
+			}
+			existingRoleIDs[rp.RoleID] = true
+		}
+		cur.Close(ctx)
+
+		want := map[string]bool{}
+		for _, rid := range ps.roleIDs {
+			want[rid] = true
+		}
+		// 期望缺失 → 插入关联
+		for rid := range want {
+			if existingRoleIDs[rid] {
+				continue
+			}
+			if _, err := rpColl.InsertOne(ctx, &model.RBACRolePermission{
+				ID:           "rbac_rp_" + uuid.New().String()[:8],
+				RoleID:       rid,
+				PermissionID: ps.perm.ID,
+				CreatedAt:    time.Now(),
+			}); err != nil {
+				if !mongo.IsDuplicateKeyError(err) {
+					log.Printf("[rbac-seed] role-permission insert error: %v", err)
+					return err
+				}
+			} else {
+				insertedLinks++
+			}
+		}
+		// 多余关联 → 删除（角色迁移：agent:*/sidebar:agent 从 admin 迁到 user）
+		for rid := range existingRoleIDs {
+			if want[rid] {
+				continue
+			}
+			if _, err := rpColl.DeleteOne(ctx, bson.M{"role_id": rid, "permission_id": ps.perm.ID}); err != nil {
+				log.Printf("[rbac-seed] role-permission delete error: %v", err)
+				return err
+			}
+		}
+	}
+
+	// 3. 全量重算各角色 permission_count（幂等，反映实际关联数）
+	if err := recountPermissionCounts(ctx, db); err != nil {
+		log.Printf("[rbac-seed] recount permission_count error: %v", err)
 		return err
 	}
 
-	// Update PermissionCount on roles
-	permCounts := map[string]int{}
-	for _, ps := range perms {
-		for _, rid := range ps.roleIDs {
-			permCounts[rid]++
+	log.Printf("[rbac-seed] inserted %d permissions, %d role-permission links", insertedPerms, insertedLinks)
+	return nil
+}
+
+// recountPermissionCounts recomputes each role's permission_count from the
+// rbac_role_permissions collection. Idempotent — safe to run on every startup.
+func recountPermissionCounts(ctx context.Context, db *mongo.Database) error {
+	rolesColl := db.Collection("rbac_roles")
+	rpColl := db.Collection("rbac_role_permissions")
+
+	cur, err := rolesColl.Find(ctx, bson.M{})
+	if err != nil {
+		return err
+	}
+	var roleIDs []string
+	for cur.Next(ctx) {
+		var r model.RBACRole
+		if err := cur.Decode(&r); err != nil {
+			cur.Close(ctx)
+			return err
+		}
+		roleIDs = append(roleIDs, r.ID)
+	}
+	cur.Close(ctx)
+
+	for _, rid := range roleIDs {
+		cnt, err := rpColl.CountDocuments(ctx, bson.M{"role_id": rid})
+		if err != nil {
+			return err
+		}
+		if _, err := rolesColl.UpdateOne(ctx, bson.M{"_id": rid}, bson.M{"$set": bson.M{"permission_count": cnt}}); err != nil {
+			return err
 		}
 	}
-	for rid, cnt := range permCounts {
-		db.Collection("rbac_roles").UpdateOne(ctx,
-			bson.M{"_id": rid},
-			bson.M{"$set": bson.M{"permission_count": cnt}},
-		)
-	}
-
-	log.Printf("[rbac-seed] inserted %d permissions, %d role-permission links", len(permDocs), len(rolePermDocs))
 	return nil
 }
 

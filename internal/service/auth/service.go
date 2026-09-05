@@ -97,20 +97,8 @@ type LoginResponse struct {
 	NeedChangePw bool   `json:"need_change_pw"`
 }
 
-// RegisterRequest represents a user registration request.
-type RegisterRequest struct {
-	Username string         `json:"username" binding:"required,min=2,max=50"`
-	Password string         `json:"password" binding:"required,min=6,max=100"`
-	Role     model.UserRole `json:"role,omitempty"`
-}
-
-// RegisterResponse represents a successful registration.
-type RegisterResponse struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
-	Message  string `json:"message"`
-}
+// RegisterRequest / RegisterResponse were removed (SPEC-084): self-registration
+// is disabled — users are created via admin invite or the /admin/users API.
 
 // Login authenticates a user and returns a JWT token.
 func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse, error) {
@@ -153,46 +141,6 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 		TokenType:    "Bearer",
 		ExpiresIn:    expiresIn,
 		NeedChangePw: !user.PasswordChanged,
-	}, nil
-}
-
-// Register creates a new user account.
-func (s *Service) Register(ctx context.Context, req *RegisterRequest) (*RegisterResponse, error) {
-	existing, err := s.userRepo.FindByUsername(ctx, req.Username)
-	if err != nil {
-		return nil, fmt.Errorf("check existing user: %w", err)
-	}
-	if existing != nil {
-		return nil, fmt.Errorf("username already exists")
-	}
-
-	passwordHash, err := s.pwd.Hash(req.Password)
-	if err != nil {
-		return nil, fmt.Errorf("hash password: %w", err)
-	}
-
-	role := req.Role
-	if role != model.RoleAdmin && role != model.RoleUser {
-		role = model.RoleUser
-	}
-
-	user := &model.User{
-		Username:        req.Username,
-		PasswordHash:    passwordHash,
-		Role:            role,
-		Status:          model.StatusEnabled,
-		PasswordChanged: false,
-	}
-
-	if err := s.userRepo.Create(ctx, user); err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
-	}
-
-	return &RegisterResponse{
-		UserID:   user.ID,
-		Username: user.Username,
-		Role:     string(user.Role),
-		Message:  "Registration successful. You can now log in.",
 	}, nil
 }
 

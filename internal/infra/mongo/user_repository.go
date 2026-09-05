@@ -184,10 +184,12 @@ func (r *UserRepository) List(ctx context.Context, role string, skip, limit int6
 }
 
 func (r *UserRepository) ListSorted(ctx context.Context, role string, skip, limit int64, sortBy, sortOrder string) ([]model.User, int64, error) {
+	// SPEC-084 §6.1 数据隔离：role 非空即精确过滤该角色（admin 调用方传
+	// "user" → 只返回普通用户，看不到其他 admin / system_admin）；role 为空
+	// （system_admin）则返回全部用户。
 	filter := bson.M{}
-	if role == "admin" {
-		// Admins cannot see system_admin users
-		filter["role"] = bson.M{"$ne": model.RoleSystemAdmin}
+	if role != "" {
+		filter["role"] = role
 	}
 
 	total, err := r.coll.CountDocuments(ctx, filter)

@@ -7,8 +7,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/metrics"
 	"github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 )
 
 // DashboardHandler serves dashboard KPI stats and time-series trends
@@ -26,10 +29,14 @@ func NewDashboardHandler(kbSvc knowledge.KnowledgeService, reader metrics.Reader
 }
 
 // RegisterDashboardRoutes wires the /api/v1/dashboard and
-// /api/v1/dashboard/trends routes (JWT only — all logged-in users).
-func RegisterDashboardRoutes(router *gin.Engine, midd gin.HandlerFunc, h *DashboardHandler) {
-	router.GET("/api/v1/dashboard", midd, h.Get)
-	router.GET("/api/v1/dashboard/trends", midd, h.GetTrends)
+// /api/v1/dashboard/trends routes. SPEC-084: guard with stats:view RBAC
+// (previously the dashRoutes group was dead code — the routes were registered
+// on the global router and only JWT-checked).
+func RegisterDashboardRoutes(router *gin.Engine, midd gin.HandlerFunc, h *DashboardHandler, rbacSvc *rbacsvc.Service) {
+	dash := router.Group("/api/v1/dashboard")
+	dash.Use(midd, middleware.RequirePermission(rbacSvc, model.PermStatsView))
+	dash.GET("", h.Get)
+	dash.GET("/trends", h.GetTrends)
 }
 
 // summary is the JSON payload of GET /api/v1/dashboard.

@@ -10,6 +10,12 @@ import (
 	configmocks "github.com/luoxiaojun1992/data-agent/internal/service/config/mocks"
 )
 
+// errStr is a minimal error type used across handler tests to synthesize
+// service errors without importing a dedicated error constructor.
+type errStr string
+
+func (e errStr) Error() string { return string(e) }
+
 // TestConfigHandler_Put_ServiceError verifies Put returns 500 when the config
 // service Upsert call fails.
 func TestConfigHandler_Put_ServiceError(t *testing.T) {

@@ -128,37 +128,6 @@ func TestNewService_LoginWrongPasswordEndToEnd(t *testing.T) {
 	}
 }
 
-// TestNewService_RegisterEndToEnd exercises the default hasher via Register and
-// confirms the admin role is preserved end-to-end.
-func TestNewService_RegisterEndToEnd(t *testing.T) {
-	repo := mockrepo.NewUserRepository(t)
-	jwt := middleware.NewJWTManager("test-secret-16chars-long", time.Hour)
-	svc := NewService(repo, jwt)
-
-	repo.On("FindByUsername", mock.Anything, "newuser3").Return((*model.User)(nil), nil)
-	repo.On("Create", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		// Simulate the repo assigning an ID to the user.
-		u := args.Get(1).(*model.User)
-		u.ID = "generated-id"
-	})
-
-	resp, err := svc.Register(context.Background(), &RegisterRequest{
-		Username: "newuser3", Password: "Pass1234!", Role: model.RoleAdmin,
-	})
-	if err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-	if resp.Role != "admin" {
-		t.Errorf("Role = %q, want admin", resp.Role)
-	}
-	if resp.Username != "newuser3" {
-		t.Errorf("Username = %q, want newuser3", resp.Username)
-	}
-	if resp.Message == "" {
-		t.Error("Message should not be empty")
-	}
-}
-
 // --- defaultPasswordHasher ---
 
 // TestDefaultPasswordHasher_HashAndCheck verifies the default password hasher

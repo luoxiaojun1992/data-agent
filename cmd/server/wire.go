@@ -707,24 +707,6 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		imBindHandler = handler.NewIMBindHandler(im.NewBindService(mongoinfra.NewIMBindRepository(deps.mongoClient.DB(), deps.vaultClient)))
 	}
 
-	toolLister := handler.ToolListerFunc(func() []string {
-		names, err := adktools.Names(&adktools.Deps{
-			KBService:    deps.kbService,
-			SkillConfig:  deps.skillConfigSvc,
-			Memory:       deps.memoryService,
-			MemoryWriter: deps.memoryKit,
-			AppName:      appName,
-			Tasks:        deps.taskService,
-			SessionSvc:   deps.sessionManager,
-			Artifacts:    deps.artifactStorage,
-			HumanGate:    deps.humanGate,
-		})
-		if err != nil {
-			return []string{}
-		}
-		return names
-	})
-
 	return &handler.RouteDeps{
 		JWTManager:     deps.jwtManager,
 		AuditLogger:    deps.auditLogger,
@@ -738,7 +720,6 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Chat:           handler.NewChatHandler(deps.chatService),
 		HumanChannel:   handler.NewHumanChannelHandler(deps.humanHub, deps.sessionManager),
 		Enhance:        handler.NewEnhanceHandler(deps.enhanceService),
-		Agent:          handler.NewAgentHandler(deps.orchestrator, deps.taskService, toolLister),
 		Session:        handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),
 		Artifact:       deps.artifactHandler,
 		Knowledge:      deps.kbHandler,
@@ -750,7 +731,6 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		SkillConfig:    deps.skillConfigHandler,
 		FeishuConfig:   handler.NewFeishuConfigHandler(deps.feishuCfgService),
 		APICollection:  handler.NewAPICollectionHandler(deps.apiCollectionSvc),
-		APITools:       handler.NewAPIToolsHandler(deps.apiCollectionSvc),
 		IMWebhook:      imWebhook,
 		HermesURL:      os.Getenv("HERMES_URL"),
 		AppName:        appName,

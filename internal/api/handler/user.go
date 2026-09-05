@@ -6,7 +6,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	usersvc "github.com/luoxiaojun1992/data-agent/internal/service/user"
 )
 
@@ -24,23 +26,31 @@ func NewUserHandler(svc usersvc.Service) *UserHandler {
 // duplicating the raw string literal (SonarQube "define a constant" gate).
 const userIDParam = "/:id"
 
-// RegisterUserRoutes registers user management routes.
-func RegisterUserRoutes(api *gin.RouterGroup, h *UserHandler) {
+// RegisterUserRoutes registers user management routes. All endpoints are
+// admin-level (user:*); SPEC-084 adds RBAC guards to the previously JWT-only
+// /users/* routes.
+func RegisterUserRoutes(api *gin.RouterGroup, h *UserHandler, rbacSvc *rbacsvc.Service) {
 	ug := api.Group("/users")
-	ug.GET("", h.List)
-	ug.GET(userIDParam, h.Get)
-	ug.POST("", h.Create)
+	ug.GET("", middleware.RequirePermission(rbacSvc, model.PermUserView), h.List)
+	ug.GET(userIDParam, middleware.RequirePermission(rbacSvc, model.PermUserView), h.Get)
+	ug.POST("", middleware.RequirePermission(rbacSvc, model.PermUserCreate), h.Create)
 	// PUT /:id is the role-update endpoint used by the frontend (handleEdit).
 	// /:id/role is kept as an alias for API clients.
-	ug.PUT(userIDParam, h.UpdateRole)
-	ug.PUT(userIDParam+"/role", h.UpdateRole)
-	ug.PATCH(userIDParam+"/status", h.ToggleStatus)
-	ug.DELETE(userIDParam, h.Delete)
+	ug.PUT(userIDParam, middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.UpdateRole)
+	ug.PUT(userIDParam+"/role", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.UpdateRole)
+	ug.PATCH(userIDParam+"/status", middleware.RequirePermission(rbacSvc, model.PermUserEdit), h.ToggleStatus)
+	ug.DELETE(userIDParam, middleware.RequirePermission(rbacSvc, model.PermUserDelete), h.Delete)
 }
 
-// List returns all users.
+// List returns all users visible to the caller.
+// SPEC-084 §6.1 数据隔离：admin 只能看到普通用户（role=="user"），
+// system_admin 看到全部；普通 user 无 user:view 权限，到不了这里。
 func (h *UserHandler) List(c *gin.Context) {
 	role := c.DefaultQuery("role", "")
+	if callerRole := c.GetString("role"); callerRole == string(model.RoleAdmin) {
+		// admin 数据隔离：强制只看普通用户，覆盖前端 query 参数。
+		role = string(model.RoleUser)
+	}
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
 	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "20"), 10, 64)
 	skip := (page - 1) * pageSize

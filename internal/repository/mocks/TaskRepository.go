@@ -120,6 +120,43 @@ func (_m *TaskRepository) List(ctx context.Context, userID string, skip int64, l
 	return r0, r1, r2
 }
 
+// ListAll provides a mock function with given fields: ctx, skip, limit
+func (_m *TaskRepository) ListAll(ctx context.Context, skip int64, limit int64) ([]*task.Task, int64, error) {
+	ret := _m.Called(ctx, skip, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListAll")
+	}
+
+	var r0 []*task.Task
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) ([]*task.Task, int64, error)); ok {
+		return rf(ctx, skip, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) []*task.Task); ok {
+		r0 = rf(ctx, skip, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*task.Task)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) int64); ok {
+		r1 = rf(ctx, skip, limit)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, int64, int64) error); ok {
+		r2 = rf(ctx, skip, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
 // UpdateLastRun provides a mock function with given fields: ctx, id, runAt
 func (_m *TaskRepository) UpdateLastRun(ctx context.Context, id string, runAt time.Time) error {
 	ret := _m.Called(ctx, id, runAt)

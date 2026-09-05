@@ -7,7 +7,6 @@ import "context"
 // AuthService defines the authentication service contract.
 type AuthService interface {
 	Login(ctx context.Context, req *LoginRequest) (*LoginResponse, error)
-	Register(ctx context.Context, req *RegisterRequest) (*RegisterResponse, error)
 	RefreshToken(ctx context.Context, userID, username, role string) (*LoginResponse, error)
 
 	// ChangePassword updates the current user's own password (SPEC-083).

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -101,11 +102,12 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"task": t, "run": run})
 }
 
-// GetTask returns a task definition by ID.
+// GetTask returns a task definition by ID (ownership-checked).
 // GET /api/v1/tasks/:task_id
 func (h *TaskHandler) GetTask(c *gin.Context) {
 	taskID := c.Param("task_id")
-	t, err := h.svc.GetTask(taskID)
+	userID, isSystemAdmin := taskIdentity(c)
+	t, err := h.svc.GetTask(taskID, userID, isSystemAdmin)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -113,11 +115,16 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 	c.JSON(http.StatusOK, t)
 }
 
-// CancelTask deletes a task definition.
+// CancelTask deletes a task definition (ownership-checked).
 // PUT /api/v1/tasks/:task_id/cancel
 func (h *TaskHandler) CancelTask(c *gin.Context) {
 	taskID := c.Param("task_id")
-	if err := h.svc.CancelTask(taskID); err != nil {
+	userID, isSystemAdmin := taskIdentity(c)
+	if err := h.svc.CancelTask(taskID, userID, isSystemAdmin); err != nil {
+		if errors.Is(err, task.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -128,10 +135,11 @@ func (h *TaskHandler) CancelTask(c *gin.Context) {
 // GET /api/v1/tasks
 func (h *TaskHandler) ListTasks(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	_, isSystemAdmin := taskIdentity(c)
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
 	skip := int64((page - 1) * pageSize)
-	tasks, total, err := h.svc.ListTasks(userID.(string), skip, int64(pageSize))
+	tasks, total, err := h.svc.ListTasks(userID.(string), isSystemAdmin, skip, int64(pageSize))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -141,27 +149,33 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 
 // ── Run endpoints ──
 
-// ListRuns returns paginated runs for a task definition.
+// ListRuns returns paginated runs for a task definition (ownership-checked).
 // GET /api/v1/tasks/:task_id/runs
 func (h *TaskHandler) ListRuns(c *gin.Context) {
 	taskID := c.Param("task_id")
+	userID, isSystemAdmin := taskIdentity(c)
 	status := c.Query("status")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	skip := int64((page - 1) * pageSize)
-	runs, total, err := h.runSvc.ListRuns(taskID, status, skip, int64(pageSize))
+	runs, total, err := h.runSvc.ListRuns(taskID, userID, isSystemAdmin, status, skip, int64(pageSize))
 	if err != nil {
+		if errors.Is(err, task.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"runs": runs, "total": total, "page": page, "page_size": pageSize})
 }
 
-// GetRun returns a single run by ID.
+// GetRun returns a single run by ID (ownership-checked).
 // GET /api/v1/tasks/:task_id/runs/:run_id
 func (h *TaskHandler) GetRun(c *gin.Context) {
 	runID := c.Param("run_id")
-	run, err := h.runSvc.GetRun(runID)
+	userID, isSystemAdmin := taskIdentity(c)
+	run, err := h.runSvc.GetRun(runID, userID, isSystemAdmin)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -169,35 +183,17 @@ func (h *TaskHandler) GetRun(c *gin.Context) {
 	c.JSON(http.StatusOK, run)
 }
 
-// CreateRun triggers a new run for an existing task definition.
+// CreateRun triggers a new run for an existing task definition (ownership-checked).
 // POST /api/v1/tasks/:task_id/run
 func (h *TaskHandler) CreateRun(c *gin.Context) {
 	taskID := c.Param("task_id")
-	run, err := h.svc.CreateRun(taskID)
+	userID, isSystemAdmin := taskIdentity(c)
+	run, err := h.svc.CreateRun(taskID, userID, isSystemAdmin)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusAccepted, run)
-}
-
-// PauseTask pauses a scheduled task (delegates to CancelRun).
-// PUT /api/v1/tasks/:task_id/pause
-func (h *TaskHandler) PauseTask(c *gin.Context) {
-	taskID := c.Param("task_id")
-	if err := h.runSvc.CancelRun(taskID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "paused", "task_id": taskID})
-}
-
-// ResumeTask resumes a paused scheduled task (alias for CreateRun).
-// PUT /api/v1/tasks/:task_id/resume
-func (h *TaskHandler) ResumeTask(c *gin.Context) {
-	taskID := c.Param("task_id")
-	run, err := h.svc.CreateRun(taskID)
-	if err != nil {
+		if errors.Is(err, task.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -208,14 +204,21 @@ func (h *TaskHandler) ResumeTask(c *gin.Context) {
 // GET /api/v1/tasks/:task_id/artifacts/download
 func (h *TaskHandler) DownloadArtifacts(c *gin.Context) {
 	taskID := c.Param("task_id")
+	userID, isSystemAdmin := taskIdentity(c)
+	if _, err := h.svc.GetTask(taskID, userID, isSystemAdmin); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", `attachment; filename="task_`+taskID+`_artifacts.zip"`)
 	c.Data(http.StatusOK, "application/zip", []byte{0x50, 0x4B, 0x03, 0x04})
 }
 
-// ToggleScheduledEnabled turns scheduled task on/off. PATCH /admin/tasks/:id/scheduled-enabled
+// ToggleScheduledEnabled turns scheduled task on/off (ownership-checked).
+// PATCH /admin/tasks/:id/scheduled-enabled
 func (h *TaskHandler) ToggleScheduledEnabled(c *gin.Context) {
 	taskID := c.Param("id")
+	userID, isSystemAdmin := taskIdentity(c)
 	var req struct {
 		Enabled bool `json:"enabled"`
 	}
@@ -223,11 +226,23 @@ func (h *TaskHandler) ToggleScheduledEnabled(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.svc.SetScheduledEnabled(taskID, req.Enabled); err != nil {
+	if err := h.svc.SetScheduledEnabled(taskID, userID, isSystemAdmin, req.Enabled); err != nil {
+		if errors.Is(err, task.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"enabled": req.Enabled})
+}
+
+// taskIdentity extracts (userID, isSystemAdmin) from the JWT-injected context.
+func taskIdentity(c *gin.Context) (string, bool) {
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+	uid, _ := userID.(string)
+	return uid, role == "system_admin"
 }
 
 // validateRequestImages validates image attachments against the shared domain

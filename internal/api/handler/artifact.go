@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"io"
 	"net/http"
 	"strconv"
 
@@ -119,50 +118,4 @@ func (h *ArtifactHandler) ListUser(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"artifacts": list, "total": total, "page": page, "page_size": pageSize})
-}
-
-// ListWorkspace lists workspace files for a session.
-func (h *ArtifactHandler) ListWorkspace(c *gin.Context) {
-	sessionID := c.Param("session_id")
-	userID, _ := c.Get("user_id")
-
-	files, err := h.wm.List(userID.(string), sessionID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"session_id": sessionID, "files": files})
-}
-
-// ReadWorkspaceFile reads a file from the workspace.
-func (h *ArtifactHandler) ReadWorkspaceFile(c *gin.Context) {
-	sessionID := c.Param("session_id")
-	filename := c.Param("filename")
-	userID, _ := c.Get("user_id")
-
-	data, err := h.wm.ReadFile(userID.(string), sessionID, filename)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-	c.Data(http.StatusOK, "application/octet-stream", data)
-}
-
-// WriteWorkspaceFile writes a file to the workspace.
-func (h *ArtifactHandler) WriteWorkspaceFile(c *gin.Context) {
-	sessionID := c.Param("session_id")
-	filename := c.Param("filename")
-	userID, _ := c.Get("user_id")
-
-	data, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
-		return
-	}
-
-	if err := h.wm.WriteFile(userID.(string), sessionID, filename, data); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "written", "filename": filename})
 }

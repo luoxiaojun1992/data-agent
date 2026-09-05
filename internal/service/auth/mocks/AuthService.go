@@ -201,36 +201,6 @@ func (_m *AuthService) RefreshToken(ctx context.Context, userID string, username
 	return r0, r1
 }
 
-// Register provides a mock function with given fields: ctx, req
-func (_m *AuthService) Register(ctx context.Context, req *auth.RegisterRequest) (*auth.RegisterResponse, error) {
-	ret := _m.Called(ctx, req)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Register")
-	}
-
-	var r0 *auth.RegisterResponse
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *auth.RegisterRequest) (*auth.RegisterResponse, error)); ok {
-		return rf(ctx, req)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *auth.RegisterRequest) *auth.RegisterResponse); ok {
-		r0 = rf(ctx, req)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*auth.RegisterResponse)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, *auth.RegisterRequest) error); ok {
-		r1 = rf(ctx, req)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // RevokeInvite provides a mock function with given fields: ctx, inviteID
 func (_m *AuthService) RevokeInvite(ctx context.Context, inviteID string) error {
 	ret := _m.Called(ctx, inviteID)

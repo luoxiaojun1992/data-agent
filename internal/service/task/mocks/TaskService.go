@@ -13,17 +13,17 @@ type TaskService struct {
 	mock.Mock
 }
 
-// CancelTask provides a mock function with given fields: id
-func (_m *TaskService) CancelTask(id string) error {
-	ret := _m.Called(id)
+// CancelTask provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *TaskService) CancelTask(id string, userID string, isSystemAdmin bool) error {
+	ret := _m.Called(id, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CancelTask")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) error); ok {
+		r0 = rf(id, userID, isSystemAdmin)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -31,9 +31,9 @@ func (_m *TaskService) CancelTask(id string) error {
 	return r0
 }
 
-// CreateRun provides a mock function with given fields: taskID
-func (_m *TaskService) CreateRun(taskID string) (*task.TaskRun, error) {
-	ret := _m.Called(taskID)
+// CreateRun provides a mock function with given fields: taskID, userID, isSystemAdmin
+func (_m *TaskService) CreateRun(taskID string, userID string, isSystemAdmin bool) (*task.TaskRun, error) {
+	ret := _m.Called(taskID, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateRun")
@@ -41,19 +41,19 @@ func (_m *TaskService) CreateRun(taskID string) (*task.TaskRun, error) {
 
 	var r0 *task.TaskRun
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*task.TaskRun, error)); ok {
-		return rf(taskID)
+	if rf, ok := ret.Get(0).(func(string, string, bool) (*task.TaskRun, error)); ok {
+		return rf(taskID, userID, isSystemAdmin)
 	}
-	if rf, ok := ret.Get(0).(func(string) *task.TaskRun); ok {
-		r0 = rf(taskID)
+	if rf, ok := ret.Get(0).(func(string, string, bool) *task.TaskRun); ok {
+		r0 = rf(taskID, userID, isSystemAdmin)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*task.TaskRun)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(taskID)
+	if rf, ok := ret.Get(1).(func(string, string, bool) error); ok {
+		r1 = rf(taskID, userID, isSystemAdmin)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -100,9 +100,9 @@ func (_m *TaskService) CreateTask(userID string, taskType string, skillChain []s
 	return r0, r1, r2
 }
 
-// GetTask provides a mock function with given fields: id
-func (_m *TaskService) GetTask(id string) (*task.Task, error) {
-	ret := _m.Called(id)
+// GetTask provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *TaskService) GetTask(id string, userID string, isSystemAdmin bool) (*task.Task, error) {
+	ret := _m.Called(id, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTask")
@@ -110,19 +110,19 @@ func (_m *TaskService) GetTask(id string) (*task.Task, error) {
 
 	var r0 *task.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*task.Task, error)); ok {
-		return rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) (*task.Task, error)); ok {
+		return rf(id, userID, isSystemAdmin)
 	}
-	if rf, ok := ret.Get(0).(func(string) *task.Task); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) *task.Task); ok {
+		r0 = rf(id, userID, isSystemAdmin)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*task.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(id)
+	if rf, ok := ret.Get(1).(func(string, string, bool) error); ok {
+		r1 = rf(id, userID, isSystemAdmin)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -130,9 +130,9 @@ func (_m *TaskService) GetTask(id string) (*task.Task, error) {
 	return r0, r1
 }
 
-// ListTasks provides a mock function with given fields: userID, skip, limit
-func (_m *TaskService) ListTasks(userID string, skip int64, limit int64) ([]*task.Task, int64, error) {
-	ret := _m.Called(userID, skip, limit)
+// ListTasks provides a mock function with given fields: userID, isSystemAdmin, skip, limit
+func (_m *TaskService) ListTasks(userID string, isSystemAdmin bool, skip int64, limit int64) ([]*task.Task, int64, error) {
+	ret := _m.Called(userID, isSystemAdmin, skip, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListTasks")
@@ -141,25 +141,25 @@ func (_m *TaskService) ListTasks(userID string, skip int64, limit int64) ([]*tas
 	var r0 []*task.Task
 	var r1 int64
 	var r2 error
-	if rf, ok := ret.Get(0).(func(string, int64, int64) ([]*task.Task, int64, error)); ok {
-		return rf(userID, skip, limit)
+	if rf, ok := ret.Get(0).(func(string, bool, int64, int64) ([]*task.Task, int64, error)); ok {
+		return rf(userID, isSystemAdmin, skip, limit)
 	}
-	if rf, ok := ret.Get(0).(func(string, int64, int64) []*task.Task); ok {
-		r0 = rf(userID, skip, limit)
+	if rf, ok := ret.Get(0).(func(string, bool, int64, int64) []*task.Task); ok {
+		r0 = rf(userID, isSystemAdmin, skip, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*task.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, int64, int64) int64); ok {
-		r1 = rf(userID, skip, limit)
+	if rf, ok := ret.Get(1).(func(string, bool, int64, int64) int64); ok {
+		r1 = rf(userID, isSystemAdmin, skip, limit)
 	} else {
 		r1 = ret.Get(1).(int64)
 	}
 
-	if rf, ok := ret.Get(2).(func(string, int64, int64) error); ok {
-		r2 = rf(userID, skip, limit)
+	if rf, ok := ret.Get(2).(func(string, bool, int64, int64) error); ok {
+		r2 = rf(userID, isSystemAdmin, skip, limit)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -167,17 +167,17 @@ func (_m *TaskService) ListTasks(userID string, skip int64, limit int64) ([]*tas
 	return r0, r1, r2
 }
 
-// SetScheduledEnabled provides a mock function with given fields: taskID, enabled
-func (_m *TaskService) SetScheduledEnabled(taskID string, enabled bool) error {
-	ret := _m.Called(taskID, enabled)
+// SetScheduledEnabled provides a mock function with given fields: taskID, userID, isSystemAdmin, enabled
+func (_m *TaskService) SetScheduledEnabled(taskID string, userID string, isSystemAdmin bool, enabled bool) error {
+	ret := _m.Called(taskID, userID, isSystemAdmin, enabled)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetScheduledEnabled")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, bool) error); ok {
-		r0 = rf(taskID, enabled)
+	if rf, ok := ret.Get(0).(func(string, string, bool, bool) error); ok {
+		r0 = rf(taskID, userID, isSystemAdmin, enabled)
 	} else {
 		r0 = ret.Error(0)
 	}

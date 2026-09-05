@@ -79,6 +79,8 @@ const (
 	PermUserCreate     = "user:create"
 	PermUserEdit       = "user:edit"
 	PermUserDelete     = "user:delete"
+	PermNotificationSend      = "notification:send"
+	PermNotificationBroadcast = "notification:broadcast"
 	PermModelList      = "model:list"
 	PermModelConfigView = "model:config:view"
 	PermModelEdit      = "model:edit"
@@ -97,7 +99,6 @@ const (
 	PermAPICollectionDelete  = "api:collection:delete"
 	PermAPICollectionApprove = "api:collection:approve"
 	PermRBACManage     = "rbac:manage"
-	PermAdminAccess    = "admin:access"
 
 	// Sidebar menu visibility permissions.
 	PermSidebarDashboard = "sidebar:dashboard"

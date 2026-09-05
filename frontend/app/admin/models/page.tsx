@@ -83,14 +83,12 @@ export default function ModelsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Hermes config state (独立卡片)
+  // Hermes config state (独立卡片). SPEC-084: 后端无 /vault/decrypt 接口、无
+  // api_key_exists 字段 —— 密钥 mask 由前端视觉层做（输入框 type 切换），
+  // 不再从 Vault 拉取明文，因此这里只保留 URL 与用户新输入的密钥。
   const [hermesUrl, setHermesUrl] = useState('http://hermes:8081');
   const [hermesApiKey, setHermesApiKey] = useState('');
-  const [hermesApiKeyExists, setHermesApiKeyExists] = useState(false);
-  // `revealedHermesKey` doubles as the visibility flag: when non-null, the
-  // stored Vault key is visible on screen; when null, the field is masked
-  // (or empty). Hide / show toggles flip this single state.
-  const [revealedHermesKey, setRevealedHermesKey] = useState<string | null>(null);
+  const [hermesKeyVisible, setHermesKeyVisible] = useState(false);
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
@@ -149,58 +147,14 @@ export default function ModelsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const fetchHermesConfig = useCallback(async () => {
-    try {
-      const res = await apiFetch('/admin/models');
-      if (res.ok) {
-        const data = await res.json();
-        const m = data.models || {};
-        if (m.hermes_url) setHermesUrl(m.hermes_url);
-        setHermesApiKeyExists(!!m.hermes_api_key_exists);
-      }
-    } catch { /* defaults */ }
-  }, [apiFetch]);
-
   useEffect(() => {
-    if (auth.hydrated) { fetchLLMList(); fetchEmbeddingList(); fetchHermesConfig(); }
-  }, [auth.hydrated, fetchLLMList, fetchEmbeddingList, fetchHermesConfig]);
+    if (auth.hydrated) { fetchLLMList(); fetchEmbeddingList(); }
+  }, [auth.hydrated, fetchLLMList, fetchEmbeddingList]);
 
-  const revealHermesKey = async () => {
-    if (revealedHermesKey !== null) {
-      setRevealedHermesKey(null);
-      return;
-    }
-    try {
-      const res = await apiFetch('/vault/decrypt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'data-agent/hermes_api_key' }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRevealedHermesKey(data.plaintext);
-        setTimeout(() => setRevealedHermesKey(null), 30000);
-      } else showToast('解密失败', 'error');
-    } catch { showToast('解密失败', 'error'); }
-  };
-
-  // Hermes API key display: input.type tracks whether plaintext is on screen.
-  // Plaintext = either the user typed a new value OR we decrypted from Vault.
-  // When plaintext is showing, clicking the eye hides; when masked, click reveals.
-  const hermesHasPlaintext = !!(hermesApiKey || revealedHermesKey);
-  const hermesDisplay = hermesApiKey
-    || revealedHermesKey
-    || (hermesApiKeyExists ? MASK : '');
-  const toggleHermesVisibility = () => {
-    if (hermesHasPlaintext) {
-      // Hide: clear both typed input and fetched plaintext
-      setHermesApiKey('');
-      setRevealedHermesKey(null);
-      return;
-    }
-    // Nothing on screen — fetch from Vault when a stored key exists
-    if (hermesApiKeyExists) revealHermesKey();
-  };
+  // SPEC-084: Hermes 密钥不再支持「从 Vault 查看明文」（后端无 /vault/decrypt
+  // 路由）。mask 由前端视觉层做：输入框 type 在 password/text 间切换，仅展示
+  // 用户当前输入的新密钥。
+  const toggleHermesVisibility = () => setHermesKeyVisible((v) => !v);
 
   const deleteModel = async (id: string | undefined) => {
     if (!id) return;
@@ -384,8 +338,7 @@ export default function ModelsPage() {
       }
       showToast('Hermes 配置已保存', 'success');
       setHermesApiKey('');
-      setRevealedHermesKey(null);
-      fetchHermesConfig();
+      setHermesKeyVisible(false);
     } catch (e: any) { showToast(e?.message || '保存失败', 'error'); }
   };
 
@@ -646,23 +599,18 @@ export default function ModelsPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 data-testid="hermes-api-key-input"
-                type={hermesHasPlaintext ? 'text' : 'password'}
-                value={hermesDisplay}
-                onChange={e => {
-                  setHermesApiKey(e.target.value);
-                  // User started typing — drop the fetched plaintext so we
-                  // don't save the stale fetched value when they hit 保存.
-                  if (revealedHermesKey !== null) setRevealedHermesKey(null);
-                }}
-                placeholder={hermesApiKeyExists ? MASK : '输入 Hermes API Key'}
+                type={hermesKeyVisible ? 'text' : 'password'}
+                value={hermesApiKey}
+                onChange={e => setHermesApiKey(e.target.value)}
+                placeholder="输入 Hermes API Key"
                 style={{ ...inputStyle, flex: 1 }}
               />
               <button
                 data-testid="hermes-api-key-eye-toggle"
                 onClick={toggleHermesVisibility}
-                title={hermesHasPlaintext ? '隐藏' : '查看明文'}
+                title={hermesKeyVisible ? '隐藏' : '查看明文'}
                 style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
-              ><EyeIcon open={hermesHasPlaintext} /></button>
+              ><EyeIcon open={hermesKeyVisible} /></button>
             </div>
           </Field>
 

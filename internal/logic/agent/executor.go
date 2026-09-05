@@ -158,7 +158,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	}
 
 	// 6. Was save_task_result called during the first run?
-	latest, lErr := e.runs.GetRun(run.ID)
+	latest, lErr := e.runs.GetRun(run.ID, run.UserID, true)
 	if lErr == nil && latest != nil && latest.Status == domaintask.StatusCompleted {
 		e.notifyRun(run, "任务完成", fmt.Sprintf("任务 %q 已完成", run.TaskID))
 		return nil
@@ -181,7 +181,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 		return retryErr
 	}
 	if retryErr == nil {
-		latest, lErr = e.runs.GetRun(run.ID)
+		latest, lErr = e.runs.GetRun(run.ID, run.UserID, true)
 		if lErr == nil && latest != nil && latest.Status == domaintask.StatusCompleted {
 			e.notifyRun(run, "任务完成", fmt.Sprintf("任务 %q 已完成", run.TaskID))
 			return nil
@@ -266,7 +266,7 @@ func (e *AgentExecutor) writeSessionID(runID, sessionID string) {
 
 // wasRunCancelled re-loads the run and reports whether it was cancelled.
 func (e *AgentExecutor) wasRunCancelled(id string) bool {
-	latest, err := e.runs.GetRun(id)
+	latest, err := e.runs.GetRun(id, "", true)
 	if err != nil || latest == nil {
 		return false
 	}

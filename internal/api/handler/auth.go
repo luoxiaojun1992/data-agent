@@ -38,30 +38,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// Register handles user registration.
-// If invite system is enabled (HMAC secret configured), self-registration is disabled.
-// POST /api/v1/auth/register
-func (h *AuthHandler) Register(c *gin.Context) {
-	if h.authService.IsInviteEnabled() {
-		c.JSON(http.StatusGone, gin.H{"error": "Self-registration has been removed. Please use an invite link to register."})
-		return
-	}
-
-	var req authsvc.RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": consts.ErrInvalidReq + ": " + err.Error()})
-		return
-	}
-
-	resp, err := h.authService.Register(c.Request.Context(), &req)
-	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, resp)
-}
-
 // RefreshToken handles token refresh.
 // POST /api/v1/auth/refresh
 func (h *AuthHandler) RefreshToken(c *gin.Context) {

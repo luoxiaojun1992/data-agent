@@ -469,13 +469,13 @@ func TestCreateDoc_FieldPropagation(t *testing.T) {
 // five steps (SPEC-070): Qdrant → graph → chunks → GridFS → doc.
 func TestDeleteDoc_CascadeDeletesChunks(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("GetDoc", mock.Anything, "kbdoc_cascade").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_cascade"}, nil)
+	kbRepo.On("GetDoc", mock.Anything, "kbdoc_cascade").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_cascade", UserID: "user1"}, nil)
 	kbRepo.On("DeleteDoc", mock.Anything, "kbdoc_cascade").Return(nil)
 	kbRepo.On("DeleteChunks", mock.Anything, "kbdoc_cascade").Return(int64(5), nil)
 	kbRepo.On("DeleteFile", mock.Anything, "").Return(nil)
 
 	svc := NewService(kbRepo)
-	if err := svc.DeleteDoc("kbdoc_cascade"); err != nil {
+	if err := svc.DeleteDoc("kbdoc_cascade", "user1", false); err != nil {
 		t.Fatalf("DeleteDoc: %v", err)
 	}
 }
@@ -484,14 +484,14 @@ func TestDeleteDoc_CascadeDeletesChunks(t *testing.T) {
 // chunk deletion errors and returns nil (chunks are best-effort cleanup).
 func TestDeleteDoc_ChunkDeletionErrorStillReturnsNil(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
-	kbRepo.On("GetDoc", mock.Anything, "kbdoc_ok").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_ok"}, nil)
+	kbRepo.On("GetDoc", mock.Anything, "kbdoc_ok").Return(&knowledge.KnowledgeDoc{ID: "kbdoc_ok", UserID: "user1"}, nil)
 	kbRepo.On("DeleteDoc", mock.Anything, "kbdoc_ok").Return(nil)
 	kbRepo.On("DeleteChunks", mock.Anything, "kbdoc_ok").Return(int64(0), errors.New("chunks delete failed"))
 	kbRepo.On("DeleteFile", mock.Anything, "").Return(nil)
 
 	// DeleteDoc on the service returns nil because the doc was deleted successfully.
 	svc := NewService(kbRepo)
-	if err := svc.DeleteDoc("kbdoc_ok"); err != nil {
+	if err := svc.DeleteDoc("kbdoc_ok", "user1", false); err != nil {
 		t.Fatalf("DeleteDoc should not return error when doc delete succeeds: %v", err)
 	}
 }
@@ -542,7 +542,7 @@ func TestGetDoc_NilDocNoError(t *testing.T) {
 	kbRepo := mockrepo.NewKBRepository(t)
 	kbRepo.On("GetDoc", mock.Anything, "missing").Return((*knowledge.KnowledgeDoc)(nil), nil)
 
-	doc, err := NewService(kbRepo).GetDoc("missing")
+	doc, err := NewService(kbRepo).GetDoc("missing", "user1", false)
 	if err != nil {
 		t.Fatalf("GetDoc should not return error: %v", err)
 	}

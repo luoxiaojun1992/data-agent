@@ -34,7 +34,6 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		Memory:       NewMemoryHandler(nil, nil, "data-agent", nil, nil),
 		Chat:         NewChatHandler(nil),
 		Enhance:      NewEnhanceHandler(nil),
-		Agent:        NewAgentHandler(nil, nil, nil),
 		Session:      NewSessionHandler(nil),
 		Artifact:     NewArtifactHandler(nil, nil),
 		Knowledge:    NewKnowledgeHandler(nil),
@@ -64,7 +63,6 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 	// APICollection api-reviews) are covered by their own tests.
 	wantPaths := []string{
 		"/api/v1/auth/login",
-		"/api/v1/auth/register",
 		"/api/v1/auth/refresh",
 		"/api/v1/auth/profile",
 		"/api/v1/auth/change-password",
@@ -74,12 +72,9 @@ func TestRegisterAllRoutes_AllHandlersWired(t *testing.T) {
 		"/api/v1/memory/list",
 		"/api/v1/chat",
 		"/api/v1/chat/enhance",
-		"/api/v1/agent/tasks",
-		"/api/v1/agent/skills",
 		"/api/v1/sessions",
 		"/api/v1/sessions/deleted",
 		"/api/v1/artifacts/upload",
-		"/api/v1/workspace/:session_id/files",
 		"/api/v1/knowledge/docs",
 		"/api/v1/knowledge/search",
 		"/api/v1/admin/audit/logs",
@@ -148,14 +143,6 @@ func TestRegisterAuthRoutes_NilHandler(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "database not available") {
 		t.Errorf("expected DBUnavailable message, got %s", w.Body.String())
-	}
-
-	// POST /api/v1/auth/register → 503 (DBUnavailable)
-	req = httptest.NewRequest("POST", "/api/v1/auth/register", nil)
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 503 for nil auth handler, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
