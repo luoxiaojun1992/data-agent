@@ -103,6 +103,8 @@
 
 > 通知的读取侧（`GET /notifications` `/unread-count` `/read` `/read-all`）是「查自己的通知」，纳入白名单，**不加 RBAC**（人人可查自己的通知）。
 
+> KB 的写侧归属校验（`GET /knowledge/docs/:id` / `DELETE /knowledge/docs/:id` / `PUT /knowledge/docs/:id/public` 按 owner + is_public + system_admin 豁免校验，IDOR 防护）见 **§6.7**，与 SPEC-091 §3 数据隔离语义一致。
+
 ## 5. API 设计
 
 ### 5.1 删除清单（规则 1 / 2）
@@ -217,6 +219,34 @@
   - `system_admin` → 豁免，可访问全部 task/run。
 - 落地：`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 增加 `userID` + `isSystemAdmin` 参数，service 层校验归属，handler 层从 `c.GetString("user_id")` / `c.GetString("role")` 透传。`ListTasks` 同样按此范式（已按 user_id 过滤，补 `isSystemAdmin` 后 system_admin 可看全部）。
 
+### 6.7 KB 写侧归属校验 + is_public 可操作语义（IDOR 防护）
+
+> **数据隔离语义以 SPEC-091 §3 为 SSOT**。`is_public` 是**权限**（访问 + 操作），两级语义；本 spec 落地其**写侧**（单点读取 / 删除 / 改 shared）的归属校验，读侧（列表 / 检索 / 图谱）已由 `ListDocsByVisibility` / `Search` / `QueryTopN` 实现。两处语义**完全一致**——无论 SPEC-084 与 SPEC-091 谁先实现，隔离规则不变、互不依赖、无冲突（SPEC-091 只改 `SetPublicFlag` 内部副作用顺序 + 图同步 `SetDocPublic`，不碰归属校验；本 spec 只加归属校验，不碰图同步）。
+
+**隔离规则（访问 + 操作，两级）**：
+
+| 角色 | 权限范围（访问 + 操作） | 豁免 |
+|------|------|:---:|
+| 系统管理员 `system_admin` | 全部 doc | ✅ |
+| 普通管理员 `admin` / 普通用户 `user` | 自己的（`doc.UserID == userID`）+ 公开（`doc.IsPublic == true`） | ❌ |
+| 他人的私有 doc（`UserID != userID && IsPublic == false`） | 无权限（访问 + 操作均拒绝） | ❌ |
+
+**现状缺口**：`GetDoc` / `DeleteDoc` / `SetPublicFlag` 均只按 `docID` 操作、不校验归属（仅 JWT），任何登录用户可读/删/改任意 doc（IDOR 隐患）。
+
+**落地（handler 透传 → service 校验，参考 §6.6 task 范式）**：
+
+| 端点 | 操作 | 校验规则（非 system_admin） |
+|------|------|------|
+| `GET /knowledge/docs/:id` | 读单点 | 须 `doc.UserID == userID` 或 `doc.IsPublic == true`，否则 `ErrNotFound`（不泄露存在性） |
+| `DELETE /knowledge/docs/:id` | 删 | 同上（owner 或 public，否则 `ErrNotFound`） |
+| `PUT /knowledge/docs/:id/public` | 改 shared | 同上（owner 或 public，否则 `ErrNotFound`） |
+
+- 判定依据：`role := c.GetString("role")`，`isSystemAdmin := role == "system_admin"`；`userID := c.GetString("user_id")`。
+- 变更签名：`GetDoc` / `DeleteDoc` / `SetPublicFlag` 增加 `userID string, isSystemAdmin bool` 参数；service 内先 `GetDoc` 取 `UserID` + `IsPublic`，再按上表判定；handler 从 gin context 透传。
+- `UploadDoc` / `CreateDoc` 无需改（新建 doc 天然 `UserID = 当前用户`）。
+
+> **is_public 可操作语义的边界（两处 spec 必须同步）**：`is_public=true` 意味着「所有人都有权限」——含**删除**与**改 shared**，即任何登录用户可删除/改 shared 他人的公开 doc（这是「公开 = 有权限」的直接推论，与读侧「公开可见」对称）。若后续改为「公开 doc 仅授予读权、写权仍归 owner + system_admin」，则必须在 SPEC-091 §3 与本 spec 同步调整，**两处语义保持一致，不能一处「公开可操作」另一处「公开只读」**。
+
 ## 7. 可行性分析
 
 | 检查项 | 结论 |
@@ -227,7 +257,7 @@
 | 是否需要调整现有权限级别 | Yes（`agent:*` + `sidebar:agent` 从 admin 降为 user，同步 seed `roleIDs`） |
 | 性能影响 | 忽略（RBAC 权限为内存查询；seed 启动时一次 O(n) 增量补齐） |
 | 是否需要新增 Skill | No |
-| 是否修改其他功能 | 边界内（删废弃 + 补权限 + task 降级 + IDOR 归属校验 + 通知 UI 区分） |
+| 是否修改其他功能 | 边界内（删废弃 + 补权限 + task 降级 + task/KB IDOR 归属校验 + 通知 UI 区分） |
 
 ## 8. 相关文件
 
@@ -237,6 +267,8 @@
 | `internal/api/handler/routes.go` | 删废弃路由 + 各端点补 `RequirePermission` | 大 |
 | `internal/api/handler/auth.go` | 删 `Register`（主动注册） | 小 |
 | `internal/api/handler/task.go` | 删 `PauseTask`/`ResumeTask` + 按 ID 操作补 `userID` 归属校验（IDOR 防护） | 中 |
+| `internal/api/handler/knowledge.go` | `GetDoc`/`DeleteDoc`/`SetPublicFlag` 补 `userID` + `isSystemAdmin` 归属校验透传（§6.7） | 小 |
+| `internal/service/knowledge/service.go` | `GetDoc`/`DeleteDoc`/`SetPublicFlag` 增加归属校验参数 + 判定逻辑 | 中 |
 | `internal/api/handler/user.go` | List 加 role 过滤（数据隔离） | 中 |
 | `internal/api/handler/dashboard.go` | `RegisterDashboardRoutes` 挂 `stats:view` | 小 |
 | `internal/api/handler/agent.go` | 删 `/agent/*` 路由（已确认无前端调用） | 小 |
@@ -260,6 +292,7 @@
    - **seed 一致性校验**（§5.3 铁律）：断言 `rbac.go` 中所有 `PermXxx` 权限常量在 `perms` 数组中**一一对应**（无「常量定义但未 seed」的遗漏项，也无不存在的常量），保证重新部署不丢权限。
    - `user/service`：`List` 角色过滤（admin 只见 user / system_admin 见全部）。
    - `task/service`：**归属校验（IDOR 防护）**——`GetTask/ListRuns/GetRun/CreateRun/CancelTask/DownloadArtifacts` 传入非 owner `userID` 且非 system_admin 时返回 `ErrNotFound`（不泄露资源存在性）；owner 正常访问；`system_admin` 豁免可访问全部。
+   - `knowledge/service`：**KB 归属校验（§6.7，与 SPEC-091 §3 语义一致）**——`GetDoc`/`DeleteDoc`/`SetPublicFlag` 传入非 owner 且 `is_public=false` 时返回 `ErrNotFound`；owner 可操作；`is_public=true` 的 doc 他人可读/删/改 shared；`system_admin` 豁免可操作全部。
    - `routes`：各端点挂权限后，无权限返回 403、有权限放行；`agent:*` 降为 user 后普通用户可访问 `/tasks/*`，无权限（未登录）返回 401。
    - 删除接口：`/auth/register`(POST)、`/system/stats`、`/workspace/*`、`/tasks/:id/pause|resume`、`/agent/tasks*`、`/agent/skills*`、`/tools/api/*` 返回 404。
    - 覆盖率底线见 SPEC-045：L1 100% / L3 98%。
@@ -267,6 +300,7 @@
    - `tests/ui/`：通知发送 UI 按权限区分定向/广播；无 `notification:broadcast` 的用户看不到广播入口。
    - 用户管理数据隔离：admin 登录后列表只显示普通用户。
    - task 归属隔离：普通用户 A 无法通过 task_id/run_id 访问用户 B 的 task（前端不展示、后端 404）。
+   - KB 归属隔离：普通用户 A 无法删除/改 shared 用户 B 的私有 doc（后端 404）；B 的公开 doc 可被 A 读/删/改 shared；system_admin 可操作全部。
 
 ## 10. UI Test / E2E 验收规则
 
@@ -297,6 +331,7 @@
 - [ ] **必须** seed 增量补齐 Success 测试验证：插入条数、缺失补齐、role_permissions 关联、幂等（二次运行零新增）
 - [ ] **必须** 数据隔离测试验证：admin 查询返回结果中不含 admin/system_admin 角色用户
 - [ ] **必须** task 归属校验测试验证：非 owner 访问他人 task/run 返回 `ErrNotFound`（不返回资源内容、不泄露存在性）；system_admin 豁免可访问全部
+- [ ] **必须** KB 归属校验测试验证（§6.7）：非 owner 且 `is_public=false` 访问/删/改 shared 返回 `ErrNotFound`；`is_public=true` 的 doc 他人可操作；system_admin 豁免可操作全部
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
 - [ ] **严禁** Success 测试只验证 `err == nil` 而不验证操作的实际结果
 
@@ -313,6 +348,7 @@
 3. 普通用户调用 `/users/*` 返回 403（无 `user:*` 权限）；admin 可访问但列表仅含普通用户（数据隔离）；system_admin 见全部。
 4. 普通用户可定向发通知（`notification:send`），无广播权限则 `/notifications/broadcast` 返回 403；admin 可广播。
 5. `/knowledge/*`、`/artifacts/*`、`/im/feishu/configs/*` 普通用户可访问（`kb:*`/`artifact:*`/`im:*`），无权限返回 403。
+5b. **KB 写侧归属校验（§6.7，与 SPEC-091 §3 一致）**：普通用户 A 删除/改 shared 用户 B 的**私有** doc 返回 404（不泄露存在性）；A 可读/删/改 shared 用户 B 的**公开** doc；`system_admin` 可操作全部 doc（豁免）。
 6. `/tasks/*` 普通用户**可访问**（`agent:*` 已降为 user 级），可创建/查看/运行/取消**自己的** task；未登录返回 401；访问他人 task/run 返回 404（IDOR 归属校验）；**system_admin 可访问全部 task/run**（豁免）。
 7. `/dashboard` `/dashboard/trends` 普通用户可访问（`stats:view`），未登录/无权限返回 401/403。
 8. 白名单（refresh/profile/me permissions/change-password）仅 JWT 可访问，不因角色变化受限。
