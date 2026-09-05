@@ -97,7 +97,7 @@
 | SPEC-081 | KB 支持 URL 导入（后端 headless 解析含 JS 渲染 + SSRF 防护 + 统一上传限制：文本 5MB / 图片 10 张 × 1MB） | **P15** | [spec-081-kb-url-import.md](spec-081-kb-url-import.md) | 📐 设计已定稿 |
 | SPEC-082 | Chat 与 Agent Task 支持取消（chat 停止按钮+SSE 中断+ctx 透传兜底；task run 级取消+执行中轮询 DB+子 ctx 取消；不侵入 ADK） | **P15** | [spec-082-chat-task-cancel.md](spec-082-chat-task-cancel.md) | 📐 设计已定稿 |
 | SPEC-083 | 用户中心与修改密码（side 用户中心菜单 + 改密卡片弹窗 + 改密接口迁 /api/v1/auth/ + 只能改自己；不配 RBAC，登录即可改） | **P15** | [spec-083-user-center-change-password.md](spec-083-user-center-change-password.md) | ✅ 已实现 |
-| SPEC-084 | API 权限整理与废弃接口清理（删废弃 API + 全量 RBAC 补挂 + 通知权限区分定向/广播 + 用户管理数据隔离 + seed 增量补齐） | **P15** | [spec-084-api-rbac-cleanup.md](spec-084-api-rbac-cleanup.md) | 📐 设计已定稿 |
+| SPEC-084 | API 权限整理与废弃接口清理（删废弃 API + 全量 RBAC 补挂 + 通知权限区分定向/广播 + 用户管理数据隔离 + seed 增量补齐） | **P15** | [spec-084-api-rbac-cleanup.md](spec-084-api-rbac-cleanup.md) | ✅ 已实现 |
 | SPEC-085 | 前端 UI 缺陷修复（im/feishu 接入分页；RBAC 业务主角色→RBAC 角色 ID 映射；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15) 统一） | **P15** | [spec-085-ui-fixes.md](spec-085-ui-fixes.md) | ✅ 已实现 |
 | SPEC-086 | Task 常用模版（日常总结）+ memory 分页读取 + KB 文档创建 skill（kb_create_doc/memory_list；前端模版快捷入口与人工创建弹窗分开；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-086-task-template-daily-summary.md](spec-086-task-template-daily-summary.md) | 📐 设计已定稿 |
 | SPEC-087 | Task 相关 skills（task_create/task_run_list/task_run_detail；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-087-task-skills.md](spec-087-task-skills.md) | 📐 设计已定稿 |
@@ -410,7 +410,7 @@ SPEC-006│               │
 | 8 | SPEC-081 | 📐 KB URL 导入 | 独立可插队；后端 headless 渲染 + SSRF 防护 + 统一上传限制；复用 CreateDoc/GridFS/索引管道 |
 | 9 | SPEC-082 | 📐 Chat 与 Task 取消 | 独立可插队；chat 停止按钮 + task 轮询 DB 取消，均不侵入 ADK 底层 |
 | 10 | SPEC-083 | ✅ 用户中心与修改密码 | 已实现；side 用户中心菜单 + 改密卡片弹窗；改密接口迁 /api/v1/auth/；不配 RBAC，登录即可改自己密码 |
-| 11 | SPEC-084 | 📐 API 权限整理与废弃接口清理 | 独立可插队；删废弃 API + 全量 RBAC 补挂 + 通知定向/广播权限 + 用户管理数据隔离 + seed 增量补齐 |
+| 11 | SPEC-084 | ✅ API 权限整理与废弃接口清理 | 已实现（2026-09-05）；删废弃 API + 全量 RBAC 补挂 + 通知定向/广播权限 + 用户管理数据隔离 + seed 增量补齐 |
 | 12 | SPEC-085 | ✅ 前端 UI 缺陷修复 | 已实现（2026-09-04）；im/feishu 接入分页；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15)；RBAC 业务主角色→RBAC 角色 ID 映射 |
 | 13 | SPEC-086 | 📐 Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据 |
 | 13.5 | SPEC-087 | 📐 Task 相关 skills（task_create/run_list/run_detail） | 独立可插队；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据 |
