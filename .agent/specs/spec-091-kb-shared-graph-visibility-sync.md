@@ -28,17 +28,19 @@ SPEC-070 引入 ArcadeDB 知识图谱：每个 KB 切片对应一个 `Chunk` 节
 
 **后果**：文档先以私有状态创建（图谱节点 `is_public=false`），之后设为 shared（`is_public=true`）→ 图谱节点仍是 `false` → 其他用户执行 `knowledge_graph_search` 时，`n.is_public = true` 过滤会**漏掉这些已公开的切片**，造成「文档已共享但图谱搜不到」的不一致。
 
-## 3. 可见性语义（晓军 2026-09-05 拍板，维持现状）
+## 3. is_public 权限语义（晓军 2026-09-05 拍板，维持现状）
 
-数据隔离与豁免为**两级**语义，与 KB 文档列表 `ListDocsByVisibility`、KB 检索 `SearchChunks` 完全一致，**本 spec 不修改查询隔离逻辑**：
+`is_public` 的语义是**权限**，而非仅「可见性」：`is_public=true` 表示该文档对所有人**有权限**——既能**访问**（读/检索），也能**操作**（写/编辑/删除）。数据隔离与豁免为**两级**语义，与 KB 文档列表 `ListDocsByVisibility`、KB 检索 `SearchChunks` 一致，**本 spec 不修改查询隔离逻辑**：
 
-| 角色 | 可见范围 | 是否豁免 |
+| 角色 | 权限范围 | 是否豁免 |
 |------|------|:---:|
-| 系统管理员 `system_admin` | 全部数据 | ✅ 豁免 |
+| 系统管理员 `system_admin` | 全部数据（访问 + 操作） | ✅ 豁免 |
 | 普通管理员 `admin` / 普通用户 `user` | 自己的 + 公开（`is_public=true`） | ❌ 无豁免 |
-| 公开分享 | 所有用户可见 | — |
+| 公开分享 | 所有用户可访问、可操作 | — |
 
-> 即「豁免」= 系统管理员有全部数据权限，或公开分享的切片大家都能看。普通管理员与普通用户同等隔离，无需单独豁免。此语义在现有 `QueryTopN` / `ListDocsByVisibility` / `SearchChunks` 中已正确实现，本次只补齐「shared 联动更新图谱 is_public」这一处遗漏。
+> 「豁免」= 系统管理员有**全部数据权限**（访问 + 操作），或公开分享（`is_public=true`）的文档大家都有**权限**（访问 + 操作）。普通管理员与普通用户同等隔离，无需单独豁免。
+
+> ⚠️ 当前实现只覆盖 `is_public` 的**读侧**（`QueryTopN` / `ListDocsByVisibility` / `SearchChunks` 的可见性过滤）；**写侧**（删除 / 改 shared 的归属校验、`is_public=true` 允许他人操作）当前完全缺失——`DELETE /knowledge/docs/:id`、`PUT /knowledge/docs/:id/public` 仅有 JWT、无归属校验（IDOR 隐患）。写侧权限归属 SPEC-084「API 权限整理与 IDOR 归属校验」统一落地，**本 spec 不涉及**。本 spec 只补「shared 联动更新图谱 is_public」这一处读侧遗漏。
 
 ## 4. 详细设计
 
@@ -66,18 +68,32 @@ func (g *GraphStore) SetDocPublic(ctx context.Context, docID string, isPublic bo
 }
 ```
 
-### 4.3 Service 联动调用
+### 4.3 Service 联动调用与顺序（D1：doc is_public 最后更新 = 提交点）
 
-`internal/service/knowledge/service.go` 的 `SetPublicFlag` 在 Qdrant 更新后追加图谱同步（graph 为 nil 时跳过，与 `AddChunks` 图写入失败降级一致）：
+`SetPublicFlag` 重排顺序：**副作用（chunks / Qdrant / 图谱）先行，`knowledge_docs` 的 `is_public` 最后更新**。中间任一步失败则中断（return error），**不更新 doc 的 `is_public`**（保持一致，可重试自愈）；失败不回滚已成功的副作用（容错不回滚）。
 
 ```go
-// 同步图谱节点可见性（SPEC-091）
-if s.graph != nil {
-    if err := s.graph.SetDocPublic(ctx, docID, isPublic); err != nil {
-        log.Printf("[kb] sync graph is_public for doc=%s: %v", docID, err)
+func (s *Service) SetPublicFlag(ctx context.Context, docID string, isPublic bool) error {
+    // ① 副作用（中间步骤）——任一失败即中断，不更新 doc
+    if err := s.kb.UpdateChunkVisibility(ctx, docID, isPublic); err != nil {
+        return fmt.Errorf("set chunk visibility: %w", err)
     }
+    if s.vector != nil {
+        if err := s.vector.SetPayload(ctx, s.vecCol, docID, map[string]interface{}{"is_public": isPublic}); err != nil {
+            return fmt.Errorf("set qdrant payload: %w", err)
+        }
+    }
+    if s.graph != nil {
+        if err := s.graph.SetDocPublic(ctx, docID, isPublic); err != nil { // SPEC-091 新增
+            return fmt.Errorf("set graph is_public: %w", err)
+        }
+    }
+    // ② 提交点——最后更新 doc 的 is_public（source of truth）
+    return s.kb.SetPublicFlag(ctx, docID, isPublic)
 }
 ```
+
+> 顺序语义：doc 的 `is_public` 是「源字段/提交点」，只有所有副作用（chunks、Qdrant、图谱）都成功后才翻转；中间失败则 doc 保持原值（未公开/未私有），下游状态与 doc 状态不产生永久漂移，重试安全。
 
 ### 4.4 mock 重新生成
 
@@ -145,4 +161,4 @@ if s.graph != nil {
 
 | 决策点 | 内容 | 推荐值 |
 |--------|------|--------|
-| D1 | `SetDocPublic` 图同步失败是否容错降级 | 容错 log、不阻断主链路（与 AddChunks 图写入失败降级一致） |
+| D1 | `SetDocPublic` 图同步失败如何处理 + 更新顺序 | **容错不回滚 + 顺序调整**：doc 的 `is_public` **最后更新**（提交点）；中间步骤（chunks / Qdrant / 图谱）任一失败则中断、**不更新 doc 字段**；失败不回滚已成功的副作用（不补偿） |
