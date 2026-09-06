@@ -316,6 +316,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		SkillConfig:    deps.skillConfigSvc,
 		Memory:         deps.memoryService,
 		MemoryWriter:   deps.memoryKit,
+		MemoryLister:   deps.memoryKit.Storage(),
 		AppName:        appName,
 		Tasks:          deps.taskService,
 		SessionSvc:     deps.sessionManager,
@@ -640,7 +641,12 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService)
 	if deps.kbHandler != nil && deps.queueRepo != nil {
 		deps.kbHandler.SetQueueRepo(deps.queueRepo)
-	} // same Service implements both contracts
+	}
+	// SPEC-086: inject the queue into the KB service so kb_create_doc's
+	// CreateTextDoc can enqueue async indexing (same queue as web upload).
+	if deps.kbService != nil && deps.queueRepo != nil {
+		deps.kbService.WithQueue(deps.queueRepo)
+	}
 
 	// Wire task service into KB handler for async indexing.
 

@@ -64,6 +64,36 @@ func (_m *KnowledgeService) CreateDoc(userID string, title string, fileName stri
 	return r0, r1
 }
 
+// CreateTextDoc provides a mock function with given fields: ctx, userID, title, text
+func (_m *KnowledgeService) CreateTextDoc(ctx context.Context, userID string, title string, text string) (*domainknowledge.KnowledgeDoc, error) {
+	ret := _m.Called(ctx, userID, title, text)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateTextDoc")
+	}
+
+	var r0 *domainknowledge.KnowledgeDoc
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (*domainknowledge.KnowledgeDoc, error)); ok {
+		return rf(ctx, userID, title, text)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) *domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(ctx, userID, title, text)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domainknowledge.KnowledgeDoc)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = rf(ctx, userID, title, text)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DeleteDoc provides a mock function with given fields: id, userID, isSystemAdmin
 func (_m *KnowledgeService) DeleteDoc(id string, userID string, isSystemAdmin bool) error {
 	ret := _m.Called(id, userID, isSystemAdmin)
@@ -223,6 +253,34 @@ func (_m *KnowledgeService) ListDocsByVisibility(userID string, isSystemAdmin bo
 	return r0, r1, r2
 }
 
+// RedactText provides a mock function with given fields: ctx, text
+func (_m *KnowledgeService) RedactText(ctx context.Context, text string) (string, error) {
+	ret := _m.Called(ctx, text)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RedactText")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+		return rf(ctx, text)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = rf(ctx, text)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, text)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Search provides a mock function with given fields: userID, query, topK, isSystemAdmin
 func (_m *KnowledgeService) Search(userID string, query string, topK int, isSystemAdmin bool) ([]domainknowledge.SearchResult, error) {
 	ret := _m.Called(userID, query, topK, isSystemAdmin)
@@ -292,34 +350,6 @@ func (_m *KnowledgeService) UploadFile(fileName string, contentType string, read
 
 	if rf, ok := ret.Get(1).(func(string, string, io.Reader) error); ok {
 		r1 = rf(fileName, contentType, reader)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// RedactText provides a mock function with given fields: ctx, text
-func (_m *KnowledgeService) RedactText(ctx context.Context, text string) (string, error) {
-	ret := _m.Called(ctx, text)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RedactText")
-	}
-
-	var r0 string
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
-		return rf(ctx, text)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = rf(ctx, text)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, text)
 	} else {
 		r1 = ret.Error(1)
 	}

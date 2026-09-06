@@ -112,6 +112,20 @@ func predefinedSkills() []skill.SkillConfig {
 			ConfigJSON:  "{}",
 		},
 		{
+			Name:        "memory_list",
+			DisplayName: "记忆分页读取",
+			Description: "按创建时间倒序分页读取长期记忆（limit/offset），用于「读取当天记忆」等按时间翻页的场景",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "kb_create_doc",
+			DisplayName: "知识库文档创建",
+			Description: "给定纯文本直接创建知识库文档（脱敏→存储→异步索引，不等索引完成），用于把总结文本写入知识库",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
 			Name:        "save_task_result",
 			DisplayName: "任务结果保存",
 			Description: "异步/定时任务结束时强制调用以保存分析结果（task_id 从 session 自动注入）",

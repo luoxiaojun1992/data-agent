@@ -29,6 +29,7 @@ import (
 	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	knowledgepkg "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
+	"github.com/ieshan/adk-go-memory/adapter"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/tool"
@@ -46,6 +47,9 @@ type Deps struct {
 	// MemoryWriter is an optional writer for agent-triggered memory_write.
 	// If nil, memory_write returns an explanatory error.
 	MemoryWriter MemoryWriter
+	// MemoryLister backs the memory_list tool (SPEC-086). It reads memories by
+	// created_at DESC with pagination. If nil, memory_list is not registered.
+	MemoryLister MemoryLister
 	// AppName scopes memory searches.
 	AppName string
 	// Tasks backs the save_task_result tool (task-mode runs only).
@@ -90,6 +94,12 @@ type HumanGate interface {
 // MemoryWriter writes content to long-term memory on agent request.
 type MemoryWriter interface {
 	WriteMemory(ctx context.Context, userID, sessionID, content string) error
+}
+
+// MemoryLister reads memories ordered by created_at DESC with pagination
+// (SPEC-086). Backed by memoryx.Storage.ListRecent.
+type MemoryLister interface {
+	ListRecent(ctx context.Context, userID string, limit, offset int) ([]adapter.Observation, int64, error)
 }
 
 // stateString reads a string value from the tool session state.
@@ -445,6 +455,70 @@ func memorySearch(deps *Deps) functiontool.Func[MemorySearchArgs, MemorySearchRe
 	}
 }
 
+// ---- memory_list ----
+
+// MemoryListArgs are the arguments for the memory_list tool.
+type MemoryListArgs struct {
+	Limit  int `json:"limit,omitempty" jsonschema:"Page size (default 5, max 50)"`
+	Offset int `json:"offset,omitempty" jsonschema:"Pagination offset (default 0)"`
+}
+
+// MemoryListItem is one memory entry in the list result.
+type MemoryListItem struct {
+	ID        string `json:"id"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"created_at"`
+}
+
+// MemoryListResult is the memory_list tool output.
+type MemoryListResult struct {
+	Memories []MemoryListItem `json:"memories"`
+	Count    int              `json:"count"`
+	HasMore  bool             `json:"has_more"`
+}
+
+func memoryList(deps *Deps) functiontool.Func[MemoryListArgs, MemoryListResult] {
+	return func(tc agent.ToolContext, args MemoryListArgs) (MemoryListResult, error) {
+		if deps.MemoryLister == nil {
+			return MemoryListResult{}, fmt.Errorf("memory_list: memory storage not configured")
+		}
+		// userID is force-bound to the session user — the LLM never supplies it
+		// (SPEC-086 §5.2.1, 防 IDOR). Empty userID → refuse (never read all).
+		userID := stateString(tc, "user_id")
+		if userID == "" {
+			return MemoryListResult{}, fmt.Errorf("memory_list: session has no user_id (refusing to read without identity)")
+		}
+		limit := args.Limit
+		if limit <= 0 {
+			limit = 5
+		}
+		if limit > 50 {
+			limit = 50
+		}
+		offset := args.Offset
+		if offset < 0 {
+			offset = 0
+		}
+		obs, total, err := deps.MemoryLister.ListRecent(tc, userID, limit, offset)
+		if err != nil {
+			return MemoryListResult{}, fmt.Errorf("memory_list: %w", err)
+		}
+		items := make([]MemoryListItem, 0, len(obs))
+		for _, o := range obs {
+			items = append(items, MemoryListItem{
+				ID:        o.ID.String(),
+				Content:   o.Content,
+				CreatedAt: o.CreatedAt.Format(time.RFC3339),
+			})
+		}
+		return MemoryListResult{
+			Memories: items,
+			Count:    len(items),
+			HasMore:  int64(offset)+int64(len(items)) < total,
+		}, nil
+	}
+}
+
 // ---- memory_write ----
 
 // MemoryWriteArgs are the arguments for the memory_write tool.
@@ -503,6 +577,45 @@ func memoryEntryText(m memory.Entry) string {
 		}
 	}
 	return text.String()
+}
+
+// ---- kb_create_doc ----
+
+// KBCreateDocArgs are the arguments for the kb_create_doc tool.
+type KBCreateDocArgs struct {
+	Title   string `json:"title" jsonschema:"Document title (required, ≤200 chars; e.g. 'YYYY-MM-DD 日常总结')"`
+	Content string `json:"content" jsonschema:"Plain-text content (required, ≤5MB)"`
+}
+
+// KBCreateDocResult is the kb_create_doc tool output.
+type KBCreateDocResult struct {
+	DocID  string `json:"doc_id"`
+	Status string `json:"status"`
+}
+
+func kbCreateDoc(deps *Deps) functiontool.Func[KBCreateDocArgs, KBCreateDocResult] {
+	return func(tc agent.ToolContext, args KBCreateDocArgs) (KBCreateDocResult, error) {
+		if deps.KBService == nil {
+			return KBCreateDocResult{}, fmt.Errorf("kb_create_doc: knowledge service not configured")
+		}
+		title := strings.TrimSpace(args.Title)
+		if title == "" {
+			return KBCreateDocResult{}, fmt.Errorf("kb_create_doc: missing required parameter 'title'")
+		}
+		if strings.TrimSpace(args.Content) == "" {
+			return KBCreateDocResult{}, fmt.Errorf("kb_create_doc: missing required parameter 'content'")
+		}
+		// userID is force-bound to the session user (SPEC-086 §5.2.1, 防 IDOR).
+		userID := stateString(tc, "user_id")
+		if userID == "" {
+			return KBCreateDocResult{}, fmt.Errorf("kb_create_doc: session has no user_id (refusing to create)")
+		}
+		doc, err := deps.KBService.CreateTextDoc(tc, userID, title, args.Content)
+		if err != nil {
+			return KBCreateDocResult{}, err
+		}
+		return KBCreateDocResult{DocID: doc.ID, Status: "created"}, nil
+	}
 }
 
 // ---- save_task_result ----
@@ -697,6 +810,21 @@ func specs(deps *Deps) []toolSpec {
 			description: "Searches the knowledge base with full-text and semantic search capabilities",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{Name: "knowledge_search", Description: "Searches the knowledge base with full-text and semantic search capabilities"}, knowledgeSearch(deps))
+			},
+		}, toolSpec{
+			name:        "kb_create_doc",
+			description: "Creates a plain-text knowledge base document (title + content). The content is PII-redacted, stored to GridFS, and indexed asynchronously (does not wait for indexing). The document owner is read from the session state, never supplied by the LLM. Use this to persist a summary or any text into the knowledge base.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "kb_create_doc", Description: "Creates a plain-text knowledge base document (title + content). The content is PII-redacted, stored to GridFS, and indexed asynchronously (does not wait for indexing). The document owner is read from the session state, never supplied by the LLM. Use this to persist a summary or any text into the knowledge base."}, kbCreateDoc(deps))
+			},
+		})
+	}
+	if deps.MemoryLister != nil {
+		out = append(out, toolSpec{
+			name:        "memory_list",
+			description: "Lists long-term memories in reverse chronological order (created_at DESC) with pagination (limit/offset). Use this to read recent memories page by page — e.g. start at offset=0 and keep paging until an entry's created_at is earlier than the target day. The user is read from session state, never supplied by the LLM.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "memory_list", Description: "Lists long-term memories in reverse chronological order (created_at DESC) with pagination (limit/offset). Use this to read recent memories page by page — e.g. start at offset=0 and keep paging until an entry's created_at is earlier than the target day. The user is read from session state, never supplied by the LLM."}, memoryList(deps))
 			},
 		})
 	}

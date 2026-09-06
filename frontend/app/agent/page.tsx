@@ -39,6 +39,10 @@ export default function AgentPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
   const [attachError, setAttachError] = useState('');
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  // SPEC-086: 「常用模版」入口（独立于「新建任务」弹窗）+ 日常总结确认弹窗。
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [showDailySummaryModal, setShowDailySummaryModal] = useState(false);
+  const [dailySummaryTitle, setDailySummaryTitle] = useState('日常总结');
 
   // Wait for auth hydration before loading — otherwise loadTasks fires with
   // auth.token=null and the request misses the Authorization header.
@@ -153,6 +157,31 @@ export default function AgentPage() {
     await loadTasks(page);
   };
 
+  // SPEC-086: create the「日常总结」template task (scheduled_exec, daily 01:00).
+  const createDailySummaryTask = async () => {
+    if (!dailySummaryTitle.trim()) return;
+    try {
+      const res = await apiFetch('/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: dailySummaryTitle.trim(),
+          type: 'scheduled_exec',
+          schedule_mode: 'recurring',
+          cron_expr: '0 1 * * *',
+          skill_chain: ['memory_list', 'kb_create_doc'],
+          params: {
+            message: '你是日常总结助手。请执行：1) 用 memory_list 按创建时间倒序分页读取今天的记忆（offset 从 0 开始，每页 limit=20，翻页直到某页返回的 created_at 早于今天为止）；2) 将今天的记忆归纳为结构化 markdown 总结；3) 用 kb_create_doc 创建文档，title 用「YYYY-MM-DD 日常总结」；4) 用 save_task_result 保存结果。',
+          },
+        }),
+      });
+      if (res.ok) {
+        await loadTasks(page);
+        setShowDailySummaryModal(false);
+        setDailySummaryTitle('日常总结');
+      }
+    } catch (e) { console.error('[agent] daily summary template create failed:', e); }
+  };
+
   const openTask = (taskId: string) => {
     router.push(`/agent/tasks/${taskId}`);
   };
@@ -180,9 +209,26 @@ export default function AgentPage() {
             <h2 className="text-2xl font-bold text-[var(--text-primary)]">Agent 任务</h2>
             <p className="text-sm text-[var(--text-secondary)] mt-1">批量数据分析任务管理与执行</p>
           </div>
-          <button onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-[var(--accent)] text-white rounded-xl text-sm font-medium hover:opacity-90"
-            data-testid="agent-create-task-btn">+ 新建任务</button>
+          <div className="flex items-center gap-2 relative">
+            <button onClick={() => setShowTemplateMenu(v => !v)}
+              className="px-4 py-2 rounded-xl text-sm font-medium border border-[var(--border-glass)] text-[var(--text-primary)] hover:border-[var(--accent)]/40"
+              data-testid="agent-template-btn">⚡ 常用模版</button>
+            <button onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-[var(--accent)] text-white rounded-xl text-sm font-medium hover:opacity-90"
+              data-testid="agent-create-task-btn">+ 新建任务</button>
+
+            {/* Template menu (SPEC-086) */}
+            {showTemplateMenu && (
+              <div className="absolute right-0 top-11 z-40 glass rounded-xl p-2 w-64" data-testid="agent-template-menu">
+                <button onClick={() => { setShowDailySummaryModal(true); setShowTemplateMenu(false); }}
+                  className="w-full text-left p-3 rounded-lg hover:bg-white/5 transition-colors"
+                  data-testid="agent-template-daily-summary">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">日常总结</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-0.5">每天 01:00 自动总结当天记忆，写入知识库</p>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
 
@@ -385,6 +431,41 @@ export default function AgentPage() {
                   data-testid="agent-task-create-btn" disabled={!newTask.title.trim() || (newTask.cronEnabled && !(newTask.cron || newTask.scheduledAt))}>创建任务</button>
               </div>
               <p className="text-center text-[11px] text-[var(--text-secondary)]" data-testid="agent-task-ai-tips">内容由 AI 生成，请仔细核实甄别</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily summary template confirm modal (SPEC-086) */}
+      {showDailySummaryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="agent-template-confirm">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowDailySummaryModal(false)} />
+          <div className="relative glass p-6 rounded-2xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">日常总结模版</h3>
+              <button onClick={() => setShowDailySummaryModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">任务标题</label>
+                <input type="text" value={dailySummaryTitle} onChange={e => setDailySummaryTitle(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                  data-testid="agent-template-daily-summary-title" placeholder="日常总结" />
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">调度</label>
+                <div className="px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-secondary)]">
+                  ⏰ 每天 01:00
+                </div>
+              </div>
+              <p className="text-xs text-[var(--text-secondary)]">创建后，系统将在每天凌晨 01:00 自动读取当天记忆并总结写入知识库。</p>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowDailySummaryModal(false)}
+                  className="flex-1 px-4 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">取消</button>
+                <button onClick={createDailySummaryTask}
+                  className="flex-1 px-4 py-2 text-sm rounded-xl bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40"
+                  data-testid="agent-template-create-btn" disabled={!dailySummaryTitle.trim()}>创建模版任务</button>
+              </div>
             </div>
           </div>
         </div>

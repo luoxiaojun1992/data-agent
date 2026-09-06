@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	task "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
@@ -34,6 +36,9 @@ type Service struct {
 	// the `pii_redaction_enabled` switch; nil redactor = no redaction.
 	redactor         security.Redactor
 	redactionEnabled func() bool
+	// queue is the optional async index queue (SPEC-086). nil = no enqueue
+	// (CreateTextDoc still creates the doc synchronously).
+	queue repository.QueueRepository
 }
 
 func NewService(kb repository.KBRepository) *Service {
@@ -66,6 +71,13 @@ func (s *Service) WithGraphTopN(topN int) *Service {
 func (s *Service) WithRedactor(r security.Redactor, enabled func() bool) *Service {
 	s.redactor = r
 	s.redactionEnabled = enabled
+	return s
+}
+
+// WithQueue injects the async index queue (SPEC-086). nil = no enqueue; the
+// doc is still created synchronously and indexing must be triggered elsewhere.
+func (s *Service) WithQueue(q repository.QueueRepository) *Service {
+	s.queue = q
 	return s
 }
 
@@ -109,6 +121,62 @@ func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes 
 		return nil, fmt.Errorf("insert knowledge doc: %w", err)
 	}
 	return doc, nil
+}
+
+// CreateTextDoc creates a plain-text KB doc end-to-end (SPEC-086 §5.3):
+// length check → title truncation → PII redaction → GridFS upload → CreateDoc
+// → async index enqueue. Returns the created doc (status=uploaded) without
+// waiting for indexing. userID is mandatory (caller enforces; empty would
+// create an orphan doc).
+func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string) (*knowledge.KnowledgeDoc, error) {
+	if userID == "" {
+		return nil, errors.New("kb_create_doc: userID is required")
+	}
+	if len(text) > knowledge.MaxKBTextBytes {
+		return nil, fmt.Errorf("文本超过 %dMB 上限", knowledge.MaxKBTextBytes/(1024*1024))
+	}
+	// Title is a display label — truncate on overflow (SPEC-081 §5.3), never reject.
+	title = truncateRunes(title, knowledge.MaxKBTitleRunes)
+	if title == "" {
+		return nil, errors.New("kb_create_doc: title is required")
+	}
+
+	redacted, err := s.RedactText(ctx, text)
+	if err != nil {
+		return nil, fmt.Errorf("pii redact: %w", err)
+	}
+
+	fileName := title + ".txt"
+	gridFSFileID, err := s.UploadFile(fileName, "text/plain", bytes.NewReader([]byte(redacted)))
+	if err != nil {
+		return nil, err
+	}
+
+	doc, err := s.CreateDoc(userID, title, fileName, knowledge.FileTypeTxt, int64(len(redacted)), gridFSFileID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Async index (best-effort). nil queue → skip with a log (doc remains
+	// uploaded, indexing must be triggered elsewhere).
+	if s.queue != nil {
+		if err := s.queue.EnqueueRaw(ctx, "kb_index", task.KBIndexPayload{
+			DocID:        doc.ID,
+			GridFSFileID: gridFSFileID,
+		}); err != nil {
+			log.Printf("[kb] CreateTextDoc failed to enqueue index job for doc=%s: %v", doc.ID, err)
+		}
+	}
+	return doc, nil
+}
+
+// truncateRunes truncates s to at most n runes, keeping it a valid UTF-8 string.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 func (s *Service) GetDoc(id, userID string, isSystemAdmin bool) (*knowledge.KnowledgeDoc, error) {

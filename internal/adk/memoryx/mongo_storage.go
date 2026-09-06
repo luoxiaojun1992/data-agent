@@ -146,6 +146,47 @@ func (s *MongoStorage) GetByID(ctx context.Context, id idx.ID) (*adapter.Observa
 	return obsFromDoc(doc), nil
 }
 
+// ListRecent returns observations for a user sorted by created_at DESC,
+// paginated with skip/limit (SPEC-086 §5.2). userID is mandatory — an empty
+// userID returns an error instead of reading the whole collection (防 IDOR).
+func (s *MongoStorage) ListRecent(ctx context.Context, userID string, limit, offset int) ([]adapter.Observation, int64, error) {
+	if userID == "" {
+		return nil, 0, errors.New("memoryx: ListRecent requires a non-empty userID")
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	filter := bson.M{"app_name": s.appName, "user_id": userID}
+	total, err := s.coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	findOpts := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: -1}}).
+		SetSkip(int64(offset)).
+		SetLimit(int64(limit))
+	cur, err := s.coll.Find(ctx, filter, findOpts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cur.Close(ctx)
+	var docs []mongoDoc
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, 0, err
+	}
+	obs := make([]adapter.Observation, 0, len(docs))
+	for _, d := range docs {
+		obs = append(obs, *obsFromDoc(d))
+	}
+	return obs, total, nil
+}
+
 // Search returns observations matching the query via content regex search,
 // limited to MaxResults and sorted by CreatedAt descending.
 func (s *MongoStorage) Search(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {

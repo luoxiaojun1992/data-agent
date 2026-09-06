@@ -23,6 +23,17 @@ const (
 	FileTypeImage = "image" // image (png/jpg/...), indexed via multimodal LLM
 )
 
+// KB size limits (SPEC-081 §4.3 — the single source of truth for KB limits).
+// Referenced by kb_create_doc (SPEC-086) and the web-upload / URL-import paths.
+const (
+	// MaxKBTextBytes caps the plain-text size of a KB document (raw text +
+	// parsed text), enforced at the service boundary.
+	MaxKBTextBytes = 5 * 1024 * 1024 // 5 MB
+	// MaxKBTitleRunes caps the document title length in runes. Titles are
+	// display labels; on overflow they are truncated (not rejected).
+	MaxKBTitleRunes = 200
+)
+
 // IsImage reports whether a file type is an image (multimodal indexing path).
 func IsImage(fileType string) bool {
 	return fileType == FileTypeImage
