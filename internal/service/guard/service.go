@@ -8,11 +8,14 @@ package guard
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/luoxiaojun1992/data-agent/internal/adk/modelcfg"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"google.golang.org/adk/model"
+	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
 
@@ -107,6 +110,66 @@ func (s *Service) CheckRelevance(ctx context.Context, llmOutput, base string) (b
 		return false, err
 	}
 	return parseIsRelevant(text), nil
+}
+
+// LastRelevanceBase extracts the text of the most recent user message or tool
+// output from the session's (compacted) events, to serve as the relevance
+// check base (SPEC-092 §4.2). It walks the event list from newest to oldest
+// and returns the first user-message or function-response text; assistant
+// text, system hints ([intent]/[plan_hint]/[relevance]), and compaction
+// summaries/hints are skipped. Returns "" when none is found (e.g. an
+// image-only user message, or empty events).
+func LastRelevanceBase(events session.Events) string {
+	for i := events.Len() - 1; i >= 0; i-- {
+		ev := events.At(i)
+		if ev == nil || ev.Content == nil {
+			continue
+		}
+		if hasFunctionResponse(ev.Content) {
+			if t := contentText(ev.Content); t != "" {
+				return t
+			}
+			continue
+		}
+		if ev.Author == "user" {
+			if t := contentText(ev.Content); t != "" {
+				return t
+			}
+		}
+	}
+	return ""
+}
+
+// hasFunctionResponse reports whether the content carries any FunctionResponse
+// part (a tool output).
+func hasFunctionResponse(c *genai.Content) bool {
+	for _, p := range c.Parts {
+		if p != nil && p.FunctionResponse != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// contentText renders a content's parts into a single relevance-base string:
+// text parts are concatenated, and function-response payloads are JSON-marshalled
+// so tool outputs form a readable comparison base.
+func contentText(c *genai.Content) string {
+	var sb strings.Builder
+	for _, p := range c.Parts {
+		if p == nil {
+			continue
+		}
+		switch {
+		case p.Text != "":
+			sb.WriteString(p.Text)
+		case p.FunctionResponse != nil:
+			if raw, err := json.Marshal(p.FunctionResponse.Response); err == nil {
+				sb.WriteString(string(raw))
+			}
+		}
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // RecordAndShouldRetry increments the relevance-failure counter for a session

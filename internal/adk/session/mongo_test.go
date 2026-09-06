@@ -1,6 +1,7 @@
 package adksession
 
 import (
+	"sync"
 	"testing"
 
 	"google.golang.org/adk/model"
@@ -184,5 +185,54 @@ func TestHiddenFlag(t *testing.T) {
 	}
 	if hiddenFlag(nil) {
 		t.Errorf("hiddenFlag(nil) = true, want false")
+	}
+}
+
+// ---- SPEC-092: per-session lock (sessionLock) ----
+
+func TestSessionLock_SameIDReturnsSameInstance(t *testing.T) {
+	svc := &Service{locks: make(map[string]*sync.Mutex)}
+	a := svc.sessionLock("s1")
+	b := svc.sessionLock("s1")
+	if a != b {
+		t.Error("sessionLock(same id) returned different mutex instances")
+	}
+}
+
+func TestSessionLock_DifferentIDReturnsDifferentInstance(t *testing.T) {
+	svc := &Service{locks: make(map[string]*sync.Mutex)}
+	a := svc.sessionLock("s1")
+	b := svc.sessionLock("s2")
+	if a == b {
+		t.Error("sessionLock(different ids) returned the same mutex instance")
+	}
+}
+
+func TestSessionLock_ConcurrentNewIDs(t *testing.T) {
+	// Concurrent first-time lookups for many distinct IDs must not race on the
+	// locks map (guarded by locksMu) and each ID must map to a stable instance.
+	svc := &Service{locks: make(map[string]*sync.Mutex)}
+	const n = 64
+	var wg sync.WaitGroup
+	instances := make([]*sync.Mutex, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			id := "sess_" + string(rune('a'+i%26)) + string(rune('0'+i/26))
+			instances[i] = svc.sessionLock(id)
+		}(i)
+	}
+	wg.Wait()
+	// Every distinct ID must yield a distinct mutex instance.
+	seen := make(map[*sync.Mutex]bool)
+	for _, m := range instances {
+		if m == nil {
+			t.Fatal("sessionLock returned nil")
+		}
+		seen[m] = true
+	}
+	if len(seen) != n {
+		t.Errorf("expected %d distinct locks, got %d", n, len(seen))
 	}
 }

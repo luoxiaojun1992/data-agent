@@ -70,14 +70,34 @@ type chunkBuffer struct {
 const flushThresholdBytes = 128 * 1024
 
 type Service struct {
-	coll       *mongo.Collection
-	evtColl    *mongo.Collection // session_events 独立 collection（raw 事件流）
-	mu         sync.Mutex
+	coll    *mongo.Collection
+	evtColl *mongo.Collection // session_events 独立 collection（raw 事件流）
+	// locksMu guards the locks map. Per-session locks serialize events writes
+	// ($push/$set) and compaction for the SAME session, while distinct sessions
+	// proceed in parallel (SPEC-092 §4.1).
+	locksMu sync.Mutex
+	locks   map[string]*sync.Mutex
+	// bufMu guards the streaming chunk buffer map (shared across sessions).
+	bufMu      sync.Mutex
 	summarizer Summarizer
 	compact    CompactionConfig
 	// buf accumulates the in-progress streaming text for each session (one
-	// complete message per session). Access is guarded by mu.
+	// complete message per session). Access is guarded by bufMu.
 	buf map[string]*chunkBuffer
+}
+
+// sessionLock returns the mutex serializing writes for one session, creating
+// it lazily under locksMu. Locks are never removed — the map grows at most one
+// entry per unique session ID (tiny), avoiding the delete-vs-wait race.
+func (s *Service) sessionLock(sessionID string) *sync.Mutex {
+	s.locksMu.Lock()
+	defer s.locksMu.Unlock()
+	l, ok := s.locks[sessionID]
+	if !ok {
+		l = &sync.Mutex{}
+		s.locks[sessionID] = l
+	}
+	return l
 }
 
 func NewService(db *mongo.Database) *Service {
@@ -96,6 +116,7 @@ func NewService(db *mongo.Database) *Service {
 	return &Service{
 		coll:    coll,
 		evtColl: evtColl,
+		locks:   make(map[string]*sync.Mutex),
 		buf:     make(map[string]*chunkBuffer),
 	}
 }
@@ -302,13 +323,15 @@ func (s *Service) AppendEvent(ctx context.Context, sess session.Session, event *
 	}
 
 	// SPEC-069 问题 2 并发安全：events 落库与 maybeCompact 的 $set events
-	//（整体替换）共用同一把锁，保证「读 events → 算 cut → $set events」与
-	// append 互斥，避免 compaction 覆盖并发 append 丢失事件。
-	s.mu.Lock()
+	//（整体替换）共用同一把 per-session 锁，保证「读 events → 算 cut → $set
+	// events」与 append 互斥，避免 compaction 覆盖并发 append 丢失事件。
+	// 不同 session 使用不同锁并行（SPEC-092 §4.1）。
+	lock := s.sessionLock(sess.ID())
+	lock.Lock()
 	res, err := s.coll.UpdateOne(ctx,
 		bson.M{"_id": sess.ID(), "app_name": sess.AppName(), "user_id": sess.UserID()},
 		update, opts)
-	s.mu.Unlock()
+	lock.Unlock()
 	if err != nil {
 		return fmt.Errorf("append event: %w", err)
 	}
@@ -406,8 +429,8 @@ func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 	if event.Content == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.bufMu.Lock()
+	defer s.bufMu.Unlock()
 	b, ok := s.buf[sessionID]
 	if !ok {
 		b = &chunkBuffer{
@@ -429,24 +452,24 @@ func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 // exceeds the threshold, as a memory-safety backstop. The normal flush path is
 // the stream completing (next non-partial event) via flushBuffer.
 func (s *Service) flushBufferIfLarge(ctx context.Context, sess session.Session) {
-	s.mu.Lock()
+	s.bufMu.Lock()
 	b, ok := s.buf[sess.ID()]
 	over := ok && b.size >= flushThresholdBytes
-	s.mu.Unlock()
+	s.bufMu.Unlock()
 	if over {
 		s.flushBuffer(ctx, sess)
 	}
 }
 
 func (s *Service) flushBuffer(ctx context.Context, sess session.Session) {
-	s.mu.Lock()
+	s.bufMu.Lock()
 	b, ok := s.buf[sess.ID()]
 	if !ok || b.text.Len() == 0 {
-		s.mu.Unlock()
+		s.bufMu.Unlock()
 		return
 	}
 	delete(s.buf, sess.ID())
-	s.mu.Unlock()
+	s.bufMu.Unlock()
 	event := &session.Event{
 		ID:        b.eventID,
 		Timestamp: b.since,
@@ -534,8 +557,14 @@ func syncSnapshot(sess session.Session, event *session.Event, isPartial bool) {
 }
 
 func (s *Service) maybeCompact(ctx context.Context, sess session.Session) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Per-session lock: serializes compaction against concurrent appends to the
+	// SAME session (SPEC-092 §4.1). The summarize LLM call runs while holding
+	// the lock so a same-session append waits for compaction to finish before
+	// it can write or re-trigger compaction (§4.3) — other sessions proceed in
+	// parallel.
+	lock := s.sessionLock(sess.ID())
+	lock.Lock()
+	defer lock.Unlock()
 
 	doc, err := s.find(ctx, sess.AppName(), sess.UserID(), sess.ID())
 	if err != nil {

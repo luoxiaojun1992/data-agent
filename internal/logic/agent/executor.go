@@ -147,9 +147,10 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	firstErr := e.runProtected(ctx, rt, run, runSessionID, firstUserContent, runCfg, &firstContent)
 
 	// 4b. Relevance check against the task prompt (message). Irrelevant output
-	// triggers a bounded retry (same input, no hint).
+	// triggers a bounded retry (same input, no hint). The base is the most
+	// recent user message or tool output from the session's compacted events.
 	if firstErr == nil && e.guard != nil {
-		firstContent = e.relevanceLoop(ctx, rt, run, runSessionID, firstUserContent, runCfg, message, firstContent)
+		firstContent = e.relevanceLoop(ctx, rt, run, runSessionID, firstUserContent, runCfg, firstContent)
 	}
 
 	// 5. Respect cancellation.
@@ -213,9 +214,11 @@ func (e *AgentExecutor) runProtected(ctx context.Context, rt *adkruntime.Runtime
 	return e.cbReg.GetOrCreate("agent").Call(runFn)
 }
 
-// relevanceLoop checks the LLM output against the task prompt (base) and
-// retries the same run up to the guard's max-retry limit when irrelevant.
-func (e *AgentExecutor) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, run *domaintask.TaskRun, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, base, firstText string) string {
+// relevanceLoop checks the LLM output against the base (the most recent user
+// message or tool output from the session's compacted events, SPEC-092 §4.2)
+// and retries the same run up to the guard's max-retry limit when irrelevant.
+func (e *AgentExecutor) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, run *domaintask.TaskRun, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, firstText string) string {
+	base := e.relevanceBase(ctx, run.UserID, sessionID)
 	if base == "" {
 		return firstText
 	}
@@ -240,6 +243,22 @@ func (e *AgentExecutor) relevanceLoop(ctx context.Context, rt *adkruntime.Runtim
 		}
 		text = newText
 	}
+}
+
+// relevanceBase returns the relevance-check comparison base for the session:
+// the most recent user message or tool output from its compacted events
+// (SPEC-092 §4.2). Returns "" when the session cannot be loaded or holds no
+// user/tool content.
+func (e *AgentExecutor) relevanceBase(ctx context.Context, userID, sessionID string) string {
+	resp, err := e.adkSessions.Get(ctx, &session.GetRequest{
+		AppName:   e.registry.AppName(),
+		UserID:    userID,
+		SessionID: sessionID,
+	})
+	if err != nil || resp == nil || resp.Session == nil {
+		return ""
+	}
+	return guard.LastRelevanceBase(resp.Session.Events())
 }
 
 // failRun persists the failure error and notifies the user.

@@ -282,7 +282,7 @@ func buildState(userID, role, sessionID, kbID string) map[string]any {
 // Process handles a non-streaming chat request and returns the final
 // assistant content. Implements domain/chat.ChatService.
 func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userID, role string) (*domainchat.ChatResponse, error) {
-	rt, sessionID, content, lastText, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, content, _, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +294,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 		if rErr != nil {
 			return rErr
 		}
-		assistantText = s.relevanceLoop(ctx, rt, userID, sessionID, content, runCfg, lastText, text)
+		assistantText = s.relevanceLoop(ctx, rt, userID, sessionID, content, runCfg, text)
 		return nil
 	}); cErr != nil {
 		return nil, cErr
@@ -312,7 +312,7 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 // Implements domain/chat.ChatService. The writer must implement
 // http.Flusher (gin and httptest.ResponseRecorder both do).
 func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID, role string, w http.ResponseWriter) error {
-	rt, sessionID, content, lastText, runCfg, err := s.prepareRun(ctx, req, userID, role)
+	rt, sessionID, content, _, runCfg, err := s.prepareRun(ctx, req, userID, role)
 	if err != nil {
 		return err
 	}
@@ -332,13 +332,15 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	fmt.Fprintf(w, "data: %s\n\n", sessionData)
 	flusher.Flush()
 
-	// ④ Relevance check + bounded retry (retry re-streams the same run).
-	base := lastText
-	if base == "" {
-		base = "[图片]"
-	}
+	// ④ Relevance check + bounded retry (retry re-streams the same run). The
+	// comparison base is the most recent user message or tool output from the
+	// session's compacted events (SPEC-092 §4.2), not the request-body text.
 	assistantText := s.streamOnce(ctx, rt, userID, sessionID, content, runCfg, w, flusher)
 	if s.guard != nil {
+		base := s.relevanceBase(ctx, rt.AppName(), userID, sessionID)
+		if base == "" {
+			base = "[图片]"
+		}
 		for {
 			relevant, gErr := s.guard.CheckRelevance(ctx, assistantText, base)
 			if gErr != nil {
@@ -518,12 +520,14 @@ func (s *Service) runAndCollect(ctx context.Context, rt *adkruntime.Runtime, use
 }
 
 // relevanceLoop checks the assistant text against the base (the most recent
-// user message) and, when irrelevant, retries the same run up to the guard's
+// user message or tool output from the session's compacted events, SPEC-092
+// §4.2) and, when irrelevant, retries the same run up to the guard's
 // max-retry limit (no extra hint). Returns the final text.
-func (s *Service) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, base, firstText string) string {
+func (s *Service) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, firstText string) string {
 	if s.guard == nil {
 		return firstText
 	}
+	base := s.relevanceBase(ctx, rt.AppName(), userID, sessionID)
 	if base == "" {
 		base = "[图片]"
 	}
@@ -550,6 +554,22 @@ func (s *Service) relevanceLoop(ctx context.Context, rt *adkruntime.Runtime, use
 		}
 		text = newText
 	}
+}
+
+// relevanceBase returns the relevance-check comparison base for the session:
+// the most recent user message or tool output from its compacted events
+// (SPEC-092 §4.2). Returns "" when the session cannot be loaded or holds no
+// user/tool content.
+func (s *Service) relevanceBase(ctx context.Context, appName, userID, sessionID string) string {
+	resp, err := s.adkSessions.Get(ctx, &session.GetRequest{
+		AppName:   appName,
+		UserID:    userID,
+		SessionID: sessionID,
+	})
+	if err != nil || resp == nil || resp.Session == nil {
+		return ""
+	}
+	return guard.LastRelevanceBase(resp.Session.Events())
 }
 
 // scheduleMemoryWrite invokes the memory hook asynchronously after the response.
