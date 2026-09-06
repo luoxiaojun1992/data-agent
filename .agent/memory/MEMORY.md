@@ -2,6 +2,16 @@
 
 > 按日期追加的工程决策记录。新条目追加在顶部，最新在前。
 
+## 2026-09-06: SPEC-092 Session 并发写入治理 + Relevance 基准修正
+
+- **上下文**: 晓军要求标记 SPEC-080 完成（已在 spec-080/INDEX 标 ✅）+ 新建 spec 并修复 5 个并发问题。
+- **核心结论（分析验证，非臆断）**:
+  - ③ compaction 时序 + ④ 多 tool call 等待**已由 ADK 天然保证**：`runner.Run` 同步 `AppendEvent`（末尾同步 `maybeCompact`），ReAct 下轮才 callLLM；`handleFunctionCalls` 用 `WaitGroup`+merge 合并为单 event。无需改 ADK。
+  - ① relevance 基准原用请求体 `lastUserMessage`/task prompt，不覆盖 tool 输出 → 改为 `guard.LastRelevanceBase` 从压缩 events 倒序取最近 user/FunctionResponse。
+  - ② 原单把全局锁已保证不丢，但 summarize 持锁串行化所有 session → 改 per-session 锁（`locks map[string]*sync.Mutex`+`locksMu`），buf map 独立 `bufMu`。
+- **⭐ 关键事实**: `cmd/server/wire.go:291` 唯一 `deps.adkSessions`，registry/chat/executor 共享同一实例 → `adkSessions.Get` 读的是 runner 写入的同一 store。
+- **commit**: `8ccb5f9`，已 push main（待部署）。
+
 ## 2026-09-04: SPEC-082 删除 task pause/resume 功能
 
 - **上下文**: 晓军在 spec-082 评审中拍板：task 不需要 pause/resume（暂停/恢复），太复杂、无需求。
