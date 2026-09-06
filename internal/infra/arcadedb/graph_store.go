@@ -24,6 +24,8 @@ import (
 var schemaDDL = []string{
 	"CREATE CONSTRAINT chunk_id_unique IF NOT EXISTS FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE",
 	"CREATE INDEX chunk_creator_id IF NOT EXISTS FOR (c:Chunk) ON (c.creator_id)",
+	// SPEC-091: doc_id lookup index for SetDocPublic / DeleteByDocID batch MATCH.
+	"CREATE INDEX chunk_doc_id IF NOT EXISTS FOR (c:Chunk) ON (c.doc_id)",
 }
 
 // GraphStore is the ArcadeDB-backed GraphRepository.
@@ -203,6 +205,18 @@ func (g *GraphStore) DeleteByDocID(ctx context.Context, docID string) error {
 	defer g.mu.Unlock()
 	return g.run(ctx, `MATCH (c:Chunk {doc_id: $docID}) DETACH DELETE c`,
 		map[string]any{"docID": docID})
+}
+
+// SetDocPublic updates the is_public flag on all chunk nodes of a document
+// (idempotent). Keeps graph visibility in sync with the KB doc's shared state
+// (SPEC-091): after a doc is toggled shared, graph search must see the same
+// visibility as KB list/search.
+func (g *GraphStore) SetDocPublic(ctx context.Context, docID string, isPublic bool) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.run(ctx,
+		`MATCH (c:Chunk {doc_id: $docID}) SET c.is_public = $isPublic`,
+		map[string]any{"docID": docID, "isPublic": isPublic})
 }
 
 // QueryTopN returns up to topN related chunks of the anchor, sorted by score

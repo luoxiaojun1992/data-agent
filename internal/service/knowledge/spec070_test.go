@@ -154,3 +154,160 @@ func TestDeleteDoc_NoGraphNoVector_StillCascadesMongo(t *testing.T) {
 	kb.AssertCalled(t, "DeleteFile", mock.Anything, "")
 	kb.AssertCalled(t, "DeleteDoc", mock.Anything, "kbdoc_1")
 }
+
+// ---- SPEC-091: SetPublicFlag 联动同步图谱 is_public ----
+
+func TestSetPublicFlag_GraphSync_OrderAndParams(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+	vec := mockrepo.NewVectorRepository(t)
+	graph := mockrepo.NewGraphRepository(t)
+
+	doc := &knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "u1", IsPublic: false}
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(doc, nil)
+
+	// 用共享切片记录调用顺序，验证「副作用先行，doc 最后」。
+	var order []string
+	kb.On("UpdateChunkVisibility", mock.Anything, "kbdoc_1", true).Return(nil).Run(func(mock.Arguments) {
+		order = append(order, "chunks")
+	})
+	vec.On("SetPayload", mock.Anything, "kb_chunks", "kbdoc_1", mock.MatchedBy(func(p map[string]interface{}) bool {
+		v, _ := p["is_public"].(bool)
+		return v
+	})).Return(nil).Run(func(mock.Arguments) {
+		order = append(order, "qdrant")
+	})
+	graph.On("SetDocPublic", mock.Anything, "kbdoc_1", true).Return(nil).Run(func(mock.Arguments) {
+		order = append(order, "graph")
+	})
+	kb.On("SetPublicFlag", mock.Anything, "kbdoc_1", true).Return(nil).Run(func(mock.Arguments) {
+		order = append(order, "doc")
+	})
+
+	s := NewService(kb)
+	s.WithVectorIndex(vec, nil)
+	s.WithGraphIndex(graph)
+
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false)
+	assert.NoError(t, err)
+
+	graph.AssertCalled(t, "SetDocPublic", mock.Anything, "kbdoc_1", true)
+	assert.Equal(t, []string{"chunks", "qdrant", "graph", "doc"}, order)
+}
+
+func TestSetPublicFlag_GraphNil_NoPanic(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+	vec := mockrepo.NewVectorRepository(t)
+
+	doc := &knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "u1"}
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(doc, nil)
+	kb.On("UpdateChunkVisibility", mock.Anything, "kbdoc_1", true).Return(nil)
+	vec.On("SetPayload", mock.Anything, "kb_chunks", "kbdoc_1", mock.Anything).Return(nil)
+	kb.On("SetPublicFlag", mock.Anything, "kbdoc_1", true).Return(nil)
+
+	// graph 未注入 → 不 panic、主链路不受影响。
+	s := NewService(kb)
+	s.WithVectorIndex(vec, nil)
+
+	assert.NoError(t, s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false))
+	kb.AssertCalled(t, "SetPublicFlag", mock.Anything, "kbdoc_1", true)
+}
+
+func TestSetPublicFlag_GraphError_AbortsBeforeDoc(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+	vec := mockrepo.NewVectorRepository(t)
+	graph := mockrepo.NewGraphRepository(t)
+
+	doc := &knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "u1"}
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(doc, nil)
+	kb.On("UpdateChunkVisibility", mock.Anything, "kbdoc_1", true).Return(nil)
+	vec.On("SetPayload", mock.Anything, "kb_chunks", "kbdoc_1", mock.Anything).Return(nil)
+	graph.On("SetDocPublic", mock.Anything, "kbdoc_1", true).Return(errors.New("arcadedb down"))
+
+	s := NewService(kb)
+	s.WithVectorIndex(vec, nil)
+	s.WithGraphIndex(graph)
+
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "graph is_public")
+	// 图同步失败 → 提交点（doc is_public）不更新。
+	kb.AssertNotCalled(t, "SetPublicFlag", mock.Anything, "kbdoc_1", true)
+}
+
+func TestSetPublicFlag_ChunkVisibilityError_Aborts(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+
+	doc := &knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "u1"}
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(doc, nil)
+	kb.On("UpdateChunkVisibility", mock.Anything, "kbdoc_1", true).Return(errors.New("mongo down"))
+
+	s := NewService(kb)
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "chunk visibility")
+	kb.AssertNotCalled(t, "SetPublicFlag", mock.Anything, "kbdoc_1", true)
+}
+
+func TestSetPublicFlag_ForbiddenPrivateDoc(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+
+	doc := &knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "owner", IsPublic: false}
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(doc, nil)
+
+	s := NewService(kb)
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "attacker", false)
+	assert.ErrorIs(t, err, ErrNotFound)
+	kb.AssertNotCalled(t, "SetPublicFlag", mock.Anything, "kbdoc_1", true)
+	kb.AssertNotCalled(t, "UpdateChunkVisibility", mock.Anything, "kbdoc_1", true)
+}
+
+func TestSetPublicFlag_GetDocError(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(nil, errors.New("mongo down"))
+
+	s := NewService(kb)
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "get doc")
+}
+
+func TestSetPublicFlag_DocNotFound(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(nil, nil)
+
+	s := NewService(kb)
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false)
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestSetPublicFlag_QdrantError_AbortsBeforeDoc(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+	vec := mockrepo.NewVectorRepository(t)
+
+	doc := &knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "u1"}
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(doc, nil)
+	kb.On("UpdateChunkVisibility", mock.Anything, "kbdoc_1", true).Return(nil)
+	vec.On("SetPayload", mock.Anything, "kb_chunks", "kbdoc_1", mock.Anything).Return(errors.New("qdrant down"))
+
+	s := NewService(kb)
+	s.WithVectorIndex(vec, nil)
+
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "qdrant payload")
+	kb.AssertNotCalled(t, "SetPublicFlag", mock.Anything, "kbdoc_1", true)
+}
+
+func TestSetPublicFlag_DocSetError(t *testing.T) {
+	kb := mockrepo.NewKBRepository(t)
+
+	doc := &knowledge.KnowledgeDoc{ID: "kbdoc_1", UserID: "u1"}
+	kb.On("GetDoc", mock.Anything, "kbdoc_1").Return(doc, nil)
+	kb.On("UpdateChunkVisibility", mock.Anything, "kbdoc_1", true).Return(nil)
+	kb.On("SetPublicFlag", mock.Anything, "kbdoc_1", true).Return(errors.New("mongo update failed"))
+
+	s := NewService(kb)
+	err := s.SetPublicFlag(context.Background(), "kbdoc_1", true, "u1", false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "set public flag on doc")
+}

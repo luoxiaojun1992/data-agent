@@ -116,6 +116,24 @@ func (_m *GraphRepository) QueryTopN(ctx context.Context, anchorID string, topN 
 	return r0, r1
 }
 
+// SetDocPublic provides a mock function with given fields: ctx, docID, isPublic
+func (_m *GraphRepository) SetDocPublic(ctx context.Context, docID string, isPublic bool) error {
+	ret := _m.Called(ctx, docID, isPublic)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetDocPublic")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
+		r0 = rf(ctx, docID, isPublic)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // UpsertChunk provides a mock function with given fields: ctx, c
 func (_m *GraphRepository) UpsertChunk(ctx context.Context, c repository.GraphChunk) error {
 	ret := _m.Called(ctx, c)

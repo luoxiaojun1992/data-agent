@@ -1,6 +1,6 @@
 # KB 设 shared 联动更新知识图谱 is_public（图索引可见性同步）
 
-> **SPEC-091** | Status: 设计中
+> **SPEC-091** | Status: 已实现
 
 ## 1. 目标
 

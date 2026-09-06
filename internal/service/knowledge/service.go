@@ -545,7 +545,7 @@ type SearchResult struct {
 }
 
 // SetPublicFlag toggles the is_public flag on a doc, its chunks in MongoDB,
-// and updates all vector payloads in Qdrant.
+// its vector payloads in Qdrant, and its chunk nodes in ArcadeDB (SPEC-091).
 func (s *Service) SetPublicFlag(ctx context.Context, docID string, isPublic bool, userID string, isSystemAdmin bool) error {
 	doc, err := s.kb.GetDoc(ctx, docID)
 	if err != nil {
@@ -559,18 +559,29 @@ func (s *Service) SetPublicFlag(ctx context.Context, docID string, isPublic bool
 	if !isSystemAdmin && doc.UserID != userID && !doc.IsPublic {
 		return ErrNotFound
 	}
-	if err := s.kb.SetPublicFlag(ctx, docID, isPublic); err != nil {
-		return fmt.Errorf("set public flag on doc: %w", err)
-	}
-	// Update chunk visibility in MongoDB
+
+	// SPEC-091 §4.3: 副作用（chunks / Qdrant / 图谱）先行，doc 的 is_public
+	// 最后更新（提交点）。任一中间步骤失败即中断（return error）、不更新 doc
+	// 字段（保持一致，可重试自愈）；失败不回滚已成功的副作用（容错不回滚）。
+	// ① MongoDB chunks
 	if err := s.kb.UpdateChunkVisibility(ctx, docID, isPublic); err != nil {
-		log.Printf("[kb] update chunk visibility failed: %v", err)
+		return fmt.Errorf("set chunk visibility: %w", err)
 	}
-	// Update vector payloads in Qdrant if available
+	// ② Qdrant vector payload
 	if s.vector != nil {
 		if err := s.vector.SetPayload(ctx, s.vecCol, docID, map[string]interface{}{"is_public": isPublic}); err != nil {
-			log.Printf("[kb] update qdrant payload for doc=%s: %v", docID, err)
+			return fmt.Errorf("set qdrant payload: %w", err)
 		}
+	}
+	// ③ ArcadeDB graph nodes (SPEC-091)
+	if s.graph != nil {
+		if err := s.graph.SetDocPublic(ctx, docID, isPublic); err != nil {
+			return fmt.Errorf("set graph is_public: %w", err)
+		}
+	}
+	// ④ 提交点——最后更新 doc 的 is_public（source of truth）
+	if err := s.kb.SetPublicFlag(ctx, docID, isPublic); err != nil {
+		return fmt.Errorf("set public flag on doc: %w", err)
 	}
 	return nil
 }

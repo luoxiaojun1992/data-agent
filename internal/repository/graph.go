@@ -54,6 +54,10 @@ type GraphRepository interface {
 	// DeleteByDocID removes all chunk nodes of a document and their edges
 	// (idempotent, DETACH DELETE).
 	DeleteByDocID(ctx context.Context, docID string) error
+	// SetDocPublic updates the is_public flag on all chunk nodes of a document
+	// (idempotent). Keeps graph visibility in sync with the KB doc's shared
+	// state (SPEC-091).
+	SetDocPublic(ctx context.Context, docID string, isPublic bool) error
 	// QueryTopN returns up to topN related chunks of the anchor chunk, sorted
 	// by score desc, filtered by visibility (system_admin sees all; regular
 	// users see their own or public chunks).
