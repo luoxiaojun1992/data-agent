@@ -68,18 +68,62 @@ type ResponsesPayload struct {
 	DelayMs  int    `json:"delay_ms"` // optional per-injection delay in ms (SPEC-063 cancel tests)
 }
 
-// toolCallResponse is the JSON format used in test seeds for tool call responses.
-// When the seeded response matches this format, mockllm returns it as an OpenAI
-// function_call instead of plain text content — enabling ADK ReAct tool execution.
+// toolCallResponse is the JSON format used in test seeds for a single tool call
+// response. When the seeded response matches this format, mockllm returns it as
+// an OpenAI function_call instead of plain text content — enabling ADK ReAct
+// tool execution.
 type toolCallResponse struct {
 	Type  string         `json:"type"`
 	Name  string         `json:"name"`
 	Input map[string]any `json:"input"`
 }
 
-// tryAsFunctionCall checks if the response content is a tool_call JSON block.
-// If so, it builds a ChatMessage with tool_calls instead of text content.
-func tryAsFunctionCall(content string) *ChatMessage {
+// toolCallsResponse is the multi-tool-call JSON format. It lets a single seeded
+// response emit several tool_calls in one assistant turn, so ADK's
+// handleFunctionCalls runs them concurrently and merges the results — exactly
+// the "multiple tool calls in one round" scenario (SPEC-092 §4.4).
+type toolCallsResponse struct {
+	Type  string             `json:"type"`
+	Calls []toolCallResponse `json:"calls"`
+}
+
+// tryAsFunctionCalls parses the response content as one or more tool calls.
+// Two formats are supported:
+//   - single: {"type":"tool_call","name":"x","input":{...}}  (legacy)
+//   - multi:  {"type":"tool_calls","calls":[{"name":"x","input":{...}}, ...]}
+//
+// It returns a ChatMessage carrying len(ToolCalls) == number of calls, or nil
+// when the content is not a tool-call block (so the caller falls back to text).
+func tryAsFunctionCalls(content string) *ChatMessage {
+	// Multi-call format (checked first; "tool_calls" != "tool_call").
+	var multi toolCallsResponse
+	if err := json.Unmarshal([]byte(content), &multi); err == nil && multi.Type == "tool_calls" && len(multi.Calls) > 0 {
+		msg := &ChatMessage{Role: "assistant", Content: ""}
+		for _, c := range multi.Calls {
+			if c.Name == "" {
+				continue
+			}
+			argsJSON, err := json.Marshal(c.Input)
+			if err != nil {
+				argsJSON = []byte("{}")
+			}
+			msg.ToolCalls = append(msg.ToolCalls, ToolCall{
+				ID:   fmt.Sprintf("call_%d", time.Now().UnixNano()),
+				Type: "function",
+				Function: &FunctionCall{
+					Name:      c.Name,
+					Arguments: string(argsJSON),
+				},
+			})
+		}
+		if len(msg.ToolCalls) == 0 {
+			return nil
+		}
+		log.Printf("[DEBUG] multi tool calls detected: %d calls", len(msg.ToolCalls))
+		return msg
+	}
+
+	// Single-call format (legacy).
 	var tc toolCallResponse
 	if err := json.Unmarshal([]byte(content), &tc); err != nil || tc.Type != "tool_call" || tc.Name == "" {
 		return nil
@@ -204,7 +248,8 @@ func chatHandler(rdb *redis.Client) http.HandlerFunc {
 		}
 
 		// If the response is a tool_call JSON, return as OpenAI function_call
-		if fc := tryAsFunctionCall(response); fc != nil {
+		// (one or more calls in a single assistant turn).
+		if fc := tryAsFunctionCalls(response); fc != nil {
 			if req.Stream {
 				handleStreamFunctionCall(w, fc, req.Model)
 			} else {
@@ -301,15 +346,23 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 		} `json:"choices"`
 	}
 
-	// Send full tool_calls delta in one chunk with finish_reason
-	// Map message ToolCalls to SSE delta format (MUST include index)
-	callID := msg.ToolCalls[0].ID
-	callType := msg.ToolCalls[0].Type
-	callName := msg.ToolCalls[0].Function.Name
-	callArgs := msg.ToolCalls[0].Function.Arguments
+	// Map message ToolCalls to SSE delta format (MUST include index).
+	// Emit one header delta per tool call (index + id + name, empty arguments),
+	// then one arguments delta per tool call with finish_reason. The ADK OpenAI
+	// client accumulates fragments keyed by index, so multiple tool calls in a
+	// single turn stream correctly.
 
-	// Step 1: send role + tool call header with empty arguments (index required)
-	idx0 := 0
+	// Step 1: send role + one tool-call header per call (empty arguments).
+	headers := make([]ToolCall, 0, len(msg.ToolCalls))
+	for i, tc := range msg.ToolCalls {
+		idx := i
+		headers = append(headers, ToolCall{
+			Index:    &idx,
+			ID:       tc.ID,
+			Type:     tc.Type,
+			Function: &FunctionCall{Name: tc.Function.Name, Arguments: ""},
+		})
+	}
 	chunk1 := sseChunk{
 		ID:      chatID,
 		Object:  "chat.completion.chunk",
@@ -323,15 +376,8 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 			{
 				Index: 0,
 				Delta: sseDelta{
-					Role: msg.Role,
-					ToolCalls: []ToolCall{
-						{
-							Index:    &idx0,
-							ID:       callID,
-							Type:     callType,
-							Function: &FunctionCall{Name: callName, Arguments: ""},
-						},
-					},
+					Role:      msg.Role,
+					ToolCalls: headers,
 				},
 			},
 		},
@@ -340,7 +386,15 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 	fmt.Fprintf(w, "data: %s\n\n", data1)
 	flusher.Flush()
 
-	// Step 2: send arguments chunk with finish_reason
+	// Step 2: send arguments per call + finish_reason.
+	args := make([]ToolCall, 0, len(msg.ToolCalls))
+	for i, tc := range msg.ToolCalls {
+		idx := i
+		args = append(args, ToolCall{
+			Index:    &idx,
+			Function: &FunctionCall{Arguments: tc.Function.Arguments},
+		})
+	}
 	chunk2 := sseChunk{
 		ID:      chatID,
 		Object:  "chat.completion.chunk",
@@ -352,15 +406,8 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 			FinishReason string   `json:"finish_reason"`
 		}{
 			{
-				Index: 0,
-				Delta: sseDelta{
-					ToolCalls: []ToolCall{
-						{
-							Index:    &idx0,
-							Function: &FunctionCall{Arguments: callArgs},
-						},
-					},
-				},
+				Index:        0,
+				Delta:        sseDelta{ToolCalls: args},
 				FinishReason: "tool_calls",
 			},
 		},
@@ -371,7 +418,9 @@ func handleStreamFunctionCall(w http.ResponseWriter, msg *ChatMessage, model str
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
-	log.Printf("[DEBUG] stream function_call: name=%s", msg.ToolCalls[0].Function.Name)
+	for _, tc := range msg.ToolCalls {
+		log.Printf("[DEBUG] stream function_call: name=%s", tc.Function.Name)
+	}
 }
 
 // handleNonStream writes a single JSON response.
