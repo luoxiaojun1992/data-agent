@@ -63,15 +63,16 @@ func (s *Service) SetRedis(redisClient *redis.Client) {
 	s.redis = redisClient
 }
 
-// CheckIntent classifies the user content as a task (true) or chat (false).
+// CheckIntent classifies the user content as task vs chat and, within tasks,
+// whether the task needs planning (is_plan). Returns (isTask, isPlan, error).
 // Images flow through as InlineData parts (caller is responsible for using a
 // multimodal model — the backend does not validate model capability).
-func (s *Service) CheckIntent(ctx context.Context, content *genai.Content) (bool, error) {
+func (s *Service) CheckIntent(ctx context.Context, content *genai.Content) (bool, bool, error) {
 	llm, err := s.provider.BuildLLM(ctx, modelcfg.UseCaseIntentCheck)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	sys := "你是用户意图分类器。判断用户的输入是「任务」（需要数据分析、计算、查询、生成报告/文件等）还是「聊天」（闲聊、问候、咨询）。只输出 JSON：{\"is_task\": true} 或 {\"is_task\": false}，不要输出其他内容。"
+	sys := "你是用户意图分类器。判断用户的输入是「任务」（需要数据分析、计算、查询、生成报告/文件、制定计划等）还是「聊天」（闲聊、问候、咨询）。若属于任务，进一步判断是否「需要规划」（用户要求制定计划/方案/路线图，或任务本身需要多步拆解后才能完成）。只输出 JSON：{\"is_task\": true, \"is_plan\": false} 形式（is_plan 仅在 is_task 为 true 时可为 true），不要输出其他内容。"
 	req := &model.LLMRequest{
 		Contents: []*genai.Content{
 			{Role: "user", Parts: []*genai.Part{genai.NewPartFromText(sys)}},
@@ -80,9 +81,10 @@ func (s *Service) CheckIntent(ctx context.Context, content *genai.Content) (bool
 	}
 	text, err := generateText(ctx, llm, req)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	return parseIsTask(text), nil
+	r := parseIntent(text)
+	return r.IsTask, r.IsPlan, nil
 }
 
 // CheckRelevance checks whether the LLM output is relevant to the given base

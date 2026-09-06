@@ -253,3 +253,63 @@ func TestSessionHandler_MessagesCanonicalTranscript(t *testing.T) {
 		t.Error("compaction summary leaked into transcript")
 	}
 }
+
+// TestSessionHandler_MessagesHiddenEvent verifies the hidden flag carried on
+// internal hint events (SPEC-080 §5.2) is surfaced on the ChatEvent so the
+// frontend can filter it from the transcript.
+func TestSessionHandler_MessagesHiddenEvent(t *testing.T) {
+	ctx := context.Background()
+	adk := adksession.InMemoryService()
+	created, err := adk.Create(ctx, &adksession.CreateRequest{
+		AppName: "data-agent", UserID: "u1", SessionID: "s1",
+	})
+	if err != nil {
+		t.Fatalf("create ADK session: %v", err)
+	}
+	base := time.Date(2026, 9, 6, 14, 0, 0, 0, time.UTC)
+
+	// A normal visible user message.
+	if err := adk.AppendEvent(ctx, created.Session, &adksession.Event{
+		ID: "user-1", Author: "user", Timestamp: base,
+		LLMResponse: model.LLMResponse{Content: genai.NewContentFromText("帮我制定学习计划", "user")},
+	}); err != nil {
+		t.Fatalf("append user event: %v", err)
+	}
+	// A hidden internal hint (e.g. [intent]/[plan_hint]).
+	if err := adk.AppendEvent(ctx, created.Session, &adksession.Event{
+		ID: "hidden-1", Author: "system", Timestamp: base,
+		LLMResponse: model.LLMResponse{
+			Content:        genai.NewContentFromText("[plan_hint] 检测到本次任务需要制定执行计划。", "system"),
+			CustomMetadata: map[string]any{"hidden": true},
+		},
+	}); err != nil {
+		t.Fatalf("append hidden event: %v", err)
+	}
+
+	h := NewSessionHandler(nil, adk)
+	c, w := newSessionGin("GET", "/sessions/s1/messages")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Messages(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Messages []domainchat.ChatEvent `json:"messages"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Messages) != 2 {
+		t.Fatalf("messages = %d, want 2: %+v", len(body.Messages), body.Messages)
+	}
+	if body.Messages[0].Hidden {
+		t.Errorf("user message should not be hidden: %+v", body.Messages[0])
+	}
+	if !body.Messages[1].Hidden {
+		t.Errorf("internal hint should be hidden: %+v", body.Messages[1])
+	}
+	if body.Messages[1].Role != "system" {
+		t.Errorf("hidden event role = %q, want system", body.Messages[1].Role)
+	}
+}

@@ -166,6 +166,91 @@ func statsCompute(tc agent.ToolContext, args StatsComputeArgs) (any, error) {
 	}
 }
 
+// ---- get_current_time (SPEC-080) ----
+
+// CurrentTimeArgs is empty — the tool takes no arguments.
+type CurrentTimeArgs struct{}
+
+// CurrentTimeResult is the get_current_time tool output.
+type CurrentTimeResult struct {
+	Time     string `json:"time"`
+	Date     string `json:"date"`
+	Weekday  string `json:"weekday"`
+	Timezone string `json:"timezone"`
+	Unix     int64  `json:"unix"`
+}
+
+// currentTime builds the current-time result from an arbitrary instant in
+// Asia/Shanghai (pure — timezone is explicit, never the server default TZ).
+func currentTime(now time.Time) CurrentTimeResult {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		// LoadLocation only fails when the tzdata is missing; fall back to a
+		// fixed +08:00 offset so the tool never depends on host tzdata.
+		loc = time.FixedZone("Asia/Shanghai", 8*3600)
+	}
+	t := now.In(loc)
+	return CurrentTimeResult{
+		Time:     t.Format(time.RFC3339),
+		Date:     t.Format("2006-01-02"),
+		Weekday:  weekdayCN(t.Weekday()),
+		Timezone: "Asia/Shanghai",
+		Unix:     t.Unix(),
+	}
+}
+
+// weekdayCN maps a time.Weekday to its Chinese name.
+func weekdayCN(d time.Weekday) string {
+	switch d {
+	case time.Monday:
+		return "星期一"
+	case time.Tuesday:
+		return "星期二"
+	case time.Wednesday:
+		return "星期三"
+	case time.Thursday:
+		return "星期四"
+	case time.Friday:
+		return "星期五"
+	case time.Saturday:
+		return "星期六"
+	case time.Sunday:
+		return "星期日"
+	}
+	return ""
+}
+
+func getCurrentTime() functiontool.Func[CurrentTimeArgs, CurrentTimeResult] {
+	return func(tc agent.ToolContext, args CurrentTimeArgs) (CurrentTimeResult, error) {
+		return currentTime(time.Now()), nil
+	}
+}
+
+// ---- get_plan_method (SPEC-080) ----
+
+// PlanMethodArgs is empty — the tool takes no arguments.
+type PlanMethodArgs struct{}
+
+// PlanMethodResult is the get_plan_method tool output.
+type PlanMethodResult struct {
+	Guide string `json:"guide"`
+}
+
+// planMethodGuide is the fixed generic task-planning guidance (SPEC-080 §4.3).
+const planMethodGuide = `通用任务规划步骤：
+1. 明确目标 —— 澄清任务的最终交付物与验收标准；
+2. 任务拆解 —— 将目标拆分为 3~7 个可独立执行的子任务；
+3. 排定顺序 —— 识别子任务间的依赖关系，安排执行先后；
+4. 设定检查点 —— 为关键节点定义验证方式与完成判据；
+5. 逐步执行 —— 按顺序执行，每步完成后核对结果再进入下一步；
+6. 汇总交付 —— 整合各步结果，对照验收标准检查完整性后交付。`
+
+func getPlanMethod() functiontool.Func[PlanMethodArgs, PlanMethodResult] {
+	return func(tc agent.ToolContext, args PlanMethodArgs) (PlanMethodResult, error) {
+		return PlanMethodResult{Guide: planMethodGuide}, nil
+	}
+}
+
 // ---- knowledge_search ----
 
 // KnowledgeSearchArgs are the arguments for the knowledge_search tool.
@@ -509,6 +594,20 @@ func specs(deps *Deps) []toolSpec {
 			description: "Performs statistical analysis: descriptive stats, linear regression, time series decomposition",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{Name: "stats_compute", Description: "Performs statistical analysis: descriptive stats, linear regression, time series decomposition"}, statsCompute)
+			},
+		},
+		{
+			name:        "get_current_time",
+			description: "Returns the server's current date and time in Asia/Shanghai timezone, for answering questions about 'now' (today's date, current time, this week's day). Takes no arguments.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "get_current_time", Description: "Returns the server's current date and time in Asia/Shanghai timezone, for answering questions about 'now' (today's date, current time, this week's day). Takes no arguments."}, getCurrentTime())
+			},
+		},
+		{
+			name:        "get_plan_method",
+			description: "Returns a generic task-planning step guide. Call this first when the user asks to make a plan/scheme/roadmap, then decompose and produce a structured plan following the guide.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "get_plan_method", Description: "Returns a generic task-planning step guide. Call this first when the user asks to make a plan/scheme/roadmap, then decompose and produce a structured plan following the guide."}, getPlanMethod())
 			},
 		},
 		{

@@ -130,24 +130,50 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 	return
 }
 
-// recordIntent classifies the user content as task vs chat and appends the
-// result as a system event to the session (events only; recorded normally).
-// Failures are non-fatal — the chat continues without an intent hint.
+// planHintText is the hidden hint injected when the intent classifier flags
+// the task as needing planning (SPEC-080). It directs the LLM to call
+// get_plan_method first and produce a structured plan.
+const planHintText = "[plan_hint] 检测到本次任务需要制定执行计划。请先调用 get_plan_method 获取通用规划步骤，再依据该步骤拆解目标、安排执行顺序并逐步推进，确保交付完整、有条理。"
+
+// recordIntent classifies the user content as task vs chat (and, within tasks,
+// whether planning is needed) and appends the result as a hidden system event
+// to the session (SPEC-080). Failures are non-fatal — the chat continues
+// without an intent hint.
 func (s *Service) recordIntent(ctx context.Context, userID, sessionID, appName string, content *genai.Content) {
 	if s.guard == nil {
 		return
 	}
-	isTask, err := s.guard.CheckIntent(ctx, content)
+	isTask, isPlan, err := s.guard.CheckIntent(ctx, content)
 	if err != nil {
 		log.Printf("[chat] intent check: %v (session=%s)", err, sessionID)
 		return
 	}
-	s.appendSystemEvent(ctx, userID, sessionID, appName, fmt.Sprintf("[intent] is_task=%t", isTask))
+	// Internal hints are hidden from the frontend transcript (SPEC-080 §5.2).
+	s.appendHiddenSystemEvent(ctx, userID, sessionID, appName, fmt.Sprintf("[intent] is_task=%t is_plan=%t", isTask, isPlan))
+	if isPlan {
+		s.appendHiddenSystemEvent(ctx, userID, sessionID, appName, planHintText)
+	}
 }
 
 // appendSystemEvent writes a system-role event to the session history (events
-// + raw_events, recorded normally, never triggers compaction).
+// + raw_events, recorded normally, never triggers compaction). The event is
+// visible in the frontend transcript.
 func (s *Service) appendSystemEvent(ctx context.Context, userID, sessionID, appName, text string) {
+	s.appendSystemEventHidden(ctx, userID, sessionID, appName, text, false)
+}
+
+// appendHiddenSystemEvent writes a system-role event that is kept in the LLM
+// context (events) and persisted to session_events with hidden=true, but is
+// filtered from the frontend transcript (SPEC-080 §5.2).
+func (s *Service) appendHiddenSystemEvent(ctx context.Context, userID, sessionID, appName, text string) {
+	s.appendSystemEventHidden(ctx, userID, sessionID, appName, text, true)
+}
+
+// appendSystemEventHidden is the shared implementation of appendSystemEvent /
+// appendHiddenSystemEvent. When hidden is true the event's LLMResponse carries
+// CustomMetadata{"hidden": true}, which the session store copies into the
+// session_events document and the history endpoint uses to filter rendering.
+func (s *Service) appendSystemEventHidden(ctx context.Context, userID, sessionID, appName, text string, hidden bool) {
 	resp, err := s.adkSessions.Get(ctx, &session.GetRequest{
 		AppName:   appName,
 		UserID:    userID,
@@ -162,6 +188,9 @@ func (s *Service) appendSystemEvent(ctx context.Context, userID, sessionID, appN
 		LLMResponse: model.LLMResponse{
 			Content: &genai.Content{Role: "system", Parts: []*genai.Part{{Text: text}}},
 		},
+	}
+	if hidden {
+		evt.LLMResponse.CustomMetadata = map[string]any{"hidden": true}
 	}
 	if err := s.adkSessions.AppendEvent(ctx, resp.Session, evt); err != nil {
 		log.Printf("[chat] append system event: %v", err)
@@ -466,6 +495,18 @@ func IsCompactionEvent(ev *session.Event) bool {
 		}
 	}
 	return false
+}
+
+// IsHiddenEvent reports whether the event is an internal hint that must not be
+// rendered in the frontend transcript (SPEC-080 §5.2). The flag is carried in
+// the event's LLMResponse.CustomMetadata and mirrored to the session_events
+// document's `hidden` field by the session store.
+func IsHiddenEvent(ev *session.Event) bool {
+	if ev == nil || ev.LLMResponse.CustomMetadata == nil {
+		return false
+	}
+	v, ok := ev.LLMResponse.CustomMetadata["hidden"]
+	return ok && v == true
 }
 
 // runAndCollect executes one ADK turn and returns the final assistant text.

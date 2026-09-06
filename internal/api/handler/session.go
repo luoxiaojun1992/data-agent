@@ -194,7 +194,9 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 			role = "assistant"
 		}
 		timestamp := ev.Timestamp.UTC().Format(time.RFC3339)
+		hidden := chat.IsHiddenEvent(ev)
 		for _, event := range chat.ChatEventsFromParts(role, ev.ID, timestamp, ev.Content.Parts) {
+			event.Hidden = hidden
 			messages = append(messages, event)
 		}
 	}

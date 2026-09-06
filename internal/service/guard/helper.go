@@ -44,17 +44,25 @@ func stripCodeFence(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// parseIsTask parses the intent-check JSON response, defaulting to chat
-// (false) on any parse failure so a malformed response never blocks the flow.
-func parseIsTask(s string) bool {
+// IntentResult is the parsed intent classification (SPEC-080).
+type IntentResult struct {
+	IsTask bool
+	IsPlan bool
+}
+
+// parseIntent parses the intent-check JSON response into the task/plan
+// classification. Defaults to chat (is_task=false, is_plan=false) on any
+// parse failure so a malformed response never blocks the flow.
+func parseIntent(s string) IntentResult {
 	s = stripCodeFence(s)
 	var v struct {
 		IsTask bool `json:"is_task"`
+		IsPlan bool `json:"is_plan"`
 	}
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		return false
+		return IntentResult{}
 	}
-	return v.IsTask
+	return IntentResult{IsTask: v.IsTask, IsPlan: v.IsPlan}
 }
 
 // parseIsRelevant parses the relevance-check JSON response, defaulting to

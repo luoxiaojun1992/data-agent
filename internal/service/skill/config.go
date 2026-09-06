@@ -39,6 +39,20 @@ func predefinedSkills() []skill.SkillConfig {
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
+		{
+			Name:        "get_current_time",
+			DisplayName: "获取当前时间",
+			Description: "获取服务器当前的真实日期和时间（Asia/Shanghai 时区），用于回答与「现在」相关的问题",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "get_plan_method",
+			DisplayName: "获取规划方法",
+			Description: "获取通用的任务规划步骤指南。当用户要求制定计划/方案/规划时，先调用本工具获取规划方法论，再按指南拆解并输出结构化计划",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
 
 		{
 			Name:        "external_api_search",

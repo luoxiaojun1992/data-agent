@@ -24,6 +24,7 @@ interface Message {
   toolCall?: { name: string; input: string; output: string };
   table?: { headers: string[]; rows: string[][] };
   images?: string[]; // image data URLs attached to this message
+  hidden?: boolean; // internal hint (SPEC-080) — not rendered
 }
 
 type WireChatEvent = {
@@ -37,6 +38,7 @@ type WireChatEvent = {
   response?: unknown; // backwards compatibility with older servers
   timestamp?: string;
   images?: string[];
+  hidden?: boolean;
   choices?: { delta?: { content?: string } }[];
 };
 
@@ -51,6 +53,7 @@ function normalizeChatMessage(raw: WireChatEvent): Message {
     args: raw.args,
     result,
     images: raw.images || [],
+    hidden: raw.hidden === true,
     timestamp: new Date(raw.timestamp || Date.now()),
   };
 }
@@ -591,8 +594,9 @@ export default function ChatPage() {
               </div>
             )}
 
-            {messages.map((msg, i) => (
-              msg.role === 'system' ? (
+            {messages.map((msg, i) => {
+              if (msg.hidden) return null;
+              return msg.role === 'system' ? (
                 <div key={i} className="flex justify-center my-1" data-testid={`chat-msg-system-${i}`}>
                   <span className="text-xs text-[var(--text-secondary)] opacity-80 px-3 py-1 rounded-full bg-[var(--glass-bg)] border border-[var(--border-glass)]">
                     {msg.content}
@@ -666,8 +670,8 @@ export default function ChatPage() {
                   </p>
                 </div>
               </div>
-              )
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 

@@ -49,6 +49,10 @@ type sessionEventDoc struct {
 	Seq       int64          `bson:"seq"` // UnixNano 递增序号（排序 + 去重）
 	Event     *session.Event `bson:"event"`
 	CreatedAt time.Time      `bson:"created_at"`
+	// Hidden marks internal hint events (e.g. [intent]/[plan_hint]) that are
+	// kept in the LLM context but must not render in the frontend transcript
+	// (SPEC-080 §5.2). Mirrors Event.LLMResponse.CustomMetadata["hidden"].
+	Hidden bool `bson:"hidden"`
 }
 
 // chunkBuffer accumulates streaming text for one session before flushing.
@@ -368,6 +372,7 @@ func (s *Service) appendRawEvent(ctx context.Context, sess session.Session, even
 		Seq:       seq,
 		Event:     event,
 		CreatedAt: time.Now(),
+		Hidden:    hiddenFlag(event),
 	}
 	_, err := s.evtColl.InsertOne(ctx, doc)
 	if err != nil && mongo.IsDuplicateKeyError(err) {
@@ -383,6 +388,19 @@ func (s *Service) appendRawEvent(ctx context.Context, sess session.Session, even
 
 // ensurePush was used to batch raw_events into the session document update;
 // removed with SPEC-069 问题 4 (raw events now live in session_events).
+
+// hiddenFlag extracts the hidden marker carried in an event's LLMResponse
+// CustomMetadata (SPEC-080 §5.2). The chat service sets
+// CustomMetadata{"hidden": true} on internal hint events; this mirrors that
+// flag onto the session_events document so the flag survives even if the
+// CustomMetadata is stripped elsewhere.
+func hiddenFlag(event *session.Event) bool {
+	if event == nil || event.LLMResponse.CustomMetadata == nil {
+		return false
+	}
+	v, ok := event.LLMResponse.CustomMetadata["hidden"]
+	return ok && v == true
+}
 
 func (s *Service) bufferChunk(sessionID string, event *session.Event) {
 	if event.Content == nil {

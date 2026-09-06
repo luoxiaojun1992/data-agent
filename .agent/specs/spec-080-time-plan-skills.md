@@ -1,6 +1,6 @@
 # 时间 Skill + 规划 Skill + Plan 意图隐藏引导
 
-> **SPEC-080** | Status: 设计中
+> **SPEC-080** | Status: ✅ 已实现
 
 ## 1. 目标
 

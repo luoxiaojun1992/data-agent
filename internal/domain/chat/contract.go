@@ -39,6 +39,9 @@ type ChatEvent struct {
 	Result    any            `json:"result,omitempty"`
 	Images    []string       `json:"images,omitempty"` // image data URLs, attached to the text event of the same message
 	Timestamp string         `json:"timestamp"`
+	// Hidden marks internal hint events ([intent]/[plan_hint]) that the
+	// frontend must not render (SPEC-080). Present only when true.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 // ChatRequest is the domain-level chat request DTO. Handlers translate

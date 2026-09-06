@@ -155,3 +155,34 @@ func TestAdjustCutForDanglingCalls_AllPairedUnchanged(t *testing.T) {
 		t.Errorf("all-paired cut = %d, want 1 (unchanged)", got)
 	}
 }
+
+// ---- SPEC-080: hiddenFlag (internal hint events) ----
+
+func TestHiddenFlag(t *testing.T) {
+	hidden := &session.Event{LLMResponse: model.LLMResponse{
+		CustomMetadata: map[string]any{"hidden": true},
+	}}
+	explicitFalse := &session.Event{LLMResponse: model.LLMResponse{
+		CustomMetadata: map[string]any{"hidden": false},
+	}}
+	otherKey := &session.Event{LLMResponse: model.LLMResponse{
+		CustomMetadata: map[string]any{"compaction": true},
+	}}
+	noMeta := &session.Event{}
+
+	if !hiddenFlag(hidden) {
+		t.Errorf("hiddenFlag(hidden:true) = false, want true")
+	}
+	if hiddenFlag(explicitFalse) {
+		t.Errorf("hiddenFlag(hidden:false) = true, want false")
+	}
+	if hiddenFlag(otherKey) {
+		t.Errorf("hiddenFlag(other key) = true, want false")
+	}
+	if hiddenFlag(noMeta) {
+		t.Errorf("hiddenFlag(no metadata) = true, want false")
+	}
+	if hiddenFlag(nil) {
+		t.Errorf("hiddenFlag(nil) = true, want false")
+	}
+}
