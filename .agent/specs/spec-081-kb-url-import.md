@@ -7,7 +7,8 @@
 1. 知识库支持**通过 URL 导入**：用户粘贴网页 URL，**后端服务**解析网页（含 JS 渲染内容），提取文字与图片，自动创建 KB 文档并走现有索引管道。
 2. 解析有**超时保护**；不在浏览器本地解析（跨域问题）。
 3. 提取出的**文字**与**图片**分别建 doc（文字 1 个 doc，每张图片单独 1 个 doc），**创建逻辑与前端上传 PDF 解析出的文字/图片完全一致**，复用现有 `CreateDoc + GridFS + kb_index 入队` 机制，后续索引逻辑不变。
-4. 统一上传限制（URL 导入与浏览器上传同规则）：
+4. 统一上传限制（URL 导入与浏览器上传同规则，**KB 全场景限制的唯一事实源**）：
+   - **标题**：最大 **200 字符**（rune 计，含 txt 上传 / PDF 解析 / URL 导入 / `kb_create_doc`（SPEC-086）所有建 doc 路径）
    - **文字**：最大 **5MB**（含 txt 上传、PDF 解析文本、URL 导入文本）
    - **图片**：最多 **10 张**、每张最大 **1MB**（含图片上传、PDF 解析图片、URL 导入图片）
 
@@ -91,14 +92,18 @@ KB Handler（新增 ImportURL）
 ### 4.2 既有接口补限制（向后兼容）
 
 `POST /knowledge/docs`（浏览器上传路径）增加同样的服务端校验：
+- 标题：>200 rune → 截断到 200 rune（标题是 label，截断无损，见 §5.3）
 - 文本（multipart `file`）：>5MB → 400「文本超过 5MB 上限」
 - 图片（`file_base64`）：解码后 >1MB → 400「图片超过 1MB 上限」；单次上传只接受单文件（现状如此，不改语义）
 
 ### 4.3 限制常量（唯一事实源）
 
+> **本 spec 是 KB 全场景限制的唯一事实源**：web 端上传、PDF 解析、URL 导入、`kb_create_doc`（SPEC-086）均引用此处的常量，其他 spec 不重复定义。
+
 | 常量 | 值 | 适用 |
 |------|-----|------|
-| `MaxKBTextBytes` | 5 MB (5×1024×1024) | txt 上传 / PDF 解析文本 / URL 导入文字 |
+| `MaxKBTitleRunes` | 200（rune 计） | 所有 KB 文档标题（txt 上传 / PDF 解析 / URL 导入 / kb_create_doc） |
+| `MaxKBTextBytes` | 5 MB (5×1024×1024) | txt 上传 / PDF 解析文本 / URL 导入文字 / kb_create_doc content |
 | `MaxKBImageCount` | 10 | PDF 解析图片 / 直接图片上传批次 / URL 导入图片 |
 | `MaxKBImageBytes` | 1 MB (1×1024×1024) | 单张图片 |
 | `ImportURLRenderTimeout` | 30s | **整体解析网页超时**（端到端：从 headless 开始加载 URL 到取得最终渲染 DOM 的总时长；**非单个 HTTP 请求超时**） |
@@ -132,7 +137,7 @@ KB Handler（新增 ImportURL）
 - 文字 doc：**完全复用** `UploadDoc` 的 Path 1 逻辑——`RedactText`（PII 脱敏）→ `UploadFile`（GridFS）→ `CreateDoc(txt)` → `EnqueueRaw("kb_index", KBIndexPayload{DocID, GridFSFileID})`。
 - 图片 doc：**完全复用** `UploadDoc` 的 Path 2 逻辑——`UploadFile(GridFS)` → `CreateDoc(image)` → 入队。
 - 实现方式：将 `UploadDoc` 内联逻辑抽为 service 方法 `CreateFromText(ctx, userID, title, fileName, text, sizeBytes) (doc, error)` 与 `CreateFromImage(ctx, userID, title, fileName, data []byte, mimeType) (doc, error)`，`UploadDoc` 与 `ImportURL` 都调用这两个方法（单一来源，杜绝分叉）。
-- 标题规则：`<页面标题或 URL host>-text` 与 `-img-{n}`，与 PDF 上传的 `-{编号}` 风格一致。
+- 标题规则：`<页面标题或 URL host>-text` 与 `-img-{n}`，与 PDF 上传的 `-{编号}` 风格一致；标题长度 ≤ `MaxKBTitleRunes`（200 rune），超长截断（截断到 200 rune，不报错——标题非核心内容，静默截断可接受，与正文「整体拒绝」策略不同）。
 - 后续索引（chunking/embedding/Qdrant/ArcadeDB 图写入）**零改动**。
 
 ### 5.4 前端 KB 页 URL 导入 UI（独立按钮 + 独立弹窗）

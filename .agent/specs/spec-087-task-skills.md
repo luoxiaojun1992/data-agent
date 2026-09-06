@@ -55,10 +55,10 @@ LLM（Runtime.RunAndCollect，工具集 = 全部注册 tool）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `title` | string | 任务标题（必传，非空） |
+| `title` | string | 任务标题（必传，非空，≤200 rune） |
 | `type` | string | 任务类型：`agent_exec`（默认）/ `scheduled_exec` |
 | `skill_chain` | []string | 技能链（可选，元数据） |
-| `params` | map[string]any | 任务参数（可选；LLM 的指令写在 `params.message`，由 `deriveUserMessageFromParams` 提取为任务指令） |
+| `params` | map[string]any | 任务参数（可选；LLM 的指令写在 `params.message`，由 `deriveUserMessageFromParams` 提取为任务指令；`params.message` ≤100KB，见 §4.4） |
 | `cron_expr` | string | cron 表达式（仅 `type=scheduled_exec` 时生效；非空 → recurring 调度） |
 | `model_id` | string | 模型 ID（可选，空 → 后端 `GetModelByID("")` 回落默认模型） |
 
@@ -118,6 +118,25 @@ LLM（Runtime.RunAndCollect，工具集 = 全部注册 tool）
 - `result` 为该 run 的详细结果（`save_task_result` 写回的 map）。
 - `error` 非空表示失败原因（`UpdateRunError` 写入）。
 - `completed = (status == "completed")`。
+
+### 4.4 标题 / 描述 / 图片限制（唯一事实源）
+
+> **本 spec 是 task 全场景限制的唯一事实源**：task 的标题、描述（指令）与图片附件限制均以本小节为准，其他 spec（chat → SPEC-077、kb → SPEC-081）不引用 task 的常量。
+
+| 约束 | 常量 | 值 | 适用 |
+|------|------|-----|------|
+| 标题 | `MaxTaskTitleRunes` | 200（rune 计） | `Task.Title`（含 `task_create.title`、handler `req.Title`、`params["title"]`） |
+| 描述/指令 | `MaxTaskTextBytes` | 100KB（UTF-8 字节） | `Task.Description`（写入 `params["description"]`）+ `params["message"]`（LLM 指令）合并计数 |
+| 图片数量 | `MaxImages` | 5 | `Task.Images` / `params["images"]`（复用 `domainchat.ValidateImages`） |
+| 图片单张 | `MaxImageBytes` | 2MiB | 单张图片解码后 |
+| 图片总量 | `MaxTotalBytes` | 5MiB | 全部图片解码后字节合计 |
+
+**规则**：
+- **标题**：≤200 rune，超限截断到 200 rune（标题是展示 label，截断无损；与 kb（SPEC-081 §5.3）策略一致）。
+- **描述**：`Description` + `params.message` 合并 ≤100KB，超限报错（描述是核心指令，截断丢信息，后端权威校验，前端可选预校验）。
+- **图片**：复用 `domainchat.ValidateImages`（5 张 × 2MiB × 5MiB），与 chat 共用同一套常量与校验函数，**不重复实现**；task 的图片经 `EncodeImages` 编码为 JSON string 存 `params["images"]`，worker 侧 `deriveUserMessageFromParams` → `DecodeImages` → `buildTaskContent` 再校验一次（双保险）。
+
+> **现状说明**：图片限制已实现（`internal/domain/chat/image.go` + task handler/orchestrator 复用）；标题与描述的常量（`MaxTaskTitleRunes` / `MaxTaskTextBytes`）**尚待实现**，落地位置 `internal/domain/task`。
 
 ## 5. 详细设计
 
@@ -287,3 +306,4 @@ t, run, err := deps.TaskDefs.CreateTask(
 4. **seed 同步**：全新空 DB 启动后 `SeedSkills` 自动补齐 3 个 skill（`/skills` 可见、`skill_search` 可搜到）；存量 DB 增量部署后同样补齐，不遗漏。
 5. **回归**：`save_task_result`、task HTTP API（创建/列表/详情）行为不变。
 6. **system_admin 豁免**：`role==system_admin` 时 `task_run_list` / `task_run_detail` 可跨用户查询（access 所有数据）；`user`/`admin` 仅 access 本人 + shared（未实现）。
+7. **限制校验**：`title` >200 rune 截断到 200 rune（不报错）；`Description` + `params.message` 合并恰好 100KB 可创建、+1 字节拒绝；图片 >5 张 / 单张 >2MiB / 总 >5MiB 拒绝（复用 `domainchat.ValidateImages`）。

@@ -106,8 +106,8 @@ LLM 执行（Runtime.RunAndCollect，工具集 = 全部注册 tool）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `title` | string | 文档标题（必填） |
-| `content` | string | 纯文本内容（必填，≤ `MaxKBTextBytes`） |
+| `title` | string | 文档标题（必填，≤200 rune；日常总结场景默认「YYYY-MM-DD 日常总结」，见 §4.2.1） |
+| `content` | string | 纯文本内容（必填，≤ `MaxKBTextBytes`，引用 SPEC-081） |
 
 返回：
 
@@ -116,7 +116,13 @@ LLM 执行（Runtime.RunAndCollect，工具集 = 全部注册 tool）：
 ```
 
 - 只返回是否创建成功（不等索引完），索引走现有 `kb_index` 队列异步完成。
-- 超限：`content` 字节数 > `MaxKBTextBytes` → 返回错误「文本超过 5MB 上限」。
+- 超限：`content` 字节数 > `MaxKBTextBytes` → 返回错误「文本超过 5MB 上限」；`title` rune 数 > `MaxKBTitleRunes` → 截断到 200 rune（标题是 label，截断无损，与 SPEC-081 §5.3 策略一致）。
+
+### 4.2.1 `kb_create_doc.title` 格式约定（红线）
+
+- **日常总结模版**：title 固定为「`YYYY-MM-DD 日常总结`」（如「2026-09-06 日常总结」），由 LLM 按当天日期生成（`YYYY-MM-DD` 取当天本地日期，时区 Asia/Shanghai）。
+- **其他场景**：LLM 自拟简短标题（概括文档主旨）。
+- **长度**：任何场景 title ≤ `MaxKBTitleRunes`（200 rune，引用 SPEC-081），超限截断到 200 rune（标题是展示 label，截断无损，与 SPEC-081 §5.3 策略一致）。
 
 ### 4.3 复用 task API（无改动）
 
@@ -220,9 +226,9 @@ func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string)
 - 走 `deps.KBService.CreateTextDoc`，`user_id` 从 session state 注入（与 `knowledge_search` 一致，LLM 不传身份）。
 - 返回 `{doc_id, status:"created"}`；错误原样上抛（含超限/脱敏/建 doc 失败）。
 
-### 5.4 文本长度限制
+### 5.4 标题与文本长度限制（引用 SPEC-081，不重复定义）
 
-沿用 SPEC-081 定义的 `MaxKBTextBytes = 5 MB (5×1024×1024)`，与 KB 上传/URL 导入统一。日常总结场景文本远小于 5MB，此上限仅作安全兜底。常量建议定义在 `internal/domain/knowledge`（供 service + handler + tool 共用）。
+`kb_create_doc` 的 `title`（≤200 rune）与 `content`（≤5MB）限制均以 **SPEC-081（KB 全场景限制唯一事实源）** 为准，本 spec **不重复定义常量**，实现时直接引用 SPEC-081 §4.3 的 `MaxKBTitleRunes = 200` / `MaxKBTextBytes = 5 MB (5×1024×1024)`。日常总结场景文本远小于 5MB，此上限仅作安全兜底。常量定义在 `internal/domain/knowledge`（供 service + handler + tool 共用）。
 
 ### 5.5 前端「常用模版」UI
 
