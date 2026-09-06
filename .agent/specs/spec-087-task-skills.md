@@ -136,7 +136,7 @@ LLM（Runtime.RunAndCollect，工具集 = 全部注册 tool）
 - **标题**：≤200 rune，超限截断到 200 rune（标题是展示 label，截断无损；与 kb（SPEC-081 §5.3）策略一致）。
 - **描述**：`Description` + `params.message` 合并 ≤100KB，超限报错（描述是核心指令，截断丢信息，后端权威校验，前端可选预校验）。
 - **图片**：复用 `domainchat.ValidateImages`（5 张 × 2MiB × 5MiB），与 chat 共用同一套常量与校验函数，**不重复实现**；task 的图片经 `EncodeImages` 编码为 JSON string 存 `params["images"]`，worker 侧 `deriveUserMessageFromParams` → `DecodeImages` → `buildTaskContent` 再校验一次（双保险）。
-- **XSS 校验**：`title` + `Description` + `params["message"]` 在 handler `CreateTask` 的 `ShouldBindJSON` 后调 `security.ValidateXSS`（定义于 SPEC-081 §4.4），含 XSS 载荷 → 400 拒绝（语义 block、不转义，与 LLM 层 `AuditInput` 的 XSS block 一致）。`title` 与描述都是用户可控展示字段 + LLM 输入，须在入口层拦截（描述会经 `deriveUserMessageFromParams` 进 LLM，本有 LLM 层兜底，但入口层提前拦截体验更佳；title 是纯展示字段，LLM 层管不到，必须入口拦截）。
+- **XSS 校验**：`title` + `Description` + `params["message"]` 在 handler `CreateTask` 的 `ShouldBindJSON` 后调 `security.ValidateXSS`（定义于 SPEC-081 §4.4），含 XSS 载荷 → 400 拒绝（语义 block、不转义）。`title` 与描述都是用户可控展示字段 + LLM 输入，须在入口层拦截（LLM 输入侧 `AuditInput` 已**移除 XSS 规则**，见 SPEC-068，故 title/描述/指令的 XSS 拦截只能靠 handler 层；title 是纯展示字段，LLM 层管不到，必须入口拦截）。
 
 > **现状说明**：图片限制已实现（`internal/domain/chat/image.go` + task handler/orchestrator 复用）；标题与描述的常量（`MaxTaskTitleRunes` / `MaxTaskTextBytes`）**尚待实现**，落地位置 `internal/domain/task`；XSS 校验函数 `security.ValidateXSS` **尚待实现**（`internal/domain/security`），task handler 的 title/描述 XSS 校验待落地。
 

@@ -10,7 +10,7 @@
 2. **后端封装服务**，调用 pii-redaction 服务完成脱敏。
 3. **知识库上传逻辑**：纯文本（非图片 base64）只保存 pii-redaction 脱敏返回后的文本，不保存原始可能含隐私信息的文本。
 4. **测试**：故意在知识库上传中放置隐私信息，检查数据库保存的文本是否仍残留隐私信息。
-5. **模型输入/输出审计接入**（补充）：现有模型审计也走 pii-redaction 服务（开关打开时）；报错或开关关闭则**降级到现有规则校验**（regex id_card/phone/api_key，安全性要求没那么高）。**输入侧现无 PII 审计，需补上**；输入/输出都做 PII 审计；**输出侧新增 XSS 校验、不做 SQL 校验**；且**不破坏现有的非隐私审计**（SQL/XSS block、工具敏感路径 block）。
+5. **模型输入/输出审计接入**（补充）：现有模型审计也走 pii-redaction 服务（开关打开时）；报错或开关关闭则**降级到现有规则校验**（regex id_card/phone/api_key，安全性要求没那么高）。**输入侧现无 PII 审计，需补上**；输入/输出都做 PII 审计；**输出侧新增 XSS 校验、不做 SQL 校验**；**输入侧移除 XSS 规则**（`xss_script`——需允许用户输入代码片段）；且**不破坏现有的非隐私审计**（SQL block、工具敏感路径 block）。
 6. **输入 token 长度校验**（补充）：输入进入 LLM 前校验 token 数，超过实际模型 cfg 的 `context_len`（最大输入 token）则拒绝，避免无效调用 LLM。
 7. **内置 LLM 调用统一接入审计**（补充，2026-08-27）：`compaction` / `enhance` / `intent` / `relevance` / `kb`（图片解析 + 语义分块）等**非 runtime** LLM 调用也要挂上相同的输入/输出审计。约束：**不挂 tool**（无 `AuditToolCall`）、**无副作用/不增加不必要功能**、**只对文本生效**、**图片 url 或 base64（InlineData/FileData）不审计**。
 
@@ -233,13 +233,14 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 
 `security.Auditor`（`internal/domain/security/auditor.go`）现有两组规则：
 
-**输入侧 `AuditInput`（`DefaultRules().InputRules`）** —— **无 PII 脱敏**，只有 SQL/XSS 安全规则（非隐私审计）：
+**输入侧 `AuditInput`（`DefaultRules().InputRules`）** —— **无 PII 脱敏**，只有 SQL 安全规则（非隐私审计）：
 
 | 规则 | 类型 | 动作 |
 |------|------|------|
 | sql_drop / sql_delete / sql_update / sql_alter | keyword | block |
 | sql_insert | keyword | alert |
-| xss_script | keyword | block |
+
+> ⚠️ **输入侧无 XSS 规则**（原 `xss_script` 已移除）：用户常需向 LLM 输入代码片段，输入侧拦截 XSS 会阻断代码输入。输入侧 XSS 风险改由「输出侧 XSS 校验（sanitize）+ 展示字段 handler 层校验（SPEC-081/087/077）」承担。
 
 **输出侧 `AuditOutput`（`DefaultRules().OutputRules`）** —— 有 PII 脱敏，**无 XSS 校验**：
 
@@ -252,13 +253,13 @@ func (s *Service) AddChunks(docID string, texts []string) error {
 Auditor 通过 `runtime.Config.Auditor` 注入（`wire.go:120` `security.NewAuditor(nil)` → `registry.go:248` → `runtime.go` 的 `auditInputCallback`/`auditOutputCallback`），每次 LLM 输入/输出调用对应审计。
 
 > **结论**：
-> - 现有**输入侧没有 PII 隐私审计**（只有 SQL/XSS block/alert），需补上 PII 脱敏；
+> - 现有**输入侧没有 PII 隐私审计**（只有 SQL block/alert），需补上 PII 脱敏；
 > - 输出侧有 PII 脱敏（id_card/phone/api_key），可被 pii-redaction 增强；
 > - 输出侧**没有 XSS 校验**，需补上；**输出侧不做 SQL 校验**（SQL 注入风险在输入侧，输出无此风险）。
 
 #### 4.2 适配：输入/输出都优先 pii-redaction，失败/开关关降级
 
-**输入侧 `AuditInput`**：保留 SQL/XSS block/alert（非隐私审计，不破坏）+ **新增 PII 脱敏**。
+**输入侧 `AuditInput`**：保留 SQL block/alert（非隐私审计，不破坏）+ **移除 XSS block**（`xss_script`——需允许输入代码）+ **新增 PII 脱敏**。
 
 **输出侧 `AuditOutput`**：保留 id_card/phone/api_key sanitize（作为降级）+ **优先 pii-redaction** + **新增 XSS 校验**（`<script` 等 XSS 危险内容，sanitize 转义/移除；**不做 SQL 校验**）。
 
@@ -346,11 +347,11 @@ func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
 
 #### 4.5 不破坏现有非隐私审计（关键约束）
 
-- ✅ 输入侧 SQL/XSS `block`/`alert` 规则**保留**（先做 block 校验，再做 PII 脱敏）。
+- ✅ 输入侧 SQL `block`/`alert` 规则**保留**（先做 block 校验，再做 PII 脱敏）；**输入侧 XSS 规则（`xss_script`）移除**（允许输入代码，见 §4.1）。
 - ✅ `AuditToolCall` 敏感路径 `block` **保留**（不受本 spec 影响）。
 - ✅ 输出侧 id_card/phone/api_key sanitize **保留**（作为 pii-redaction 的降级兜底）。
-- ✅ 输入侧 SQL/XSS block/alert **保留**；输出侧**新增 XSS 校验**（sanitize），**不做 SQL 校验**。
-- 只新增「输入/输出 PII 脱敏 + 输出 XSS 校验 + 输入 token 校验」能力，不删改现有安全规则。
+- ✅ 输入侧 SQL block/alert **保留**（XSS 移除）；输出侧**新增 XSS 校验**（sanitize），**不做 SQL 校验**。
+- 新增「输入/输出 PII 脱敏 + 输出 XSS 校验 + 输入 token 校验」能力；**仅移除输入侧 XSS 规则**（`xss_script`），其余现有安全规则不删改。
 
 #### 4.6 三个场景的语义对比（关键差异）
 
@@ -370,7 +371,7 @@ func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
   - 查 Qdrant 向量 `metadata.content`，断言同样已脱敏；
   - 调 `Search`，断言返回文本无原始 PII。
 - **开关验证**：`pii_redaction_enabled=false` 时上传含 PII 文本，验证跳过脱敏（管理员主动关闭）；恢复 `true` 后重新验证脱敏生效。
-- **模型输入/输出审计降级验证**：开关开启 + pii-redaction 正常 → `AuditInput`/`AuditOutput` 走 presidio 脱敏；模拟 pii-redaction 报错或开关关闭 → 降级 regex 规则（id_card/phone/api_key 掩码仍生效）；同时验证 SQL/XSS `block`、工具敏感路径 `block` 等非隐私审计**仍生效**（不被破坏）。
+- **模型输入/输出审计降级验证**：开关开启 + pii-redaction 正常 → `AuditInput`/`AuditOutput` 走 presidio 脱敏；模拟 pii-redaction 报错或开关关闭 → 降级 regex 规则（id_card/phone/api_key 掩码仍生效）；同时验证 SQL `block`、工具敏感路径 `block` 等非隐私审计**仍生效**（不被破坏）。
 - **输入 token 校验验证**：构造超过 `context_len` 的输入，断言在进入 LLM 前被拒绝（不发起模型调用）；构造临界输入断言放行。
 - **Go UT**：`PIIRedactor.Redact` 的单测（mock HTTP 或真实 presidio 容器）；`UploadDoc`/`AddChunks` 脱敏 + 开关判断分支的单测（mock redactor）；`Auditor.AuditInput`/`AuditOutput` 优先 redactor / 降级 regex 分支的单测；`maxInputTokensCallback` token 估算与拒绝的单测。
 
@@ -437,7 +438,7 @@ func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
 - [ ] **输入 token 校验**：超过 `ModelEntry.ContextLen` 的输入在进入 LLM 前被拒绝（`maxInputTokensCallback`）
 - [ ] **输出 XSS 校验**：`AuditOutput` 校验 `<script` 等 XSS 危险内容（sanitize）；**不做 SQL 校验**
 - [ ] **内置 LLM 审计接入**：compaction/enhance/intent/relevance/kb 等非 runtime LLM 调用经 `AuditedLLM` 做输入/输出文本审计；不挂 tool；图片 url/base64 不审计
-- [ ] **不破坏非隐私审计**：SQL/XSS `block`、工具敏感路径 `block` 等现有审计仍生效
+- [ ] **不破坏非隐私审计**：SQL `block`、工具敏感路径 `block` 等现有审计仍生效（输入侧 XSS 规则已按需移除）
 - [ ] MongoDB `kb_chunks.Content` 与 Qdrant `metadata.content` 均无原始 PII
 - [ ] 测试：故意放置身份证/手机号/银行卡/邮箱，验证 GridFS + DB 无残留
 
@@ -450,7 +451,7 @@ func maxInputTokensCallback(limit int) llmagent.BeforeModelCallback {
 | 项 | 说明 |
 |----|------|
 | `TextAuditor` 接口 | 只含 `AuditInput` / `AuditOutput`，**无 `AuditToolCall`**（内置 LLM 无 tool） |
-| `AuditedLLM.GenerateContent` | 输入脱敏（Text part，SQL/XSS block 返 error 中止）；输出脱敏（best-effort，失败降级）；**跳过 InlineData/FileData**（图片 url/base64 不审计） |
+| `AuditedLLM.GenerateContent` | 输入脱敏（Text part，SQL block 返 error 中止；输入侧无 XSS 规则）；输出脱敏（best-effort，失败降级）+ 输出 XSS sanitize；**跳过 InlineData/FileData**（图片 url/base64 不审计） |
 | `Provider.BuildLLM` | 返回前包 `AuditedLLM` → compaction（经 LazyLLM）/ enhance / intent / relevance / kb_image / kb_chunking / memory 全覆盖 |
 | `Provider.BuildLLMByID` | **不包**（runtime 路径），避免与 chat/agent task 的 llmagent 审计 callback 重复 |
 

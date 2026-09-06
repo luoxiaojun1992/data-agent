@@ -83,12 +83,12 @@ type PdfAttachment struct {
 |------|---------|------|------|
 | 用户提示词（`req.Messages` 中 `Role=="user"` 的文本，即 `lastText`） | `security.ValidateXSS` | chat 请求入口：handler `HandleChat` 绑定 `ChatRequest` 后 / service `prepareRun` 提取 `lastText` 后、组装 LLM content 前 | 含 XSS 载荷 → 400「消息包含非法内容」 |
 
-- 复用 `security.ValidateXSS`（定义于 SPEC-081 §4.4，`internal/domain/security` 包），**不重复实现**；语义 = block（拒绝），与 LLM 层 `AuditInput` 的 XSS block 一致。
+- 复用 `security.ValidateXSS`（定义于 SPEC-081 §4.4，`internal/domain/security` 包），**不重复实现**；语义 = block（拒绝）。
 - 落点天然在 PDF 文字附加**之前**：XSS 校验只针对用户直接输入文本，PDF 解析文字在 service 层 `buildUserContent` 才前置，故校验顺序正确、无需额外剥离。
 
 > **范围排除（红线）**：**PDF 解析文字不做 XSS 校验**——PDF 是文档内容，可能天然含 HTML/JS 示例（如技术文档的代码片段），XSS block 会误伤正常附件。XSS 校验仅针对用户手动键入的提示词。
 
-**纵深防御关系**：handler 层 `ValidateXSS`（第一道门，提前拦截）→ LLM 层 `AuditInput`（第二道门，SPEC-068，进 LLM 前兜底）。两者语义一致（block）、互不替代。
+**与 LLM 审计的关系**：用户提示词 XSS 校验由 handler 层 `ValidateXSS` 承担（LLM 输入侧 `AuditInput` 已**移除 XSS 规则**、允许输入代码，见 SPEC-068）；LLM 输出侧 `AuditOutput` 仍做 XSS sanitize（SPEC-068），覆盖模型生成内容。handler 输入校验与 LLM 输出校验分工不同、互不替代。
 
 ## 5. 详细设计
 

@@ -121,17 +121,17 @@ KB Handler（新增 ImportURL）
 **通用 XSS 校验函数（跨 spec 共享，定义于 `internal/domain/security`，与 SPEC-068 的 `Auditor` 同包）**：
 
 - 新增 `security.ValidateXSS(s string) error`：职责**单一**，只检测 XSS 危险载荷，**不做 PII 脱敏**（与 `AuditInput`/`AuditOutput` 明确区分）。
-- 覆盖面 ≥ 现有 `AuditInput` 的 `xss_script`（只匹配 `<script` 字面量），至少覆盖：
+- 覆盖面（独立定义，不依赖 LLM 审计——LLM 输入侧 `AuditInput` 已**移除 XSS 规则**，见 SPEC-068），至少覆盖：
   - `<script`（含大小写 / 空白变体）
   - `<img ... onerror=` / `<svg ... onload=` 等标签内嵌事件
   - `javascript:` 协议
   - `onerror=` / `onload=` / `onclick=` 等 `on*=` 事件属性
-- 语义 = **block（拒绝）**：含危险载荷直接返回 error，由 handler 转 400；**不转义、不改内容**（与 `AuditInput` 的 XSS block 语义一致；标题是纯文本 label，正常不含 HTML，转义会污染存储且无必要）。
+- 语义 = **block（拒绝）**：含危险载荷直接返回 error，由 handler 转 400；**不转义、不改内容**（标题是纯文本 label，正常不含 HTML，转义会污染存储且无必要）。
 
-**纵深防御关系（与 SPEC-068 不冲突）**：
-- handler 层 `ValidateXSS` = **第一道门**，覆盖 title 等**不进 LLM 的字段**（LLM 层管不到）+ 提前拦截进 LLM 的字段。
-- LLM 层 `AuditInput`（block）/`AuditOutput`（sanitize）= **第二道门**（SPEC-068），覆盖进 LLM 的文本。
-- 两者共用同一安全目标，但覆盖面和语义不同，**互不替代**。
+**与 LLM 审计的关系（与 SPEC-068 不冲突）**：
+- handler 层 `ValidateXSS` 覆盖 title 等**不进 LLM 的字段**（标题是纯展示 label，LLM 层管不到）。
+- LLM 输入侧 `AuditInput` 已**移除 XSS 规则**（`xss_script`，允许输入代码，见 SPEC-068）；LLM 输出侧 `AuditOutput` 仍做 XSS sanitize（SPEC-068），覆盖模型生成内容。
+- handler 输入校验与 LLM 输出校验分工不同，**互不替代**。
 
 > **范围排除（红线）**：KB **正文**（txt 上传内容 / PDF 解析文字 / URL 导入正文 / kb_create_doc.content）**不做 XSS 校验**——正文是知识库文档，可能天然含 HTML/JS 示例（如讲前端的文档），XSS block 会误伤正常内容。XSS 校验仅针对 title 这一短 label 字段。
 
