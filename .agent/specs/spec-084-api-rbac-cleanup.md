@@ -355,3 +355,29 @@
 9. 存量库升级后 `rbac_permissions` 新增 2 个通知权限，`rbac_role_permissions` 关联到 user_role / admin_role；`agent:*`/`sidebar:agent` 的 role 关联从 admin_role 迁到 user_role；全新部署空库 seed 完整插入。
 10. **全新部署（空库）不遗漏**：`rbac.go` 权限常量与 `rbac_seed.go` `perms` 数组一致性校验通过，空库 seed 后所有路由挂载的权限均存在、无 403 漂移。
 11. CI（sonar-check + ui-tests + ut-workflow）全绿。
+
+## 13. 收尾修正（2026-09-06：邀请注册权限隔离补强）
+
+实现后复盘中确认邀请注册存在权限/隔离缺口，一并修正：
+
+| # | 项 | 修正前 | 修正后 |
+|---|----|--------|--------|
+| 1 | 邀请 system_admin | handler + service 双层禁止 | 维持「任何人都不能邀请 system_admin」；角色校验统一收敛到 handler 层（删除 service 层重复校验） |
+| 2 | RevokeInvite 归属校验 | 无归属校验（IDOR）：admin 可撤任意 invite | 非 system_admin 只能撤自己创建的 invite，否则 `ErrInviteNotFound`（不泄露存在性）；system_admin 豁免 |
+| 3 | invite 注册自动绑 RBAC 角色 | 不自动绑定 | **明确决策：不自动绑定**，新用户由管理员显式赋 `rbac_role_*` |
+| 4 | 前端角色下拉 | users 创建/编辑下拉含 system_admin（后端 403） | 移除 system_admin 选项；invites 页面本已正确（admin 选项仅 system_admin 可见） |
+
+### 13.1 关键决策
+
+- **角色校验单一职责**：role 白名单/限制（禁 system_admin、admin 只能邀 user）统一由 `AuthHandler.CreateInvite` 负责，`service.CreateInvite` 只做默认值 + 业务落库。
+- **RevokeInvite 归属**：与 `ListInvites` 的隔离语义对齐（admin 只见/只能撤自己的，system_admin 见/撤全部）。
+- **invite 注册不自动绑 RBAC 角色**：保持现状，RBAC 角色由管理员显式分配（`POST /admin/users/:id/rbac-roles`）。
+
+### 13.2 变更文件
+
+- `internal/service/auth/invite.go`：删 service 层 role 校验；`RevokeInvite` 加归属校验 + `ErrInviteNotFound`
+- `internal/service/auth/interface.go`：`RevokeInvite` 签名加 `actorUserID`/`actorIsSystemAdmin`
+- `internal/api/handler/auth.go`：`RevokeInvite` 传归属参数 + 404 映射
+- `internal/service/auth/mocks/AuthService.go`：同步 mock
+- `frontend/app/admin/users/page.tsx`：创建/编辑弹窗移除 system_admin 选项
+- 测试：`TestRevokeInvite_*`（owner / system_admin 豁免 / 非 owner 403 / not found / no repo）、`TestCreateInvite_SystemAdminBlocked`（handler 层 403 + 不调 service）

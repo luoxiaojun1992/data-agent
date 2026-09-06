@@ -286,15 +286,6 @@ func TestCreateInvite_NoRepo(t *testing.T) {
 	}
 }
 
-func TestCreateInvite_SystemAdminBlocked(t *testing.T) {
-	invRepo := mockrepo.NewInviteRepository(t)
-	svc := newAuthSvc(nil, invRepo, newPwdOK(), newTokenManagerOK(), nil, []byte("test-secret-key-16chars"))
-	_, err := svc.CreateInvite(context.Background(), "admin-1", &CreateInviteRequest{Role: "system_admin"})
-	if err == nil {
-		t.Error("should error for system_admin role invite")
-	}
-}
-
 func TestCreateInvite_NoHMACSecret(t *testing.T) {
 	invRepo := mockrepo.NewInviteRepository(t)
 	svc := newAuthSvc(nil, invRepo, newPwdOK(), newTokenManagerOK(), nil, nil)
@@ -427,17 +418,50 @@ func TestListInvites_ListError(t *testing.T) {
 
 func TestRevokeInvite(t *testing.T) {
 	invRepo := mockrepo.NewInviteRepository(t)
+	invRepo.On("FindByInviteID", mock.Anything, "inv-1").Return(&model.Invite{InviteID: "inv-1", CreatedBy: "admin-1"}, nil)
 	invRepo.On("Revoke", mock.Anything, "inv-1").Return(nil)
 	svc := newAuthSvc(nil, invRepo, newPwdOK(), newTokenManagerOK(), nil, nil)
-	err := svc.RevokeInvite(context.Background(), "inv-1")
+	err := svc.RevokeInvite(context.Background(), "inv-1", "admin-1", false)
 	if err != nil {
 		t.Fatalf("RevokeInvite: %v", err)
+	}
+	invRepo.AssertCalled(t, "Revoke", mock.Anything, "inv-1")
+}
+
+func TestRevokeInvite_SystemAdminExempt(t *testing.T) {
+	invRepo := mockrepo.NewInviteRepository(t)
+	invRepo.On("FindByInviteID", mock.Anything, "inv-1").Return(&model.Invite{InviteID: "inv-1", CreatedBy: "someone-else"}, nil)
+	invRepo.On("Revoke", mock.Anything, "inv-1").Return(nil)
+	svc := newAuthSvc(nil, invRepo, newPwdOK(), newTokenManagerOK(), nil, nil)
+	if err := svc.RevokeInvite(context.Background(), "inv-1", "sys-admin", true); err != nil {
+		t.Fatalf("RevokeInvite (system_admin exempt): %v", err)
+	}
+}
+
+func TestRevokeInvite_ForbiddenNonOwner(t *testing.T) {
+	invRepo := mockrepo.NewInviteRepository(t)
+	invRepo.On("FindByInviteID", mock.Anything, "inv-1").Return(&model.Invite{InviteID: "inv-1", CreatedBy: "owner-1"}, nil)
+	svc := newAuthSvc(nil, invRepo, newPwdOK(), newTokenManagerOK(), nil, nil)
+	err := svc.RevokeInvite(context.Background(), "inv-1", "attacker", false)
+	if !errors.Is(err, ErrInviteNotFound) {
+		t.Fatalf("expected ErrInviteNotFound, got %v", err)
+	}
+	invRepo.AssertNotCalled(t, "Revoke", mock.Anything, "inv-1")
+}
+
+func TestRevokeInvite_NotFound(t *testing.T) {
+	invRepo := mockrepo.NewInviteRepository(t)
+	invRepo.On("FindByInviteID", mock.Anything, "inv-999").Return(nil, nil)
+	svc := newAuthSvc(nil, invRepo, newPwdOK(), newTokenManagerOK(), nil, nil)
+	err := svc.RevokeInvite(context.Background(), "inv-999", "admin-1", false)
+	if !errors.Is(err, ErrInviteNotFound) {
+		t.Fatalf("expected ErrInviteNotFound, got %v", err)
 	}
 }
 
 func TestRevokeInvite_NoRepo(t *testing.T) {
 	svc := newAuthSvc(nil, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
-	err := svc.RevokeInvite(context.Background(), "inv-1")
+	err := svc.RevokeInvite(context.Background(), "inv-1", "admin-1", false)
 	if err == nil {
 		t.Error("should error without repo")
 	}

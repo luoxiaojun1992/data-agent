@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,10 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
+
+// ErrInviteNotFound is returned when an invite does not exist or the caller is
+// not allowed to see it (IDOR-safe: existence is never leaked to non-owners).
+var ErrInviteNotFound = errors.New("invite not found")
 
 // CreateInviteRequest represents an invite creation request.
 type CreateInviteRequest struct {
@@ -110,11 +115,9 @@ func (s *Service) CreateInvite(ctx context.Context, createdBy string, req *Creat
 	if req.Role == "" {
 		req.Role = string(model.RoleUser)
 	}
-
-	// Role validation
-	if req.Role == string(model.RoleSystemAdmin) {
-		return nil, fmt.Errorf("cannot invite system_admin role")
-	}
+	// NOTE: role whitelist/restriction (no system_admin, admin may only invite
+	// user) is enforced at the handler layer (AuthHandler.CreateInvite), which
+	// is the single source of truth for RBAC-shaped invite rules.
 
 	inviteID := "inv_" + uuid.New().String()[:8]
 	expiresAt := time.Now().Add(time.Duration(req.ExpireHours) * time.Hour)
@@ -190,10 +193,20 @@ func (s *Service) ListInvites(ctx context.Context, createdBy string, page, pageS
 	}, nil
 }
 
-// RevokeInvite revokes a pending invite.
-func (s *Service) RevokeInvite(ctx context.Context, inviteID string) error {
+// RevokeInvite revokes a pending invite. Ownership is enforced (IDOR): a
+// non-system_admin caller may only revoke invites they created themselves;
+// system_admin may revoke any invite. A non-existent or non-owned invite
+// returns ErrInviteNotFound without leaking existence.
+func (s *Service) RevokeInvite(ctx context.Context, inviteID, actorUserID string, actorIsSystemAdmin bool) error {
 	if s.inviteRepo == nil {
 		return fmt.Errorf("invite system not available")
+	}
+	invite, err := s.inviteRepo.FindByInviteID(ctx, inviteID)
+	if err != nil || invite == nil {
+		return ErrInviteNotFound
+	}
+	if !actorIsSystemAdmin && invite.CreatedBy != actorUserID {
+		return ErrInviteNotFound
 	}
 	return s.inviteRepo.Revoke(ctx, inviteID)
 }

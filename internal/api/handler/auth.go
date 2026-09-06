@@ -178,7 +178,16 @@ func (h *AuthHandler) ListInvites(c *gin.Context) {
 // DELETE /api/v1/admin/invites/:id
 func (h *AuthHandler) RevokeInvite(c *gin.Context) {
 	inviteID := c.Param("id")
-	if err := h.authService.RevokeInvite(c.Request.Context(), inviteID); err != nil {
+	userID, _ := c.Get("user_id")
+	userIDStr, _ := userID.(string)
+	role, _ := c.Get("role")
+	roleStr, _ := role.(string)
+
+	if err := h.authService.RevokeInvite(c.Request.Context(), inviteID, userIDStr, roleStr == "system_admin"); err != nil {
+		if errors.Is(err, authsvc.ErrInviteNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "invite not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

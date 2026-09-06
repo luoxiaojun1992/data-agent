@@ -17,7 +17,7 @@ type AuthService interface {
 	IsInviteEnabled() bool
 	CreateInvite(ctx context.Context, createdBy string, req *CreateInviteRequest) (*CreateInviteResponse, error)
 	ListInvites(ctx context.Context, createdBy string, page, pageSize int64) (*ListInvitesResponse, error)
-	RevokeInvite(ctx context.Context, inviteID string) error
+	RevokeInvite(ctx context.Context, inviteID, actorUserID string, actorIsSystemAdmin bool) error
 	VerifyInviteToken(ctx context.Context, token string) (*VerifyInviteResponse, error)
 	CompleteRegistration(ctx context.Context, req *CompleteRegistrationRequest) (*CompleteRegistrationResponse, error)
 

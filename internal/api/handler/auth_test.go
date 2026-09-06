@@ -392,6 +392,22 @@ func TestCreateInvite_AdminCantInviteAdmin(t *testing.T) {
 	}
 }
 
+func TestCreateInvite_SystemAdminBlocked(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	body := `{"email": "root@example.com", "role": "system_admin"}`
+	c, w := newGinContext("POST", "/admin/invites", body)
+	c.Set("user_id", "sys-admin-1")
+	c.Set("role", "system_admin")
+	h.CreateInvite(c)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+	svc.AssertNotCalled(t, "CreateInvite", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func TestCreateInvite_ServiceError(t *testing.T) {
 	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
@@ -532,10 +548,12 @@ func TestRevokeInvite_Success(t *testing.T) {
 	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	svc.On("RevokeInvite", mock.Anything, mock.Anything).Return(nil)
+	svc.On("RevokeInvite", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	c, w := newGinContext("DELETE", "/admin/invites/inv-1", "")
 	c.Params = gin.Params{{Key: "id", Value: "inv-1"}}
+	c.Set("user_id", "admin-1")
+	c.Set("role", "system_admin")
 	h.RevokeInvite(c)
 
 	if w.Code != http.StatusOK {
@@ -547,14 +565,33 @@ func TestRevokeInvite_Error(t *testing.T) {
 	svc := mockauth.NewAuthService(t)
 	h := NewAuthHandler(svc)
 
-	svc.On("RevokeInvite", mock.Anything, mock.Anything).Return(fmt.Errorf("not found"))
+	svc.On("RevokeInvite", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("internal"))
 
 	c, w := newGinContext("DELETE", "/admin/invites/inv-999", "")
 	c.Params = gin.Params{{Key: "id", Value: "inv-999"}}
+	c.Set("user_id", "admin-1")
+	c.Set("role", "system_admin")
 	h.RevokeInvite(c)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestRevokeInvite_NotFound(t *testing.T) {
+	svc := mockauth.NewAuthService(t)
+	h := NewAuthHandler(svc)
+
+	svc.On("RevokeInvite", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(authsvc.ErrInviteNotFound)
+
+	c, w := newGinContext("DELETE", "/admin/invites/inv-404", "")
+	c.Params = gin.Params{{Key: "id", Value: "inv-404"}}
+	c.Set("user_id", "admin-1")
+	c.Set("role", "admin")
+	h.RevokeInvite(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
 

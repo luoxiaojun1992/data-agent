@@ -201,17 +201,17 @@ func (_m *AuthService) RefreshToken(ctx context.Context, userID string, username
 	return r0, r1
 }
 
-// RevokeInvite provides a mock function with given fields: ctx, inviteID
-func (_m *AuthService) RevokeInvite(ctx context.Context, inviteID string) error {
-	ret := _m.Called(ctx, inviteID)
+// RevokeInvite provides a mock function with given fields: ctx, inviteID, actorUserID, actorIsSystemAdmin
+func (_m *AuthService) RevokeInvite(ctx context.Context, inviteID, actorUserID string, actorIsSystemAdmin bool) error {
+	ret := _m.Called(ctx, inviteID, actorUserID, actorIsSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RevokeInvite")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, inviteID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, bool) error); ok {
+		r0 = rf(ctx, inviteID, actorUserID, actorIsSystemAdmin)
 	} else {
 		r0 = ret.Error(0)
 	}
