@@ -130,13 +130,15 @@ LLM（Runtime.RunAndCollect，工具集 = 全部注册 tool）
 | 图片数量 | `MaxImages` | 5 | `Task.Images` / `params["images"]`（复用 `domainchat.ValidateImages`） |
 | 图片单张 | `MaxImageBytes` | 2MiB | 单张图片解码后 |
 | 图片总量 | `MaxTotalBytes` | 5MiB | 全部图片解码后字节合计 |
+| XSS 校验 | `security.ValidateXSS` | block（拒绝） | `Task.Title` + `Task.Description` + `params["message"]`（handler 入口校验） |
 
 **规则**：
 - **标题**：≤200 rune，超限截断到 200 rune（标题是展示 label，截断无损；与 kb（SPEC-081 §5.3）策略一致）。
 - **描述**：`Description` + `params.message` 合并 ≤100KB，超限报错（描述是核心指令，截断丢信息，后端权威校验，前端可选预校验）。
 - **图片**：复用 `domainchat.ValidateImages`（5 张 × 2MiB × 5MiB），与 chat 共用同一套常量与校验函数，**不重复实现**；task 的图片经 `EncodeImages` 编码为 JSON string 存 `params["images"]`，worker 侧 `deriveUserMessageFromParams` → `DecodeImages` → `buildTaskContent` 再校验一次（双保险）。
+- **XSS 校验**：`title` + `Description` + `params["message"]` 在 handler `CreateTask` 的 `ShouldBindJSON` 后调 `security.ValidateXSS`（定义于 SPEC-081 §4.4），含 XSS 载荷 → 400 拒绝（语义 block、不转义，与 LLM 层 `AuditInput` 的 XSS block 一致）。`title` 与描述都是用户可控展示字段 + LLM 输入，须在入口层拦截（描述会经 `deriveUserMessageFromParams` 进 LLM，本有 LLM 层兜底，但入口层提前拦截体验更佳；title 是纯展示字段，LLM 层管不到，必须入口拦截）。
 
-> **现状说明**：图片限制已实现（`internal/domain/chat/image.go` + task handler/orchestrator 复用）；标题与描述的常量（`MaxTaskTitleRunes` / `MaxTaskTextBytes`）**尚待实现**，落地位置 `internal/domain/task`。
+> **现状说明**：图片限制已实现（`internal/domain/chat/image.go` + task handler/orchestrator 复用）；标题与描述的常量（`MaxTaskTitleRunes` / `MaxTaskTextBytes`）**尚待实现**，落地位置 `internal/domain/task`；XSS 校验函数 `security.ValidateXSS` **尚待实现**（`internal/domain/security`），task handler 的 title/描述 XSS 校验待落地。
 
 ## 5. 详细设计
 
@@ -307,3 +309,4 @@ t, run, err := deps.TaskDefs.CreateTask(
 5. **回归**：`save_task_result`、task HTTP API（创建/列表/详情）行为不变。
 6. **system_admin 豁免**：`role==system_admin` 时 `task_run_list` / `task_run_detail` 可跨用户查询（access 所有数据）；`user`/`admin` 仅 access 本人 + shared（未实现）。
 7. **限制校验**：`title` >200 rune 截断到 200 rune（不报错）；`Description` + `params.message` 合并恰好 100KB 可创建、+1 字节拒绝；图片 >5 张 / 单张 >2MiB / 总 >5MiB 拒绝（复用 `domainchat.ValidateImages`）。
+8. **XSS 校验**：`title` / `Description` / `params.message` 含 `<script>`、`<img onerror>`、`javascript:` 等载荷 → 400 拒绝；普通文本（含中文、标点、正常代码片段）正常通过。

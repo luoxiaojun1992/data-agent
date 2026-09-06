@@ -75,6 +75,21 @@ type PdfAttachment struct {
 - 超限 PDF 解析文字策略：**整体拒绝优先**（不要静默截断——静默截断会造成上下文丢失且用户无感知）。前端逐 PDF 截断作为可选优化不列入本 spec。
 - 直接上传图片不受文字限制影响（图片走 §4.2）；用户提示词与 PDF 文字是同一 100KB 池子。
 
+### 4.4 用户提示词 XSS 校验（安全；新增，本次补齐）
+
+> **chat 用户直接输入的提示词必须做 XSS 校验**，但**明确排除 PDF 解析文字**（见下方红线）。
+
+| 字段 | 校验函数 | 落点 | 语义 |
+|------|---------|------|------|
+| 用户提示词（`req.Messages` 中 `Role=="user"` 的文本，即 `lastText`） | `security.ValidateXSS` | chat 请求入口：handler `HandleChat` 绑定 `ChatRequest` 后 / service `prepareRun` 提取 `lastText` 后、组装 LLM content 前 | 含 XSS 载荷 → 400「消息包含非法内容」 |
+
+- 复用 `security.ValidateXSS`（定义于 SPEC-081 §4.4，`internal/domain/security` 包），**不重复实现**；语义 = block（拒绝），与 LLM 层 `AuditInput` 的 XSS block 一致。
+- 落点天然在 PDF 文字附加**之前**：XSS 校验只针对用户直接输入文本，PDF 解析文字在 service 层 `buildUserContent` 才前置，故校验顺序正确、无需额外剥离。
+
+> **范围排除（红线）**：**PDF 解析文字不做 XSS 校验**——PDF 是文档内容，可能天然含 HTML/JS 示例（如技术文档的代码片段），XSS block 会误伤正常附件。XSS 校验仅针对用户手动键入的提示词。
+
+**纵深防御关系**：handler 层 `ValidateXSS`（第一道门，提前拦截）→ LLM 层 `AuditInput`（第二道门，SPEC-068，进 LLM 前兜底）。两者语义一致（block）、互不替代。
+
 ## 5. 详细设计
 
 ### 5.1 前端：PDF 附件解析与发送
@@ -190,3 +205,4 @@ parts = [
 4. 纯图片上传行为完全不变（向后兼容）。
 5. 文字合并（提示词 + PDF 解析文字）恰好 100KB 可发送；100KB+1 字节被前端拒绝、后端返回 400。
 6. 直接上传图片与用户提示词适用同一限制池：多 PDF 合计文字按字节合并计算，不按单个 PDF 单独计算。
+7. XSS 校验：用户提示词含 `<script>` / `<img onerror>` / `javascript:` 载荷 → 400 拒绝；PDF 解析文字含同样内容**不**触发拒绝（范围排除）；普通提示词正常发送。

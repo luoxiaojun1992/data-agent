@@ -92,7 +92,7 @@ KB Handler（新增 ImportURL）
 ### 4.2 既有接口补限制（向后兼容）
 
 `POST /knowledge/docs`（浏览器上传路径）增加同样的服务端校验：
-- 标题：>200 rune → 截断到 200 rune（标题是 label，截断无损，见 §5.3）
+- 标题：>200 rune → 截断到 200 rune（标题是 label，截断无损，见 §5.3）；含 XSS 载荷 → 400 拒绝（见 §4.4）
 - 文本（multipart `file`）：>5MB → 400「文本超过 5MB 上限」
 - 图片（`file_base64`）：解码后 >1MB → 400「图片超过 1MB 上限」；单次上传只接受单文件（现状如此，不改语义）
 
@@ -109,6 +109,31 @@ KB Handler（新增 ImportURL）
 | `ImportURLRenderTimeout` | 30s | **整体解析网页超时**（端到端：从 headless 开始加载 URL 到取得最终渲染 DOM 的总时长；**非单个 HTTP 请求超时**） |
 | `ImportURLTotalTimeout` | 120s | 整次导入（含渲染 + 文字提取 + 图片下载 + 建 doc）的端到端总预算 |
 | `ImportURLImageDownloadTimeout` | 10s/张 | 单张图片**整体下载**超时（从发起下载到拿全该图片字节） |
+
+### 4.4 XSS 校验（安全；新增，本次补齐）
+
+> **KB 文档标题必须做 XSS 校验**。标题是纯文本展示字段，且**不进 LLM**（走不到 SPEC-068 的 `AuditInput`/`AuditOutput`），是当前唯一**完全无 XSS 防护**的用户可控字段，须在 handler 入口层拦截。
+
+| 字段 | 校验函数 | 落点 | 语义 |
+|------|---------|------|------|
+| 标题（web 上传 / URL 导入 / `kb_create_doc`） | `security.ValidateXSS` | handler `UploadDoc` 的 `c.PostForm("title")` 之后、`CreateDoc` 之前；URL 导入的标题规则同 | 含 XSS 载荷 → 400「标题包含非法内容」 |
+
+**通用 XSS 校验函数（跨 spec 共享，定义于 `internal/domain/security`，与 SPEC-068 的 `Auditor` 同包）**：
+
+- 新增 `security.ValidateXSS(s string) error`：职责**单一**，只检测 XSS 危险载荷，**不做 PII 脱敏**（与 `AuditInput`/`AuditOutput` 明确区分）。
+- 覆盖面 ≥ 现有 `AuditInput` 的 `xss_script`（只匹配 `<script` 字面量），至少覆盖：
+  - `<script`（含大小写 / 空白变体）
+  - `<img ... onerror=` / `<svg ... onload=` 等标签内嵌事件
+  - `javascript:` 协议
+  - `onerror=` / `onload=` / `onclick=` 等 `on*=` 事件属性
+- 语义 = **block（拒绝）**：含危险载荷直接返回 error，由 handler 转 400；**不转义、不改内容**（与 `AuditInput` 的 XSS block 语义一致；标题是纯文本 label，正常不含 HTML，转义会污染存储且无必要）。
+
+**纵深防御关系（与 SPEC-068 不冲突）**：
+- handler 层 `ValidateXSS` = **第一道门**，覆盖 title 等**不进 LLM 的字段**（LLM 层管不到）+ 提前拦截进 LLM 的字段。
+- LLM 层 `AuditInput`（block）/`AuditOutput`（sanitize）= **第二道门**（SPEC-068），覆盖进 LLM 的文本。
+- 两者共用同一安全目标，但覆盖面和语义不同，**互不替代**。
+
+> **范围排除（红线）**：KB **正文**（txt 上传内容 / PDF 解析文字 / URL 导入正文 / kb_create_doc.content）**不做 XSS 校验**——正文是知识库文档，可能天然含 HTML/JS 示例（如讲前端的文档），XSS block 会误伤正常内容。XSS 校验仅针对 title 这一短 label 字段。
 
 ## 5. 详细设计
 
@@ -190,6 +215,7 @@ KB Handler（新增 ImportURL）
 1. **Unit tests**（Go）：
    - SSRF 判定（纯函数）：公网/内网/回环/链路本地/云元数据/非法 URL 全表驱动；
    - 限制校验：5MB 文本、10 张 × 1MB 图片的边界（恰好等于/超出 1 字节）；
+   - XSS 校验：标题含 `<script>`、`<img onerror>`、`javascript:` 等载荷 → 拒绝；普通文本通过；`security.ValidateXSS` 边界（大小写/空白变体/事件属性）。
    - 内容提取：HTML→文字（空白压缩、5MB 截断）、图片 URL 提取（src/srcset/去重/数量上限）；
    - `CreateFromText` / `CreateFromImage`：与 UploadDoc 路径行为一致（mock GridFS/service）。
 2. **Integration tests**：SSRF/渲染走 mock（httptest 假渲染服务），不依赖真实 chrome。
@@ -243,3 +269,4 @@ KB Handler（新增 ImportURL）
 7. 导入产生的 doc 与上传产生的 doc 在列表、索引、删除（级联向量+图）行为完全一致。
 8. KB 页「导入网址」为独立按钮 + 独立弹窗（testid：`kb-import-url-btn` / `kb-import-url-modal` / `kb-import-url-input` / `kb-import-url-submit`），上传弹窗不受影响。
 9. `go test ./internal/...` 全绿；覆盖率 ≥98%；E2E 通过。
+10. XSS 校验：kb 标题（web 上传 / URL 导入）含 `<script>` / `<img onerror>` / `javascript:` 载荷 → 400 拒绝；普通文本标题正常创建；正文（txt / PDF 解析 / URL 导入正文）**不受** XSS 校验影响（可含 HTML/JS 示例）。
