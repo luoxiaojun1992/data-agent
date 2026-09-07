@@ -131,3 +131,53 @@ func TestImport_ImageCountLimit(t *testing.T) {
 		t.Errorf("skipped = %d, want 3", res.SkippedImages)
 	}
 }
+
+// TestBrowserlessRenderer_TokenInQuery guards the auth method: browserless/chrome
+// v2 authenticates via `?token=` query param, NOT an Authorization header. A
+// regression here would make every production URL import return 502.
+func TestBrowserlessRenderer_TokenInQuery(t *testing.T) {
+	var gotURL, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body>ok</body></html>"))
+	}))
+	defer srv.Close()
+
+	renderer := NewBrowserlessRenderer(srv.URL, "secret-token")
+	html, err := renderer.Render(context.Background(), "https://example.com")
+	if err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+	if !strings.Contains(html, "ok") {
+		t.Errorf("html = %q, want to contain 'ok'", html)
+	}
+	if !strings.Contains(gotURL, "token=secret-token") {
+		t.Errorf("request URL %q, want token=secret-token query param", gotURL)
+	}
+	if gotAuth != "" {
+		t.Errorf("Authorization header = %q, want empty (browserless rejects it)", gotAuth)
+	}
+}
+
+// TestBrowserlessRenderer_NoTokenOmitsParam ensures an empty token sends no
+// token query param at all (no trailing "token=").
+func TestBrowserlessRenderer_NoTokenOmitsParam(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<p>ok</p>"))
+	}))
+	defer srv.Close()
+
+	renderer := NewBrowserlessRenderer(srv.URL, "")
+	if _, err := renderer.Render(context.Background(), "https://example.com"); err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+	if strings.Contains(gotURL, "token") {
+		t.Errorf("request URL %q, want no token param", gotURL)
+	}
+}
+

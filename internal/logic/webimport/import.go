@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -171,8 +172,9 @@ type BrowserlessRenderer struct {
 }
 
 // NewBrowserlessRenderer builds a renderer against the given browserless base
-// URL (e.g. "http://headless-chrome:3000") and optional bearer token (empty =
-// no auth).
+// URL (e.g. "http://headless-chrome:3000") and optional access token (empty =
+// no auth). The token is passed as a `?token=` query param — browserless/chrome
+// v2 does NOT accept an Authorization header.
 func NewBrowserlessRenderer(baseURL, token string) *BrowserlessRenderer {
 	return &BrowserlessRenderer{
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -183,14 +185,19 @@ func NewBrowserlessRenderer(baseURL, token string) *BrowserlessRenderer {
 
 func (r *BrowserlessRenderer) Render(ctx context.Context, rawURL string) (string, error) {
 	payload, _ := json.Marshal(map[string]string{"url": rawURL})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.baseURL+"/content", bytes.NewReader(payload))
+	endpoint := r.baseURL + "/content"
+	if r.token != "" {
+		sep := "?"
+		if strings.Contains(endpoint, "?") {
+			sep = "&"
+		}
+		endpoint += sep + "token=" + url.QueryEscape(r.token)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return "", ErrRenderFailed
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if r.token != "" {
-		req.Header.Set("Authorization", "Bearer "+r.token)
-	}
 
 	resp, err := r.client.Do(req)
 	if err != nil {
