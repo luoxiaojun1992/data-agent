@@ -75,7 +75,9 @@ func DefaultRules() *Config {
 			{Name: "sql_insert", Type: "keyword", Pattern: "INSERT INTO", Action: "alert", Priority: 50},
 			{Name: "sql_update", Type: "keyword", Pattern: "UPDATE .* SET", Action: "block", Priority: 100, compiled: regexp.MustCompile("UPDATE .* SET")},
 			{Name: "sql_alter", Type: "keyword", Pattern: "ALTER TABLE", Action: "block", Priority: 100},
-			{Name: "xss_script", Type: "keyword", Pattern: "<script", Action: "block", Priority: 100},
+			// SPEC-077/081 §4.4: LLM input-side XSS rule removed — user prompt XSS
+			// is handled at the handler layer by ValidateXSS (which excludes PDF
+			// parsed text / KB body); LLM input must allow code samples.
 			// SPEC-068: input-side PII sanitize rules — fallback when the
 			// pii-redaction service is off or errors (输入侧降级兜底).
 			{Name: "id_card", Type: "regex", Pattern: `\d{17}[\dXx]`, Action: "sanitize", Priority: 90},
@@ -108,7 +110,7 @@ func (c *Config) Compile() {
 }
 
 // AuditInput validates input content against security rules and returns the
-// PII-redacted input. Non-privacy rules (SQL/XSS block/alert) run first and
+// PII-redacted input. Non-privacy rules (SQL block/alert) run first and
 // may return an error; then PII redaction is applied (pii-redaction service
 // first, falling back to regex sanitize rules).
 func (a *Auditor) AuditInput(input string) (string, error) {

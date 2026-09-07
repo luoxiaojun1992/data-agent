@@ -19,9 +19,11 @@ func (m *mockAlertLogger) LogAlert(level, category, message string, details map[
 func TestDefaultRules(t *testing.T) {
 	rules := DefaultRules()
 	// SPEC-068: InputRules now includes 3 PII sanitize fallback rules
-	// (id_card/phone/api_key) on top of the 6 SQL/XSS block/alert rules.
-	if len(rules.InputRules) != 9 {
-		t.Errorf("InputRules length: got %d, want 9", len(rules.InputRules))
+	// (id_card/phone/api_key) on top of the 5 SQL block/alert rules.
+	// SPEC-077/081 §4.4: the xss_script input rule was removed — user prompt
+	// XSS is handled by ValidateXSS at the handler layer instead.
+	if len(rules.InputRules) != 8 {
+		t.Errorf("InputRules length: got %d, want 8", len(rules.InputRules))
 	}
 	// SPEC-068: OutputRules adds an xss sanitize rule on top of the 3 PII rules.
 	if len(rules.OutputRules) != 4 {
@@ -58,7 +60,7 @@ func TestAuditor_AuditInput(t *testing.T) {
 		{"drop table blocked", "DROP TABLE users", true},
 		{"delete from blocked", "DELETE FROM users WHERE id=1", true},
 		{"insert into alerts", "INSERT INTO users VALUES (1)", false}, // alert only, no error
-		{"script tag blocked", "<script>alert(1)</script>", true},
+		{"script tag allowed on input", "<script>alert(1)</script>", false}, // XSS moved to ValidateXSS (SPEC-077/081)
 		{"empty input", "", false},
 		{"normal query", "SELECT id, name FROM products WHERE price > 100", false},
 	}
