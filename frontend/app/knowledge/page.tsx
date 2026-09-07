@@ -39,6 +39,10 @@ export default function KnowledgePage() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [uploadError, setUploadError] = useState('');
+  const [showImportUrl, setShowImportUrl] = useState(false);
+  const [importUrlValue, setImportUrlValue] = useState('');
+  const [importingUrl, setImportingUrl] = useState(false);
+  const [importUrlError, setImportUrlError] = useState('');
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ message: msg, type });
@@ -172,6 +176,40 @@ export default function KnowledgePage() {
     }
   };
 
+  // 导入网址（SPEC-081）：后端渲染解析，耗时可能达 120s，需 loading 反馈。
+  const handleImportUrl = async () => {
+    const url = importUrlValue.trim();
+    if (!url) return;
+    setImportingUrl(true);
+    setImportUrlError('');
+    try {
+      const res = await apiFetch('/knowledge/import-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `导入失败 (${res.status})`);
+      }
+      const data = await res.json();
+      const n = (data.doc_ids || []).length;
+      const skipped = data.skipped_images || 0;
+      const msg = skipped > 0
+        ? `导入完成（${n} 个文档，跳过 ${skipped} 张超限图片）`
+        : `导入完成（${n} 个文档）`;
+      showToast(msg, 'success');
+      setShowImportUrl(false);
+      setImportUrlValue('');
+      fetchDocs();
+    } catch (e: any) {
+      setImportUrlError(e?.message || '网络错误');
+      showToast('导入失败，请查看错误信息', 'error');
+    } finally {
+      setImportingUrl(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除该文档吗？')) return;
     try {
@@ -212,11 +250,15 @@ export default function KnowledgePage() {
           }}>{toast.message}</div>
         )}
 
-        {/* Toolbar: Upload + Search */}
+        {/* Toolbar: Upload + Import URL + Search */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <button data-testid="kb-upload-btn" onClick={() => setShowUpload(true)}
             style={primaryButtonStyle}>
             + 上传文档
+          </button>
+          <button data-testid="kb-import-url-btn" onClick={() => { setShowImportUrl(true); setImportUrlError(''); }}
+            style={{ ...primaryButtonStyle, background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-primary)' }}>
+            🔗 导入网址
           </button>
           <input data-testid="kb-search-input" placeholder="搜索文档..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -266,6 +308,47 @@ export default function KnowledgePage() {
                   color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
                 {uploading ? '上传中...' : '确认上传'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Import URL Modal (SPEC-081) */}
+        {showImportUrl && (
+          <div data-testid="kb-import-url-modal" style={{ ...modalOverlayStyle, zIndex: 999 }}
+            onClick={(e) => { if (e.target === e.currentTarget && !importingUrl) { setShowImportUrl(false); setImportUrlError(''); } }}>
+            <div className="glass" style={{ padding: '24px', maxWidth: '460px', width: '90%' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
+                导入网址
+              </h3>
+              <input
+                data-testid="kb-import-url-input"
+                placeholder="https://example.com/article"
+                value={importUrlValue}
+                onChange={(e) => { setImportUrlValue(e.target.value); setImportUrlError(''); }}
+                disabled={importingUrl}
+                style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', fontSize: '14px',
+                  color: 'var(--text-primary)', outline: 'none', marginBottom: '12px', boxSizing: 'border-box' }}
+              />
+              {importUrlError && (
+                <div data-testid="kb-import-url-error" style={{ color: '#ef4444', fontSize: '12px', marginBottom: '12px', wordBreak: 'break-all' }}>
+                  {importUrlError}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button onClick={() => { if (!importingUrl) { setShowImportUrl(false); setImportUrlError(''); } }}
+                  disabled={importingUrl}
+                  style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '14px', cursor: 'pointer' }}>
+                  取消
+                </button>
+                <button data-testid="kb-import-url-submit" onClick={handleImportUrl}
+                  disabled={importingUrl || importUrlValue.trim() === ''}
+                  style={{ padding: '8px 20px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
+                    color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
+                  {importingUrl ? '导入中...' : '导入'}
+                </button>
+              </div>
             </div>
           </div>
         )}

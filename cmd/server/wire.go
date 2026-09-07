@@ -39,6 +39,7 @@ import (
 	vaultinfra "github.com/luoxiaojun1992/data-agent/internal/infra/vault"
 	"github.com/luoxiaojun1992/data-agent/internal/logic"
 	agentlogic "github.com/luoxiaojun1992/data-agent/internal/logic/agent"
+	"github.com/luoxiaojun1992/data-agent/internal/logic/webimport"
 	"github.com/luoxiaojun1992/data-agent/internal/logic/workspace"
 	"github.com/luoxiaojun1992/data-agent/internal/queue"
 	"github.com/luoxiaojun1992/data-agent/internal/scheduler"
@@ -486,6 +487,13 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 	// SPEC-070: graph index wires into the KB service when available.
 	if deps.graphRepo != nil {
 		deps.kbService.WithGraphIndex(deps.graphRepo)
+	}
+	// SPEC-081: URL import — wire the headless-chrome renderer when configured.
+	// When HEADLESS_CHROME_URL is unset, ImportURL is disabled (returns an
+	// error) but all other KB features are unaffected.
+	if renderURL := getEnvOrDefault("HEADLESS_CHROME_URL", ""); renderURL != "" {
+		renderToken := getEnvOrDefault("HEADLESS_CHROME_TOKEN", "")
+		deps.kbService.WithURLImporter(webimport.NewImporter(webimport.NewBrowserlessRenderer(renderURL, renderToken)))
 	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }

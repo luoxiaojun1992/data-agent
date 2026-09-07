@@ -1,17 +1,17 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
-	task "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	kbdomain "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	"github.com/luoxiaojun1992/data-agent/internal/logic/webimport"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 
 	"github.com/gin-gonic/gin"
@@ -36,7 +36,8 @@ func (h *KnowledgeHandler) SetQueueRepo(qr repository.QueueRepository) {
 
 // UploadDoc creates a new knowledge document with optional file upload to GridFS.
 // Accepts either a multipart "file" (text docs) or a "file_base64" form field
-// (images), whichever is present.
+// (images), whichever is present. SPEC-081: the title is XSS-validated and
+// truncated, and text/images are size-capped at the single source of truth.
 func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	title := c.PostForm("title")
@@ -47,34 +48,39 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 		_, _ = fmt.Sscanf(s, "%d", &sizeBytes)
 	}
 
-	var gridFSFileID string
+	// SPEC-081 §4.4: title is a plain-text label that never enters the LLM —
+	// XSS-block it at the handler entry (no escaping, no mutation).
+	if err := security.ValidateXSS(title); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "标题包含非法内容"})
+		return
+	}
+	title = truncateTitleRunes(title, kbdomain.MaxKBTitleRunes)
 
-	// Path 1: multipart file upload (text documents).
-	file, header, err := c.Request.FormFile("file")
-	if err == nil {
+	ctx := c.Request.Context()
+
+	// Path 1: multipart file upload (text documents) → shared CreateFromText.
+	if file, _, err := c.Request.FormFile("file"); err == nil {
 		defer file.Close()
-		// SPEC-068: redact PII from the text file before storing it to GridFS,
-		// so the raw file (and downstream chunks) never contain PII.
 		data, rErr := io.ReadAll(file)
 		if rErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "read file failed: " + rErr.Error()})
 			return
 		}
-		redacted, redactErr := h.svc.RedactText(c.Request.Context(), string(data))
-		if redactErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "PII redaction failed: " + redactErr.Error()})
+		if len(data) > kbdomain.MaxKBTextBytes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "文本超过 5MB 上限"})
 			return
 		}
-		gridFSFileID, err = h.svc.UploadFile(fileName+"_"+header.Filename, header.Header.Get("Content-Type"), bytes.NewReader([]byte(redacted)))
+		doc, err := h.svc.CreateFromText(ctx, userID.(string), title, fileName, string(data))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "GridFS upload failed: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		if sizeBytes == 0 {
-			sizeBytes = int64(len(redacted))
-		}
-	} else if base64Data := c.PostForm("file_base64"); base64Data != "" {
-		// Path 2: base64 image upload (data URI prefix optional).
+		c.JSON(http.StatusCreated, doc)
+		return
+	}
+
+	// Path 2: base64 image upload (data URI prefix optional) → shared CreateFromImage.
+	if base64Data := c.PostForm("file_base64"); base64Data != "" {
 		if idx := strings.Index(base64Data, ";base64,"); idx >= 0 {
 			base64Data = base64Data[idx+len(";base64,"):]
 		}
@@ -83,37 +89,78 @@ func (h *KnowledgeHandler) UploadDoc(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid base64 image: " + derr.Error()})
 			return
 		}
+		if len(decoded) > kbdomain.MaxKBImageBytes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "图片超过 1MB 上限"})
+			return
+		}
 		mimeType := c.PostForm("mime_type")
 		if mimeType == "" {
 			mimeType = "image/png"
 		}
-		gridFSFileID, derr = h.svc.UploadFile(fileName, mimeType, bytes.NewReader(decoded))
-		if derr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "GridFS upload failed: " + derr.Error()})
+		doc, err := h.svc.CreateFromImage(ctx, userID.(string), title, fileName, decoded, mimeType)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		if sizeBytes == 0 {
-			sizeBytes = int64(len(decoded))
-		}
+		c.JSON(http.StatusCreated, doc)
+		return
 	}
 
-	doc, err := h.svc.CreateDoc(userID.(string), title, fileName, fileType, sizeBytes, gridFSFileID)
+	// Metadata-only (no file content): legacy backward-compat path.
+	doc, err := h.svc.CreateDoc(userID.(string), title, fileName, fileType, sizeBytes, "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Enqueue async indexing via queue (no task/task_run records).
-	if h.queueRepo != nil && gridFSFileID != "" {
-		if err := h.queueRepo.EnqueueRaw(c.Request.Context(), "kb_index", task.KBIndexPayload{
-			DocID:        doc.ID,
-			GridFSFileID: gridFSFileID,
-		}); err != nil {
-			log.Printf("[kb] failed to enqueue index job for doc=%s: %v", doc.ID, err)
-		}
-	}
-
 	c.JSON(http.StatusCreated, doc)
+}
+
+// ImportURL parses a web page URL and creates KB docs from its rendered text
+// and images (SPEC-081). The URL is fetched server-side (headless chrome).
+func (h *KnowledgeHandler) ImportURL(c *gin.Context) {
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	userID, _ := c.Get("user_id")
+	result, err := h.svc.ImportURL(c.Request.Context(), userID.(string), req.URL)
+	if err != nil {
+		c.JSON(importURLErrorStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// importURLErrorStatus maps a webimport sentinel error to its HTTP status
+// (SPEC-081 §4.1).
+func importURLErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, webimport.ErrInvalidURL):
+		return http.StatusBadRequest
+	case errors.Is(err, webimport.ErrSSRFBlocked):
+		return http.StatusForbidden
+	case errors.Is(err, webimport.ErrNoContent):
+		return http.StatusUnprocessableEntity
+	case errors.Is(err, webimport.ErrRenderFailed):
+		return http.StatusBadGateway
+	case errors.Is(err, webimport.ErrRenderUnavailable):
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// truncateTitleRunes truncates a title to at most n runes without splitting a
+// UTF-8 sequence (SPEC-081 §5.3 — title overflow truncates, never rejects).
+func truncateTitleRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 // GetDoc retrieves a knowledge document (ownership-checked).

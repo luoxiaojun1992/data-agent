@@ -3,18 +3,21 @@ package knowledge
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	task "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/logic/webimport"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
@@ -39,6 +42,9 @@ type Service struct {
 	// queue is the optional async index queue (SPEC-086). nil = no enqueue
 	// (CreateTextDoc still creates the doc synchronously).
 	queue repository.QueueRepository
+	// importer is the optional web-page fetcher/extractor (SPEC-081). nil =
+	// URL import disabled (ImportURL returns an error).
+	importer webimport.Importer
 }
 
 func NewService(kb repository.KBRepository) *Service {
@@ -78,6 +84,13 @@ func (s *Service) WithRedactor(r security.Redactor, enabled func() bool) *Servic
 // doc is still created synchronously and indexing must be triggered elsewhere.
 func (s *Service) WithQueue(q repository.QueueRepository) *Service {
 	s.queue = q
+	return s
+}
+
+// WithURLImporter injects the web-page importer (SPEC-081). nil = URL import
+// disabled; ImportURL returns an error until it is wired.
+func (s *Service) WithURLImporter(imp webimport.Importer) *Service {
+	s.importer = imp
 	return s
 }
 
@@ -124,50 +137,91 @@ func (s *Service) CreateDoc(userID, title, fileName, fileType string, sizeBytes 
 }
 
 // CreateTextDoc creates a plain-text KB doc end-to-end (SPEC-086 §5.3):
-// length check → title truncation → PII redaction → GridFS upload → CreateDoc
-// → async index enqueue. Returns the created doc (status=uploaded) without
-// waiting for indexing. userID is mandatory (caller enforces; empty would
-// create an orphan doc).
+// title required → CreateFromText. Returns the created doc (status=uploaded)
+// without waiting for indexing. userID is mandatory (empty would create an
+// orphan doc).
 func (s *Service) CreateTextDoc(ctx context.Context, userID, title, text string) (*knowledge.KnowledgeDoc, error) {
 	if userID == "" {
 		return nil, errors.New("kb_create_doc: userID is required")
 	}
-	if len(text) > knowledge.MaxKBTextBytes {
-		return nil, fmt.Errorf("文本超过 %dMB 上限", knowledge.MaxKBTextBytes/(1024*1024))
-	}
-	// Title is a display label — truncate on overflow (SPEC-081 §5.3), never reject.
-	title = truncateRunes(title, knowledge.MaxKBTitleRunes)
 	if title == "" {
 		return nil, errors.New("kb_create_doc: title is required")
 	}
+	return s.CreateFromText(ctx, userID, title, title+".txt", text)
+}
+
+// CreateFromText creates a txt KB doc end-to-end (SPEC-081 §5.3 — the single
+// shared path reused by kb_create_doc and URL import): size check → title
+// truncation → PII redaction → GridFS upload → CreateDoc → async enqueue.
+// text over MaxKBTextBytes is rejected (callers that want truncation — e.g.
+// URL import — truncate before calling).
+func (s *Service) CreateFromText(ctx context.Context, userID, title, fileName, text string) (*knowledge.KnowledgeDoc, error) {
+	if userID == "" {
+		return nil, errors.New("CreateFromText: userID is required")
+	}
+	if len(text) > knowledge.MaxKBTextBytes {
+		return nil, fmt.Errorf("文本超过 %dMB 上限", knowledge.MaxKBTextBytes/(1024*1024))
+	}
+	title = truncateRunes(title, knowledge.MaxKBTitleRunes)
 
 	redacted, err := s.RedactText(ctx, text)
 	if err != nil {
 		return nil, fmt.Errorf("pii redact: %w", err)
 	}
-
-	fileName := title + ".txt"
+	if fileName == "" {
+		fileName = title + ".txt"
+	}
 	gridFSFileID, err := s.UploadFile(fileName, "text/plain", bytes.NewReader([]byte(redacted)))
 	if err != nil {
 		return nil, err
 	}
-
 	doc, err := s.CreateDoc(userID, title, fileName, knowledge.FileTypeTxt, int64(len(redacted)), gridFSFileID)
 	if err != nil {
 		return nil, err
 	}
-
-	// Async index (best-effort). nil queue → skip with a log (doc remains
-	// uploaded, indexing must be triggered elsewhere).
-	if s.queue != nil {
-		if err := s.queue.EnqueueRaw(ctx, "kb_index", task.KBIndexPayload{
-			DocID:        doc.ID,
-			GridFSFileID: gridFSFileID,
-		}); err != nil {
-			log.Printf("[kb] CreateTextDoc failed to enqueue index job for doc=%s: %v", doc.ID, err)
-		}
-	}
+	s.enqueueIndex(ctx, doc.ID, gridFSFileID)
 	return doc, nil
+}
+
+// CreateFromImage creates an image KB doc end-to-end (SPEC-081 §5.3 — the
+// shared image path reused by URL import): size check → title truncation →
+// GridFS upload → CreateDoc → async enqueue. data over MaxKBImageBytes is
+// rejected.
+func (s *Service) CreateFromImage(ctx context.Context, userID, title, fileName string, data []byte, mimeType string) (*knowledge.KnowledgeDoc, error) {
+	if userID == "" {
+		return nil, errors.New("CreateFromImage: userID is required")
+	}
+	if len(data) > knowledge.MaxKBImageBytes {
+		return nil, fmt.Errorf("图片超过 %dMB 上限", knowledge.MaxKBImageBytes/(1024*1024))
+	}
+	title = truncateRunes(title, knowledge.MaxKBTitleRunes)
+	if mimeType == "" {
+		mimeType = "image/png"
+	}
+	gridFSFileID, err := s.UploadFile(fileName, mimeType, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	doc, err := s.CreateDoc(userID, title, fileName, knowledge.FileTypeImage, int64(len(data)), gridFSFileID)
+	if err != nil {
+		return nil, err
+	}
+	s.enqueueIndex(ctx, doc.ID, gridFSFileID)
+	return doc, nil
+}
+
+// enqueueIndex enqueues an async kb_index job (best-effort). nil queue → skip
+// with a log; the doc remains uploaded and indexing must be triggered elsewhere.
+func (s *Service) enqueueIndex(ctx context.Context, docID, gridFSFileID string) {
+	if s.queue == nil {
+		return
+	}
+	if err := s.queue.EnqueueRaw(ctx, "kb_index", task.KBIndexPayload{
+		DocID:        docID,
+		GridFSFileID: gridFSFileID,
+	}); err != nil {
+		log.Printf("[kb] failed to enqueue index job for doc=%s: %v", docID, err)
+	}
 }
 
 // truncateRunes truncates s to at most n runes, keeping it a valid UTF-8 string.
@@ -177,6 +231,88 @@ func truncateRunes(s string, n int) string {
 		return s
 	}
 	return string(r[:n])
+}
+
+// ImportURLResult is the outcome of a URL import (SPEC-081 §4.1).
+type ImportURLResult struct {
+	DocIDs        []string `json:"doc_ids"`
+	TextDocID     string   `json:"text_doc_id"`
+	ImageDocIDs   []string `json:"image_doc_ids"`
+	SkippedImages int      `json:"skipped_images"`
+	TextBytes     int      `json:"text_bytes"`
+}
+
+// ImportURL fetches a web page and creates KB docs from its rendered text and
+// images (SPEC-081). Doc naming mirrors the front-end PDF-parse convention: a
+// URL-hash base with a 1-based counter (text = 1 when present, then each image).
+func (s *Service) ImportURL(ctx context.Context, userID, rawURL string) (*ImportURLResult, error) {
+	if userID == "" {
+		return nil, errors.New("ImportURL: userID is required")
+	}
+	if s.importer == nil {
+		return nil, errors.New("url import disabled")
+	}
+	res, err := s.importer.Import(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	base := hashOfURL(rawURL)
+	counter := 1
+	result := &ImportURLResult{}
+
+	if strings.TrimSpace(res.Text) != "" {
+		title := fmt.Sprintf("%s-%d", base, counter)
+		doc, err := s.CreateFromText(ctx, userID, title, title+".txt", res.Text)
+		if err != nil {
+			return nil, err
+		}
+		result.TextDocID = doc.ID
+		result.DocIDs = append(result.DocIDs, doc.ID)
+		result.TextBytes = len(res.Text)
+		counter++
+	}
+
+	for _, img := range res.Images {
+		title := fmt.Sprintf("%s-%d", base, counter)
+		ext := extFromMime(img.MimeType)
+		doc, err := s.CreateFromImage(ctx, userID, title, title+ext, img.Data, img.MimeType)
+		if err != nil {
+			return nil, err
+		}
+		result.ImageDocIDs = append(result.ImageDocIDs, doc.ID)
+		result.DocIDs = append(result.DocIDs, doc.ID)
+		counter++
+	}
+
+	result.SkippedImages = res.SkippedImages
+	return result, nil
+}
+
+// hashOfURL returns a short stable hash prefix for naming imported docs.
+func hashOfURL(rawURL string) string {
+	sum := sha256.Sum256([]byte(rawURL))
+	return fmt.Sprintf("%x", sum)[:16]
+}
+
+// extFromMime maps an image MIME type to a file extension.
+func extFromMime(mime string) string {
+	switch {
+	case strings.Contains(mime, "png"):
+		return ".png"
+	case strings.Contains(mime, "jpeg"), strings.Contains(mime, "jpg"):
+		return ".jpg"
+	case strings.Contains(mime, "gif"):
+		return ".gif"
+	case strings.Contains(mime, "webp"):
+		return ".webp"
+	case strings.Contains(mime, "svg"):
+		return ".svg"
+	case strings.Contains(mime, "bmp"):
+		return ".bmp"
+	default:
+		return ".jpg"
+	}
 }
 
 func (s *Service) GetDoc(id, userID string, isSystemAdmin bool) (*knowledge.KnowledgeDoc, error) {

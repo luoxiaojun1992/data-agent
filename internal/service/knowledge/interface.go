@@ -17,6 +17,13 @@ type KnowledgeService interface {
 	// kb_create_doc (SPEC-086). Returns the created doc (status=uploaded) without
 	// waiting for indexing.
 	CreateTextDoc(ctx context.Context, userID, title, text string) (*knowledge.KnowledgeDoc, error)
+	// CreateFromText / CreateFromImage are the shared end-to-end creation paths
+	// (SPEC-081 §5.3) reused by kb_create_doc and URL import.
+	CreateFromText(ctx context.Context, userID, title, fileName, text string) (*knowledge.KnowledgeDoc, error)
+	CreateFromImage(ctx context.Context, userID, title, fileName string, data []byte, mimeType string) (*knowledge.KnowledgeDoc, error)
+	// ImportURL fetches a web page and creates KB docs from its text/images
+	// (SPEC-081).
+	ImportURL(ctx context.Context, userID, rawURL string) (*ImportURLResult, error)
 	GetDoc(id, userID string, isSystemAdmin bool) (*knowledge.KnowledgeDoc, error)
 	DeleteDoc(id, userID string, isSystemAdmin bool) error
 	ListDocs(userID string, page, pageSize int) ([]*knowledge.KnowledgeDoc, int64, error)

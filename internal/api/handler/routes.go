@@ -244,6 +244,7 @@ func registerKnowledgeRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *
 	kbRoutes := router.Group("/api/v1/knowledge")
 	kbRoutes.Use(jwt.AuthMiddleware())
 	kbRoutes.POST("/docs", middleware.RequirePermission(rbacSvc, model.PermKBUpload), h.UploadDoc)
+	kbRoutes.POST("/import-url", middleware.RequirePermission(rbacSvc, model.PermKBUpload), h.ImportURL)
 	kbRoutes.GET("/docs", middleware.RequirePermission(rbacSvc, model.PermKBView), h.ListDocs)
 	kbRoutes.GET("/docs/:id", middleware.RequirePermission(rbacSvc, model.PermKBView), h.GetDoc)
 	kbRoutes.PUT("/docs/:id/public", middleware.RequirePermission(rbacSvc, model.PermKBUpload), h.SetPublicFlag)

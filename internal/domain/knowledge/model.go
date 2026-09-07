@@ -32,6 +32,12 @@ const (
 	// MaxKBTitleRunes caps the document title length in runes. Titles are
 	// display labels; on overflow they are truncated (not rejected).
 	MaxKBTitleRunes = 200
+	// MaxKBImageBytes caps a single image's size (decoded bytes). Images over
+	// this limit are skipped/rejected (SPEC-081 §4.2).
+	MaxKBImageBytes = 1 * 1024 * 1024 // 1 MB
+	// MaxKBImageCount caps the number of images in a single upload/import batch
+	// (PDF parsed images / URL-import images). Excess images are skipped.
+	MaxKBImageCount = 10
 )
 
 // IsImage reports whether a file type is an image (multimodal indexing path).

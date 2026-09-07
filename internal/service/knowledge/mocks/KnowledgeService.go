@@ -8,6 +8,8 @@ import (
 
 	domainknowledge "github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
 
+	knowledge "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -57,6 +59,66 @@ func (_m *KnowledgeService) CreateDoc(userID string, title string, fileName stri
 
 	if rf, ok := ret.Get(1).(func(string, string, string, string, int64, string) error); ok {
 		r1 = rf(userID, title, fileName, fileType, sizeBytes, gridFSFileID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateFromImage provides a mock function with given fields: ctx, userID, title, fileName, data, mimeType
+func (_m *KnowledgeService) CreateFromImage(ctx context.Context, userID string, title string, fileName string, data []byte, mimeType string) (*domainknowledge.KnowledgeDoc, error) {
+	ret := _m.Called(ctx, userID, title, fileName, data, mimeType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateFromImage")
+	}
+
+	var r0 *domainknowledge.KnowledgeDoc
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, []byte, string) (*domainknowledge.KnowledgeDoc, error)); ok {
+		return rf(ctx, userID, title, fileName, data, mimeType)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, []byte, string) *domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(ctx, userID, title, fileName, data, mimeType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domainknowledge.KnowledgeDoc)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, []byte, string) error); ok {
+		r1 = rf(ctx, userID, title, fileName, data, mimeType)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateFromText provides a mock function with given fields: ctx, userID, title, fileName, text
+func (_m *KnowledgeService) CreateFromText(ctx context.Context, userID string, title string, fileName string, text string) (*domainknowledge.KnowledgeDoc, error) {
+	ret := _m.Called(ctx, userID, title, fileName, text)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateFromText")
+	}
+
+	var r0 *domainknowledge.KnowledgeDoc
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string) (*domainknowledge.KnowledgeDoc, error)); ok {
+		return rf(ctx, userID, title, fileName, text)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string) *domainknowledge.KnowledgeDoc); ok {
+		r0 = rf(ctx, userID, title, fileName, text)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domainknowledge.KnowledgeDoc)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, string) error); ok {
+		r1 = rf(ctx, userID, title, fileName, text)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -135,6 +197,36 @@ func (_m *KnowledgeService) GetDoc(id string, userID string, isSystemAdmin bool)
 
 	if rf, ok := ret.Get(1).(func(string, string, bool) error); ok {
 		r1 = rf(id, userID, isSystemAdmin)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ImportURL provides a mock function with given fields: ctx, userID, rawURL
+func (_m *KnowledgeService) ImportURL(ctx context.Context, userID string, rawURL string) (*knowledge.ImportURLResult, error) {
+	ret := _m.Called(ctx, userID, rawURL)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ImportURL")
+	}
+
+	var r0 *knowledge.ImportURLResult
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*knowledge.ImportURLResult, error)); ok {
+		return rf(ctx, userID, rawURL)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *knowledge.ImportURLResult); ok {
+		r0 = rf(ctx, userID, rawURL)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*knowledge.ImportURLResult)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, userID, rawURL)
 	} else {
 		r1 = ret.Error(1)
 	}

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/knowledge"
+	"github.com/luoxiaojun1992/data-agent/internal/logic/webimport"
+	knowledgesvc "github.com/luoxiaojun1992/data-agent/internal/service/knowledge"
 	mocksvc "github.com/luoxiaojun1992/data-agent/internal/service/knowledge/mocks"
 	"github.com/stretchr/testify/mock"
 )
@@ -66,9 +69,7 @@ func TestUploadDoc_Success(t *testing.T) {
 		Status:   knowledge.StatusUploaded,
 	}
 
-	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
-	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("gridfs_1", nil)
-	svc.On("CreateDoc", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockDoc, nil)
+	svc.On("CreateFromText", mock.Anything, "user-1", "Test Doc", "test.pdf", "PDF content").Return(mockDoc, nil)
 
 	c, w := newKnowledgeMultipartCtx("test.pdf", "PDF content", map[string]string{
 		"title":     "Test Doc",
@@ -113,8 +114,7 @@ func TestUploadDoc_GridFSUploadError(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
-	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("", fmt.Errorf("gridfs full"))
+	svc.On("CreateFromText", mock.Anything, "user-1", "Large Doc", "large.pdf", "content").Return(nil, fmt.Errorf("gridfs full"))
 
 	c, w := newKnowledgeMultipartCtx("large.pdf", "content", map[string]string{
 		"title":     "Large Doc",
@@ -133,9 +133,7 @@ func TestUploadDoc_CreateDocError(t *testing.T) {
 	svc := mocksvc.NewKnowledgeService(t)
 	h := NewKnowledgeHandler(svc)
 
-	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
-	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("gridfs_1", nil)
-	svc.On("CreateDoc", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("insert failed"))
+	svc.On("CreateFromText", mock.Anything, "user-1", "Test Doc", "test.pdf", "content").Return(nil, fmt.Errorf("insert failed"))
 
 	c, w := newKnowledgeMultipartCtx("test.pdf", "content", map[string]string{
 		"title":     "Test Doc",
@@ -155,9 +153,7 @@ func TestUploadDoc_WithSizeBytes(t *testing.T) {
 
 	mockDoc := &knowledge.KnowledgeDoc{ID: "kbdoc_3", UserID: "user-1", Title: "Sized Doc"}
 
-	svc.On("RedactText", mock.Anything, mock.Anything).Return("redacted", nil)
-	svc.On("UploadFile", mock.Anything, mock.Anything, mock.Anything).Return("gridfs_2", nil)
-	svc.On("CreateDoc", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockDoc, nil)
+	svc.On("CreateFromText", mock.Anything, "user-1", "Sized Doc", "doc.txt", "hello").Return(mockDoc, nil)
 
 	c, w := newKnowledgeMultipartCtx("doc.txt", "hello", map[string]string{
 		"title":      "Sized Doc",
@@ -411,5 +407,196 @@ func TestSearch_NoResults(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ── UploadDoc SPEC-081 limits ──
+
+func TestUploadDoc_TitleXSSRejected(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	// Title contains an XSS payload → rejected before any service call.
+	c, w := newKnowledgeMultipartCtx("a.txt", "content", map[string]string{
+		"title":     "<script>alert(1)</script>",
+		"file_name": "a.txt",
+	})
+	c.Set("user_id", "user-1")
+	h.UploadDoc(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	svc.AssertNotCalled(t, "CreateFromText", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUploadDoc_TitleTruncated(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	longTitle := strings.Repeat("长", 250) // 250 runes
+	truncated := strings.Repeat("长", knowledge.MaxKBTitleRunes)
+
+	mockDoc := &knowledge.KnowledgeDoc{ID: "kbdoc_t", UserID: "user-1", Title: truncated}
+	// The truncated title must be what reaches the service (SPEC-081 §5.3).
+	svc.On("CreateFromText", mock.Anything, "user-1", truncated, "a.txt", "content").Return(mockDoc, nil)
+
+	c, w := newKnowledgeMultipartCtx("a.txt", "content", map[string]string{
+		"title":     longTitle,
+		"file_name": "a.txt",
+	})
+	c.Set("user_id", "user-1")
+	h.UploadDoc(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUploadDoc_TextTooLarge(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	big := strings.Repeat("a", knowledge.MaxKBTextBytes+1)
+	c, w := newKnowledgeMultipartCtx("big.txt", big, map[string]string{
+		"title":     "Big",
+		"file_name": "big.txt",
+	})
+	c.Set("user_id", "user-1")
+	h.UploadDoc(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	svc.AssertNotCalled(t, "CreateFromText", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUploadDoc_ImageSuccess(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	imgData := []byte("fake-image-bytes")
+	mockDoc := &knowledge.KnowledgeDoc{ID: "kbdoc_img", UserID: "user-1", Title: "Pic", FileType: knowledge.FileTypeImage}
+
+	svc.On("CreateFromImage", mock.Anything, "user-1", "Pic", "pic.png", imgData, "image/png").Return(mockDoc, nil)
+
+	b64 := base64.StdEncoding.EncodeToString(imgData)
+	c, w := newKnowledgeMultipartCtx("", "", map[string]string{
+		"title":       "Pic",
+		"file_name":   "pic.png",
+		"file_type":   "image",
+		"file_base64": b64,
+		"mime_type":   "image/png",
+	})
+	c.Set("user_id", "user-1")
+	h.UploadDoc(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUploadDoc_ImageTooLarge(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	big := make([]byte, knowledge.MaxKBImageBytes+1)
+	b64 := base64.StdEncoding.EncodeToString(big)
+
+	c, w := newKnowledgeMultipartCtx("", "", map[string]string{
+		"title":       "BigImg",
+		"file_name":   "big.png",
+		"file_type":   "image",
+		"file_base64": b64,
+		"mime_type":   "image/png",
+	})
+	c.Set("user_id", "user-1")
+	h.UploadDoc(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	svc.AssertNotCalled(t, "CreateFromImage", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// ── ImportURL (SPEC-081) ──
+
+func TestImportURL_Success(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	result := &knowledgesvc.ImportURLResult{
+		DocIDs:      []string{"kbdoc_text", "kbdoc_img"},
+		TextDocID:   "kbdoc_text",
+		ImageDocIDs: []string{"kbdoc_img"},
+		TextBytes:   123,
+	}
+	svc.On("ImportURL", mock.Anything, "user-1", "https://example.com/a").Return(result, nil)
+
+	c, w := newGinContext("POST", "/knowledge/import-url", `{"url":"https://example.com/a"}`)
+	c.Set("user_id", "user-1")
+	h.ImportURL(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "kbdoc_text") {
+		t.Errorf("body should contain doc id: %s", w.Body.String())
+	}
+}
+
+func TestImportURL_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"invalid url", webimport.ErrInvalidURL, http.StatusBadRequest},
+		{"ssrf blocked", webimport.ErrSSRFBlocked, http.StatusForbidden},
+		{"no content", webimport.ErrNoContent, http.StatusUnprocessableEntity},
+		{"render failed", webimport.ErrRenderFailed, http.StatusBadGateway},
+		{"render unavailable", webimport.ErrRenderUnavailable, http.StatusServiceUnavailable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := mocksvc.NewKnowledgeService(t)
+			h := NewKnowledgeHandler(svc)
+			svc.On("ImportURL", mock.Anything, "user-1", "https://example.com/a").Return(nil, tc.err)
+
+			c, w := newGinContext("POST", "/knowledge/import-url", `{"url":"https://example.com/a"}`)
+			c.Set("user_id", "user-1")
+			h.ImportURL(c)
+
+			if w.Code != tc.want {
+				t.Fatalf("expected %d, got %d: %s", tc.want, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestImportURL_InternalError(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+	svc.On("ImportURL", mock.Anything, "user-1", "https://example.com/a").Return(nil, fmt.Errorf("unexpected"))
+
+	c, w := newGinContext("POST", "/knowledge/import-url", `{"url":"https://example.com/a"}`)
+	c.Set("user_id", "user-1")
+	h.ImportURL(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestImportURL_BadJSON(t *testing.T) {
+	svc := mocksvc.NewKnowledgeService(t)
+	h := NewKnowledgeHandler(svc)
+
+	c, w := newGinContext("POST", "/knowledge/import-url", `not-json`)
+	c.Set("user_id", "user-1")
+	h.ImportURL(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
