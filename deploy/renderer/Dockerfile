@@ -1,12 +1,13 @@
 # data-agent KB URL import render sidecar (SPEC-081).
-# Apache-2.0 Playwright base image (open-source Chromium, BSD-3-Clause) —
-# replaces the SSPL-licensed browserless/chrome image.
-FROM mcr.microsoft.com/playwright:v1.63.0-noble
+# Apache-2.0 base image (zenika/alpine-chrome = Alpine + Chromium BSD-3-Clause
+# + Node.js) — replaces the SSPL-licensed browserless/chrome image.
+#
+# The base image already ships a working Chromium + Node.js, so we only add our
+# tiny HTTP wrapper. Interface is POST /content[?token=] returning the
+# JS-rendered page HTML via `chromium-browser --headless --dump-dom`.
+FROM zenika/alpine-chrome:with-node
 
 WORKDIR /app
-
-COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
 
 COPY server.js ./
 

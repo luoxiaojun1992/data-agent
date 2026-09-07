@@ -1,11 +1,12 @@
 'use strict';
 
 // data-agent KB URL import render sidecar (SPEC-081).
-// Apache-2.0 (Playwright + open-source Chromium) — replaces the SSPL-licensed
-// browserless/chrome image.
+// Apache-2.0 (zenika/alpine-chrome = Alpine + Chromium BSD-3-Clause) — replaces
+// the SSPL-licensed browserless/chrome image.
 //
 // Interface-compatible with the Go BrowserlessRenderer: POST /content[?token=]
-// with a JSON body {"url": "..."} returns the JS-rendered page HTML.
+// with a JSON body {"url": "..."} returns the JS-rendered page HTML via
+// `chromium-browser --headless --dump-dom <url>`.
 //
 // SSRF primary defense lives in the Go backend (webimport.validateURL resolves
 // the host and rejects loopback/private/link-local/unspecified/multicast before
@@ -13,22 +14,12 @@
 // second line of defense and is not exposed on any host port.
 
 const http = require('http');
-const { chromium } = require('playwright');
+const { execFile } = require('child_process');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const TOKEN = process.env.RENDERER_TOKEN || '';
 const RENDER_TIMEOUT_MS = parseInt(process.env.RENDER_TIMEOUT_MS || '30000', 10);
-
-let browserPromise = null;
-function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-  }
-  return browserPromise;
-}
+const MAX_HTML_BYTES = 16 * 1024 * 1024; // 16 MB — matches Go render budget
 
 function readBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
@@ -51,6 +42,33 @@ function readBody(req, maxBytes) {
 function json(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
+}
+
+// Render a URL to its JS-executed DOM and return the serialized HTML.
+function renderDOM(url) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '--headless',
+      '--no-sandbox',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--disable-dev-shm-usage',
+      '--dump-dom',
+      url,
+    ];
+    execFile(
+      'chromium-browser',
+      args,
+      { timeout: RENDER_TIMEOUT_MS, maxBuffer: MAX_HTML_BYTES },
+      (err, stdout) => {
+        if (err) {
+          reject(new Error((err && err.message) || String(err)));
+          return;
+        }
+        resolve(stdout);
+      }
+    );
+  });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -79,16 +97,9 @@ const server = http.createServer(async (req, res) => {
       return json(res, 400, { error: 'only http/https allowed' });
     }
 
-    const browser = await getBrowser();
-    const page = await browser.newPage();
-    try {
-      await page.goto(target, { waitUntil: 'networkidle', timeout: RENDER_TIMEOUT_MS });
-      const html = await page.content();
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(html);
-    } finally {
-      await page.close().catch(() => {});
-    }
+    const html = await renderDOM(target);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
   } catch (e) {
     json(res, 502, { error: String((e && e.message) || e) });
   }

@@ -195,7 +195,6 @@ services:
     environment:
       - RENDERER_TOKEN=data-agent-dev-token
       - RENDER_TIMEOUT_MS=30000
-    init: true
     restart: unless-stopped
 
   data-agent:
