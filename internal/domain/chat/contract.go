@@ -19,6 +19,18 @@ type ImagePart struct {
 	MimeType string `json:"mime_type"`
 }
 
+// PdfAttachment carries a PDF attachment's filename and its parsed text
+// (SPEC-077). Name is used by the frontend to render a 📄 card; Text holds the
+// parsed text that the service prepends to the user prompt (never rendered).
+type PdfAttachment struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+// MaxChatTextBytes is the merged text limit (user prompt + PDF parsed text,
+// UTF-8 bytes) — the single source of truth for chat text size (SPEC-077 §4.3).
+const MaxChatTextBytes = 100 * 1024
+
 // Message represents a single chat message in a request payload.
 type Message struct {
 	Role    string      `json:"role"`
@@ -55,8 +67,12 @@ type ChatRequest struct {
 	// Images carries image attachments alongside the legacy single Message
 	// field. Each entry is a base64-encoded image (see ImagePart).
 	Images []ImagePart `json:"images,omitempty"`
-	Stream    bool      `json:"stream"`
-	KBID      string    `json:"kb_id,omitempty"`
+	// Pdfs carries PDF attachments (SPEC-077): parsed text prepended to the
+	// user prompt, name used only for frontend rendering. Backward compatible —
+	// empty means no PDF attachments and behavior is unchanged.
+	Pdfs   []PdfAttachment `json:"pdfs,omitempty"`
+	Stream bool            `json:"stream"`
+	KBID   string          `json:"kb_id,omitempty"`
 }
 
 // ChatResponse is the domain-level non-streaming chat response DTO.

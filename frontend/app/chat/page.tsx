@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
-import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, type Attachment } from '@/lib/attachment';
+import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_CHAT_TEXT_BYTES, type Attachment, type PdfAttachment } from '@/lib/attachment';
+import { parsePdf } from '@/lib/pdf';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
@@ -24,6 +25,7 @@ interface Message {
   toolCall?: { name: string; input: string; output: string };
   table?: { headers: string[]; rows: string[][] };
   images?: string[]; // image data URLs attached to this message
+  pdfs?: { name: string }[]; // PDF attachments (name only; parsed text never rendered)
   hidden?: boolean; // internal hint (SPEC-080) — not rendered
 }
 
@@ -42,17 +44,39 @@ type WireChatEvent = {
   choices?: { delta?: { content?: string } }[];
 };
 
+// 剥离后端前置的 PDF 标签块（[PDF:name]…[/PDF:name]），返回干净文本 + PDF 文件名
+// （SPEC-077 §5.3）。仅用于 user 文本事件的渲染；解析文字绝不展示给用户。
+function stripPdfBlocks(content: string): { text: string; pdfs: { name: string }[] } {
+  const re = /\[PDF:([^\]]+)\][\s\S]*?\[\/PDF:[^\]]+\]/g;
+  const pdfs: { name: string }[] = [];
+  const text = content.replace(re, (_full, name: string) => {
+    pdfs.push({ name });
+    return '';
+  });
+  return { text: text.trim(), pdfs };
+}
+
 function normalizeChatMessage(raw: WireChatEvent): Message {
   const result = raw.result !== undefined ? raw.result : raw.response;
+  const role = raw.role === 'user' ? 'user' : raw.role === 'system' ? 'system' : 'assistant';
+  let content = raw.content || '';
+  let pdfs: { name: string }[] = [];
+  // 历史/流式 user 文本可能含后端前置的 PDF 标签块，剥离并提取文件名。
+  if (role === 'user' && raw.type !== 'tool_call' && raw.type !== 'tool_result') {
+    const stripped = stripPdfBlocks(content);
+    content = stripped.text;
+    pdfs = stripped.pdfs;
+  }
   return {
-    role: raw.role === 'user' ? 'user' : raw.role === 'system' ? 'system' : 'assistant',
-    content: raw.content || '',
+    role,
+    content,
     type: raw.type || 'text',
     eventId: raw.event_id,
     name: raw.name,
     args: raw.args,
     result,
     images: raw.images || [],
+    pdfs,
     hidden: raw.hidden === true,
     timestamp: new Date(raw.timestamp || Date.now()),
   };
@@ -147,6 +171,7 @@ export default function ChatPage() {
   const [debouncedSessionSearch, setDebouncedSessionSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
   const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
+  const [pdfs, setPdfs] = useState<PdfAttachment[]>([]); // PDF attachments (name + parsed text)
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [attachError, setAttachError] = useState('');
   // SPEC-089: human-in-the-loop prompt (confirm/ask) from the human-channel SSE.
@@ -379,11 +404,15 @@ export default function ChatPage() {
     setEnhancing(false);
   };
 
-  // Add image attachments from a FileList, enforcing the 5-image / 2MiB limits.
+  // Add image + PDF attachments from a FileList, enforcing the 5-image / 2MiB
+  // limits and the 20MiB PDF size limit (SPEC-077).
   const addAttachments = async (files: File[]) => {
     const images = files.filter((f) => f.type.startsWith('image/'));
-    if (images.length === 0) return;
-    if (attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
+    const pdfFiles = files.filter(
+      (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
+    );
+
+    if (images.length > 0 && attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
       setAttachError(`最多 ${MAX_ATTACHMENT_IMAGES} 张图片`);
       setTimeout(() => setAttachError(''), 3000);
       return;
@@ -399,6 +428,32 @@ export default function ChatPage() {
         setAttachments((prev) => (prev.length >= MAX_ATTACHMENT_IMAGES ? prev : [...prev, att]));
       } catch {
         setAttachError('读取图片失败');
+        setTimeout(() => setAttachError(''), 3000);
+      }
+    }
+
+    // PDF 附件：解析文字存 pdfs（发送时前置），解析图走图片附件（合并计数 ≤5）。
+    for (const f of pdfFiles) {
+      if (f.size > MAX_PDF_BYTES) {
+        setAttachError(`PDF ${f.name} 超过 20MB 限制`);
+        setTimeout(() => setAttachError(''), 3000);
+        continue;
+      }
+      try {
+        const { text, images: pdfImages } = await parsePdf(f);
+        setPdfs((prev) => [...prev, { name: f.name, text }]);
+        for (const img of pdfImages) {
+          const base64 = img.dataUrl.split(',')[1] || '';
+          // base64 解码字节数近似（×3/4，忽略 padding），超 2MiB 丢弃。
+          if (Math.floor((base64.length * 3) / 4) > MAX_ATTACHMENT_IMAGE_BYTES) continue;
+          setAttachments((prev) =>
+            prev.length >= MAX_ATTACHMENT_IMAGES
+              ? prev
+              : [...prev, { name: f.name, mimeType: img.mimeType, base64, dataUrl: img.dataUrl }],
+          );
+        }
+      } catch {
+        setAttachError(`解析 PDF ${f.name} 失败`);
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -423,20 +478,38 @@ export default function ChatPage() {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removePdf = (index: number) => {
+    setPdfs((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const sendMessage = async () => {
     const hasInput = !!input.trim();
-    if ((!hasInput && attachments.length === 0) || streaming) return;
+    if ((!hasInput && attachments.length === 0 && pdfs.length === 0) || streaming) return;
+
+    // 文字合并校验（用户提示词 + PDF 解析文字）100KB，UTF-8 字节（SPEC-077 §4.3）。
+    const enc = new TextEncoder();
+    const textBytes = enc.encode(input).length;
+    const pdfBytes = pdfs.reduce((sum, p) => sum + enc.encode(p.text).length, 0);
+    if (textBytes + pdfBytes > MAX_CHAT_TEXT_BYTES) {
+      setAttachError('消息文字超过 100KB 上限');
+      setTimeout(() => setAttachError(''), 3000);
+      return;
+    }
+
     const sendImages = attachments.map((a) => ({ data: a.base64, mime_type: a.mimeType }));
+    const sendPdfs = pdfs.map((p) => ({ name: p.name, text: p.text }));
     const userMsg: Message = {
       role: 'user',
       content: input,
       type: 'text',
       timestamp: new Date(),
       images: attachments.map((a) => a.dataUrl),
+      pdfs: pdfs.map((p) => ({ name: p.name })),
     };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setAttachments([]);
+    setPdfs([]);
     setAttachError('');
     setStreaming(true);
     pendingEventsRef.current = [];
@@ -474,7 +547,7 @@ export default function ChatPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel, images: sendImages }),
+        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel, images: sendImages, pdfs: sendPdfs }),
       });
       if (!res.ok) throw new Error('Chat request failed');
       const reader = res.body?.getReader();
@@ -643,6 +716,20 @@ export default function ChatPage() {
                     <ChatContent content={msg.content} copyMsg={copyMsg} setCopyMsg={setCopyMsg} />
                   ) : (
                     <>
+                      {msg.pdfs && msg.pdfs.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {msg.pdfs.map((pdf, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/20 bg-white/10"
+                              data-testid={`chat-msg-pdf-${i}-${idx}`}
+                            >
+                              <span className="text-sm leading-none">📄</span>
+                              <span className="text-xs max-w-[160px] truncate" title={pdf.name}>{pdf.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {msg.images && msg.images.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {msg.images.map((src, idx) => (
@@ -714,7 +801,7 @@ export default function ChatPage() {
               <input
                 ref={attachmentInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf,.pdf"
                 multiple
                 style={{ display: 'none' }}
                 data-testid="chat-attach-input"
@@ -723,7 +810,7 @@ export default function ChatPage() {
               <button
                 onClick={handleAttachClick}
                 disabled={streaming || attachments.length >= MAX_ATTACHMENT_IMAGES}
-                title={attachments.length >= MAX_ATTACHMENT_IMAGES ? `最多 ${MAX_ATTACHMENT_IMAGES} 张图片` : '添加图片（最多 5 张，可粘贴）'}
+                title={attachments.length >= MAX_ATTACHMENT_IMAGES ? `最多 ${MAX_ATTACHMENT_IMAGES} 张图片` : '添加附件（图片 / PDF）'}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-attach-btn"
               >📎 附件</button>
@@ -760,6 +847,31 @@ export default function ChatPage() {
                 ))}
               </div>
             )}
+
+            {/* PDF attachments preview (name only, parsed text never rendered) */}
+            {pdfs.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2" data-testid="chat-pdf-attachments">
+                {pdfs.map((pdf, idx) => (
+                  <div
+                    key={idx}
+                    className="relative flex items-center gap-2 pl-3 pr-8 py-2 rounded-lg border border-white/20 bg-black/20"
+                    data-testid={`chat-pdf-attachment-${idx}`}
+                  >
+                    <span className="text-lg leading-none">📄</span>
+                    <span
+                      className="text-xs text-[var(--text-primary)] max-w-[160px] truncate"
+                      title={pdf.name}
+                    >{pdf.name}</span>
+                    <button
+                      onClick={() => removePdf(idx)}
+                      title="移除 PDF"
+                      data-testid={`chat-pdf-attachment-remove-${idx}`}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
             {attachError && (
               <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-attach-error">{attachError}</p>
             )}
@@ -768,7 +880,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入你的数据分析需求...（支持粘贴图片，最多 5 张）"
+                placeholder="输入你的数据分析需求...（支持图片 / PDF 附件）"
                 rows={2}
                 className="flex-1 px-4 py-3 rounded-xl bg-transparent border-0 text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none"
                 data-testid="chat-input"

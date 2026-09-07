@@ -27,4 +27,10 @@ var (
 	// ErrInvalidImage indicates an image failed base64 decoding or has an
 	// unsupported MIME type.
 	ErrInvalidImage = errors.New("invalid image data or unsupported image type")
+	// ErrChatTextTooLarge indicates the merged text (user prompt + PDF parsed
+	// text) exceeds MaxChatTextBytes (SPEC-077 §4.3).
+	ErrChatTextTooLarge = errors.New("message text exceeds 100KB limit")
+	// ErrChatTextXSS indicates the user prompt contains an XSS payload. PDF
+	// parsed text is deliberately excluded from this check (SPEC-077 §4.4).
+	ErrChatTextXSS = errors.New("message contains illegal content")
 )

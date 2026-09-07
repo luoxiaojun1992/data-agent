@@ -79,12 +79,26 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 	}
 
 	lastText, images := lastUserMessage(messages)
-	if strings.TrimSpace(lastText) == "" && len(images) == 0 {
+	pdfs := req.Pdfs
+	if strings.TrimSpace(lastText) == "" && len(images) == 0 && !hasPDFText(pdfs) {
 		err = domainchat.ErrUserMessageRequired
 		return
 	}
 
-	content, err = buildUserContent(lastText, images)
+	// XSS 校验仅针对用户手动输入的提示词；PDF 解析文字是文档内容，排除在外
+	// （SPEC-077 §4.4 红线）。
+	if xssErr := security.ValidateXSS(lastText); xssErr != nil {
+		err = domainchat.ErrChatTextXSS
+		return
+	}
+
+	// 文字合并（用户提示词 + PDF 解析文字）100KB 上限（SPEC-077 §4.3）。
+	if sizeErr := validateChatTextSize(lastText, pdfs); sizeErr != nil {
+		err = sizeErr
+		return
+	}
+
+	content, err = buildUserContent(lastText, images, pdfs)
 	if err != nil {
 		return
 	}
@@ -211,21 +225,62 @@ func normalizeMessages(req domainchat.ChatRequest) []domainchat.Message {
 }
 
 // buildUserContent validates the image attachments and assembles the genai
-// user content: one text part (when non-empty) followed by one InlineData part
-// per image.
-func buildUserContent(text string, images []domainchat.ImagePart) (*genai.Content, error) {
+// user content: PDF parsed-text parts (when non-empty, wrapped in [PDF:…] tags)
+// first, then the user text part (when non-empty), then one InlineData part
+// per image (SPEC-077).
+func buildUserContent(text string, images []domainchat.ImagePart, pdfs []domainchat.PdfAttachment) (*genai.Content, error) {
 	decoded, err := domainchat.ValidateImages(images)
 	if err != nil {
 		return nil, err
 	}
 	parts := make([]*genai.Part, 0, len(decoded)+1)
-	if strings.TrimSpace(text) != "" {
-		parts = append(parts, genai.NewPartFromText(text))
+	// PDF 解析文字前置（特殊标签包裹）+ 用户输入合并为单个 text part，保证
+	// 一个 user 消息只有一个 text event（SPEC-077 §5.2「或合并为一个 part」）。
+	var sb strings.Builder
+	for _, pdf := range pdfs {
+		if strings.TrimSpace(pdf.Text) == "" {
+			continue
+		}
+		sb.WriteString(formatPDFText(pdf))
+	}
+	sb.WriteString(text)
+	if combined := sb.String(); strings.TrimSpace(combined) != "" {
+		parts = append(parts, genai.NewPartFromText(combined))
 	}
 	for i, img := range decoded {
 		parts = append(parts, genai.NewPartFromBytes(img, images[i].MimeType))
 	}
 	return &genai.Content{Role: "user", Parts: parts}, nil
+}
+
+// formatPDFText wraps a PDF's parsed text in the [PDF:name]…[/PDF:name] tag
+// protocol (SPEC-077 §5.3) so the frontend can strip it from history rendering
+// while the LLM still receives the text.
+func formatPDFText(pdf domainchat.PdfAttachment) string {
+	return fmt.Sprintf("[PDF:%s]\n%s\n[/PDF:%s]", pdf.Name, pdf.Text, pdf.Name)
+}
+
+// hasPDFText reports whether any PDF carries non-empty parsed text.
+func hasPDFText(pdfs []domainchat.PdfAttachment) bool {
+	for _, p := range pdfs {
+		if strings.TrimSpace(p.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// validateChatTextSize enforces the merged text limit (user prompt + PDF parsed
+// text, UTF-8 bytes) — SPEC-077 §4.3.
+func validateChatTextSize(text string, pdfs []domainchat.PdfAttachment) error {
+	total := len(text)
+	for _, p := range pdfs {
+		total += len(p.Text)
+	}
+	if total > domainchat.MaxChatTextBytes {
+		return domainchat.ErrChatTextTooLarge
+	}
+	return nil
 }
 
 // resolveSession validates or creates the session and returns (sessionID,

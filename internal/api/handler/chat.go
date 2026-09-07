@@ -68,7 +68,9 @@ func chatErrorStatus(err error) int {
 		errors.Is(err, domainchat.ErrUserMessageRequired),
 		errors.Is(err, domainchat.ErrTooManyImages),
 		errors.Is(err, domainchat.ErrImageTooLarge),
-		errors.Is(err, domainchat.ErrInvalidImage):
+		errors.Is(err, domainchat.ErrInvalidImage),
+		errors.Is(err, domainchat.ErrChatTextTooLarge),
+		errors.Is(err, domainchat.ErrChatTextXSS):
 		return http.StatusBadRequest
 	case errors.Is(err, domainchat.ErrUnauthorizedSession):
 		return http.StatusUnauthorized
