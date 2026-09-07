@@ -185,10 +185,10 @@ services:
 
   # SPEC-081: headless chrome sidecar for KB URL import (JS rendering).
   # Optional — when down, import-url returns 503 but other KB features work.
+  # No host port mapping: it is only reached by data-agent over the compose
+  # network (HEADLESS_CHROME_URL=http://headless-chrome:3000).
   headless-chrome:
     image: browserless/chrome:latest
-    ports:
-      - "3000:3000"
     environment:
       - TOKEN=data-agent-dev-token
       - CONCURRENT=5
