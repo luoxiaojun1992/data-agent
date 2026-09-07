@@ -143,6 +143,36 @@ func TestCreateTask_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateTask_XSSTitle(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	body := `{"title":"<script>alert(1)</script>","description":"ok"}`
+	c, w := newGinContext("POST", "/tasks", body)
+	c.Set("user_id", "user-1")
+	h.CreateTask(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestCreateTask_XSSDescription(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	body := `{"title":"ok","description":"javascript:alert(1)"}`
+	c, w := newGinContext("POST", "/tasks", body)
+	c.Set("user_id", "user-1")
+	h.CreateTask(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func TestCreateTask_ServiceError(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)

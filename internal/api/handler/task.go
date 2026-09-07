@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
@@ -44,6 +45,18 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	}
 	if err := validateRequestImages(req.Images); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// XSS guard on user-supplied plain-text fields (SPEC-077/081 §4.4, applied
+	// to task title/description for parity with chat prompt + KB title). Title is
+	// a display label; description feeds the agent prompt. Block, never mutate.
+	if err := security.ValidateXSS(req.Title); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "标题包含非法内容"})
+		return
+	}
+	if err := security.ValidateXSS(req.Description); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "描述包含非法内容"})
 		return
 	}
 
