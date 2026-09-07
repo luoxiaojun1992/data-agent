@@ -183,17 +183,19 @@ services:
       retries: 10
       start_period: 15s
 
-  # SPEC-081: headless chrome sidecar for KB URL import (JS rendering).
+  # SPEC-081: headless render sidecar for KB URL import (JS rendering).
   # Optional — when down, import-url returns 503 but other KB features work.
-  # No host port mapping: it is only reached by data-agent over the compose
-  # network (HEADLESS_CHROME_URL=http://headless-chrome:3000).
-  headless-chrome:
-    image: browserless/chrome:latest
+  # Self-built Apache-2.0 Playwright renderer (open-source Chromium) — replaces
+  # the SSPL-licensed browserless/chrome. No host port mapping: it is only
+  # reached by data-agent over the compose network.
+  renderer:
+    build:
+      context: ./deploy/renderer
+      dockerfile: Dockerfile
     environment:
-      - TOKEN=data-agent-dev-token
-      - CONCURRENT=5
-      - TIMEOUT=30000
-      - MAX_MEMORY_PERCENT=80
+      - RENDERER_TOKEN=data-agent-dev-token
+      - RENDER_TIMEOUT_MS=30000
+    init: true
     restart: unless-stopped
 
   data-agent:
@@ -225,7 +227,7 @@ services:
       - ARCADE_USERNAME=root
       - ARCADE_PASSWORD=arcadedb-root-pw
       - ARCADE_DATABASE=kbgraph
-      - HEADLESS_CHROME_URL=http://headless-chrome:3000
+      - HEADLESS_CHROME_URL=http://renderer:3000
       - HEADLESS_CHROME_TOKEN=data-agent-dev-token
     depends_on:
       mongodb:

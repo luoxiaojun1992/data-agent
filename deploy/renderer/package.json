@@ -1,0 +1,10 @@
+{
+  "name": "data-agent-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Apache-2.0 headless render sidecar (Playwright + open-source Chromium) for KB URL import",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}
