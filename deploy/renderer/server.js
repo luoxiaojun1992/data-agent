@@ -4,7 +4,7 @@
 // Apache-2.0 (zenika/alpine-chrome = Alpine + Chromium BSD-3-Clause) — replaces
 // the SSPL-licensed browserless/chrome image.
 //
-// Interface-compatible with the Go BrowserlessRenderer: POST /content[?token=]
+// Interface-compatible with the Go HTTPRenderer: POST /content[?token=]
 // with a JSON body {"url": "..."} returns the JS-rendered page HTML via
 // `chromium-browser --headless --dump-dom <url>`.
 //

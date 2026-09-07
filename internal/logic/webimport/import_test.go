@@ -132,10 +132,10 @@ func TestImport_ImageCountLimit(t *testing.T) {
 	}
 }
 
-// TestBrowserlessRenderer_TokenInQuery guards the auth method: browserless/chrome
-// v2 authenticates via `?token=` query param, NOT an Authorization header. A
+// TestHTTPRenderer_TokenInQuery guards the auth method: the render sidecar
+// authenticates via `?token=` query param, NOT an Authorization header. A
 // regression here would make every production URL import return 502.
-func TestBrowserlessRenderer_TokenInQuery(t *testing.T) {
+func TestHTTPRenderer_TokenInQuery(t *testing.T) {
 	var gotURL, gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
@@ -145,7 +145,7 @@ func TestBrowserlessRenderer_TokenInQuery(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	renderer := NewBrowserlessRenderer(srv.URL, "secret-token")
+	renderer := NewHTTPRenderer(srv.URL, "secret-token")
 	html, err := renderer.Render(context.Background(), "https://example.com")
 	if err != nil {
 		t.Fatalf("Render error: %v", err)
@@ -157,13 +157,13 @@ func TestBrowserlessRenderer_TokenInQuery(t *testing.T) {
 		t.Errorf("request URL %q, want token=secret-token query param", gotURL)
 	}
 	if gotAuth != "" {
-		t.Errorf("Authorization header = %q, want empty (browserless rejects it)", gotAuth)
+		t.Errorf("Authorization header = %q, want empty (sidecar rejects it)", gotAuth)
 	}
 }
 
-// TestBrowserlessRenderer_NoTokenOmitsParam ensures an empty token sends no
+// TestHTTPRenderer_NoTokenOmitsParam ensures an empty token sends no
 // token query param at all (no trailing "token=").
-func TestBrowserlessRenderer_NoTokenOmitsParam(t *testing.T) {
+func TestHTTPRenderer_NoTokenOmitsParam(t *testing.T) {
 	var gotURL string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
@@ -172,7 +172,7 @@ func TestBrowserlessRenderer_NoTokenOmitsParam(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	renderer := NewBrowserlessRenderer(srv.URL, "")
+	renderer := NewHTTPRenderer(srv.URL, "")
 	if _, err := renderer.Render(context.Background(), "https://example.com"); err != nil {
 		t.Fatalf("Render error: %v", err)
 	}

@@ -6,18 +6,6 @@ import (
 	"testing"
 )
 
-func TestExtractTitle(t *testing.T) {
-	if got := extractTitle(`<html><head><title>My Page</title></head></html>`); got != "My Page" {
-		t.Errorf("extractTitle = %q, want %q", got, "My Page")
-	}
-	if got := extractTitle(`<html><body>no title</body></html>`); got != "" {
-		t.Errorf("extractTitle = %q, want empty", got)
-	}
-	if got := extractTitle(`<title>  padded  </title>`); got != "padded" {
-		t.Errorf("extractTitle = %q, want trimmed", got)
-	}
-}
-
 func TestExtractText(t *testing.T) {
 	cases := []struct {
 		name string

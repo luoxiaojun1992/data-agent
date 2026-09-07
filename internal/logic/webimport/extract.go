@@ -9,7 +9,6 @@ import (
 // Precompiled extractors (package-level for reuse across calls).
 var (
 	imgTagRe   = regexp.MustCompile(`(?is)<img\b[^>]*>`)
-	titleRe    = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	scriptRe   = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
 	styleRe    = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
 	noscriptRe = regexp.MustCompile(`(?is)<noscript[^>]*>.*?</noscript>`)
@@ -21,15 +20,6 @@ var (
 	dataSrcRe = regexp.MustCompile(`(?i)\bdata-src\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))`)
 	srcsetRe  = regexp.MustCompile(`(?i)\bsrcset\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))`)
 )
-
-// extractTitle returns the page <title> (trimmed), or "" when absent.
-func extractTitle(html string) string {
-	m := titleRe.FindStringSubmatch(html)
-	if len(m) > 1 {
-		return strings.TrimSpace(m[1])
-	}
-	return ""
-}
 
 // extractText strips scripts/styles/tags and collapses whitespace into a
 // compact, readable plain-text body, truncated to maxBytes (SPEC-081 §5.2).

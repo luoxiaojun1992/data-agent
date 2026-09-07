@@ -50,7 +50,7 @@ type Importer interface {
 }
 
 // Renderer renders a URL into final (JS-executed) HTML. The production
-// implementation drives a headless-chrome sidecar (browserless/chrome).
+// implementation drives the render sidecar (zenika/alpine-chrome + Chromium).
 type Renderer interface {
 	Render(ctx context.Context, rawURL string) (string, error)
 }
@@ -162,28 +162,28 @@ func (im *importer) downloadImage(ctx context.Context, rawURL string) ([]byte, s
 	return data, mime, nil
 }
 
-// BrowserlessRenderer renders pages via a browserless/chrome sidecar's
-// POST /content endpoint (SPEC-081 §6 option A). The backend carries zero
-// browser dependencies; the ~1GB chrome image lives in a separate container.
-type BrowserlessRenderer struct {
+// HTTPRenderer renders pages by POSTing to a render sidecar's /content
+// endpoint (deploy/renderer: Chromium --headless --dump-dom). The backend
+// carries zero browser dependencies; the browser lives in a separate container.
+type HTTPRenderer struct {
 	baseURL string
 	token   string
 	client  *http.Client
 }
 
-// NewBrowserlessRenderer builds a renderer against the given browserless base
-// URL (e.g. "http://headless-chrome:3000") and optional access token (empty =
-// no auth). The token is passed as a `?token=` query param — browserless/chrome
-// v2 does NOT accept an Authorization header.
-func NewBrowserlessRenderer(baseURL, token string) *BrowserlessRenderer {
-	return &BrowserlessRenderer{
+// NewHTTPRenderer builds a renderer against the given sidecar base URL (e.g.
+// "http://renderer:3000") and optional access token (empty = no auth). The
+// token is passed as a `?token=` query param — the sidecar does NOT accept an
+// Authorization header.
+func NewHTTPRenderer(baseURL, token string) *HTTPRenderer {
+	return &HTTPRenderer{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		client:  &http.Client{Timeout: ImportURLRenderTimeout},
 	}
 }
 
-func (r *BrowserlessRenderer) Render(ctx context.Context, rawURL string) (string, error) {
+func (r *HTTPRenderer) Render(ctx context.Context, rawURL string) (string, error) {
 	payload, _ := json.Marshal(map[string]string{"url": rawURL})
 	endpoint := r.baseURL + "/content"
 	if r.token != "" {

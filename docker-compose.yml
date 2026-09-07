@@ -183,11 +183,11 @@ services:
       retries: 10
       start_period: 15s
 
-  # SPEC-081: headless render sidecar for KB URL import (JS rendering).
+  # SPEC-081: render sidecar for KB URL import (JS rendering).
   # Optional — when down, import-url returns 503 but other KB features work.
-  # Self-built Apache-2.0 Playwright renderer (open-source Chromium) — replaces
-  # the SSPL-licensed browserless/chrome. No host port mapping: it is only
-  # reached by data-agent over the compose network.
+  # Self-built Apache-2.0 renderer (zenika/alpine-chrome = Alpine + Chromium
+  # BSD-3-Clause + Node.js, via chromium --headless --dump-dom). No host port
+  # mapping: it is only reached by data-agent over the compose network.
   renderer:
     build:
       context: ./deploy/renderer
@@ -226,8 +226,8 @@ services:
       - ARCADE_USERNAME=root
       - ARCADE_PASSWORD=arcadedb-root-pw
       - ARCADE_DATABASE=kbgraph
-      - HEADLESS_CHROME_URL=http://renderer:3000
-      - HEADLESS_CHROME_TOKEN=data-agent-dev-token
+      - RENDERER_URL=http://renderer:3000
+      - RENDERER_TOKEN=data-agent-dev-token
     depends_on:
       mongodb:
         condition: service_healthy

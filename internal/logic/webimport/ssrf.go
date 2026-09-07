@@ -1,6 +1,6 @@
 // Package webimport fetches a JS-rendered web page and extracts its readable
 // text and images for KB URL import (SPEC-081). It runs entirely server-side
-// (headless-chrome sidecar) so it is not subject to browser CORS restrictions.
+// (render sidecar) so it is not subject to browser CORS restrictions.
 //
 // Layering: this is a logic package. SSRF validation and HTML extraction are
 // pure functions (L1-testable); the importer orchestrates render + download

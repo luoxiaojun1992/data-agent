@@ -488,12 +488,12 @@ func initKnowledgeBase(deps *serverDependencies, mongoClient *mongoinfra.Client)
 	if deps.graphRepo != nil {
 		deps.kbService.WithGraphIndex(deps.graphRepo)
 	}
-	// SPEC-081: URL import — wire the headless-chrome renderer when configured.
-	// When HEADLESS_CHROME_URL is unset, ImportURL is disabled (returns an
+	// SPEC-081: URL import — wire the render sidecar when configured.
+	// When RENDERER_URL is unset, ImportURL is disabled (returns an
 	// error) but all other KB features are unaffected.
-	if renderURL := getEnvOrDefault("HEADLESS_CHROME_URL", ""); renderURL != "" {
-		renderToken := getEnvOrDefault("HEADLESS_CHROME_TOKEN", "")
-		deps.kbService.WithURLImporter(webimport.NewImporter(webimport.NewBrowserlessRenderer(renderURL, renderToken)))
+	if renderURL := getEnvOrDefault("RENDERER_URL", ""); renderURL != "" {
+		renderToken := getEnvOrDefault("RENDERER_TOKEN", "")
+		deps.kbService.WithURLImporter(webimport.NewImporter(webimport.NewHTTPRenderer(renderURL, renderToken)))
 	}
 	deps.kbHandler = handler.NewKnowledgeHandler(deps.kbService)
 }
