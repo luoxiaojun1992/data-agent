@@ -1,0 +1,36 @@
+name: License Dependency Review
+
+# 用 GitHub 官方 dependency-review-action 检查 PR 中新增/变更依赖的 license。
+# 红线（SPEC-081 合规）：禁止引入 GPL / AGPL / LGPL / SSPL / BUSL 等传染性 license。
+#
+# 说明：
+# - 该 action 依赖 GitHub 的依赖图谱（go.mod / package.json / Dockerfile 等），
+#   只在 pull_request 事件下有效（需要 base/head 对比）。
+# - deny-licenses 已弃用，改用 allow-licenses 白名单 —— 未列入白名单的 license
+#   一律视为不合规（默认拒绝），比黑名单更贴合「禁传染性 license」的红线。
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write # 用于在 PR 中写失败摘要评论
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review (license + vulnerability)
+        uses: actions/dependency-review-action@v5
+        with:
+          # 白名单：仅允许宽松/非传染性 license。
+          # GPL-*/AGPL-*/LGPL-*/SSPL-*/BUSL-* 均不在名单内，会被拒绝。
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, BSD-3-Clause-Clear, 0BSD, ISC, MPL-2.0, EPL-2.0, Unlicense, CC0-1.0, Zlib, BlueOak-1.0.0, BSL-1.0, WTFPL, Python-2.0, Artistic-2.0, PostgreSQL, OFL-1.1, MulanPSL-2.0, Unicode-DFS-2016
+          # 漏洞阈值：high 及以上才失败（本次关注点是 license）。
+          fail-on-severity: high
+          # 失败时在 PR 中写摘要评论（成功时保持安静）。
+          comment-summary-in-pr: on-failure

@@ -1,0 +1,80 @@
+name: License Scan (ScanCode)
+
+# 用开源项目 ScanCode Toolkit（Apache-2.0）扫描整个代码库的 license 声明，
+# 通过 Docker -v 挂载源码目录扫描，检测是否有传染性 license（GPL/AGPL/LGPL/SSPL/BUSL）。
+#
+# 与 dependency-review 的分工：
+# - dependency-review 检查「依赖清单」里引入的第三方包 license（go.mod/package.json）。
+# - ScanCode 扫描「代码文件」里的 license 声明（含 vendored 第三方源码、license 头等）。
+#
+# 注意：ScanCode 官方没有在 Docker Hub 发布预构建镜像（aboutcode/scancode-toolkit 404），
+# 官方 Docker 方式是「git clone 源码 + docker build」。因此这里在 CI 中先 build 镜像，
+# 再用 GitHub Actions cache（type=gha）缓存镜像层，避免每次 PR 都重跑完整 build。
+# 首次 build 约 10-20 分钟（pip install 全量依赖 + license 数据库），缓存命中后 <1 分钟。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scancode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Checkout ScanCode toolkit source
+        run: |
+          git clone --depth 1 https://github.com/aboutcode-org/scancode-toolkit.git /tmp/scancode-toolkit
+
+      - name: Build ScanCode image (GHA cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: /tmp/scancode-toolkit
+          load: true
+          tags: scancode-toolkit:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan (docker -v volume mount)
+        run: |
+          mkdir -p scancode-results
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/project" \
+            scancode-toolkit:latest \
+            --license \
+            --license-score 0 \
+            --processes 2 \
+            --ignore "node_modules/**" \
+            --ignore "vendor/**" \
+            --ignore "vendor_adk_v1.5.0/**" \
+            --ignore ".next/**" \
+            --ignore "frontend/node_modules/**" \
+            --ignore "tests/ui/node_modules/**" \
+            --ignore "tests/ui/artifacts/**" \
+            --ignore "scancode-results/**" \
+            --json-pp /project/scancode-results/scancode.json \
+            /project
+
+      - name: Gate — reject copyleft licenses
+        run: |
+          python3 tests/ci/scancode-gate.py scancode-results/scancode.json
+
+      - name: Upload ScanCode results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scancode-license-results
+          path: scancode-results/
+          retention-days: 7
+          if-no-files-found: warn
