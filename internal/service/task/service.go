@@ -33,9 +33,9 @@ func (s *Service) SetQueueRepo(qr repository.QueueRepository) {
 
 // CreateTask creates a task definition + its first TaskRun, persists both,
 // and enqueues the run. Initializes run_count=1 and last_run_at=now.
-func (s *Service) CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID, scheduleMode, cronExpr string, scheduledAt *time.Time) (*task.Task, *task.TaskRun, error) {
+func (s *Service) CreateTask(userID, taskType string, params map[string]interface{}, modelID, scheduleMode, cronExpr string, scheduledAt *time.Time) (*task.Task, *task.TaskRun, error) {
 	ctx := context.Background()
-	t := task.NewTask(userID, taskType, skillChain, params, modelID)
+	t := task.NewTask(userID, taskType, params, modelID)
 	t.ScheduledEnabled = true
 	isScheduled := taskType == task.TaskTypeScheduledExec && scheduleMode != ""
 	if isScheduled {

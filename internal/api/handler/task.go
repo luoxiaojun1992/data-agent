@@ -31,8 +31,6 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		Title        string                 `json:"title"`
 		Description  string                 `json:"description"`
 		Type         string                 `json:"type"`
-		SkillChain   []string               `json:"skill_chain"`
-		Skills       []string               `json:"skills"`
 		Params       map[string]interface{} `json:"params"`
 		Images       []domainchat.ImagePart `json:"images"`
 		CronExpr     string                 `json:"cron_expr"`
@@ -56,11 +54,6 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	}
 	if taskType == "" {
 		taskType = domaintask.TaskTypeAgentExec
-	}
-
-	skillChain := req.SkillChain
-	if len(skillChain) == 0 {
-		skillChain = req.Skills
 	}
 
 	params := req.Params
@@ -94,7 +87,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		}
 	}
 
-	t, run, err := h.svc.CreateTask(userID.(string), taskType, skillChain, params, req.ModelID, scheduleMode, req.CronExpr, req.ScheduledAt)
+	t, run, err := h.svc.CreateTask(userID.(string), taskType, params, req.ModelID, scheduleMode, req.CronExpr, req.ScheduledAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

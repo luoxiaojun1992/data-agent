@@ -12,7 +12,7 @@ func TestNewTask(t *testing.T) {
 
 	t.Run("basic creation", func(t *testing.T) {
 		params := map[string]interface{}{"title": "分析营收"}
-		tsk := NewTask(userID, taskType, []string{"skill_a", "skill_b"}, params, modelID)
+		tsk := NewTask(userID, taskType, params, modelID)
 
 		if !strings.HasPrefix(tsk.ID, "task_") {
 			t.Errorf("task ID should start with 'task_': got %s", tsk.ID)
@@ -32,38 +32,30 @@ func TestNewTask(t *testing.T) {
 	})
 
 	t.Run("title empty without params", func(t *testing.T) {
-		tsk := NewTask(userID, taskType, nil, nil, "")
+		tsk := NewTask(userID, taskType, nil, "")
 		if tsk.Title != "" {
 			t.Errorf("Title should be empty, got %q", tsk.Title)
 		}
 	})
 
-	t.Run("skill chain stored", func(t *testing.T) {
-		chain := []string{"a", "b", "c"}
-		tsk := NewTask(userID, taskType, chain, nil, "")
-		if len(tsk.SkillChain) != 3 {
-			t.Errorf("SkillChain len: got %d, want 3", len(tsk.SkillChain))
-		}
-	})
-
 	t.Run("params are stored", func(t *testing.T) {
 		params := map[string]interface{}{"key": "value", "num": 42}
-		tsk := NewTask(userID, taskType, nil, params, "")
+		tsk := NewTask(userID, taskType, params, "")
 		if tsk.Params["key"] != "value" {
 			t.Errorf("Params[key]: got %v, want 'value'", tsk.Params["key"])
 		}
 	})
 
 	t.Run("unique IDs per call", func(t *testing.T) {
-		t1 := NewTask(userID, taskType, nil, nil, "")
-		t2 := NewTask(userID, taskType, nil, nil, "")
+		t1 := NewTask(userID, taskType, nil, "")
+		t2 := NewTask(userID, taskType, nil, "")
 		if t1.ID == t2.ID {
 			t.Error("two NewTask calls should produce different IDs")
 		}
 	})
 
 	t.Run("created equals updated", func(t *testing.T) {
-		tsk := NewTask(userID, taskType, nil, nil, "")
+		tsk := NewTask(userID, taskType, nil, "")
 		if !tsk.CreatedAt.Equal(tsk.UpdatedAt) {
 			t.Error("CreatedAt should equal UpdatedAt for new task")
 		}
@@ -71,7 +63,7 @@ func TestNewTask(t *testing.T) {
 }
 
 func TestNewTaskRun(t *testing.T) {
-	parent := NewTask("user-1", "agent_exec", []string{"a", "b"}, map[string]interface{}{"q": 1}, "model_1")
+	parent := NewTask("user-1", "agent_exec", map[string]interface{}{"q": 1}, "model_1")
 
 	t.Run("inherits task identity", func(t *testing.T) {
 		run := NewTaskRun(parent)
@@ -99,18 +91,10 @@ func TestNewTaskRun(t *testing.T) {
 		}
 	})
 
-	t.Run("progress total steps from skill chain", func(t *testing.T) {
+	t.Run("progress total steps is 1", func(t *testing.T) {
 		run := NewTaskRun(parent)
-		if run.Progress.TotalSteps != 2 {
-			t.Errorf("TotalSteps: got %d, want 2", run.Progress.TotalSteps)
-		}
-	})
-
-	t.Run("empty skill chain defaults to 1 step", func(t *testing.T) {
-		p := NewTask("user-1", "agent_exec", nil, nil, "")
-		run := NewTaskRun(p)
 		if run.Progress.TotalSteps != 1 {
-			t.Errorf("TotalSteps with nil chain: got %d, want 1", run.Progress.TotalSteps)
+			t.Errorf("TotalSteps: got %d, want 1", run.Progress.TotalSteps)
 		}
 	})
 

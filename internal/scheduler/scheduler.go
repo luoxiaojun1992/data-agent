@@ -25,7 +25,6 @@ type Schedule struct {
 	ScheduledAt  *time.Time             `json:"-" bson:"-"`
 	Interval     time.Duration          `json:"-" bson:"interval_sec"`
 	Enabled    bool                   `json:"enabled" bson:"enabled"`
-	SkillChain []string               `json:"-" bson:"-"` // informational; stored on Task now
 	Params     map[string]interface{} `json:"-" bson:"-"` // informational; stored on Task now
 	ModelID    string                 `json:"-" bson:"-"`
 	LastRun    *time.Time             `json:"last_run" bson:"last_run"`
@@ -319,7 +318,6 @@ type TaskDef struct {
 	ScheduleMode string
 	CronExpr     string
 	ScheduledAt  *time.Time
-	SkillChain   []string
 	Params       map[string]interface{}
 	ModelID      string
 }
@@ -342,7 +340,6 @@ func (s *Scheduler) LoadFromDB(ctx context.Context, provider ScheduleProvider) (
 				CronExpr:     t.CronExpr,
 				ScheduledAt:  t.ScheduledAt,
 				Enabled:      true,
-				SkillChain:   t.SkillChain,
 				Params:       t.Params,
 				ModelID:      t.ModelID,
 				CreatedAt:    time.Now(),
@@ -415,7 +412,6 @@ func (s *Scheduler) reloadFromDB(ctx context.Context) {
 			CronExpr:     t.CronExpr,
 			ScheduledAt:  t.ScheduledAt,
 			Enabled:      true,
-			SkillChain:   t.SkillChain,
 			Params:       t.Params,
 			ModelID:      t.ModelID,
 		}

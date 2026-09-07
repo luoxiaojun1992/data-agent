@@ -40,7 +40,6 @@ func (s *Stream) Enqueue(ctx context.Context, run *task.TaskRun) error {
 		SessionID:  run.SessionID,
 		UserID:     run.UserID,
 		ModelID:    run.ModelID,
-		SkillChain: run.SkillChain,
 		CreatedAt:  run.CreatedAt.Format(time.RFC3339),
 	})
 	msg := task.QueueMessage{

@@ -44,7 +44,6 @@ type Task struct {
 	Description string                 `json:"description,omitempty"`
 	Type        string                 `json:"type"`   // "agent_exec", "scheduled_exec", "kb_index"
 	ModelID     string                 `json:"model_id"`
-	SkillChain  []string               `json:"skill_chain"`
 	Params      map[string]interface{} `json:"params"`
 	CronExpr         string     `json:"cron_expr,omitempty" bson:"cron_expr,omitempty"`
 	ScheduleMode     string     `json:"schedule_mode,omitempty" bson:"schedule_mode,omitempty"`
@@ -66,7 +65,7 @@ type TaskProgress struct {
 }
 
 // NewTask creates a new task definition with a generated ID.
-func NewTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID string) *Task {
+func NewTask(userID, taskType string, params map[string]interface{}, modelID string) *Task {
 	now := time.Now()
 	title := ""
 	if params != nil {
@@ -75,15 +74,14 @@ func NewTask(userID, taskType string, skillChain []string, params map[string]int
 		}
 	}
 	return &Task{
-		ID:         "task_" + uuid.New().String(),
-		UserID:     userID,
-		Title:      title,
-		Type:       taskType,
-		ModelID:    modelID,
-		SkillChain: skillChain,
-		Params:     params,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:        "task_" + uuid.New().String(),
+		UserID:    userID,
+		Title:     title,
+		Type:      taskType,
+		ModelID:   modelID,
+		Params:    params,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -96,7 +94,6 @@ type TaskRun struct {
 	ModelID     string                 `json:"model_id"`
 	SessionID   string                 `json:"session_id"`
 	Status      Status                 `json:"status"`
-	SkillChain  []string               `json:"skill_chain"`
 	Params      map[string]interface{} `json:"params"`
 	Result      map[string]interface{} `json:"result,omitempty"`
 	Error       string                 `json:"error,omitempty"`
@@ -113,22 +110,17 @@ type TaskRun struct {
 // NewTaskRun creates a new execution run for a task definition.
 func NewTaskRun(task *Task) *TaskRun {
 	now := time.Now()
-	totalSteps := len(task.SkillChain)
-	if totalSteps == 0 {
-		totalSteps = 1
-	}
 	return &TaskRun{
-		ID:         "run_" + uuid.New().String(),
-		TaskID:     task.ID,
-		UserID:     task.UserID,
-		Type:       task.Type,
-		ModelID:    task.ModelID,
-		SkillChain: task.SkillChain,
-		Params:     task.Params,
-		Status:     StatusPending,
+		ID:        "run_" + uuid.New().String(),
+		TaskID:    task.ID,
+		UserID:    task.UserID,
+		Type:      task.Type,
+		ModelID:   task.ModelID,
+		Params:    task.Params,
+		Status:    StatusPending,
 		Progress: TaskProgress{
 			CurrentStep: 0,
-			TotalSteps:  totalSteps,
+			TotalSteps:  1,
 			Message:     "Run created",
 			Percent:     0,
 		},
@@ -144,7 +136,6 @@ type ScheduledTask struct {
 	UserID     string                 `json:"user_id"`
 	Name       string                 `json:"name"`
 	CronExpr   string                 `json:"cron_expr"`
-	SkillChain []string               `json:"skill_chain"`
 	Params     map[string]interface{} `json:"params"`
 	ModelID    string                 `json:"model_id"` // bound model for scheduled runs
 	Status     string                 `json:"status"` // active, paused, deleted
@@ -170,7 +161,6 @@ type AgentTaskPayload struct {
 	SessionID  string   `json:"session_id"`
 	UserID     string   `json:"user_id"`
 	ModelID    string   `json:"model_id"`
-	SkillChain []string `json:"skill_chain"`
 	CreatedAt  string   `json:"created_at"`
 }
 

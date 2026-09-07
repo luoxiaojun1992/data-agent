@@ -52,7 +52,6 @@ func (a *taskRepoAdapter) ListScheduled(ctx context.Context, skip, limit int64, 
 			ScheduleMode: t.ScheduleMode,
 			CronExpr:     t.CronExpr,
 			ScheduledAt:  t.ScheduledAt,
-			SkillChain: t.SkillChain,
 			Params:     t.Params,
 			ModelID:    t.ModelID,
 		}

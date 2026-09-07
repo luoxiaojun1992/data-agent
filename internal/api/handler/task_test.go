@@ -44,9 +44,9 @@ func TestCreateTask_Success(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
 
-	body := `{"title":"agent_exec","session_id":"sess-1","skill_chain":["sql","report"]}`
+	body := `{"title":"agent_exec","session_id":"sess-1"}`
 	c, w := newGinContext("POST", "/tasks", body)
 	c.Set("user_id", "user-1")
 	h.CreateTask(c)
@@ -62,7 +62,7 @@ func TestCreateTask_DefaultType(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_2", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
 
 	// Empty title and type → defaults to "agent_exec"
 	body := `{}`
@@ -81,10 +81,10 @@ func TestCreateTask_FromFrontend(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_3", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
 
-	// Frontend sends "title" and "skills" (not "type" and "skill_chain")
-	body := `{"title":"My Task","skills":["sql","chart"],"description":"Do something"}`
+	// Frontend sends "title" and "description" (legacy "skills"/"skill_chain" ignored)
+	body := `{"title":"My Task","description":"Do something"}`
 	c, w := newGinContext("POST", "/tasks", body)
 	c.Set("user_id", "user-1")
 	h.CreateTask(c)
@@ -100,9 +100,9 @@ func TestCreateTask_WithParams(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_4", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
 
-	body := `{"title":"Task","skill_chain":["sql"],"params":{"key":"value"}}`
+	body := `{"title":"Task","params":{"key":"value"}}`
 	c, w := newGinContext("POST", "/tasks", body)
 	c.Set("user_id", "user-1")
 	h.CreateTask(c)
@@ -118,9 +118,9 @@ func TestCreateTask_WithCronExpr(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_5", Type: "agent_exec"}
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
 
-	body := `{"title":"Scheduled","skill_chain":["sql"],"cron_expr":"0 0 * * *"}`
+	body := `{"title":"Scheduled","cron_expr":"0 0 * * *"}`
 	c, w := newGinContext("POST", "/tasks", body)
 	c.Set("user_id", "user-1")
 	h.CreateTask(c)
@@ -147,7 +147,7 @@ func TestCreateTask_ServiceError(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil, fmt.Errorf("queue full"))
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil, fmt.Errorf("queue full"))
 
 	body := `{"title":"agent_exec"}`
 	c, w := newGinContext("POST", "/tasks", body)
@@ -170,7 +170,7 @@ func TestGetTask_Success(t *testing.T) {
 		UserID: "user-1",
 	}
 
-	svc.On("GetTask", mock.Anything).Return(mockTask, nil)
+	svc.On("GetTask", "task_1", "", false).Return(mockTask, nil)
 
 	c, w := newGinContext("GET", "/tasks/task_1", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -185,7 +185,7 @@ func TestGetTask_NotFound(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
-	svc.On("GetTask", mock.Anything).Return(nil, fmt.Errorf("not found"))
+	svc.On("GetTask", "missing", "", false).Return(nil, fmt.Errorf("not found"))
 
 	c, w := newGinContext("GET", "/tasks/missing", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
@@ -202,7 +202,7 @@ func TestCancelTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
-	svc.On("CancelTask", mock.Anything).Return(nil)
+	svc.On("CancelTask", "task_1", "", false).Return(nil)
 
 	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -220,7 +220,7 @@ func TestCancelTask_Error(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
-	svc.On("CancelTask", mock.Anything).Return(fmt.Errorf("cannot cancel completed"))
+	svc.On("CancelTask", "task_1", "", false).Return(fmt.Errorf("cannot cancel completed"))
 
 	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
@@ -316,7 +316,7 @@ func TestCreateTask_WithImages(t *testing.T) {
 
 	mockTask := &task.Task{ID: "task_img", Type: "agent_exec"}
 	var capturedParams map[string]interface{}
-	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything,
+	svc.On("CreateTask", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(p map[string]interface{}) bool {
 			capturedParams = p
 			return true
@@ -357,7 +357,7 @@ func TestCreateTask_TooManyImages(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "at most 5 images") {
 		t.Fatalf("expected too-many-images error, got: %s", w.Body.String())
 	}
-	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestCreateTask_InvalidImageMime(t *testing.T) {
@@ -372,5 +372,5 @@ func TestCreateTask_InvalidImageMime(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

@@ -168,7 +168,6 @@ export default function AgentPage() {
           type: 'scheduled_exec',
           schedule_mode: 'recurring',
           cron_expr: '0 1 * * *',
-          skill_chain: ['memory_list', 'kb_create_doc'],
           params: {
             message: '你是日常总结助手。请执行：1) 用 memory_list 按创建时间倒序分页读取今天的记忆（offset 从 0 开始，每页 limit=20，翻页直到某页返回的 created_at 早于今天为止）；2) 将今天的记忆归纳为结构化 markdown 总结；3) 用 kb_create_doc 创建文档，title 用「YYYY-MM-DD 日常总结」；4) 用 save_task_result 保存结果。',
           },

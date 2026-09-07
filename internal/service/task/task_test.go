@@ -36,7 +36,7 @@ func TestCreateTask_Success(t *testing.T) {
 	repo.On("UpdateLastRun", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	queue.On("Enqueue", mock.Anything, mock.Anything).Return(nil)
 
-	tsk, run, err := s.CreateTask("u1", "agent", []string{"sql", "stats"},
+	tsk, run, err := s.CreateTask("u1", "agent",
 		map[string]interface{}{"query": "SELECT 1"}, "model_1", "", "", nil)
 	if err != nil {
 		t.Fatalf("CreateTask: %v", err)
@@ -63,7 +63,7 @@ func TestCreateTask_ScheduledCreatesNoRun(t *testing.T) {
 	s, repo, runRepo, _ := newTestService(t)
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 
-	tsk, run, err := s.CreateTask("u1", task.TaskTypeScheduledExec, nil, nil, "",
+	tsk, run, err := s.CreateTask("u1", task.TaskTypeScheduledExec, nil, "",
 		task.ScheduleModeRecurring, "0 0 * * *", nil)
 	if err != nil {
 		t.Fatalf("CreateTask scheduled: %v", err)
@@ -82,7 +82,7 @@ func TestCreateTask_OneTimeScheduledAt(t *testing.T) {
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	at := time.Now().Add(24 * time.Hour)
 
-	tsk, run, err := s.CreateTask("u1", task.TaskTypeScheduledExec, nil, nil, "",
+	tsk, run, err := s.CreateTask("u1", task.TaskTypeScheduledExec, nil, "",
 		task.ScheduleModeOneTime, "", &at)
 	if err != nil {
 		t.Fatalf("CreateTask one-time: %v", err)
@@ -100,7 +100,7 @@ func TestCreateTask_RepoError(t *testing.T) {
 	s, repo, runRepo, _ := newTestService(t)
 	repo.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("db error"))
 
-	tsk, run, err := s.CreateTask("u1", "agent", nil, nil, "", "", "", nil)
+	tsk, run, err := s.CreateTask("u1", "agent", nil, "", "", "", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -115,7 +115,7 @@ func TestCreateTask_RunRepoError(t *testing.T) {
 	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	runRepo.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("run insert failed"))
 
-	_, _, err := s.CreateTask("u1", "agent", nil, nil, "", "", "", nil)
+	_, _, err := s.CreateTask("u1", "agent", nil, "", "", "", nil)
 	if err == nil {
 		t.Fatal("expected run insert error")
 	}
@@ -128,7 +128,7 @@ func TestCreateTask_QueueError_BestEffort(t *testing.T) {
 	repo.On("UpdateLastRun", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	queue.On("Enqueue", mock.Anything, mock.Anything).Return(fmt.Errorf("redis down"))
 
-	tsk, run, err := s.CreateTask("u1", "agent", nil, nil, "", "", "", nil)
+	tsk, run, err := s.CreateTask("u1", "agent", nil, "", "", "", nil)
 	if err != nil {
 		t.Fatalf("CreateTask should be best-effort on queue error: %v", err)
 	}

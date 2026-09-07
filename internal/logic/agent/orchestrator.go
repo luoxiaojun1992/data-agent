@@ -37,7 +37,6 @@ type CreateAgentTaskRequest struct {
 	Model      string                 `json:"model"` // ModelEntry.ID; empty = default
 	Messages   []domainchat.Message   `json:"messages"`
 	Images     []domainchat.ImagePart `json:"images"` // image attachments (base64), max 5
-	SkillChain []string               `json:"skill_chain"`
 	Params     map[string]interface{} `json:"params"`
 }
 
@@ -86,15 +85,11 @@ func (o *Orchestrator) CreateAgentTask(ctx context.Context, userID string, req C
 
 	if o.tasks != nil {
 		taskType := "agent"
-		skillChain := req.SkillChain
-		if skillChain == nil {
-			skillChain = []string{}
-		}
 		// SPEC-063: embed the title + last user message into Params so the
 		// async executor (deriveUserMessage) can recover the user input that
 		// would otherwise be lost at the task boundary.
 		params := enrichTaskParams(req)
-		t, run, err := o.tasks.CreateTask(userID, taskType, skillChain, params, sess.ModelID, "", "", nil)
+		t, run, err := o.tasks.CreateTask(userID, taskType, params, sess.ModelID, "", "", nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task")
 		}

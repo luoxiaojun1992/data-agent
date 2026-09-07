@@ -18,7 +18,7 @@ import "time"
 type TaskService interface {
 	// CreateTask creates a new task definition and a first TaskRun,
 	// enqueuing the run. Returns (taskDef, taskRun, error).
-	CreateTask(userID, taskType string, skillChain []string, params map[string]interface{}, modelID, scheduleMode, cronExpr string, scheduledAt *time.Time) (*Task, *TaskRun, error)
+	CreateTask(userID, taskType string, params map[string]interface{}, modelID, scheduleMode, cronExpr string, scheduledAt *time.Time) (*Task, *TaskRun, error)
 	GetTask(id, userID string, isSystemAdmin bool) (*Task, error)
 	CancelTask(id, userID string, isSystemAdmin bool) error
 	ListTasks(userID string, isSystemAdmin bool, skip, limit int64) ([]*Task, int64, error)
