@@ -133,6 +133,27 @@ func predefinedSkills() []skill.SkillConfig {
 			ConfigJSON:  "{}",
 		},
 		{
+			Name:        "task_create",
+			DisplayName: "任务创建",
+			Description: "创建新的异步任务定义（agent_exec 或 scheduled_exec），归属用户从 session 自动注入，指令写在 params.message",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "task_run_list",
+			DisplayName: "任务运行列表",
+			Description: "按 task_id 列出该任务的运行记录（仅返回 run_id 与是否完成，不含详情），用于轮询任务执行历史",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
+			Name:        "task_run_detail",
+			DisplayName: "任务运行详情",
+			Description: "按 run_id 查看某次运行的详细结果（status/completed/result/error），用于读取任务最终产出或失败原因",
+			Enabled:     true,
+			ConfigJSON:  "{}",
+		},
+		{
 			Name:        "invoke_subagent",
 			DisplayName: "子 Agent 委派",
 			Description: "将子任务委派给独立的子 agent 执行（独立 session、同模型、并行委派支持）；子 agent 的 save_artifact/文件操作透明落到父会话上下文，返回即销毁",

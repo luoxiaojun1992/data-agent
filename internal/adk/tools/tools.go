@@ -55,6 +55,10 @@ type Deps struct {
 	// Tasks backs the save_task_result tool (task-mode runs only).
 	// If nil, save_task_result returns an explanatory error.
 	Tasks domaintask.TaskRunService
+	// TaskDefs backs the task_create tool and task_run_list ownership check
+	// (SPEC-087). If nil, task_create is not registered. In wire it is the same
+	// *task.Service instance as Tasks (it implements both contracts).
+	TaskDefs domaintask.TaskService
 	// SessionSvc resolves session workspace paths.
 	SessionSvc domainchat.SessionService
 	// Artifacts backs the save_artifact tool (create record + upload).
@@ -676,10 +680,194 @@ func saveTaskResult(deps *Deps) functiontool.Func[SaveTaskResultArgs, SaveTaskRe
 				_ = deps.Counter.Incr(tc, metrics.MetricTaskCompleted, time.Now(), 1)
 			}
 		}
-		return SaveTaskResultResult{
-			TaskID:  runID,
-			Status:  status,
-			Message: "task result saved",
+	return SaveTaskResultResult{
+		TaskID:  runID,
+		Status:  status,
+		Message: "task result saved",
+	}, nil
+	}
+}
+
+// isCompleted reports whether a run status counts as "completed".
+// SPEC-087 §5.1: completed == (status == "completed") — success only.
+// failed / cancelled / running / pending / queued / retrying are all false.
+func isCompleted(status domaintask.Status) bool {
+	return status == domaintask.StatusCompleted
+}
+
+// ---- task_create (SPEC-087) ----
+
+// TaskCreateArgs are the arguments for the task_create tool.
+type TaskCreateArgs struct {
+	Title    string                 `json:"title" jsonschema:"Task title (required, non-empty)"`
+	Type     string                 `json:"type,omitempty" jsonschema:"Task type: 'agent_exec' (default) or 'scheduled_exec'"`
+	Params   map[string]interface{} `json:"params,omitempty" jsonschema:"Task parameters; put the LLM instruction in params.message"`
+	CronExpr string                 `json:"cron_expr,omitempty" jsonschema:"Cron expression (only for type=scheduled_exec; non-empty → recurring schedule)"`
+	ModelID  string                 `json:"model_id,omitempty" jsonschema:"Model ID (empty → backend default model)"`
+}
+
+// TaskCreateResult is the task_create tool output.
+type TaskCreateResult struct {
+	TaskID string `json:"task_id"`
+	RunID  string `json:"run_id"`
+	Title  string `json:"title"`
+}
+
+func taskCreate(deps *Deps) functiontool.Func[TaskCreateArgs, TaskCreateResult] {
+	return func(tc agent.ToolContext, args TaskCreateArgs) (TaskCreateResult, error) {
+		if deps.TaskDefs == nil {
+			return TaskCreateResult{}, fmt.Errorf("task_create: task service not configured")
+		}
+		title := strings.TrimSpace(args.Title)
+		if title == "" {
+			return TaskCreateResult{}, fmt.Errorf("task_create: missing required parameter 'title'")
+		}
+		// userID is force-bound to the session user — the LLM never supplies it
+		// (SPEC-087 §5.3, 防 IDOR). Empty userID → refuse.
+		userID := stateString(tc, "user_id")
+		if userID == "" {
+			return TaskCreateResult{}, fmt.Errorf("task_create: session has no user_id (refusing to create)")
+		}
+		taskType := strings.TrimSpace(args.Type)
+		if taskType == "" {
+			taskType = domaintask.TaskTypeAgentExec
+		}
+		params := args.Params
+		if params == nil {
+			params = make(map[string]interface{})
+		}
+		params["title"] = title
+		if args.CronExpr != "" {
+			params["cron_expr"] = args.CronExpr
+		}
+		// Derive schedule_mode (same logic as handler): scheduled_exec with a
+		// cron → recurring; otherwise empty (real-time path, run is created).
+		scheduleMode := ""
+		if taskType == domaintask.TaskTypeScheduledExec && strings.TrimSpace(args.CronExpr) != "" {
+			scheduleMode = domaintask.ScheduleModeRecurring
+		}
+		t, run, err := deps.TaskDefs.CreateTask(userID, taskType, params, args.ModelID, scheduleMode, args.CronExpr, nil)
+		if err != nil {
+			return TaskCreateResult{}, fmt.Errorf("task_create: %w", err)
+		}
+		runID := ""
+		if run != nil {
+			runID = run.ID
+		}
+		return TaskCreateResult{TaskID: t.ID, RunID: runID, Title: t.Title}, nil
+	}
+}
+
+// ---- task_run_list (SPEC-087) ----
+
+// TaskRunListArgs are the arguments for the task_run_list tool.
+type TaskRunListArgs struct {
+	TaskID string `json:"task_id" jsonschema:"Task ID (required)"`
+	TopN   int    `json:"top_n,omitempty" jsonschema:"Max runs to return (default 10, max 50)"`
+}
+
+// TaskRunListItem is one run entry (only run_id + completed, no details).
+type TaskRunListItem struct {
+	RunID     string `json:"run_id"`
+	Completed bool   `json:"completed"`
+}
+
+// TaskRunListResult is the task_run_list tool output.
+type TaskRunListResult struct {
+	Runs  []TaskRunListItem `json:"runs"`
+	Count int               `json:"count"`
+}
+
+func taskRunList(deps *Deps) functiontool.Func[TaskRunListArgs, TaskRunListResult] {
+	return func(tc agent.ToolContext, args TaskRunListArgs) (TaskRunListResult, error) {
+		if deps.Tasks == nil || deps.TaskDefs == nil {
+			return TaskRunListResult{}, fmt.Errorf("task_run_list: task service not configured")
+		}
+		taskID := strings.TrimSpace(args.TaskID)
+		if taskID == "" {
+			return TaskRunListResult{}, fmt.Errorf("task_run_list: missing required parameter 'task_id'")
+		}
+		userID := stateString(tc, "user_id")
+		role := stateString(tc, "role")
+		isSystemAdmin := role == "system_admin"
+		if userID == "" {
+			return TaskRunListResult{}, fmt.Errorf("task_run_list: session has no user_id (refusing to list)")
+		}
+		// Ownership check (防 IDOR): the task must belong to the caller (or
+		// system_admin is exempt). GetTask already enforces ownership, but we
+		// re-check defensively per SPEC-087 §5.3.
+		t, err := deps.TaskDefs.GetTask(taskID, userID, isSystemAdmin)
+		if err != nil {
+			return TaskRunListResult{}, fmt.Errorf("task_run_list: %w", err)
+		}
+		if !isSystemAdmin && t.UserID != userID {
+			return TaskRunListResult{}, fmt.Errorf("task_run_list: forbidden: task does not belong to the current user")
+		}
+		topN := args.TopN
+		if topN <= 0 {
+			topN = 10
+		}
+		if topN > 50 {
+			topN = 50
+		}
+		runs, _, err := deps.Tasks.ListRuns(taskID, userID, isSystemAdmin, "", 0, int64(topN))
+		if err != nil {
+			return TaskRunListResult{}, fmt.Errorf("task_run_list: %w", err)
+		}
+		out := make([]TaskRunListItem, 0, len(runs))
+		for _, r := range runs {
+			out = append(out, TaskRunListItem{RunID: r.ID, Completed: isCompleted(r.Status)})
+		}
+		return TaskRunListResult{Runs: out, Count: len(out)}, nil
+	}
+}
+
+// ---- task_run_detail (SPEC-087) ----
+
+// TaskRunDetailArgs are the arguments for the task_run_detail tool.
+type TaskRunDetailArgs struct {
+	RunID string `json:"run_id" jsonschema:"Run ID (required)"`
+}
+
+// TaskRunDetailResult is the task_run_detail tool output.
+type TaskRunDetailResult struct {
+	RunID     string                 `json:"run_id"`
+	TaskID    string                 `json:"task_id"`
+	Status    string                 `json:"status"`
+	Completed bool                   `json:"completed"`
+	Result    map[string]interface{} `json:"result,omitempty"`
+	Error     string                 `json:"error,omitempty"`
+}
+
+func taskRunDetail(deps *Deps) functiontool.Func[TaskRunDetailArgs, TaskRunDetailResult] {
+	return func(tc agent.ToolContext, args TaskRunDetailArgs) (TaskRunDetailResult, error) {
+		if deps.Tasks == nil {
+			return TaskRunDetailResult{}, fmt.Errorf("task_run_detail: task service not configured")
+		}
+		runID := strings.TrimSpace(args.RunID)
+		if runID == "" {
+			return TaskRunDetailResult{}, fmt.Errorf("task_run_detail: missing required parameter 'run_id'")
+		}
+		userID := stateString(tc, "user_id")
+		role := stateString(tc, "role")
+		isSystemAdmin := role == "system_admin"
+		if userID == "" {
+			return TaskRunDetailResult{}, fmt.Errorf("task_run_detail: session has no user_id (refusing to read)")
+		}
+		run, err := deps.Tasks.GetRun(runID, userID, isSystemAdmin)
+		if err != nil {
+			return TaskRunDetailResult{}, fmt.Errorf("task_run_detail: %w", err)
+		}
+		if !isSystemAdmin && run.UserID != userID {
+			return TaskRunDetailResult{}, fmt.Errorf("task_run_detail: forbidden: run does not belong to the current user")
+		}
+		return TaskRunDetailResult{
+			RunID:     run.ID,
+			TaskID:    run.TaskID,
+			Status:    string(run.Status),
+			Completed: isCompleted(run.Status),
+			Result:    run.Result,
+			Error:     run.Error,
 		}, nil
 	}
 }
@@ -843,6 +1031,27 @@ func specs(deps *Deps) []toolSpec {
 			description: "Persists the final result of an async/scheduled task. The task_id is read from the session state (not supplied by the LLM). The content argument is required and must be non-empty; the task is marked completed on success or failed if status=\"failed\" is set. Without this call the task has no result and the system retries once.",
 			build: func() (tool.Tool, error) {
 				return functiontool.New(functiontool.Config{Name: "save_task_result", Description: "Persists the final result of an async/scheduled task. The task_id is read from the session state (not supplied by the LLM). The content argument is required and must be non-empty; the task is marked completed on success or failed if status=\"failed\" is set. Without this call the task has no result and the system retries once."}, saveTaskResult(deps))
+			},
+		}, toolSpec{
+			name:        "task_run_list",
+			description: "Lists the runs of a given task by task_id, returning only run_id and whether each run completed (no result details). Newest first. Use this to poll a task's execution history, e.g. after task_create to check whether a run finished.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "task_run_list", Description: "Lists the runs of a given task by task_id, returning only run_id and whether each run completed (no result details). Newest first. Use this to poll a task's execution history, e.g. after task_create to check whether a run finished."}, taskRunList(deps))
+			},
+		}, toolSpec{
+			name:        "task_run_detail",
+			description: "Returns the detailed result of a single task run by run_id, including status, completed flag, result payload and error message. Use this to read the final output (or failure reason) of a specific run.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "task_run_detail", Description: "Returns the detailed result of a single task run by run_id, including status, completed flag, result payload and error message. Use this to read the final output (or failure reason) of a specific run."}, taskRunDetail(deps))
+			},
+		})
+	}
+	if deps.TaskDefs != nil {
+		out = append(out, toolSpec{
+			name:        "task_create",
+			description: "Creates a new async task definition (agent_exec or scheduled_exec). The task owner is read from the session state, never supplied by the LLM. The LLM instruction goes in params.message. Returns the new task_id and, for real-time (non-scheduled) tasks, the first run_id.",
+			build: func() (tool.Tool, error) {
+				return functiontool.New(functiontool.Config{Name: "task_create", Description: "Creates a new async task definition (agent_exec or scheduled_exec). The task owner is read from the session state, never supplied by the LLM. The LLM instruction goes in params.message. Returns the new task_id and, for real-time (non-scheduled) tasks, the first run_id."}, taskCreate(deps))
 			},
 		})
 	}

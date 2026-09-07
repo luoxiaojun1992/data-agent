@@ -319,6 +319,7 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		MemoryLister:   deps.memoryKit.Storage(),
 		AppName:        appName,
 		Tasks:          deps.taskService,
+		TaskDefs:       deps.taskService,
 		SessionSvc:     deps.sessionManager,
 		Artifacts:      deps.artifactStorage,
 		APICollections: deps.apiCollectionSvc,
