@@ -90,17 +90,17 @@
 | SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | ✅ 已实现 |
 | SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | ✅ 已实现 |
 | SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计已定稿 |
-| SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | 📐 设计已定稿 |
+| SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | ✅ 已实现 |
 | SPEC-078 | 前端列表页 UI 规范统一（分页组件 / 顶部主按钮 / 弹窗玻璃样式） | **P15** | [spec-078-frontend-list-ui-consistency.md](spec-078-frontend-list-ui-consistency.md) | ✅ 已实现（14 页分页/按钮/弹窗收敛，4 处弹窗视觉完全统一） |
 | SPEC-079 | 全局在线指示灯 + 后端健康检查 API（统一右上角在线指示灯，关联后端健康检查；治理登录页 toast 重叠） | **P15** | [spec-079-global-online-indicator-health-check.md](spec-079-global-online-indicator-health-check.md) | ✅ 已实现（部署验证 19/19；vault 探活 Sys().HealthWithContext；亚毫秒 latency 向上取整） |
 | SPEC-080 | 时间 + 规划 skill + Plan 意图隐藏引导（get_current_time / get_plan_method；意图三分类；hidden 提示不进前端聊天记录） | **P15** | [spec-080-time-plan-skills.md](spec-080-time-plan-skills.md) | ✅ 已实现 |
-| SPEC-081 | KB 支持 URL 导入（后端 headless 解析含 JS 渲染 + SSRF 防护 + 统一上传限制：文本 5MB / 图片 10 张 × 1MB） | **P15** | [spec-081-kb-url-import.md](spec-081-kb-url-import.md) | 📐 设计已定稿 |
+| SPEC-081 | KB 支持 URL 导入（后端 headless 解析含 JS 渲染 + SSRF 防护 + 统一上传限制：文本 5MB / 图片 10 张 × 1MB） | **P15** | [spec-081-kb-url-import.md](spec-081-kb-url-import.md) | ✅ 已实现 |
 | SPEC-082 | Chat 与 Agent Task 支持取消（chat 停止按钮+SSE 中断+ctx 透传兜底；task run 级取消+执行中轮询 DB+子 ctx 取消；不侵入 ADK） | **P15** | [spec-082-chat-task-cancel.md](spec-082-chat-task-cancel.md) | 📐 设计已定稿 |
 | SPEC-083 | 用户中心与修改密码（side 用户中心菜单 + 改密卡片弹窗 + 改密接口迁 /api/v1/auth/ + 只能改自己；不配 RBAC，登录即可改） | **P15** | [spec-083-user-center-change-password.md](spec-083-user-center-change-password.md) | ✅ 已实现 |
 | SPEC-084 | API 权限整理与废弃接口清理（删废弃 API + 全量 RBAC 补挂 + 通知权限区分定向/广播 + 用户管理数据隔离 + seed 增量补齐） | **P15** | [spec-084-api-rbac-cleanup.md](spec-084-api-rbac-cleanup.md) | ✅ 已实现 |
 | SPEC-085 | 前端 UI 缺陷修复（im/feishu 接入分页；RBAC 业务主角色→RBAC 角色 ID 映射；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15) 统一） | **P15** | [spec-085-ui-fixes.md](spec-085-ui-fixes.md) | ✅ 已实现 |
-| SPEC-086 | Task 常用模版（日常总结）+ memory 分页读取 + KB 文档创建 skill（kb_create_doc/memory_list；前端模版快捷入口与人工创建弹窗分开；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-086-task-template-daily-summary.md](spec-086-task-template-daily-summary.md) | 📐 设计已定稿 |
-| SPEC-087 | Task 相关 skills（task_create/task_run_list/task_run_detail；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-087-task-skills.md](spec-087-task-skills.md) | 📐 设计已定稿 |
+| SPEC-086 | Task 常用模版（日常总结）+ memory 分页读取 + KB 文档创建 skill（kb_create_doc/memory_list；前端模版快捷入口与人工创建弹窗分开；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-086-task-template-daily-summary.md](spec-086-task-template-daily-summary.md) | ✅ 已实现 |
+| SPEC-087 | Task 相关 skills（task_create/task_run_list/task_run_detail；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据） | **P15** | [spec-087-task-skills.md](spec-087-task-skills.md) | ✅ 已实现 |
 | SPEC-088 | 会话空闲超时配置化（SESSION_IDLE_TIMEOUT 系统配置 + 登录响应下发 idle_timeout_minutes + 前端 IdleTimer；读空闲超时无 RBAC） | **P15** | [spec-088-session-idle-timeout-config.md](spec-088-session-idle-timeout-config.md) | ✅ 已实现 |
 | SPEC-089 | LLM 人机交互独立信道（Human Channel：confirm 授权 + ask 提问；独立 SSE 信道；file_delete/dir_delete 挂授权 + ask_user skill；前端弹窗复用 .glass；RBAC 同 chat + session 归属 + system_admin 豁免） | **P15** | [spec-089-human-channel.md](spec-089-human-channel.md) | ✅ 已实现 |
 | SPEC-090 | Session 生命周期管理（归档软删除 / 硬删除+workspace+chat history / 清空聊天历史 / 永久产物 artifact+memory 隔离；补归属校验防 IDOR） | **P15** | [spec-090-session-lifecycle-management.md](spec-090-session-lifecycle-management.md) | 📐 设计已定稿 |
@@ -359,7 +359,7 @@ SPEC-006│               │
                     ThemeToggle + localStorage 持久化, 默认 dark;
                     inline script 防闪烁; 纯前端无后端改动)
 
-[P15] SPEC-077 ─── Chat 附件支持 PDF (设计已定稿)
+[P15] SPEC-077 ─── Chat 附件支持 PDF (✅ 已实现)
                    (复用 lib/pdf.ts parsePdf 解析;
                     解析文字发送时前置到用户输入提示词前, 前端不显示;
                     特殊标签 [PDF:name] 供前端展示卡片;
@@ -404,17 +404,17 @@ SPEC-006│               │
 | 1 | SPEC-074 | ✅ 可搜索下拉选择器（含 5.6/5.7 bug 修复） | 已完成（2026-09-01）；含 2 个线上可见 bug 修复（用户管理空下拉 / rbac-roles 弹窗 404+前端 filter 违规）；是 075 的前置 |
 | 2 | SPEC-075 | ✅ 前端列表搜索/分页后端化 | 依赖 074 的 q/limit DB 层搜索模式；已完成（2026-09-01）：知识库/会话新增 q 后端过滤 + 模型搜索复用 074 |
 | 3 | SPEC-078 | ✅ 前端列表 UI 规范统一 | 已完成（2026-09-02）：分页收敛到 Pagination.tsx、主按钮渐变 #5c7cfa→#7c3aed、弹窗玻璃样式统一（模型/skill/飞书/提示词 4 处视觉完全一致） |
-| 4 | SPEC-077 | Chat 附件 PDF | 独立小功能，随时可插队 |
+| 4 | SPEC-077 | ✅ Chat 附件 PDF | 已实现（commit 3edbe12 + 25598c5） |
 | 5 | SPEC-076 | 前端主题切换 | 纯前端；放 078 后（078 已定稿不考虑多主题，076 落地时对 078 引入的色值做变量化收尾） |
 | 6 | SPEC-079 | ✅ 全局在线指示灯 + 后端健康检查 API | 已实现并部署验证（2026-09-03，commit 55209fd/ca69db0/7f344d9）；依赖 076 落地后指示灯色值做变量化收尾 |
 | 7 | SPEC-080 | ✅ 时间 + 规划 skill + Plan 意图隐藏引导 | 已实现（2026-09-06）；2 个无依赖 function tool（get_current_time/get_plan_method）+ guard 三分类 + hidden 事件机制（[intent]/[plan_hint] 不进前端聊天记录），不动 Runtime/use case |
-| 8 | SPEC-081 | 📐 KB URL 导入 | 独立可插队；后端 headless 渲染 + SSRF 防护 + 统一上传限制；复用 CreateDoc/GridFS/索引管道 |
+| 8 | SPEC-081 | ✅ KB URL 导入 | 独立可插队；后端 headless 渲染 + SSRF 防护 + 统一上传限制；复用 CreateDoc/GridFS/索引管道 |
 | 9 | SPEC-082 | 📐 Chat 与 Task 取消 | 独立可插队；chat 停止按钮 + task 轮询 DB 取消，均不侵入 ADK 底层 |
 | 10 | SPEC-083 | ✅ 用户中心与修改密码 | 已实现；side 用户中心菜单 + 改密卡片弹窗；改密接口迁 /api/v1/auth/；不配 RBAC，登录即可改自己密码 |
 | 11 | SPEC-084 | ✅ API 权限整理与废弃接口清理 | 已实现（2026-09-05）；删废弃 API + 全量 RBAC 补挂 + 通知定向/广播权限 + 用户管理数据隔离 + seed 增量补齐 |
 | 12 | SPEC-085 | ✅ 前端 UI 缺陷修复 | 已实现（2026-09-04）；im/feishu 接入分页；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15)；RBAC 业务主角色→RBAC 角色 ID 映射 |
-| 13 | SPEC-086 | 📐 Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据 |
-| 13.5 | SPEC-087 | 📐 Task 相关 skills（task_create/run_list/run_detail） | 独立可插队；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据 |
+| 13 | SPEC-086 | ✅ Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据 |
+| 13.5 | SPEC-087 | ✅ Task 相关 skills（task_create/run_list/run_detail） | 独立可插队；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据 |
 | 13.6 | SPEC-088 | ✅ 会话空闲超时配置化 | 已实现（2026-09-08）；SESSION_IDLE_TIMEOUT 默认 30 分钟 + 登录响应下发 idle_timeout_minutes + 前端 login 持久化/IdleTimer 读 localStorage；复用 system_configs seed 机制 |
 | 13.7 | SPEC-089 | ✅ LLM 人机交互独立信道（Human Channel） | 已实现；独立 SSE 信道（confirm 授权 + ask 提问）；file_delete/dir_delete 挂授权 + ask_user 新 skill；前端弹窗复用 .glass；RBAC 同 chat（PermChatView）+ session 归属 + system_admin 豁免 |
 | 13.8 | SPEC-090 | 📐 Session 生命周期管理（归档/删除/清空历史/永久产物隔离） | 独立可插队；修正软删误删 workspace；新增硬删除（级联 workspace+chat history）与清空历史；artifact/memory 一律保留；补归属校验防 IDOR |
