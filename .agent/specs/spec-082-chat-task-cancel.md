@@ -1,6 +1,6 @@
 # Chat 与 Agent Task 支持取消
 
-> **SPEC-082** | Status: 设计中
+> **SPEC-082** | Status: ✅ 已实现（2026-09-08）
 
 > **术语约定（红线）**：**取消 ≠ 删除**。
 > - **取消（cancel）**：只针对 **run 执行单元**，置 `StatusCancelled`，记录保留。
