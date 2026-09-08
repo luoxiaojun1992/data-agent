@@ -6,14 +6,19 @@ Parses a ScanCode `--json-pp` output and fails if any detected license matches
 the deny list. The project's license red line: no GPL / AGPL / LGPL / SSPL /
 BUSL or other source-available / viral licenses (see MEMORY.md).
 
+Supports both ScanCode output schemas:
+  * New (v32+ / v33):  files[].license_detections[].matches[] with
+    `license_expression` / `license_expression_spdx` / `score`.
+  * Old (< v32):        files[].licenses[] with `key` / `spdx_license_key` / `score`.
+
 Usage: python3 scancode-gate.py <scancode.json>
 """
 
 import json
 import sys
 
-# License identifiers (ScanCode `key` / SPDX `spdx_license_key`) prefixes that
-# are NOT allowed. Prefix match (case-insensitive) so variants like
+# License identifiers (ScanCode lowercase key or SPDX id) prefixes that are
+# NOT allowed. Prefix match (case-insensitive) so variants like
 # `GPL-3.0-only`, `GPL-3.0-or-later`, `gpl-3.0` are all covered.
 DENY_PREFIXES = (
     "gpl-",          # GNU General Public License (all versions)
@@ -32,6 +37,29 @@ DENY_PREFIXES = (
 FAIL_SCORE = 60
 
 
+def is_denied(key):
+    low = key.lower()
+    return any(low.startswith(p) for p in DENY_PREFIXES)
+
+
+def iter_detections(file_info):
+    """Yield (license_key, score) pairs from a file entry, across schema versions."""
+    # New schema (v32+): license_detections[].matches[]
+    for det in file_info.get("license_detections", []) or []:
+        for m in (det.get("matches", []) or []):
+            key = m.get("license_expression") or m.get("license_expression_spdx") or ""
+            score = m.get("score", 0) or 0
+            if key:
+                yield key, score
+
+    # Old schema (< v32): licenses[]
+    for lic in file_info.get("licenses", []) or []:
+        key = lic.get("key") or lic.get("spdx_license_key") or ""
+        score = lic.get("score", 0) or 0
+        if key:
+            yield key, score
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: scancode-gate.py <scancode.json>", file=sys.stderr)
@@ -46,30 +74,25 @@ def main():
 
     for file_info in data.get("files", []):
         fpath = file_info.get("path", "?")
-        for lic in file_info.get("licenses", []):
-            key = lic.get("spdx_license_key") or lic.get("key") or ""
-            if not key:
+        for key, score in iter_detections(file_info):
+            if not is_denied(key):
                 continue
-            low = key.lower()
-            if any(low.startswith(p) for p in DENY_PREFIXES):
-                score = lic.get("score", 0)
-                name = lic.get("name") or lic.get("short_name") or key
-                entry = (fpath, key, name, score)
-                if score >= FAIL_SCORE:
-                    violations.append(entry)
-                else:
-                    warnings.append(entry)
+            entry = (fpath, key, score)
+            if score >= FAIL_SCORE:
+                violations.append(entry)
+            else:
+                warnings.append(entry)
 
     if warnings:
-        print(f"=== ScanCode license gate: {len(warnings)} low-confidence copyleft hit(s) — manual review recommended ===")
-        for fpath, key, name, score in warnings:
-            print(f"  [WARN] {fpath}: {key} ({name}) score={score}")
+        print("=== ScanCode license gate: %d low-confidence copyleft hit(s) — manual review recommended ===" % len(warnings))
+        for fpath, key, score in warnings:
+            print("  [WARN] %s: %s score=%s" % (fpath, key, score))
 
     if violations:
         print("=== ScanCode license gate FAILED ===")
-        print(f"发现 {len(violations)} 处传染性 license（红线：禁 GPL/AGPL/LGPL/SSPL/BUSL 等）:")
-        for fpath, key, name, score in violations:
-            print(f"  [FAIL] {fpath}: {key} ({name}) score={score}")
+        print("发现 %d 处传染性 license（红线：禁 GPL/AGPL/LGPL/SSPL/BUSL 等）:" % len(violations))
+        for fpath, key, score in violations:
+            print("  [FAIL] %s: %s score=%s" % (fpath, key, score))
         sys.exit(1)
 
     print("=== ScanCode license gate PASSED ===")

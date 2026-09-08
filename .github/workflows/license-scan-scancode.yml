@@ -1,11 +1,13 @@
 name: License Scan (ScanCode)
 
-# 用开源项目 ScanCode Toolkit（Apache-2.0）扫描整个代码库的 license 声明，
+# 用开源项目 ScanCode Toolkit（Apache-2.0）扫描 vendored 第三方源码的 license 声明，
 # 通过 Docker -v 挂载源码目录扫描，检测是否有传染性 license（GPL/AGPL/LGPL/SSPL/BUSL）。
 #
 # 与 dependency-review 的分工：
 # - dependency-review 检查「依赖清单」里引入的第三方包 license（go.mod/package.json）。
-# - ScanCode 扫描「代码文件」里的 license 声明（含 vendored 第三方源码、license 头等）。
+# - ScanCode 扫描「vendored 第三方源码」里的 license 声明。项目自身的源码 / 文档 /
+#   注释不扫，避免把「文字提及 license 名」（如合规报告、workflow 注释、项目自身
+#   AGPL-3.0 LICENSE）误判为「引入的传染性依赖」。
 #
 # 注意：ScanCode 官方没有在 Docker Hub 发布预构建镜像（aboutcode/scancode-toolkit 404），
 # 官方 Docker 方式是「git clone 源码 + docker build」。因此这里在 CI 中先 build 镜像，
@@ -55,16 +57,8 @@ jobs:
             --license \
             --license-score 0 \
             --processes 2 \
-            --ignore "node_modules/**" \
-            --ignore "vendor/**" \
-            --ignore "vendor_adk_v1.5.0/**" \
-            --ignore ".next/**" \
-            --ignore "frontend/node_modules/**" \
-            --ignore "tests/ui/node_modules/**" \
-            --ignore "tests/ui/artifacts/**" \
-            --ignore "scancode-results/**" \
             --json-pp /project/scancode-results/scancode.json \
-            /project
+            /project/vendor_adk_v1.5.0
 
       - name: Gate — reject copyleft licenses
         run: |
