@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	tasksvc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	mocktasksvc "github.com/luoxiaojun1992/data-agent/internal/service/task/mocks"
 	"github.com/stretchr/testify/mock"
 )
@@ -226,17 +227,73 @@ func TestGetTask_NotFound(t *testing.T) {
 	}
 }
 
-// ── CancelTask ──
+// ── DeleteTask (SPEC-082 §1.3) ──
 
-func TestCancelTask_Success(t *testing.T) {
+func TestDeleteTask_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)
 
-	svc.On("CancelTask", "task_1", "", false).Return(nil)
+	svc.On("DeleteTask", "task_1", "", false).Return(nil)
 
-	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
+	c, w := newGinContext("DELETE", "/tasks/task_1", "")
 	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
-	h.CancelTask(c)
+	h.DeleteTask(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "deleted") {
+		t.Errorf("body should contain deleted: %s", w.Body.String())
+	}
+}
+
+func TestDeleteTask_Error(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	svc.On("DeleteTask", "task_1", "", false).Return(fmt.Errorf("db error"))
+
+	c, w := newGinContext("DELETE", "/tasks/task_1", "")
+	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
+	h.DeleteTask(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
+// ── SetEnabled (SPEC-082 §1.2) ──
+
+func TestSetEnabled_Success(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	svc.On("SetScheduledEnabled", "task_1", "", false, false).Return(nil)
+
+	c, w := newGinContext("PATCH", "/tasks/task_1/enabled", `{"enabled":false}`)
+	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
+	h.SetEnabled(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "false") {
+		t.Errorf("body should contain enabled=false: %s", w.Body.String())
+	}
+}
+
+// ── CancelRun (SPEC-082 §4.2) ──
+
+func TestCancelRun_Success(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
+
+	runSvc.On("CancelRun", "run_1", "", false).Return(nil)
+
+	c, w := newGinContext("PUT", "/task-runs/run_1/cancel", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.CancelRun(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -246,18 +303,35 @@ func TestCancelTask_Success(t *testing.T) {
 	}
 }
 
-func TestCancelTask_Error(t *testing.T) {
+func TestCancelRun_Terminal(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
-	h := NewTaskHandler(svc, nil)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
 
-	svc.On("CancelTask", "task_1", "", false).Return(fmt.Errorf("cannot cancel completed"))
+	runSvc.On("CancelRun", "run_1", "", false).Return(tasksvc.ErrRunTerminal)
 
-	c, w := newGinContext("POST", "/tasks/task_1/cancel", "")
-	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
-	h.CancelTask(c)
+	c, w := newGinContext("PUT", "/task-runs/run_1/cancel", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.CancelRun(c)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d", w.Code)
+	}
+}
+
+func TestCancelRun_NotFound(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
+
+	runSvc.On("CancelRun", "run_1", "", false).Return(tasksvc.ErrNotFound)
+
+	c, w := newGinContext("PUT", "/task-runs/run_1/cancel", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.CancelRun(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
 

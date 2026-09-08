@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"iter"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
@@ -400,6 +402,83 @@ func TestExecute_CancelledDuringExecution(t *testing.T) {
 	runs.AssertNotCalled(t, "UpdateRunResult", mock.Anything, mock.Anything)
 	runs.AssertNotCalled(t, "UpdateRunStatus", "run_1", domaintask.StatusCompleted)
 	notif.AssertNotCalled(t, "Send", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// blockingLLM blocks until its ctx is cancelled, recording whether the
+// cancellation propagated. Used to verify the cancellation supervisor (SPEC-082
+// §5.5) cancels the run context so the in-flight ADK run terminates.
+type blockingLLM struct {
+	once         sync.Once
+	started      chan struct{}
+	ctxCancelled atomic.Bool
+}
+
+func newBlockingLLM() *blockingLLM {
+	return &blockingLLM{started: make(chan struct{})}
+}
+
+func (b *blockingLLM) Name() string { return "blocking" }
+
+func (b *blockingLLM) GenerateContent(ctx context.Context, _ *model.LLMRequest, _ bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		b.once.Do(func() { close(b.started) })
+		<-ctx.Done()
+		b.ctxCancelled.Store(true)
+	}
+}
+
+// TestExecute_CancellationSupervisorCancelsRunCtx verifies the mid-execution
+// supervisor: when the DB status flips to cancelled, the poll loop calls
+// cancel() and the inherited run context terminates the blocking LLM call.
+func TestExecute_CancellationSupervisorCancelsRunCtx(t *testing.T) {
+	llm := newBlockingLLM()
+	adkSess := adksession.InMemoryService()
+	rt, err := adkruntime.New(adkruntime.Config{
+		AppName: "data-agent", Model: llm, SessionService: adkSess,
+	})
+	require.NoError(t, err)
+	registry := adkruntime.NewRegistry(adkruntime.RegistryConfig{AppName: "data-agent", SessionService: adkSess})
+	runs := domaintaskmocks.NewTaskRunService(t)
+	notif := notificationmocks.NewNotificationService(t)
+	cbReg := security.NewCircuitBreakerRegistry(security.DefaultCircuitBreakerConfig())
+	exec := NewAgentExecutor(registry, adkSess, runs, notif, cbReg, nil)
+
+	patches := gomonkey.NewPatches()
+	t.Cleanup(patches.Reset)
+	patches.ApplyMethodFunc(registry, "GetOrCreateWithInstruction", func(ctx context.Context, modelID string, suffix string) (*adkruntime.Runtime, error) {
+		return rt, nil
+	})
+
+	// Shorten the poll interval so the test does not wait a full 2s cycle.
+	old := cancellationPollInterval
+	cancellationPollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { cancellationPollInterval = old })
+
+	run := sampleRun()
+	runs.On("UpdateRunStatus", "run_1", domaintask.StatusRunning).Return(nil)
+	// Poll loop observes a cancelled run → cancel() → runCtx.Done().
+	runs.On("GetRun", mock.Anything, mock.Anything, mock.Anything).Return(
+		&domaintask.TaskRun{ID: "run_1", Status: domaintask.StatusCancelled}, nil)
+
+	done := make(chan error, 1)
+	go func() { done <- exec.Execute(context.Background(), run) }()
+
+	select {
+	case <-llm.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("LLM did not start")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Execute did not return after cancellation")
+	}
+
+	// The poll loop must have cancelled the run context, terminating the LLM.
+	if !llm.ctxCancelled.Load() {
+		t.Error("expected the run ctx cancellation to propagate to the LLM")
+	}
 }
 
 // ── deriveUserMessageFromParams: key priority (L1) ──

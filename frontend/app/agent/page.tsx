@@ -53,7 +53,7 @@ export default function AgentPage() {
 
   const toggleScheduledEnabled = async (t: AgentTask) => {
     const enabled = t.scheduled_enabled === false;
-    const res = await apiFetch('/admin/tasks/' + t.task_id + '/scheduled-enabled', {
+    const res = await apiFetch('/tasks/' + t.task_id + '/enabled', {
       method: 'PATCH',
       body: JSON.stringify({ enabled }),
     });
@@ -152,8 +152,11 @@ export default function AgentPage() {
     } catch (e) { console.error('[agent] task create failed:', e); }
   };
 
-  const cancelTask = async (taskId: string) => {
-    await apiFetch(`/tasks/${taskId}/cancel`, { method: 'PUT' });
+  // SPEC-082 §5.8: "delete" ≠ "cancel" — DELETE /tasks/:id physically removes
+  // the task definition (irreversible); historical run records are kept.
+  const deleteTask = async (taskId: string) => {
+    if (!window.confirm('确定删除该任务吗？删除后不可恢复（历史运行记录保留）')) return;
+    await apiFetch(`/tasks/${taskId}`, { method: 'DELETE' });
     await loadTasks(page);
   };
 
@@ -287,7 +290,12 @@ export default function AgentPage() {
                       )}
                     </div>
                   </div>
-                  <div className="text-[var(--text-secondary)] text-sm">▶</div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={(e) => { e.stopPropagation(); deleteTask(task.task_id); }}
+                      className="text-[10px] text-red-400 hover:text-red-300"
+                      data-testid={`agent-task-delete-${task.task_id}`}>删除</button>
+                    <div className="text-[var(--text-secondary)] text-sm">▶</div>
+                  </div>
                 </button>
               </div>
             ))}

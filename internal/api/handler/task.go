@@ -121,12 +121,13 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 	c.JSON(http.StatusOK, t)
 }
 
-// CancelTask deletes a task definition (ownership-checked).
-// PUT /api/v1/tasks/:task_id/cancel
-func (h *TaskHandler) CancelTask(c *gin.Context) {
+// DeleteTask physically deletes a task definition (ownership-checked, SPEC-082
+// §1.3 — "delete" ≠ "cancel"; historical run records are NOT cascaded).
+// DELETE /api/v1/tasks/:task_id
+func (h *TaskHandler) DeleteTask(c *gin.Context) {
 	taskID := c.Param("task_id")
 	userID, isSystemAdmin := taskIdentity(c)
-	if err := h.svc.CancelTask(taskID, userID, isSystemAdmin); err != nil {
+	if err := h.svc.DeleteTask(taskID, userID, isSystemAdmin); err != nil {
 		if errors.Is(err, task.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -134,7 +135,7 @@ func (h *TaskHandler) CancelTask(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "cancelled", "task_id": taskID})
+	c.JSON(http.StatusOK, gin.H{"status": "deleted", "task_id": taskID})
 }
 
 // ListTasks returns paginated task definitions for the current user.
@@ -220,10 +221,10 @@ func (h *TaskHandler) DownloadArtifacts(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", []byte{0x50, 0x4B, 0x03, 0x04})
 }
 
-// ToggleScheduledEnabled turns scheduled task on/off (ownership-checked).
-// PATCH /admin/tasks/:id/scheduled-enabled
-func (h *TaskHandler) ToggleScheduledEnabled(c *gin.Context) {
-	taskID := c.Param("id")
+// SetEnabled toggles the task's on/off switch (all task types, SPEC-082 §1.2).
+// PATCH /api/v1/tasks/:task_id/enabled
+func (h *TaskHandler) SetEnabled(c *gin.Context) {
+	taskID := c.Param("task_id")
 	userID, isSystemAdmin := taskIdentity(c)
 	var req struct {
 		Enabled bool `json:"enabled"`
@@ -241,6 +242,25 @@ func (h *TaskHandler) ToggleScheduledEnabled(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"enabled": req.Enabled})
+}
+
+// CancelRun cancels a run execution (ownership-checked, SPEC-082 §4.2).
+// PUT /api/v1/task-runs/:run_id/cancel
+func (h *TaskHandler) CancelRun(c *gin.Context) {
+	runID := c.Param("run_id")
+	userID, isSystemAdmin := taskIdentity(c)
+	if err := h.runSvc.CancelRun(runID, userID, isSystemAdmin); err != nil {
+		switch {
+		case errors.Is(err, task.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, task.ErrRunTerminal):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "cancelled", "run_id": runID})
 }
 
 // taskIdentity extracts (userID, isSystemAdmin) from the JWT-injected context.

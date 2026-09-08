@@ -217,6 +217,14 @@ func (p *Pool) processWorkerMessage(ctx context.Context, msg redis.XMessage) {
 
 // dispatch routes an agent task run to the appropriate executor.
 func (p *Pool) dispatch(ctx context.Context, run *task.TaskRun, msgID string) {
+	// SPEC-082 §5.7: re-check the authoritative DB status right before
+	// execution. Covers the window where the run was cancelled after enqueue
+	// but before dispatch (stale in-memory object). Synthetic runs (kb_index)
+	// have no DB record → GetRun errors → the check is naturally skipped.
+	if latest, err := p.runSvc.GetRun(run.ID, "", true); err == nil && latest != nil && latest.Status == task.StatusCancelled {
+		_ = p.queue.Ack(context.Background(), msgID)
+		return
+	}
 
 	exec := p.executor
 	if run.Type == task.TaskTypeKBIndex && p.kbExecutor != nil {

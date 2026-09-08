@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -71,6 +72,11 @@ func NewAgentExecutor(
 	}
 }
 
+// cancellationPollInterval is the DB-poll interval used by the mid-execution
+// run-cancellation supervisor (SPEC-082 §5.5). A package var so tests can
+// shorten it to avoid waiting a full 2s poll cycle.
+var cancellationPollInterval = 2 * time.Second
+
 // Execute runs a single async/scheduled agent run to completion (or failure).
 // Returns the execution error so the worker pool can apply its retry/DLQ
 // policy; the executor has already persisted the failure status + error by then.
@@ -98,11 +104,40 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	// 1. Mark running.
 	_ = e.runs.UpdateRunStatus(run.ID, domaintask.StatusRunning)
 
+	// 1b. Run-scoped context + cancellation supervisor (SPEC-082 §5.5). The
+	// supervisor polls the DB every 2s; on StatusCancelled it cancels runCtx so
+	// the inherited context terminates the in-flight ADK run (no ADK changes).
+	// On a terminal state (completion boundary, §5.6) it exits without acting.
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		t := time.NewTicker(cancellationPollInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-runCtx.Done():
+				return
+			case <-t.C:
+				latest, err := e.runs.GetRun(run.ID, "", true)
+				if err != nil || latest == nil {
+					continue // DB jitter must not kill a healthy run
+				}
+				switch latest.Status {
+				case domaintask.StatusCancelled:
+					cancel()
+					return
+				case domaintask.StatusCompleted, domaintask.StatusFailed:
+					return
+				}
+			}
+		}
+	}()
+
 	// 2. Create ADK session with identity + task_id + run_id injected.
 	//    Session is owned by run.UserID (the task creator), so it appears
 	//    in their chat session list and respects their permissions.
 	state := buildRunState(run)
-	resp, cerr := e.adkSessions.Create(ctx, &session.CreateRequest{
+	resp, cerr := e.adkSessions.Create(runCtx, &session.CreateRequest{
 		AppName:   e.registry.AppName(),
 		UserID:    run.UserID,
 		SessionID: run.SessionID,
@@ -127,7 +162,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	}
 
 	// 3. Resolve the task-mode Runtime.
-	rt, rErr := e.registry.GetOrCreateWithInstruction(ctx, run.ModelID, adkruntime.TaskInstructionSuffix)
+	rt, rErr := e.registry.GetOrCreateWithInstruction(runCtx, run.ModelID, adkruntime.TaskInstructionSuffix)
 	if rErr != nil {
 		err := fmt.Errorf("resolve runtime: %w", rErr)
 		e.failRun(run, err)
@@ -144,13 +179,13 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	}
 	runCfg := adkruntime.RunConfig{StateDelta: state}
 	var firstContent string
-	firstErr := e.runProtected(ctx, rt, run, runSessionID, firstUserContent, runCfg, &firstContent)
+	firstErr := e.runProtected(runCtx, rt, run, runSessionID, firstUserContent, runCfg, &firstContent)
 
 	// 4b. Relevance check against the task prompt (message). Irrelevant output
 	// triggers a bounded retry (same input, no hint). The base is the most
 	// recent user message or tool output from the session's compacted events.
 	if firstErr == nil && e.guard != nil {
-		firstContent = e.relevanceLoop(ctx, rt, run, runSessionID, firstUserContent, runCfg, firstContent)
+		firstContent = e.relevanceLoop(runCtx, rt, run, runSessionID, firstUserContent, runCfg, firstContent)
 	}
 
 	// 5. Respect cancellation.
@@ -177,7 +212,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 		"Do NOT just write a text response — you must invoke the tool."
 
 	var retryContent string
-	retryErr := e.runProtected(ctx, rt, run, runSessionID, genai.NewContentFromText(retryPrompt, "user"), runCfg, &retryContent)
+	retryErr := e.runProtected(runCtx, rt, run, runSessionID, genai.NewContentFromText(retryPrompt, "user"), runCfg, &retryContent)
 	if e.wasRunCancelled(run.ID) {
 		return retryErr
 	}
