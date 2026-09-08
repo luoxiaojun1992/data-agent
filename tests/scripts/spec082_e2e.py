@@ -60,7 +60,8 @@ def login(username, password):
 
 
 def invite_and_register(admin_token, email):
-    """邀请制注册用户 B (SPEC-084 契约)。"""
+    """邀请制注册用户 B (SPEC-084 契约)，并关联 rbac_role_admin（新用户不自动
+    关联 RBAC 角色，由 admin 分配）保证其能通过 RBAC 中间件到达归属校验层。"""
     status, inv = req("POST", "/admin/invites", {"email": email, "role": "user"}, token=admin_token)
     if status not in (200, 201):
         raise RuntimeError(f"create invite failed: {status} {inv}")
@@ -71,8 +72,14 @@ def invite_and_register(admin_token, email):
     status, reg = req("POST", "/auth/complete-registration",
                       {"token": token, "username": email.split("@")[0], "password": "User#082pass", "display_name": "u082"},
                       token=admin_token)
-    if status != 200:
+    if status not in (200, 201):
         raise RuntimeError(f"complete-registration failed: {status} {reg}")
+    user_id = reg.get("user_id", "")
+    # 分配 RBAC 角色（admin 角色拥有 agent:edit 等权限）
+    status, rb = req("POST", f"/admin/users/{user_id}/rbac-roles",
+                     {"role_id": "rbac_role_admin"}, token=admin_token)
+    if status not in (200, 201):
+        raise RuntimeError(f"assign rbac role failed: {status} {rb}")
     return reg.get("access_token", "")
 
 
