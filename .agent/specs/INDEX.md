@@ -415,7 +415,7 @@ SPEC-006│               │
 | 12 | SPEC-085 | ✅ 前端 UI 缺陷修复 | 已实现（2026-09-04）；im/feishu 接入分页；弹窗玻璃统一 + maxHeight 85vh；input 边框 rgba(255,255,255,0.15)；RBAC 业务主角色→RBAC 角色 ID 映射 |
 | 13 | SPEC-086 | 📐 Task 常用模版（日常总结） | 独立可插队；前端模版快捷入口（与人工创建弹窗分开）+ kb_create_doc/memory_list 两个 skill；复用 task API scheduled_exec；新 skill 同步 predefinedSkills 原始 seed 数据 |
 | 13.5 | SPEC-087 | 📐 Task 相关 skills（task_create/run_list/run_detail） | 独立可插队；复用 task.Service；run list 仅返回 run_id+completed；归属校验防 IDOR；新 skill 同步 predefinedSkills 原始 seed 数据 |
-| 13.6 | SPEC-088 | 📐 会话空闲超时配置化 | 独立可插队；新增 SESSION_IDLE_TIMEOUT 系统配置 + 登录响应下发 idle_timeout_minutes + 前端 IdleTimer 读 localStorage；复用 system_configs seed 机制 |
+| 13.6 | SPEC-088 | ✅ 会话空闲超时配置化 | 已实现（2026-09-08）；SESSION_IDLE_TIMEOUT 默认 30 分钟 + 登录响应下发 idle_timeout_minutes + 前端 login 持久化/IdleTimer 读 localStorage；复用 system_configs seed 机制 |
 | 13.7 | SPEC-089 | ✅ LLM 人机交互独立信道（Human Channel） | 已实现；独立 SSE 信道（confirm 授权 + ask 提问）；file_delete/dir_delete 挂授权 + ask_user 新 skill；前端弹窗复用 .glass；RBAC 同 chat（PermChatView）+ session 归属 + system_admin 豁免 |
 | 13.8 | SPEC-090 | 📐 Session 生命周期管理（归档/删除/清空历史/永久产物隔离） | 独立可插队；修正软删误删 workspace；新增硬删除（级联 workspace+chat history）与清空历史；artifact/memory 一律保留；补归属校验防 IDOR |
 | 13.9 | SPEC-091 | ✅ KB 设 shared 联动更新知识图谱 is_public | 已实现（2026-09-06）；GraphRepository 新增 SetDocPublic（ArcadeDB MATCH doc_id SET is_public）；SetPublicFlag 补图谱同步（副作用先行/doc 最后提交点）；可见性维持两级语义（system_admin 豁免 / 其余看自己+public）不改查询隔离 |
