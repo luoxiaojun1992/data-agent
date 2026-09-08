@@ -264,6 +264,21 @@ func TestDeleteTask_Error(t *testing.T) {
 
 // ── SetEnabled (SPEC-082 §1.2) ──
 
+func TestCreateRun_TaskDisabled(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	svc.On("CreateRun", "task_1", "", false).Return((*task.TaskRun)(nil), tasksvc.ErrTaskDisabled)
+
+	c, w := newGinContext("POST", "/tasks/task_1/run", "")
+	c.Params = gin.Params{{Key: "task_id", Value: "task_1"}}
+	h.CreateRun(c)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d", w.Code)
+	}
+}
+
 func TestSetEnabled_Success(t *testing.T) {
 	svc := mocktasksvc.NewTaskService(t)
 	h := NewTaskHandler(svc, nil)

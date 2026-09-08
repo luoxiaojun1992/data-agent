@@ -62,7 +62,7 @@ def login(username, password):
 def invite_and_register(admin_token, email):
     """邀请制注册用户 B (SPEC-084 契约)。"""
     status, inv = req("POST", "/admin/invites", {"email": email, "role": "user"}, token=admin_token)
-    if status != 200:
+    if status not in (200, 201):
         raise RuntimeError(f"create invite failed: {status} {inv}")
     invite_url = inv.get("invite_url", "")
     token = invite_url.split("token=")[-1] if "token=" in invite_url else ""
