@@ -38,9 +38,11 @@ func TestSessionHandler_Renew_ServiceError(t *testing.T) {
 // underlying SessionService.Delete call fails.
 func TestSessionHandler_Delete_ServiceError(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	mgr.On("Delete", "s1").Return(errStr("delete failed"))
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("DELETE", "/sessions/s1")
+	c.Set("user_id", "u1")
 	c.Params = gin.Params{{Key: "id", Value: "s1"}}
 	h.Delete(c)
 	if w.Code != http.StatusInternalServerError {
@@ -55,9 +57,11 @@ func TestSessionHandler_Delete_ServiceError(t *testing.T) {
 // the underlying SessionService.Restore call fails.
 func TestSessionHandler_Restore_ServiceError(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	mgr.On("Restore", "s1").Return(errStr("restore failed"))
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("POST", "/sessions/s1/restore")
+	c.Set("user_id", "u1")
 	c.Params = gin.Params{{Key: "id", Value: "s1"}}
 	h.Restore(c)
 	if w.Code != http.StatusInternalServerError {

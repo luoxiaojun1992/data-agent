@@ -159,6 +159,68 @@ test.describe('SESSION — SPEC-037', () => {
     expect(await newBanner.isVisible({ timeout: 2000 }).catch(() => false)).toBe(false);
   });
 
+  // ═══ UI-184: 已归档分区 + 恢复 + 彻底删除 (SPEC-090) ═══
+  test('[UI-184] Session — 归档后已归档分区可彻底删除', async ({ page, request }) => {
+    await page.goto('/chat');
+    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
+
+    const loginRes = await request.post('http://data-agent:8080/api/v1/auth/login', { data: { username: USER.username, password: USER.password } });
+    const token = (await loginRes.json()).access_token;
+    const createRes = await request.post('http://data-agent:8080/api/v1/sessions', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(createRes.ok()).toBe(true);
+    const { session_id } = await createRes.json();
+    expect(session_id).toBeTruthy();
+
+    await page.reload();
+    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
+    await page.waitForTimeout(2000);
+
+    // Archive (soft delete) — session moves to the archived section
+    await page.locator(`[data-testid="session-delete-${session_id}"]`).click();
+    await page.waitForTimeout(2000);
+    await expect(page.locator('[data-testid="session-archived-title"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(`[data-testid="session-archive-item-${session_id}"]`)).toBeVisible();
+
+    // Hard delete — item disappears from the archived section
+    await page.locator(`[data-testid="session-hard-delete-${session_id}"]`).click();
+    await page.waitForTimeout(2000);
+    await expect(page.locator(`[data-testid="session-archive-item-${session_id}"]`)).not.toBeVisible({ timeout: 10000 });
+  });
+
+  // ═══ UI-185: 清空历史保留会话 (SPEC-090) ═══
+  test('[UI-185] Session — 清空历史保留会话', async ({ page, request }) => {
+    await page.goto('/chat');
+    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
+
+    const loginRes = await request.post('http://data-agent:8080/api/v1/auth/login', { data: { username: USER.username, password: USER.password } });
+    const token = (await loginRes.json()).access_token;
+    const createRes = await request.post('http://data-agent:8080/api/v1/sessions', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(createRes.ok()).toBe(true);
+    const { session_id } = await createRes.json();
+    expect(session_id).toBeTruthy();
+
+    await page.reload();
+    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    await page.waitForSelector('[data-testid="session-sidebar"]', { timeout: 5000 });
+    await page.waitForTimeout(2000);
+
+    // Clear-history button is present on the active session
+    const clearBtn = page.locator(`[data-testid="session-clear-history-${session_id}"]`);
+    await expect(clearBtn).toBeVisible();
+    await clearBtn.click();
+    await page.waitForTimeout(2000);
+
+    // Session remains in the active list (not archived)
+    await expect(page.locator(`[data-testid="session-item-${session_id}"]`)).toBeVisible();
+  });
+
   // ═══ UI-177: Session idle timeout warning ═══
   test('[UI-177] Session — 超时警告', async ({ page }) => {
     // Inject short idle timeout BEFORE page loads (init script runs before React)

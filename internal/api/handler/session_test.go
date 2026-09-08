@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/mock"
 
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	chatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
@@ -125,9 +124,11 @@ func TestSessionHandler_Renew(t *testing.T) {
 
 func TestSessionHandler_Delete(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	mgr.On("Delete", "s1").Return(nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("DELETE", "/sessions/s1")
+	c.Set("user_id", "u1")
 	c.Params = gin.Params{{Key: "id", Value: "s1"}}
 	h.Delete(c)
 	if w.Code != http.StatusOK {
@@ -137,9 +138,11 @@ func TestSessionHandler_Delete(t *testing.T) {
 
 func TestSessionHandler_Restore(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	mgr.On("Restore", "s1").Return(nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("POST", "/sessions/s1/restore")
+	c.Set("user_id", "u1")
 	c.Params = gin.Params{{Key: "id", Value: "s1"}}
 	h.Restore(c)
 	if w.Code != http.StatusOK {
@@ -149,9 +152,8 @@ func TestSessionHandler_Restore(t *testing.T) {
 
 func TestSessionHandler_ListDeleted(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("ListDeleted", mock.Anything, mock.Anything).Return([]*domainchat.Session{
+	mgr.On("ListDeleted", "u1").Return([]*domainchat.Session{
 		{ID: "d1", UserID: "u1"},
-		{ID: "d2", UserID: "other"},
 	}, nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("GET", "/sessions/deleted")
@@ -170,7 +172,7 @@ func TestSessionHandler_ListDeleted(t *testing.T) {
 
 func TestSessionHandler_ListDeleted_Error(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
-	mgr.On("ListDeleted", mock.Anything, mock.Anything).Return(([]*domainchat.Session)(nil), errStr("db"))
+	mgr.On("ListDeleted", "u1").Return(([]*domainchat.Session)(nil), errStr("db"))
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("GET", "/sessions/deleted")
 	c.Set("user_id", "u1")
@@ -312,4 +314,101 @@ func TestSessionHandler_MessagesHiddenEvent(t *testing.T) {
 	if body.Messages[1].Role != "system" {
 		t.Errorf("hidden event role = %q, want system", body.Messages[1].Role)
 	}
+}
+
+// TestSessionHandler_Delete_Permanent verifies DELETE ?permanent=true routes to
+// HardDelete (and never soft-delete) (SPEC-090 D1).
+func TestSessionHandler_Delete_Permanent(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	mgr.On("HardDelete", "s1").Return(nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("DELETE", "/sessions/s1?permanent=true")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Delete(c)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	mgr.AssertNotCalled(t, "Delete", "s1")
+}
+
+// TestSessionHandler_ClearHistory verifies DELETE /:id/history routes to
+// ClearHistory (SPEC-090).
+func TestSessionHandler_ClearHistory(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	mgr.On("ClearHistory", "s1").Return(nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("DELETE", "/sessions/s1/history")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.ClearHistory(c)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestSessionHandler_Delete_Forbidden verifies cross-user archive returns 403
+// and neither soft nor hard delete is invoked (IDOR defense).
+func TestSessionHandler_Delete_Forbidden(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "other"}, nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("DELETE", "/sessions/s1")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Delete(c)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+	mgr.AssertNotCalled(t, "Delete", "s1")
+	mgr.AssertNotCalled(t, "HardDelete", "s1")
+}
+
+// TestSessionHandler_Delete_SystemAdminExempt verifies system_admin bypasses
+// ownership and archives successfully.
+func TestSessionHandler_Delete_SystemAdminExempt(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "other"}, nil)
+	mgr.On("Delete", "s1").Return(nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("DELETE", "/sessions/s1")
+	c.Set("user_id", "u1")
+	c.Set("role", "system_admin")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Delete(c)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for system_admin, got %d", w.Code)
+	}
+}
+
+// TestSessionHandler_Get_Forbidden verifies cross-user read returns 403.
+func TestSessionHandler_Get_Forbidden(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "other"}, nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("GET", "/sessions/s1")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Get(c)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+}
+
+// TestSessionHandler_ClearHistory_Forbidden verifies cross-user clear returns
+// 403 and ClearHistory is not invoked.
+func TestSessionHandler_ClearHistory_Forbidden(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "other"}, nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("DELETE", "/sessions/s1/history")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.ClearHistory(c)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+	mgr.AssertNotCalled(t, "ClearHistory", "s1")
 }

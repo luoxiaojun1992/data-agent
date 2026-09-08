@@ -264,6 +264,47 @@ func (s *Service) deleteSubSessions(ctx context.Context, parentID string) {
 	}
 }
 
+// DeleteByID hard-deletes a session document, its raw event stream, and any
+// bound sub-agent sessions, keyed by session ID alone (app_name/user_id
+// agnostic). Ownership is validated upstream before this is called
+// (SPEC-090 §5.2.1). It never touches artifact/memory.
+func (s *Service) DeleteByID(ctx context.Context, sessionID string) error {
+	if _, err := s.coll.DeleteOne(ctx, bson.M{"_id": sessionID}); err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	// Cascade-delete the independent raw event stream. Best effort — a leftover
+	// event doc only affects display, never correctness.
+	if _, err := s.evtColl.DeleteMany(ctx, bson.M{"session_id": sessionID}); err != nil {
+		log.Printf("[session] delete session events %s: %v", sessionID, err)
+	}
+	// Cascade hard-delete any sub-agent sessions bound to this parent.
+	s.deleteSubSessions(ctx, sessionID)
+	return nil
+}
+
+// ClearHistory wipes a session's chat history but keeps the session document
+// and its state (workspace binding survives). It clears (SPEC-090 §5.2.1):
+//   - adk_sessions.events (compacted LLM context)
+//   - adk_sessions.raw_events (legacy array)
+//   - session_events (raw event stream)
+//
+// state, parent_session_id, user_id and app_name are preserved.
+func (s *Service) ClearHistory(ctx context.Context, sessionID string) error {
+	if _, err := s.coll.UpdateOne(ctx, bson.M{"_id": sessionID}, bson.M{
+		"$set": bson.M{
+			"events":     []*session.Event{},
+			"raw_events": []*session.Event{},
+			"updated_at": time.Now(),
+		},
+	}); err != nil {
+		return fmt.Errorf("clear session history: %w", err)
+	}
+	if _, err := s.evtColl.DeleteMany(ctx, bson.M{"session_id": sessionID}); err != nil {
+		log.Printf("[session] clear session events %s: %v", sessionID, err)
+	}
+	return nil
+}
+
 // AppendEvent appends an event. Streaming text chunks are buffered and flushed
 // as one complete message to the independent session_events collection when
 // the invocation changes or a non-text event arrives. This guarantees one LLM

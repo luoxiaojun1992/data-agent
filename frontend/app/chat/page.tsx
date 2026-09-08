@@ -386,6 +386,26 @@ export default function ChatPage() {
     } catch { /* ignore */ }
   };
 
+  // 清空聊天历史（保留 session + workspace，SPEC-090）。若清空的是当前打开的
+  // session，同步清空本地 transcript，下一轮对话从空白上下文开始。
+  const clearHistory = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await apiFetch(`/sessions/${id}/history`, { method: 'DELETE' });
+      if (sessionId === id) setMessages([]);
+    } catch { /* ignore */ }
+  };
+
+  // 彻底删除（硬删除，不可逆，SPEC-090）：移除 session + workspace + 聊天历史 +
+  // 子 session，但保留 artifact/memory。
+  const hardDeleteSession = async (id: string) => {
+    try {
+      await apiFetch(`/sessions/${id}?permanent=true`, { method: 'DELETE' });
+      setDeletedSessions(prev => prev.filter(s => s.id !== id));
+      if (sessionId === id) { setMessages([]); setSessionId(null); }
+    } catch { /* ignore */ }
+  };
+
   const handleEnhance = async () => {
     if (!input.trim() || enhancing) return;
     setEnhancing(true);
@@ -910,22 +930,7 @@ export default function ChatPage() {
                 className="w-full px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none mb-2"
                 data-testid="session-search" />
             <div data-testid="session-list">
-              {/* Recovery banner for deleted sessions */}
-              {deletedSessions.length > 0 && (
-                <div data-testid="session-recovery-banner"
-                  className="mb-2 p-2 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20">
-                  <p className="text-xs text-[var(--text-secondary)] mb-1">
-                    已删除 {deletedSessions.length} 个会话，可在 24 小时内恢复
-                  </p>
-                  {deletedSessions.map(s => (
-                    <button key={s.id} onClick={() => restoreSession(s.id)}
-                      data-testid="session-recovery-restore-btn"
-                      className="text-xs text-[var(--accent)] hover:underline">
-                      恢复 Session {s.id.slice(-8)}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Active sessions (可点击进入聊天) */}
               {sessions.map(s => (
                   <button key={s.id} onClick={() => selectSession(s.id)}
                     className={`w-full text-left px-2 py-1.5 text-xs hover:bg-white/5 rounded transition-colors ${s.id === sessionId ? 'bg-[var(--accent)]/10' : ''}`}
@@ -934,13 +939,50 @@ export default function ChatPage() {
                       <span className="text-[var(--text-primary)] line-clamp-2 break-all" data-testid="session-item-title">
                         {s.title || `Session ${s.id.slice(-8)}`}
                       </span>
-                      <button onClick={e => deleteSession(s.id, e)}
-                        className="flex-shrink-0 text-[10px] text-red-400 hover:text-red-300"
-                        data-testid={`session-delete-${s.id}`}>删除</button>
+                      <span className="flex gap-2 flex-shrink-0">
+                        <button onClick={e => clearHistory(s.id, e)}
+                          title="清空聊天历史（保留会话）"
+                          className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                          data-testid={`session-clear-history-${s.id}`}>清空</button>
+                        <button onClick={e => deleteSession(s.id, e)}
+                          className="text-[10px] text-red-400 hover:text-red-300"
+                          data-testid={`session-delete-${s.id}`}>归档</button>
+                      </span>
                     </div>
                     <span className="text-[var(--text-secondary)] text-[10px]" data-testid="session-item-meta">{new Date(s.created_at).toLocaleDateString()}</span>
                   </button>
                 ))}
+
+              {/* Archived sessions (不可点击进入聊天，仅恢复 / 彻底删除，SPEC-090) */}
+              {deletedSessions.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-[10px] uppercase text-[var(--text-secondary)] mb-1" data-testid="session-archived-title">已归档</p>
+                  <div data-testid="session-recovery-banner" className="space-y-1">
+                    {deletedSessions.map(s => (
+                      <div key={s.id}
+                        className="p-2 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20"
+                        data-testid={`session-archive-item-${s.id}`}>
+                        <div className="flex items-start justify-between gap-1">
+                          <span className="text-xs text-[var(--text-primary)] line-clamp-2 break-all">
+                            {s.title || `Session ${s.id.slice(-8)}`}
+                          </span>
+                          <span className="flex gap-2 flex-shrink-0">
+                            <button onClick={() => restoreSession(s.id)}
+                              className="text-[10px] text-[var(--accent)] hover:underline"
+                              data-testid="session-recovery-restore-btn">恢复</button>
+                            <button onClick={() => hardDeleteSession(s.id)}
+                              className="text-[10px] text-red-400 hover:text-red-300"
+                              data-testid={`session-hard-delete-${s.id}`}>彻底删除</button>
+                          </span>
+                        </div>
+                        <span className="text-[var(--text-secondary)] text-[10px]" data-testid={`session-archive-meta-${s.id}`}>
+                          归档于 {s.deleted_at ? new Date(s.deleted_at).toLocaleDateString() : '-'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               </div>
 
               {/* Pagination */}
