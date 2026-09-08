@@ -16,34 +16,6 @@ type SessionRepository struct {
 	mock.Mock
 }
 
-// Cleanup provides a mock function with given fields: ctx, before
-func (_m *SessionRepository) Cleanup(ctx context.Context, before time.Time) (int64, error) {
-	ret := _m.Called(ctx, before)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Cleanup")
-	}
-
-	var r0 int64
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time) (int64, error)); ok {
-		return rf(ctx, before)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time) int64); ok {
-		r0 = rf(ctx, before)
-	} else {
-		r0 = ret.Get(0).(int64)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, time.Time) error); ok {
-		r1 = rf(ctx, before)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // Create provides a mock function with given fields: ctx, s
 func (_m *SessionRepository) Create(ctx context.Context, s repository.SessionRecord) error {
 	ret := _m.Called(ctx, s)
@@ -108,6 +80,24 @@ func (_m *SessionRepository) Get(ctx context.Context, id string) (*repository.Se
 	}
 
 	return r0, r1
+}
+
+// HardDelete provides a mock function with given fields: ctx, id
+func (_m *SessionRepository) HardDelete(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for HardDelete")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // ListByUser provides a mock function with given fields: ctx, userID
@@ -177,9 +167,9 @@ func (_m *SessionRepository) ListByUserPaged(ctx context.Context, userID string,
 	return r0, r1, r2
 }
 
-// ListDeleted provides a mock function with given fields: ctx, before, limit
-func (_m *SessionRepository) ListDeleted(ctx context.Context, before time.Time, limit int64) ([]*repository.SessionRecord, error) {
-	ret := _m.Called(ctx, before, limit)
+// ListDeleted provides a mock function with given fields: ctx, userID, limit
+func (_m *SessionRepository) ListDeleted(ctx context.Context, userID string, limit int64) ([]*repository.SessionRecord, error) {
+	ret := _m.Called(ctx, userID, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListDeleted")
@@ -187,19 +177,49 @@ func (_m *SessionRepository) ListDeleted(ctx context.Context, before time.Time, 
 
 	var r0 []*repository.SessionRecord
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time, int64) ([]*repository.SessionRecord, error)); ok {
-		return rf(ctx, before, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64) ([]*repository.SessionRecord, error)); ok {
+		return rf(ctx, userID, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time, int64) []*repository.SessionRecord); ok {
-		r0 = rf(ctx, before, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64) []*repository.SessionRecord); ok {
+		r0 = rf(ctx, userID, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*repository.SessionRecord)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, time.Time, int64) error); ok {
-		r1 = rf(ctx, before, limit)
+	if rf, ok := ret.Get(1).(func(context.Context, string, int64) error); ok {
+		r1 = rf(ctx, userID, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListExpired provides a mock function with given fields: ctx, before
+func (_m *SessionRepository) ListExpired(ctx context.Context, before time.Time) ([]*repository.SessionRecord, error) {
+	ret := _m.Called(ctx, before)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListExpired")
+	}
+
+	var r0 []*repository.SessionRecord
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, time.Time) ([]*repository.SessionRecord, error)); ok {
+		return rf(ctx, before)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, time.Time) []*repository.SessionRecord); ok {
+		r0 = rf(ctx, before)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*repository.SessionRecord)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, time.Time) error); ok {
+		r1 = rf(ctx, before)
 	} else {
 		r1 = ret.Error(1)
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"iter"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
+	chatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 )
 
@@ -440,7 +442,12 @@ func TestManager_Renew(t *testing.T) {
 
 func TestManager_Cleanup(t *testing.T) {
 	m, repo := newTestManager(t)
-	repo.On("Cleanup", mock.Anything, mock.Anything).Return(int64(3), nil)
+	repo.On("ListExpired", mock.Anything, mock.Anything).Return([]*repository.SessionRecord{
+		{ID: "s1"}, {ID: "s2"}, {ID: "s3"},
+	}, nil)
+	repo.On("HardDelete", mock.Anything, "s1").Return(nil)
+	repo.On("HardDelete", mock.Anything, "s2").Return(nil)
+	repo.On("HardDelete", mock.Anything, "s3").Return(nil)
 
 	n, err := m.Cleanup()
 	if err != nil {
@@ -484,6 +491,67 @@ func TestManager_Delete(t *testing.T) {
 	}
 }
 
+// TestManager_Delete_KeepsWorkspace verifies archiving (soft delete) does not
+// remove the session workspace — it must survive for a complete restore
+// (SPEC-090 §9.5).
+func TestManager_Delete_KeepsWorkspace(t *testing.T) {
+	m, repo := newTestManager(t)
+	dir := SessionWorkspace("s1-keep-ws")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	repo.On("Delete", mock.Anything, "s1-keep-ws").Return(nil)
+	if err := m.Delete("s1-keep-ws"); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("workspace should be kept after archive, got: %v", err)
+	}
+}
+
+func TestManager_HardDelete(t *testing.T) {
+	repo := mockrepo.NewSessionRepository(t)
+	history := chatmocks.NewSessionHistoryStore(t)
+	m := &Manager{repo: repo, ttl: 24 * time.Hour, historyStore: history}
+
+	repo.On("HardDelete", mock.Anything, "s1").Return(nil)
+	history.On("Delete", mock.Anything, "s1").Return(nil)
+
+	if err := m.HardDelete("s1"); err != nil {
+		t.Fatalf("HardDelete failed: %v", err)
+	}
+	repo.AssertExpectations(t)
+	history.AssertExpectations(t)
+}
+
+func TestManager_HardDelete_RepoError(t *testing.T) {
+	repo := mockrepo.NewSessionRepository(t)
+	history := chatmocks.NewSessionHistoryStore(t)
+	m := &Manager{repo: repo, ttl: 24 * time.Hour, historyStore: history}
+
+	repo.On("HardDelete", mock.Anything, "s1").Return(fmt.Errorf("db down"))
+	// history.Delete must NOT be called when the repo delete fails.
+	if err := m.HardDelete("s1"); err == nil {
+		t.Error("expected repo error")
+	}
+	history.AssertNotCalled(t, "Delete", mock.Anything, "s1")
+}
+
+func TestManager_ClearHistory(t *testing.T) {
+	repo := mockrepo.NewSessionRepository(t)
+	history := chatmocks.NewSessionHistoryStore(t)
+	m := &Manager{repo: repo, ttl: 24 * time.Hour, historyStore: history}
+
+	history.On("ClearHistory", mock.Anything, "s1").Return(nil)
+
+	if err := m.ClearHistory("s1"); err != nil {
+		t.Fatalf("ClearHistory failed: %v", err)
+	}
+	history.AssertExpectations(t)
+}
+
 func TestManager_Restore(t *testing.T) {
 	m, repo := newTestManager(t)
 	repo.On("Restore", mock.Anything, "s1").Return(nil)
@@ -495,11 +563,11 @@ func TestManager_Restore(t *testing.T) {
 
 func TestManager_ListDeleted(t *testing.T) {
 	m, repo := newTestManager(t)
-	repo.On("ListDeleted", mock.Anything, mock.Anything, int64(100)).Return([]*repository.SessionRecord{
+	repo.On("ListDeleted", mock.Anything, "u1", int64(100)).Return([]*repository.SessionRecord{
 		{ID: "d1", UserID: "u1"},
 	}, nil)
 
-	sessions, err := m.ListDeleted(time.Now(), 100)
+	sessions, err := m.ListDeleted("u1")
 	if err != nil {
 		t.Fatalf("ListDeleted: %v", err)
 	}

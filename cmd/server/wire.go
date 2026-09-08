@@ -274,7 +274,6 @@ func initRedis(deps *serverDependencies, cfg *config.Config, logger *zap.Logger)
 }
 
 func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logger *zap.Logger) {
-	deps.sessionManager = chat.NewManager(mongoinfra.NewSessionRepository(mongoClient.DB()), 24*time.Hour)
 	deps.sessionRepo = mongoinfra.NewSessionRepository(mongoClient.DB())
 	// SPEC-072: wrap the runtime (chat) LLM with actual-usage recording so the
 	// main chat path's token/call counts feed token_tokens + llm_calls (the
@@ -300,6 +299,10 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 		},
 		adksession.NewLLMSummarizer(compactionLLM),
 	)
+
+	// SPEC-090: inject the narrow ADK history store so the session manager can
+	// hard-delete / clear chat history without depending on the full ADK type.
+	deps.sessionManager = chat.NewManager(deps.sessionRepo, 24*time.Hour, adksession.NewHistoryStore(deps.adkSessions))
 
 	initMemoryBackend(deps, mongoClient, compactionLLM, logger)
 

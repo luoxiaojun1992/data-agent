@@ -16,20 +16,27 @@ type SessionRepository interface {
 	// ListByUserPaged returns paginated sessions. q filters by title/_id
 	// (DB-layer $regex), empty = no keyword filter (SPEC-075).
 	ListByUserPaged(ctx context.Context, userID string, q string, skip, limit int64) ([]*SessionRecord, int64, error)
-	Cleanup(ctx context.Context, before time.Time) (int64, error)
+	// Delete archives (soft-deletes) a session ($set deleted_at), keeping
+	// workspace + chat history (SPEC-090).
 	Delete(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
-	ListDeleted(ctx context.Context, before time.Time, limit int64) ([]*SessionRecord, error)
+	// HardDelete physically deletes the sessions document (SPEC-090).
+	HardDelete(ctx context.Context, id string) error
+	// ListDeleted returns the user's archived sessions (deleted_at exists).
+	ListDeleted(ctx context.Context, userID string, limit int64) ([]*SessionRecord, error)
+	// ListExpired returns active (non-archived) sessions whose expires_at is
+	// before the given time, for cascade cleanup (SPEC-090 §5.1).
+	ListExpired(ctx context.Context, before time.Time) ([]*SessionRecord, error)
 	SetRecoveryHours(ctx context.Context, hours int) error
 	SetTitle(ctx context.Context, id, title string) error
 }
 
 // SessionRecord is the session data record used by the repository.
 type SessionRecord struct {
-	ID          string     `bson:"_id"`
-	UserID      string     `bson:"user_id"`
-	Title       string     `bson:"title"`
-	ModelID     string     `bson:"model_id"`
+	ID      string `bson:"_id"`
+	UserID  string `bson:"user_id"`
+	Title   string `bson:"title"`
+	ModelID string `bson:"model_id"`
 	// IsTask marks sessions created by the async/scheduled task executor.
 	// These ride the same ADK chat-session infrastructure but represent an
 	// autonomous analysis run rather than a real-time user conversation.

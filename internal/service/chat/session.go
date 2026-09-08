@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,13 +35,16 @@ func removeWorkspace(sessionID string) {
 
 // Manager handles session lifecycle. It implements domain/chat.SessionService.
 type Manager struct {
-	repo repository.SessionRepository
-	ttl  time.Duration
+	repo         repository.SessionRepository
+	ttl          time.Duration
+	historyStore domainchat.SessionHistoryStore
 }
 
-// NewManager creates a session manager.
-func NewManager(repo repository.SessionRepository, ttl time.Duration) *Manager {
-	return &Manager{repo: repo, ttl: ttl}
+// NewManager creates a session manager. historyStore backs HardDelete and
+// ClearHistory (the ADK-side chat history); it may be nil in tests where those
+// operations are not exercised.
+func NewManager(repo repository.SessionRepository, ttl time.Duration, historyStore domainchat.SessionHistoryStore) *Manager {
+	return &Manager{repo: repo, ttl: ttl, historyStore: historyStore}
 }
 
 // ensure Manager satisfies the domain SessionService contract.
@@ -127,7 +131,24 @@ func (m *Manager) Renew(id string) error {
 }
 
 func (m *Manager) Cleanup() (int64, error) {
-	return m.repo.Cleanup(context.Background(), time.Now())
+	ctx := context.Background()
+	// List active (non-archived) expired sessions. Archived sessions are exempt
+	// from cleanup and remain until manually restored or hard-deleted.
+	recs, err := m.repo.ListExpired(ctx, time.Now())
+	if err != nil {
+		return 0, err
+	}
+	var deleted int64
+	for _, rec := range recs {
+		// Reuse the full cascade path (sessions + workspace + ADK history + sub
+		// sessions); artifact/memory are never touched.
+		if err := m.HardDelete(rec.ID); err != nil {
+			log.Printf("[session] cleanup delete %s: %v", rec.ID, err)
+			continue
+		}
+		deleted++
+	}
+	return deleted, nil
 }
 
 func (m *Manager) ListByUser(userID string) ([]*domainchat.Session, error) {
@@ -163,18 +184,45 @@ func (m *Manager) ListByUserPaged(userID string, q string, page, pageSize int) (
 	return sessions, total, nil
 }
 
+// Delete archives (soft-deletes) a session: sets deleted_at, keeps the
+// workspace and chat history for a complete restore, and never auto-deletes
+// via TTL (SPEC-090).
 func (m *Manager) Delete(id string) error {
-	// Clean workspace before deleting from DB.
-	removeWorkspace(id)
 	return m.repo.Delete(context.Background(), id)
+}
+
+// HardDelete permanently removes a session: the sessions record, its workspace
+// directory, and its ADK-side chat history (compacted events + raw event stream
+// + any sub-agent sessions). artifact/memory are permanent products and are
+// never cascaded (SPEC-090).
+func (m *Manager) HardDelete(id string) error {
+	if err := m.repo.HardDelete(context.Background(), id); err != nil {
+		return err
+	}
+	removeWorkspace(id)
+	if m.historyStore != nil {
+		if err := m.historyStore.Delete(context.Background(), id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ClearHistory wipes a session's chat history (compacted + raw) while keeping
+// the session record and its workspace (SPEC-090).
+func (m *Manager) ClearHistory(id string) error {
+	if m.historyStore == nil {
+		return nil
+	}
+	return m.historyStore.ClearHistory(context.Background(), id)
 }
 
 func (m *Manager) Restore(id string) error {
 	return m.repo.Restore(context.Background(), id)
 }
 
-func (m *Manager) ListDeleted(before time.Time, limit int64) ([]*domainchat.Session, error) {
-	recs, err := m.repo.ListDeleted(context.Background(), before, limit)
+func (m *Manager) ListDeleted(userID string) ([]*domainchat.Session, error) {
+	recs, err := m.repo.ListDeleted(context.Background(), userID, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +263,12 @@ func recordToSession(r *repository.SessionRecord) *domainchat.Session {
 		Type:      "chat",
 		Title:     r.Title,
 		ModelID:   r.ModelID,
+		Status:    "active",
 		IsTask:    r.IsTask,
 		IsFeishu:  r.IsFeishu,
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 		ExpiresAt: r.ExpiresAt,
+		DeletedAt: r.DeletedAt,
 	}
 }

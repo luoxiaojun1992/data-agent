@@ -1,6 +1,6 @@
 # Session 生命周期管理（归档 / 删除 / 清空历史 / 永久产物隔离）
 
-> **SPEC-090** | Status: 设计中
+> **SPEC-090** | Status: ✅ 已实现
 
 ## 1. 目标
 
@@ -21,7 +21,7 @@
 | SPEC-064 RBAC 权限管理 | ✅ | `chat:delete` 权限已存在 |
 | SPEC-005 Artifact 存储与工作区 | ✅ | `artifacts` 集合（`session_id` + `Persistent`）+ workspace 目录 |
 
-无阻塞项，可立即开始（立项阶段不实现）。
+无阻塞项，已实现。
 
 ## 2. 背景（现有实现不足）
 

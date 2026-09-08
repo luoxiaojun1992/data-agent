@@ -9,10 +9,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
-	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
+	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	"google.golang.org/adk/session"
 )
 
@@ -38,6 +38,7 @@ func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler, rbacSvc *rbac
 	rg.GET("/:id/messages", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Messages)
 	rg.PUT("/:id", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Renew)
 	rg.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermChatDelete), h.Delete)
+	rg.DELETE("/:id/history", middleware.RequirePermission(rbacSvc, model.PermChatDelete), h.ClearHistory)
 	rg.POST("/:id/restore", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Restore)
 }
 
@@ -92,6 +93,9 @@ func (h *SessionHandler) Get(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 		return
 	}
+	if !h.verifyOwnership(c, s) {
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"session": s})
 }
 
@@ -103,39 +107,96 @@ func (h *SessionHandler) Renew(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "renewed"})
 }
 
+// Delete archives (soft-deletes) a session by default. When the query param
+// permanent=true is set, it hard-deletes instead (irreversible), removing the
+// session, its workspace, chat history and sub sessions — but never
+// artifact/memory (SPEC-090).
 func (h *SessionHandler) Delete(c *gin.Context) {
-	if err := h.mgr.Delete(c.Param("id")); err != nil {
+	id := c.Param("id")
+	s, err := h.mgr.Get(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if !h.verifyOwnership(c, s) {
+		return
+	}
+	if c.Query("permanent") == "true" {
+		if err := h.mgr.HardDelete(id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+		return
+	}
+	if err := h.mgr.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
+// ClearHistory wipes a session's chat history, keeping the session record and
+// its workspace (SPEC-090).
+func (h *SessionHandler) ClearHistory(c *gin.Context) {
+	id := c.Param("id")
+	s, err := h.mgr.Get(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if !h.verifyOwnership(c, s) {
+		return
+	}
+	if err := h.mgr.ClearHistory(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "history cleared"})
+}
+
 func (h *SessionHandler) Restore(c *gin.Context) {
-	if err := h.mgr.Restore(c.Param("id")); err != nil {
+	id := c.Param("id")
+	s, err := h.mgr.Get(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if !h.verifyOwnership(c, s) {
+		return
+	}
+	if err := h.mgr.Restore(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "restored"})
 }
 
-// ListDeleted returns soft-deleted sessions for the current user (recovery
-// window). The frontend chat page calls GET /sessions/deleted to render the
-// session-recovery-banner (UI-181).
+// verifyOwnership enforces that sess belongs to the current user, or that the
+// caller is system_admin (IDOR defense, SPEC-090 §5.2.4). Returns false (and
+// writes the HTTP error) on denial.
+func (h *SessionHandler) verifyOwnership(c *gin.Context, sess *chat.Session) bool {
+	if sess == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return false
+	}
+	if sess.UserID != c.GetString("user_id") && c.GetString("role") != "system_admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "session does not belong to the current user"})
+		return false
+	}
+	return true
+}
+
+// ListDeleted returns soft-deleted (archived) sessions for the current user.
+// Filtering by user happens at the DB layer (SPEC-090), not in memory.
 func (h *SessionHandler) ListDeleted(c *gin.Context) {
 	userID := c.GetString("user_id")
-	sessions, err := h.mgr.ListDeleted(time.Now(), 100)
+	sessions, err := h.mgr.ListDeleted(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var userSessions []*chat.Session
-	for _, s := range sessions {
-		if s.UserID == userID {
-			userSessions = append(userSessions, s)
-		}
-	}
-	c.JSON(http.StatusOK, gin.H{"sessions": userSessions})
+	c.JSON(http.StatusOK, gin.H{"sessions": sessions})
 }
 
 // Messages returns the latest 100 ADK events converted to canonical chat form.
@@ -215,5 +276,5 @@ func (s *eventSlice) All() iter.Seq[*session.Event] {
 		}
 	}
 }
-func (s *eventSlice) Len() int              { return len(s.items) }
+func (s *eventSlice) Len() int                { return len(s.items) }
 func (s *eventSlice) At(i int) *session.Event { return s.items[i] }

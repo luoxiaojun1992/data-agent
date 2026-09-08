@@ -82,16 +82,13 @@ func (r *SessionRepository) ListByUserPaged(ctx context.Context, userID string, 
 	return sessions, total, nil
 }
 
-func (r *SessionRepository) Cleanup(ctx context.Context, before time.Time) (int64, error) {
-	res, err := r.coll.DeleteMany(ctx, bson.M{"expires_at": bson.M{"$lt": before}})
-	if err != nil {
-		return 0, err
-	}
-	return res.DeletedCount, nil
-}
-
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"deleted_at": time.Now()}})
+	return err
+}
+
+func (r *SessionRepository) HardDelete(ctx context.Context, id string) error {
+	_, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
 	return err
 }
 
@@ -100,9 +97,35 @@ func (r *SessionRepository) Restore(ctx context.Context, id string) error {
 	return err
 }
 
-func (r *SessionRepository) ListDeleted(ctx context.Context, before time.Time, limit int64) ([]*repository.SessionRecord, error) {
-	opts := options.Find().SetLimit(limit)
-	cursor, err := r.coll.Find(ctx, bson.M{"deleted_at": bson.M{"$lt": before}}, opts)
+// ListDeleted returns the user's archived sessions (deleted_at exists), sorted
+// most-recently-archived first (SPEC-090).
+func (r *SessionRepository) ListDeleted(ctx context.Context, userID string, limit int64) ([]*repository.SessionRecord, error) {
+	opts := options.Find().
+		SetSort(bson.D{{Key: "deleted_at", Value: -1}}).
+		SetLimit(limit)
+	cursor, err := r.coll.Find(ctx, bson.M{
+		"user_id":    userID,
+		"deleted_at": bson.M{"$exists": true},
+	}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var sessions []*repository.SessionRecord
+	if err := cursor.All(ctx, &sessions); err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
+
+// ListExpired returns active (non-archived) sessions whose expires_at is before
+// the given time. Archived sessions (deleted_at exists) are exempt from cleanup
+// and never returned (SPEC-090 §5.1).
+func (r *SessionRepository) ListExpired(ctx context.Context, before time.Time) ([]*repository.SessionRecord, error) {
+	cursor, err := r.coll.Find(ctx, bson.M{
+		"expires_at": bson.M{"$lt": before},
+		"deleted_at": bson.M{"$exists": false},
+	})
 	if err != nil {
 		return nil, err
 	}

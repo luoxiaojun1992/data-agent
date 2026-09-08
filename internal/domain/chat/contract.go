@@ -8,7 +8,6 @@ package chat
 import (
 	"context"
 	"net/http"
-	"time"
 )
 
 // ImagePart is a base64-encoded image attachment carried with a chat message.
@@ -99,6 +98,21 @@ type ChatService interface {
 	Stream(ctx context.Context, req ChatRequest, userID, role string, w http.ResponseWriter) error
 }
 
+// SessionHistoryStore is the narrow contract the session service depends on to
+// hard-delete and clear the ADK-side chat history (adk_sessions + session_events
+// + sub sessions) without coupling to the concrete google.golang.org/adk/session
+// type. infra adapts adk/session.Service to this contract (SPEC-090 §5.2.3).
+//
+//go:generate mockery --name SessionHistoryStore --output ./mocks --outpkg mocks
+type SessionHistoryStore interface {
+	// Delete hard-deletes a session's ADK record, its raw event stream and any
+	// bound sub-agent sessions (cascade). Ownership is validated upstream.
+	Delete(ctx context.Context, sessionID string) error
+	// ClearHistory wipes a session's chat history (compacted events + raw
+	// session_events) while keeping the session document and its state.
+	ClearHistory(ctx context.Context, sessionID string) error
+}
+
 // SessionService is the domain contract for session lifecycle management.
 // The chat.Manager (service layer) implements this contract.
 //
@@ -122,9 +136,18 @@ type SessionService interface {
 	// ListByUserPaged returns paginated sessions. q filters by title/id at the
 	// DB layer (SPEC-075); empty = no filter.
 	ListByUserPaged(userID string, q string, page, pageSize int) ([]*Session, int64, error)
+	// Delete archives (soft-deletes) a session: sets deleted_at, keeps
+	// workspace + chat history, no TTL auto-delete (SPEC-090).
 	Delete(id string) error
+	// HardDelete permanently removes a session, its workspace, chat history and
+	// sub sessions, but never artifact/memory (SPEC-090).
+	HardDelete(id string) error
+	// ClearHistory wipes a session's chat history, keeping the session and its
+	// workspace (SPEC-090).
+	ClearHistory(id string) error
 	Restore(id string) error
-	ListDeleted(before time.Time, limit int64) ([]*Session, error)
+	// ListDeleted returns the current user's archived sessions (SPEC-090).
+	ListDeleted(userID string) ([]*Session, error)
 	SetRecoveryHours(hours int) error
 	// SetTitle updates the session title (first user prompt snippet).
 	SetTitle(id, title string) error
