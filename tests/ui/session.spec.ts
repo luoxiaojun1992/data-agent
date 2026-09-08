@@ -211,4 +211,17 @@ test.describe('SESSION — SPEC-037', () => {
     // Page should still be logged in
     await expect(page.locator('[data-testid="sidebar"]')).toBeVisible({ timeout: 5000 });
   });
+
+  // ═══ UI-183: 登录响应下发 idle 超时写入 localStorage (SPEC-088) ═══
+  test('[UI-183] Session — idle 超时下发并写入 localStorage', async ({ page }) => {
+    // beforeEach already performed login via the UI, which should persist
+    // idle_timeout_minutes from the login response.
+    await page.goto('/chat');
+    await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
+
+    const idle = await page.evaluate(() => localStorage.getItem('idleTimeoutMinutes'));
+    expect(idle).toBeTruthy();
+    const minutes = parseInt(idle!, 10);
+    expect(minutes).toBeGreaterThan(0);
+  });
 });

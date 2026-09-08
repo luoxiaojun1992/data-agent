@@ -21,6 +21,12 @@ export default function IdleTimer() {
       const params = new URLSearchParams(window.location.search);
       const e2eTimeout = params.get('idle_timeout');
       if (e2eTimeout) return parseInt(e2eTimeout, 10);
+      // Backend-delivered idle timeout (SPEC-088), minutes → seconds.
+      const stored = localStorage.getItem('idleTimeoutMinutes');
+      if (stored) {
+        const m = parseInt(stored, 10);
+        if (m > 0) return m * 60;
+      }
     }
     return DEFAULT_IDLE_TIMEOUT;
   }, []);

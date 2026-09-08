@@ -88,13 +88,14 @@ type LoginRequest struct {
 
 // LoginResponse represents a successful login response.
 type LoginResponse struct {
-	UserID       string `json:"user_id"`
-	Username     string `json:"username"`
-	Role         string `json:"role"`
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int64  `json:"expires_in"`
-	NeedChangePw bool   `json:"need_change_pw"`
+	UserID              string `json:"user_id"`
+	Username            string `json:"username"`
+	Role                string `json:"role"`
+	AccessToken         string `json:"access_token"`
+	TokenType           string `json:"token_type"`
+	ExpiresIn           int64  `json:"expires_in"`
+	IdleTimeoutMinutes  int64  `json:"idle_timeout_minutes"`
+	NeedChangePw        bool   `json:"need_change_pw"`
 }
 
 // RegisterRequest / RegisterResponse were removed (SPEC-084): self-registration
@@ -127,6 +128,19 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 		}
 	}
 
+	// SESSION_IDLE_TIMEOUT (minutes) drives the frontend idle auto-logout.
+	// Downstream via the login response, not an RBAC-gated admin endpoint, so
+	// every role (including plain user) receives it. Invalid/empty/<=0 values
+	// fall back to 30 minutes.
+	idleMinutes := int64(30)
+	if s.configCache != nil {
+		if cfg, err := s.configCache.Get(ctx, "SESSION_IDLE_TIMEOUT"); err == nil && cfg != nil && cfg.Value != "" {
+			if m, err := strconv.ParseInt(cfg.Value, 10, 64); err == nil && m > 0 {
+				idleMinutes = m
+			}
+		}
+	}
+
 	token, err := s.jwtManager.GenerateTokenWithExpiration(user.ID, user.Username, string(user.Role), expiration)
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
@@ -134,13 +148,14 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*LoginResponse,
 
 	expiresIn := int64(expiration.Seconds())
 	return &LoginResponse{
-		UserID:       user.ID,
-		Username:     user.Username,
-		Role:         string(user.Role),
-		AccessToken:  token,
-		TokenType:    "Bearer",
-		ExpiresIn:    expiresIn,
-		NeedChangePw: !user.PasswordChanged,
+		UserID:             user.ID,
+		Username:           user.Username,
+		Role:               string(user.Role),
+		AccessToken:        token,
+		TokenType:          "Bearer",
+		ExpiresIn:          expiresIn,
+		IdleTimeoutMinutes: idleMinutes,
+		NeedChangePw:       !user.PasswordChanged,
 	}, nil
 }
 

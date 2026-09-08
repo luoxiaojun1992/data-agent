@@ -97,6 +97,8 @@ export function useAuth() {
     localStorage.setItem('username', data.username);
     localStorage.setItem('role', data.role);
     localStorage.setItem('needChangePw', String(!!data.need_change_pw));
+    // Session idle timeout (SPEC-088): minutes, read from login response.
+    localStorage.setItem('idleTimeoutMinutes', String(data.idle_timeout_minutes ?? 30));
     // Load RBAC permissions
     let perms: string[] = [];
     try {
@@ -127,6 +129,7 @@ export function useAuth() {
     localStorage.removeItem('username');
     localStorage.removeItem('role');
     localStorage.removeItem('needChangePw');
+    localStorage.removeItem('idleTimeoutMinutes');
     setAuth({ token: null, userId: null, username: null, role: null, needChangePw: false, permissions: [], hydrated: true });
   }, []);
 

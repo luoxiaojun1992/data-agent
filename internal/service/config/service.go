@@ -30,6 +30,7 @@ func SystemBuiltins() []BuiltinConfig {
 		{Key: "VAULT_ADDR", Description: "HashiCorp Vault 地址", Default: ""},
 		{Key: "JWT_SECRET", Description: "JWT 签名密钥", Default: ""},
 		{Key: "SESSION_TIMEOUT", Description: "登录 Session 超时（小时）", Default: "24"},
+		{Key: "SESSION_IDLE_TIMEOUT", Description: "会话空闲超时（分钟，无操作自动登出）", Default: "30"},
 		{Key: "SERVER_READ_TIMEOUT", Description: "HTTP 读超时（秒）", Default: "600"},
 		{Key: "SERVER_WRITE_TIMEOUT", Description: "HTTP 写超时（秒）", Default: "600"},
 		{Key: "WORKER_POOL_SIZE", Description: "Worker 协程池大小", Default: "10"},
