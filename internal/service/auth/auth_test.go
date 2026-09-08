@@ -200,6 +200,135 @@ func TestLogin_GenerateTokenError(t *testing.T) {
 	}
 }
 
+// --- Login idle timeout (SPEC-088) ---
+
+// fakeConfigCache is a minimal ConfigCache used to feed SESSION_IDLE_TIMEOUT
+// values into Login without a live config repository.
+type fakeConfigCache struct {
+	values map[string]string
+	err    error
+}
+
+func (f fakeConfigCache) Get(_ context.Context, key string) (*model.SystemConfig, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if v, ok := f.values[key]; ok {
+		return &model.SystemConfig{Key: key, Value: v}, nil
+	}
+	return nil, nil
+}
+
+func TestLogin_IdleTimeout_FromConfig(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	user := &model.User{
+		ID: "507f1f77bcf86cd799439013", Username: "testuser",
+		PasswordHash: "$2a$10$dummy", Role: model.RoleUser, Status: model.StatusEnabled,
+	}
+	repo.On("FindByUsername", mock.Anything, "testuser").Return(user, nil)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	svc.SetSysConfigCache(fakeConfigCache{values: map[string]string{"SESSION_IDLE_TIMEOUT": "45"}})
+
+	resp, err := svc.Login(context.Background(), &LoginRequest{Username: "testuser", Password: "pass"})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if resp.IdleTimeoutMinutes != 45 {
+		t.Errorf("IdleTimeoutMinutes = %d, want 45", resp.IdleTimeoutMinutes)
+	}
+	if resp.AccessToken != "valid-token" {
+		t.Errorf("AccessToken = %q, want %q", resp.AccessToken, "valid-token")
+	}
+}
+
+func TestLogin_IdleTimeout_DefaultWhenNoCache(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	user := &model.User{
+		ID: "507f1f77bcf86cd799439014", Username: "testuser",
+		PasswordHash: "$2a$10$dummy", Role: model.RoleUser, Status: model.StatusEnabled,
+	}
+	repo.On("FindByUsername", mock.Anything, "testuser").Return(user, nil)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	// configCache left nil → default 30 minutes.
+
+	resp, err := svc.Login(context.Background(), &LoginRequest{Username: "testuser", Password: "pass"})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if resp.IdleTimeoutMinutes != 30 {
+		t.Errorf("IdleTimeoutMinutes = %d, want 30 (default)", resp.IdleTimeoutMinutes)
+	}
+	if resp.AccessToken != "valid-token" {
+		t.Errorf("AccessToken = %q, want %q", resp.AccessToken, "valid-token")
+	}
+}
+
+func TestLogin_IdleTimeout_InvalidValueFallback(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	user := &model.User{
+		ID: "507f1f77bcf86cd799439015", Username: "testuser",
+		PasswordHash: "$2a$10$dummy", Role: model.RoleUser, Status: model.StatusEnabled,
+	}
+	repo.On("FindByUsername", mock.Anything, "testuser").Return(user, nil)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	svc.SetSysConfigCache(fakeConfigCache{values: map[string]string{"SESSION_IDLE_TIMEOUT": "not-a-number"}})
+
+	resp, err := svc.Login(context.Background(), &LoginRequest{Username: "testuser", Password: "pass"})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if resp.IdleTimeoutMinutes != 30 {
+		t.Errorf("IdleTimeoutMinutes = %d, want 30 (fallback for invalid value)", resp.IdleTimeoutMinutes)
+	}
+	if resp.AccessToken != "valid-token" {
+		t.Errorf("AccessToken = %q, want %q", resp.AccessToken, "valid-token")
+	}
+}
+
+func TestLogin_IdleTimeout_NonPositiveFallback(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	user := &model.User{
+		ID: "507f1f77bcf86cd799439016", Username: "testuser",
+		PasswordHash: "$2a$10$dummy", Role: model.RoleUser, Status: model.StatusEnabled,
+	}
+	repo.On("FindByUsername", mock.Anything, "testuser").Return(user, nil)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	svc.SetSysConfigCache(fakeConfigCache{values: map[string]string{"SESSION_IDLE_TIMEOUT": "0"}})
+
+	resp, err := svc.Login(context.Background(), &LoginRequest{Username: "testuser", Password: "pass"})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if resp.IdleTimeoutMinutes != 30 {
+		t.Errorf("IdleTimeoutMinutes = %d, want 30 (fallback for <=0 value)", resp.IdleTimeoutMinutes)
+	}
+	if resp.AccessToken != "valid-token" {
+		t.Errorf("AccessToken = %q, want %q", resp.AccessToken, "valid-token")
+	}
+}
+
+func TestLogin_IdleTimeout_ConfigErrorFallback(t *testing.T) {
+	repo := mockrepo.NewUserRepository(t)
+	user := &model.User{
+		ID: "507f1f77bcf86cd799439017", Username: "testuser",
+		PasswordHash: "$2a$10$dummy", Role: model.RoleUser, Status: model.StatusEnabled,
+	}
+	repo.On("FindByUsername", mock.Anything, "testuser").Return(user, nil)
+	svc := newAuthSvc(repo, nil, newPwdOK(), newTokenManagerOK(), nil, nil)
+	svc.SetSysConfigCache(fakeConfigCache{err: errors.New("config unavailable")})
+
+	resp, err := svc.Login(context.Background(), &LoginRequest{Username: "testuser", Password: "pass"})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if resp.IdleTimeoutMinutes != 30 {
+		t.Errorf("IdleTimeoutMinutes = %d, want 30 (fallback on config error)", resp.IdleTimeoutMinutes)
+	}
+	if resp.AccessToken != "valid-token" {
+		t.Errorf("AccessToken = %q, want %q", resp.AccessToken, "valid-token")
+	}
+}
+
 // --- RefreshToken ---
 
 func TestRefreshToken(t *testing.T) {

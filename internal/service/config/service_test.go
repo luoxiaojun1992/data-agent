@@ -93,6 +93,25 @@ func TestService_SeedBuiltins(t *testing.T) {
 	repo.AssertCalled(t, "Upsert", mock.Anything, "SESSION_TIMEOUT", "24", "登录 Session 超时（小时）")
 }
 
+func TestSystemBuiltins_ContainsSessionIdleTimeout(t *testing.T) {
+	var idle *BuiltinConfig
+	for _, b := range SystemBuiltins() {
+		if b.Key == "SESSION_IDLE_TIMEOUT" {
+			idle = &b
+			break
+		}
+	}
+	if idle == nil {
+		t.Fatal("SystemBuiltins() should contain SESSION_IDLE_TIMEOUT")
+	}
+	if idle.Default != "30" {
+		t.Errorf("SESSION_IDLE_TIMEOUT default = %q, want %q", idle.Default, "30")
+	}
+	if idle.Description == "" {
+		t.Error("SESSION_IDLE_TIMEOUT should have a non-empty description")
+	}
+}
+
 type errStr string
 
 func (e errStr) Error() string { return string(e) }
