@@ -12,17 +12,17 @@ type TaskRunService struct {
 	mock.Mock
 }
 
-// CancelRun provides a mock function with given fields: id
-func (_m *TaskRunService) CancelRun(id string) error {
-	ret := _m.Called(id)
+// CancelRun provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *TaskRunService) CancelRun(id string, userID string, isSystemAdmin bool) error {
+	ret := _m.Called(id, userID, isSystemAdmin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CancelRun")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(id)
+	if rf, ok := ret.Get(0).(func(string, string, bool) error); ok {
+		r0 = rf(id, userID, isSystemAdmin)
 	} else {
 		r0 = ret.Error(0)
 	}

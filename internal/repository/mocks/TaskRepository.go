@@ -17,24 +17,6 @@ type TaskRepository struct {
 	mock.Mock
 }
 
-// Cancel provides a mock function with given fields: ctx, id
-func (_m *TaskRepository) Cancel(ctx context.Context, id string) error {
-	ret := _m.Called(ctx, id)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Cancel")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, id)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // Create provides a mock function with given fields: ctx, t
 func (_m *TaskRepository) Create(ctx context.Context, t *task.Task) error {
 	ret := _m.Called(ctx, t)
@@ -46,6 +28,24 @@ func (_m *TaskRepository) Create(ctx context.Context, t *task.Task) error {
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, *task.Task) error); ok {
 		r0 = rf(ctx, t)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Delete provides a mock function with given fields: ctx, id
+func (_m *TaskRepository) Delete(ctx context.Context, id string) error {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Delete")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -157,24 +157,6 @@ func (_m *TaskRepository) ListAll(ctx context.Context, skip int64, limit int64) 
 	return r0, r1, r2
 }
 
-// UpdateLastRun provides a mock function with given fields: ctx, id, runAt
-func (_m *TaskRepository) UpdateLastRun(ctx context.Context, id string, runAt time.Time) error {
-	ret := _m.Called(ctx, id, runAt)
-
-	if len(ret) == 0 {
-		panic("no return value specified for UpdateLastRun")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, time.Time) error); ok {
-		r0 = rf(ctx, id, runAt)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // ListScheduled provides a mock function with given fields: ctx, skip, limit, now
 func (_m *TaskRepository) ListScheduled(ctx context.Context, skip int64, limit int64, now time.Time) ([]*task.Task, int64, error) {
 	ret := _m.Called(ctx, skip, limit, now)
@@ -241,6 +223,24 @@ func (_m *TaskRepository) SetScheduledEnabled(ctx context.Context, id string, en
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
 		r0 = rf(ctx, id, enabled)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// UpdateLastRun provides a mock function with given fields: ctx, id, runAt
+func (_m *TaskRepository) UpdateLastRun(ctx context.Context, id string, runAt time.Time) error {
+	ret := _m.Called(ctx, id, runAt)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateLastRun")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, time.Time) error); ok {
+		r0 = rf(ctx, id, runAt)
 	} else {
 		r0 = ret.Error(0)
 	}

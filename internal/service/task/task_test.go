@@ -152,14 +152,15 @@ func TestGetTask_Success(t *testing.T) {
 	}
 }
 
-func TestCancelTask_Success(t *testing.T) {
+func TestDeleteTask_Success(t *testing.T) {
 	s, repo, _, _ := newTestService(t)
 	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "user1"}, nil)
-	repo.On("Cancel", mock.Anything, "task_1").Return(nil)
+	repo.On("Delete", mock.Anything, "task_1").Return(nil)
 
-	if err := s.CancelTask("task_1", "user1", false); err != nil {
-		t.Fatalf("CancelTask: %v", err)
+	if err := s.DeleteTask("task_1", "user1", false); err != nil {
+		t.Fatalf("DeleteTask: %v", err)
 	}
+	repo.AssertCalled(t, "Delete", mock.Anything, "task_1")
 }
 
 func TestSetScheduledEnabled_Success(t *testing.T) {
@@ -191,7 +192,7 @@ func TestListTasks_Success(t *testing.T) {
 
 func TestCreateRun_Success(t *testing.T) {
 	s, repo, runRepo, queue := newTestService(t)
-	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "u1"}, nil)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "u1", ScheduledEnabled: true}, nil)
 	runRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	repo.On("UpdateLastRun", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	queue.On("Enqueue", mock.Anything, mock.Anything).Return(nil)
@@ -291,11 +292,33 @@ func TestUpdateRunSessionID_Success(t *testing.T) {
 
 func TestCancelRun_Success(t *testing.T) {
 	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1", UserID: "u1", Status: task.StatusRunning}, nil)
 	runRepo.On("Cancel", mock.Anything, "run_1").Return(nil)
 
-	if err := s.CancelRun("run_1"); err != nil {
+	if err := s.CancelRun("run_1", "u1", false); err != nil {
 		t.Fatalf("CancelRun: %v", err)
 	}
+	runRepo.AssertCalled(t, "Cancel", mock.Anything, "run_1")
+}
+
+func TestCancelRun_TerminalState(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1", UserID: "u1", Status: task.StatusCompleted}, nil)
+
+	if err := s.CancelRun("run_1", "u1", false); err != ErrRunTerminal {
+		t.Fatalf("want ErrRunTerminal, got %v", err)
+	}
+	runRepo.AssertNotCalled(t, "Cancel", mock.Anything, "run_1")
+}
+
+func TestCancelRun_ForbiddenNonOwner(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1", UserID: "owner", Status: task.StatusRunning}, nil)
+
+	if err := s.CancelRun("run_1", "attacker", false); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound (no existence leak), got %v", err)
+	}
+	runRepo.AssertNotCalled(t, "Cancel", mock.Anything, "run_1")
 }
 
 // ── SPEC-084 §6.6 IDOR ownership (归属校验) ──
@@ -322,14 +345,25 @@ func TestGetTask_SystemAdminExempt(t *testing.T) {
 	}
 }
 
-func TestCancelTask_ForbiddenNonOwner(t *testing.T) {
+func TestDeleteTask_ForbiddenNonOwner(t *testing.T) {
 	s, repo, _, _ := newTestService(t)
 	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
 
-	if err := s.CancelTask("task_1", "attacker", false); err != ErrNotFound {
+	if err := s.DeleteTask("task_1", "attacker", false); err != ErrNotFound {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
-	repo.AssertNotCalled(t, "Cancel", mock.Anything, "task_1")
+	repo.AssertNotCalled(t, "Delete", mock.Anything, "task_1")
+}
+
+func TestCreateRun_Disabled(t *testing.T) {
+	s, repo, runRepo, queue := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "u1", ScheduledEnabled: false}, nil)
+
+	if _, err := s.CreateRun("task_1", "u1", false); err != ErrTaskDisabled {
+		t.Fatalf("want ErrTaskDisabled, got %v", err)
+	}
+	runRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	queue.AssertNotCalled(t, "Enqueue", mock.Anything, mock.Anything)
 }
 
 func TestCreateRun_ForbiddenNonOwner(t *testing.T) {

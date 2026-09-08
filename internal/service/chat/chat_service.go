@@ -391,12 +391,17 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	// comparison base is the most recent user message or tool output from the
 	// session's compacted events (SPEC-092 §4.2), not the request-body text.
 	assistantText := s.streamOnce(ctx, rt, userID, sessionID, content, runCfg, w, flusher)
-	if s.guard != nil {
+	// SPEC-082 §5.2: cancellation must not consume the relevance retry budget.
+	// Skip the whole relevance block when the client already disconnected.
+	if s.guard != nil && ctx.Err() == nil {
 		base := s.relevanceBase(ctx, rt.AppName(), userID, sessionID)
 		if base == "" {
 			base = "[图片]"
 		}
 		for {
+			if ctx.Err() != nil {
+				break // cancellation short-circuits retry (no RecordAndShouldRetry)
+			}
 			relevant, gErr := s.guard.CheckRelevance(ctx, assistantText, base)
 			if gErr != nil {
 				break
@@ -425,9 +430,14 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 
 // streamOnce runs one RunContent turn, forwarding SSE events and returning the
 // collected assistant text. A run error is forwarded and returns empty text.
+// SPEC-082 §5.2: a cancelled ctx (client disconnect) short-circuits the loop
+// so no further SSE is written to a closed connection.
 func (s *Service) streamOnce(ctx context.Context, rt *adkruntime.Runtime, userID, sessionID string, content *genai.Content, runCfg adkruntime.RunConfig, w http.ResponseWriter, flusher http.Flusher) string {
 	var sb strings.Builder
 	for evt, rErr := range rt.RunContent(ctx, userID, sessionID, content, runCfg) {
+		if ctx.Err() != nil {
+			return sb.String()
+		}
 		if rErr != nil {
 			if isSessionPersistenceError(rErr) {
 				log.Printf("[chat] session persistence failed (response already delivered, ignoring): %v (session=%s)", rErr, sessionID)

@@ -281,19 +281,21 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	taskRoutes.POST("/:task_id/run", middleware.RequirePermission(rbacSvc, model.PermAgentEdit), h.CreateRun)
 	taskRoutes.GET("/:task_id/runs", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.ListRuns)
 	taskRoutes.GET("/:task_id/runs/:run_id", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.GetRun)
-	taskRoutes.PUT("/:task_id/cancel", middleware.RequirePermission(rbacSvc, model.PermAgentEdit), h.CancelTask)
+	taskRoutes.DELETE("/:task_id", middleware.RequirePermission(rbacSvc, model.PermAgentEdit), h.DeleteTask)
+	taskRoutes.PATCH("/:task_id/enabled", middleware.RequirePermission(rbacSvc, model.PermAgentEdit), h.SetEnabled)
 	taskRoutes.GET("/:task_id/artifacts/download", middleware.RequirePermission(rbacSvc, model.PermAgentView), h.DownloadArtifacts)
-
-	// Scheduled-enabled toggle — also used by the /agent page.
-	adminTasksWrite := router.Group("/api/v1/admin/tasks")
-	adminTasksWrite.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentEdit))
-	adminTasksWrite.PATCH("/:id/scheduled-enabled", h.ToggleScheduledEnabled)
 
 	// Standalone run endpoint — useful for the run-detail page where the
 	// client only has run_id (task_id is in URL state).
 	runRoutes := router.Group("/api/v1/runs")
 	runRoutes.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentView))
 	runRoutes.GET("/:run_id", h.GetRun)
+
+	// Run-level cancel (SPEC-082 §4.2): independent of task definition, targets
+	// the run execution unit only. Write-side → PermAgentEdit.
+	taskRunRoutes := router.Group("/api/v1/task-runs")
+	taskRunRoutes.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentEdit))
+	taskRunRoutes.PUT("/:run_id/cancel", h.CancelRun)
 }
 
 func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *FeishuConfigHandler, rbacSvc *rbacsvc.Service) {

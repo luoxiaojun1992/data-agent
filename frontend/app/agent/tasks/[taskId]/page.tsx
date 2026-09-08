@@ -120,6 +120,19 @@ export default function TaskRunsPage() {
     router.push(`/agent/runs/${runId}`);
   };
 
+  // SPEC-082 §5.8: cancel a run execution (only pending/queued/running).
+  const cancelRun = async (runId: string) => {
+    if (!window.confirm('确定取消该运行吗？')) return;
+    try {
+      const res = await apiFetch(`/task-runs/${runId}/cancel`, { method: 'PUT' });
+      if (res.ok) {
+        await loadData(page, statusFilter);
+      }
+    } catch (e) {
+      console.error('[runs-list] cancel failed:', e);
+    }
+  };
+
   const formatDuration = (ms: number) => {
     if (!ms) return '—';
     if (ms < 1000) return `${ms}ms`;
@@ -218,6 +231,11 @@ export default function TaskRunsPage() {
                       </span>
                     )}
                     {statusPill(run.status)}
+                    {['pending', 'queued', 'running'].includes(run.status) && (
+                      <button onClick={(e) => { e.stopPropagation(); cancelRun(run.run_id); }}
+                        className="text-xs text-red-400 hover:text-red-300"
+                        data-testid={`run-cancel-${run.run_id}`}>取消</button>
+                    )}
                     <span className="text-xs text-[var(--text-secondary)]">▶</span>
                   </div>
                 </div>

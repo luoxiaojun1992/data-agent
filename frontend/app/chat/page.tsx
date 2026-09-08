@@ -179,6 +179,9 @@ export default function ChatPage() {
   const pendingEventsRef = useRef<WireChatEvent[]>([]);
   const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // SPEC-082 §5.1: abort controller for the in-flight SSE stream (stop button).
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const [stopNotice, setStopNotice] = useState('');
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -538,6 +541,11 @@ export default function ChatPage() {
     if (!sid) sid = await createSession();
     if (!sid) { setStreaming(false); return; }
 
+    // SPEC-082 §5.1: create the abort controller so the stop button can
+    // interrupt this SSE fetch mid-flight.
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const FLUSH_INTERVAL = 80; // ms — batch updates without changing event order
     let streamCompleted = false;
     let streamErrored = false;
@@ -568,6 +576,7 @@ export default function ChatPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
         body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel, images: sendImages, pdfs: sendPdfs }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error('Chat request failed');
       const reader = res.body?.getReader();
@@ -609,8 +618,13 @@ export default function ChatPage() {
         flushTimerRef.current = setTimeout(flushToState, FLUSH_INTERVAL);
       }
     } catch (err: any) {
-      streamErrored = true;
-      queueEvent({ type: 'text', content: err?.message || 'Error: Failed to get response from server.' });
+      if (err?.name === 'AbortError') {
+        // User-initiated stop (SPEC-082) — keep already-streamed content,
+        // do not surface an error message.
+      } else {
+        streamErrored = true;
+        queueEvent({ type: 'text', content: err?.message || 'Error: Failed to get response from server.' });
+      }
     } finally {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       flushToState();
@@ -621,8 +635,19 @@ export default function ChatPage() {
       // keep the live transcript (which already contains the error message)
       // instead of overwriting it with whatever is in MongoDB.
       if (streamCompleted && !streamErrored) await loadSessionMessages(sid, true);
+      abortControllerRef.current = null;
       setStreaming(false);
     }
+  };
+
+  // SPEC-082 §5.1: stop the in-flight SSE stream and reset the composer. The
+  // partial content already streamed stays in the message area (no rollback).
+  const stopGeneration = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setStreaming(false);
+    setStopNotice('已停止生成');
+    setTimeout(() => setStopNotice(''), 3000);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -895,6 +920,9 @@ export default function ChatPage() {
             {attachError && (
               <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-attach-error">{attachError}</p>
             )}
+            {stopNotice && (
+              <p className="text-xs text-[var(--text-secondary)] mb-2" data-testid="chat-stop-notice">{stopNotice}</p>
+            )}
             <div className="flex gap-3">
               <textarea
                 value={input}
@@ -906,12 +934,20 @@ export default function ChatPage() {
                 data-testid="chat-input"
                 disabled={streaming}
               />
-              <button
-                onClick={sendMessage}
-                disabled={streaming || (!input.trim() && attachments.length === 0)}
-                className="px-6 py-2 bg-[var(--accent)] text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all self-end"
-                data-testid="chat-send-btn"
-              >{streaming ? '发送中...' : '发送'}</button>
+              {streaming ? (
+                <button
+                  onClick={stopGeneration}
+                  className="px-6 py-2 bg-red-500 text-white rounded-xl font-medium hover:opacity-90 transition-all self-end"
+                  data-testid="chat-stop-btn"
+                >停止</button>
+              ) : (
+                <button
+                  onClick={sendMessage}
+                  disabled={!input.trim() && attachments.length === 0}
+                  className="px-6 py-2 bg-[var(--accent)] text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all self-end"
+                  data-testid="chat-send-btn"
+                >发送</button>
+              )}
             </div>
           </div>
           <p className="text-center text-[11px] text-[var(--text-secondary)] mt-2" data-testid="chat-ai-tips">内容由 AI 生成，请仔细核实甄别</p>

@@ -14,24 +14,6 @@ type TaskService struct {
 	mock.Mock
 }
 
-// CancelTask provides a mock function with given fields: id, userID, isSystemAdmin
-func (_m *TaskService) CancelTask(id string, userID string, isSystemAdmin bool) error {
-	ret := _m.Called(id, userID, isSystemAdmin)
-
-	if len(ret) == 0 {
-		panic("no return value specified for CancelTask")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, bool) error); ok {
-		r0 = rf(id, userID, isSystemAdmin)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // CreateRun provides a mock function with given fields: taskID, userID, isSystemAdmin
 func (_m *TaskService) CreateRun(taskID string, userID string, isSystemAdmin bool) (*task.TaskRun, error) {
 	ret := _m.Called(taskID, userID, isSystemAdmin)
@@ -99,6 +81,24 @@ func (_m *TaskService) CreateTask(userID string, taskType string, params map[str
 	}
 
 	return r0, r1, r2
+}
+
+// DeleteTask provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *TaskService) DeleteTask(id string, userID string, isSystemAdmin bool) error {
+	ret := _m.Called(id, userID, isSystemAdmin)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteTask")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string, bool) error); ok {
+		r0 = rf(id, userID, isSystemAdmin)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // GetTask provides a mock function with given fields: id, userID, isSystemAdmin

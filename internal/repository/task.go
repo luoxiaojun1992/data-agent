@@ -14,7 +14,9 @@ type TaskRepository interface {
 	Create(ctx context.Context, t *task.Task) error
 	Get(ctx context.Context, id string) (*task.Task, error)
 	UpdateLastRun(ctx context.Context, id string, runAt time.Time) error
-	Cancel(ctx context.Context, id string) error
+	// Delete physically deletes a task definition (SPEC-082 §1.3). Historical
+	// run records are NOT cascaded.
+	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, userID string, skip, limit int64) ([]*task.Task, int64, error)
 	// ListAll returns all tasks without a user filter (SPEC-084: system_admin).
 	ListAll(ctx context.Context, skip, limit int64) ([]*task.Task, int64, error)
@@ -37,6 +39,9 @@ type TaskRunRepository interface {
 	UpdateResult(ctx context.Context, id string, result map[string]interface{}) error
 	UpdateError(ctx context.Context, id string, errMsg string) error
 	UpdateSessionID(ctx context.Context, id, sessionID string) error
+	// Cancel sets status=cancelled for a run that is still pending/queued/
+	// running (SPEC-082 §5.4). The condition excludes terminal states so a
+	// completed/failed/cancelled run can never be re-cancelled (matched=0).
 	Cancel(ctx context.Context, id string) error
 }
 

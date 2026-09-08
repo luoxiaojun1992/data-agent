@@ -14,6 +14,15 @@ import (
 // the caller (SPEC-084 §6.6 IDOR protection — existence is never leaked).
 var ErrNotFound = errors.New("not found")
 
+// ErrTaskDisabled is returned by CreateRun when the task's enabled switch is
+// off (SPEC-082 §5.3). The task exists but must not create new runs.
+var ErrTaskDisabled = errors.New("task is disabled")
+
+// ErrRunTerminal is returned by CancelRun when the run already reached a
+// terminal state (completed/failed/cancelled) — completion boundary (SPEC-082
+// §5.6). Maps to HTTP 409.
+var ErrRunTerminal = errors.New("run already terminated")
+
 // Service manages task definitions and runs.
 type Service struct {
 	repo      repository.TaskRepository
@@ -70,7 +79,8 @@ func (s *Service) CreateTask(userID, taskType string, params map[string]interfac
 }
 
 // CreateRun creates a new run from the task definition, enqueues it, and
-// atomically bumps run_count + last_run_at on the parent task.
+// atomically bumps run_count + last_run_at on the parent task. Rejects with
+// ErrTaskDisabled when the task's enabled switch is off (SPEC-082 §5.3).
 func (s *Service) CreateRun(taskID, userID string, isSystemAdmin bool) (*task.TaskRun, error) {
 	ctx := context.Background()
 	t, err := s.repo.Get(ctx, taskID)
@@ -79,6 +89,10 @@ func (s *Service) CreateRun(taskID, userID string, isSystemAdmin bool) (*task.Ta
 	}
 	if !isSystemAdmin && t.UserID != userID {
 		return nil, ErrNotFound
+	}
+	// Enabled switch check: off → no run creation (all task types, SPEC-082).
+	if !t.ScheduledEnabled {
+		return nil, ErrTaskDisabled
 	}
 	run := task.NewTaskRun(t)
 	run.Status = task.StatusQueued
@@ -106,7 +120,7 @@ func (s *Service) GetTask(id, userID string, isSystemAdmin bool) (*task.Task, er
 	return t, nil
 }
 
-func (s *Service) CancelTask(id, userID string, isSystemAdmin bool) error {
+func (s *Service) DeleteTask(id, userID string, isSystemAdmin bool) error {
 	t, err := s.repo.Get(context.Background(), id)
 	if err != nil {
 		return fmt.Errorf("task not found: %w", err)
@@ -114,7 +128,7 @@ func (s *Service) CancelTask(id, userID string, isSystemAdmin bool) error {
 	if !isSystemAdmin && t.UserID != userID {
 		return ErrNotFound
 	}
-	return s.repo.Cancel(context.Background(), id)
+	return s.repo.Delete(context.Background(), id)
 }
 
 func (s *Service) SetScheduledEnabled(taskID, userID string, isSystemAdmin bool, enabled bool) error {
@@ -175,6 +189,17 @@ func (s *Service) UpdateRunSessionID(id string, sessionID string) error {
 	return s.runRepo.UpdateSessionID(context.Background(), id, sessionID)
 }
 
-func (s *Service) CancelRun(id string) error {
+func (s *Service) CancelRun(id, userID string, isSystemAdmin bool) error {
+	run, err := s.runRepo.Get(context.Background(), id)
+	if err != nil {
+		return ErrNotFound
+	}
+	if !isSystemAdmin && run.UserID != userID {
+		return ErrNotFound
+	}
+	switch run.Status {
+	case task.StatusCompleted, task.StatusFailed, task.StatusCancelled:
+		return ErrRunTerminal
+	}
 	return s.runRepo.Cancel(context.Background(), id)
 }
