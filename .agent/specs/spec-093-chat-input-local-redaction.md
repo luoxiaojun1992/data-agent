@@ -1,6 +1,6 @@
 # Chat 输入框本地脱敏（OpenAI Privacy Filter / WebGPU）
 
-> **SPEC-093** | Status: 设计中
+> **SPEC-093** | Status: 设计已定稿（决策点 D1~D7 全部拍板，2026-09-08）
 
 > **术语红线**：**脱敏（redact）≠ 校验（validate）≠ 审计（audit）**。
 > - **脱敏**：把输入框文本中的 PII span 就地替换为类别占位符（如 `[private_email]`），**不可逆、不回填原文**，仅在发送前作用于输入框文本。
@@ -76,28 +76,30 @@
 
 ## 5. 详细设计
 
-### 5.1 模型资源（提前下载，进仓库/镜像）
+### 5.1 模型资源（提前下载，直接进代码库）
 
-- 模型文件（`openai/privacy-filter` 的 onnx 导出，**q4 量化** + `tokenizer.json` 等配置）提前下载到 `frontend/public/models/privacy-filter/`，随前端镜像部署。
+- 模型文件（`openai/privacy-filter` 的 onnx 导出，**q4 量化** + `tokenizer.json` 等配置）**直接提交进代码库** `frontend/public/models/privacy-filter/`（D7 已拍板：避免每次部署从 HF 下载），随前端镜像部署。
 - transformers.js 以本地路径加载（`env.localModelPath` / `env.allowLocalModels`），**运行时零外网请求**。
-- 需在实现时确认 q4 onnx 实际体积（预计数百 MB 量级）并评估镜像增量；若体积过大，按 D7 备选方案处理。
+- ⚠️ GitHub 单文件 100MB 限制：若 q4 onnx 单文件超限，优先采用 transformers.js 支持的 onnx **分片文件**（`model_q4_0000.onnx` …）逐个入库；仍超限则评估 git LFS（备选，不优先）。实现时以实际下载体积为准。
 
 ### 5.2 模块设计：`frontend/lib/redact.ts`（新）
 
 - **单例加载**：`getRedactor()` 返回缓存的 pipeline 实例，避免重复加载。
 - **状态机**：`idle → loading → ready | failed`，通过回调/订阅通知 chat 页。
-- **推理**：`redact(text)` 执行 `classifier(text, { aggregation_strategy: "simple" })`，将返回的实体 span（start/end/entity）按**字符偏移**替换为 `[<entity>]` 占位符（D1）。
-- **设备降级**（D2）：`device: "webgpu"` 创建失败时尝试 `"wasm"`；两者均失败 → `failed`。
+- **推理**：`redact(text)` 执行 `classifier(text, { aggregation_strategy: "simple" })`，将返回的实体 span（start/end/entity）按**字符偏移**替换为占位符。
+- **占位符格式（D1 已拍板）**：类别占位，尖括号格式与 Presidio 一致（服务端 SPEC-068 用 `<PII>`）；本 spec 按模型类别输出 `<PRIVATE_EMAIL>` / `<PRIVATE_PERSON>` / `<PRIVATE_PHONE>` / `<PRIVATE_ADDRESS>` / `<PRIVATE_URL>` / `<PRIVATE_DATE>` / `<ACCOUNT_NUMBER>` / `<SECRET>`（模型类别名大写 + 尖括号）。
+- **设备降级（D2 已拍板）**：`device: "webgpu"` 创建失败时自动降级 `"wasm"`；两者均失败 → `failed`。
 - **纯函数拆分**：span→替换文本的映射函数独立导出（L1 可单测，不依赖模型运行时）。
 
 ### 5.3 chat 页集成（`frontend/app/chat/page.tsx`）
 
 - **加载**：页面 mount 时 `useEffect` 触发 `getRedactor()` 异步加载（不阻塞页面渲染）。
-- **脱敏按钮**：输入框工具栏新增「脱敏」按钮（`data-testid="chat-redact-btn"`）；点击 → 按钮转 loading → `await redact(input)` → 回填 `setInput(result)`；空输入不响应。
+- **脱敏按钮**：输入框工具栏新增「脱敏」按钮（`data-testid="chat-redact-btn"`）；点击 → 按钮转 loading → `await redact(input)` → 回填 `setInput(result)`；空输入不响应。**推理失败必须报错**（第 6 条拍板）：错误提示（复用现有 attachError 位或等效 toast），输入框内容保持原样。
 - **自动脱敏开关**：toggle（`data-testid="chat-redact-auto-toggle"`）；localStorage key `chat_auto_redact`（D4）；**默认关闭**；仅 `ready` 态可切换。
 - **强制门控**（核心）：`loading`/`failed` 时按钮 disabled + 开关 disabled 且视觉 OFF；**只有 `ready` 后才读取 localStorage 初始化开关状态**；加载期间即使 localStorage=true 也保持关闭、不生效。
-- **自动脱敏执行点**：`sendMessage` 里，在 100KB 合并校验之前、构造 `userMsg` 之前，若开关开启则 `await redact(input)`，用脱敏结果替换将要发送的文本；**只脱敏 input，不动 sendImages/sendPdfs**。
-- **状态提示**：按钮旁小字显示模型状态（「脱敏模型加载中…」/「脱敏不可用」），`data-testid="chat-redact-status"`。
+- **自动脱敏执行点**：`sendMessage` 里，在 100KB 合并校验之前、构造 `userMsg` 之前，若开关开启则 `await redact(input)`，用脱敏结果替换将要发送的文本；**只脱敏 input，不动 sendImages/sendPdfs**。**自动脱敏失败必须报错并中止发送**（第 5 条拍板）：推理抛错 → 提示错误、不发送原文、streaming 保持 false。
+- **长度确认（第 4 条拍板）**：输入框上限 100KB UTF-8（MaxChatTextBytes）≈ 25~30K token，**远小于**模型 128K token 上下文，无需额外长度限制。
+- **状态提示**：按钮旁小字显示模型状态（「脱敏模型加载中…」/「脱敏不可用」），`data-testid="chat-redact-status"`。**加载失败态**（第 7 条拍板）：按钮禁用 + 开关禁用且强制关闭 + 状态元素 hover 提示「模型加载失败，联系管理员处理」（title 属性 / tooltip）。
 
 ### 5.4 与现有校验/限制的关系
 
@@ -168,23 +170,32 @@
 
 1. 进入 chat 页：模型后台加载，页面正常渲染不阻塞；加载期间脱敏按钮 disabled、自动开关 disabled 且视觉 OFF。
 2. 模型加载成功：按钮启用；localStorage 无记录时开关默认 OFF；localStorage 有 true 时开关恢复 ON。
-3. 点击脱敏：输入框 PII 文本就地替换（如「张三的电话是13800138000」→「[private_person]的电话是[private_phone]」），光标/聚焦不丢失（尽力），附件（图片/PDF）状态不变。
+3. 点击脱敏：输入框 PII 文本就地替换为尖括号类别占位符（如「张三的电话是13800138000」→「`<PRIVATE_PERSON>`的电话是`<PRIVATE_PHONE>`」），附件（图片/PDF）状态不变。
 4. 自动脱敏开启后发送：请求体 message 为脱敏后文本；images/pdfs 字段与脱敏前一致（原样）。
 5. 自动脱敏关闭（默认）：发送文本原样，不做推理。
 6. 强制门控：localStorage 预置 `chat_auto_redact=true` + 模型加载失败 → 开关视觉 OFF、不可开启、发送不脱敏；模型恢复就绪后开关按 localStorage 恢复。
-7. WebGPU 不可用 → wasm 降级可用；两者均失败 → 按钮禁用 + 「脱敏不可用」提示，聊天主流程不受影响。
+7. WebGPU 不可用 → wasm 自动降级可用；两者均失败 → 按钮禁用 + 「脱敏不可用」提示 + hover「模型加载失败，联系管理员处理」，聊天主流程不受影响。
 8. 运行时模型加载零外网请求（DevTools Network 断言，除页面自身资源外无 huggingface.co 请求）。
 9. 脱敏文本发送后，后端 `ValidateXSS` 与 100KB 校验照常生效（脱敏不绕过任何现有校验）。
-10. 前端 build 通过；E2E 用例通过；无 Go 改动（`git diff` 校验 `internal/` 与后端零变更）。
+10. **手动脱敏失败**（推理抛错）：显示错误提示，输入框文本保持原样，不发送。
+11. **自动脱敏失败**（提交时推理抛错）：显示错误提示，**中止发送**（不发原文、streaming 复位），用户可重试。
+12. **长度**：100KB 输入无需额外限制（25~30K token ≪ 128K token 模型上限）。
+13. 前端 build 通过；E2E 用例通过；无 Go 改动（`git diff` 校验 `internal/` 与后端零变更）。
 
-## 附：设计决策点（待晓军拍板）
+## 附：设计决策点（已全部拍板 2026-09-08）
 
-| # | 决策点 | 建议（默认） | 备选 |
-|---|--------|-------------|------|
-| D1 | 脱敏占位符格式 | `[private_email]` 等类别小写占位符（LLM 可理解语义） | `[MASKED]` 统一占位 |
-| D2 | WebGPU 不可用降级 | webgpu → wasm 自动降级 | 不降级，直接禁用 |
-| D3 | 模型文件位置 | `frontend/public/models/privacy-filter/`（构建进镜像） | 部署时挂卷 |
-| D4 | localStorage key | `chat_auto_redact`（"1"/"0"） | JSON 对象 |
-| D5 | 加载失败 UI | 按钮禁用 + 小字提示，不弹窗 | 弹窗提示 |
-| D6 | 超长文本（接近 100KB）推理 | 不做长度限制，按钮 loading 提示 | >N 字符禁用脱敏并提示 |
-| D7 | q4 体积过大（>500MB）备选 | 换 fp16 wasm 或改走后端推理（推翻纯前端前提，需重新立项讨论） | 保持 q4 |
+| # | 决策点 | 拍板结论 |
+|---|--------|---------|
+| D1 | 脱敏占位符格式 | **类别占位，尖括号与 Presidio 一致**：`<PRIVATE_EMAIL>` / `<PRIVATE_PERSON>` / `<PRIVATE_PHONE>` / `<PRIVATE_ADDRESS>` / `<PRIVATE_URL>` / `<PRIVATE_DATE>` / `<ACCOUNT_NUMBER>` / `<SECRET>`（模型类别名大写） |
+| D2 | WebGPU 不可用降级 | **自动降级 wasm**；两者均失败 → failed |
+| D3 | 模型文件位置 | `frontend/public/models/privacy-filter/`（构建进镜像） |
+| D4 | localStorage key | `chat_auto_redact`（"1"/"0"） |
+| D5 | 加载失败 UI | 按钮禁用 + 开关禁用强制关闭 + hover 提示「模型加载失败，联系管理员处理」，不弹窗 |
+| D6 | 超长文本推理 | **不做长度限制**（100KB ≪ 128K token），按钮 loading 提示即可 |
+| D7 | 模型文件获取 | **直接提前下载进代码库**，避免每次部署从 HF 下载；单文件超 100MB 用 onnx 分片入库（备选 git LFS） |
+
+**补充拍板（晓军 2026-09-08）**：
+- 4. 提示词长度：不超模型 128K token 限制（100KB 上限远小于）→ 无需额外限制。
+- 5. 自动脱敏（提交时）失败 → **报错并中止发送**（不发原文）。
+- 6. 手动点击脱敏失败 → **报错**（输入框保持原样）。
+- 7. 模型下载/加载失败 → 脱敏按钮禁用 + 开关禁用且强制关闭 + hover 提示「模型加载失败，联系管理员处理」。
