@@ -6,10 +6,12 @@ import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_CHAT_TEXT_BYTES, type Attachment, type PdfAttachment } from '@/lib/attachment';
 import { parsePdf } from '@/lib/pdf';
+import { loadRedactor, redactText, subscribeRedactStatus, getRedactStatus, REDACT_LOCAL_STORAGE_KEY, type RedactStatus } from '@/lib/redact';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
 import HumanChannelDialog, { type HumanChannelEvent, type HumanChannelReply } from '../components/HumanChannelDialog';
+import RedactOverlay from '../components/RedactOverlay';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -182,6 +184,11 @@ export default function ChatPage() {
   // SPEC-082 §5.1: abort controller for the in-flight SSE stream (stop button).
   const abortControllerRef = useRef<AbortController | null>(null);
   const [stopNotice, setStopNotice] = useState('');
+  // SPEC-093: 本地脱敏（OpenAI Privacy Filter）。
+  const [redactStatus, setRedactStatus] = useState<RedactStatus>(() => getRedactStatus());
+  const [redactAuto, setRedactAuto] = useState(false); // 自动脱敏开关（仅 ready 后由 localStorage 初始化）
+  const [redacting, setRedacting] = useState(false); // 推理中 → 弹窗动画
+  const [redactError, setRedactError] = useState('');
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -189,6 +196,25 @@ export default function ChatPage() {
 
   useEffect(() => () => {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+  }, []);
+
+  // SPEC-093: 进入页面自动加载脱敏模型；强制门控 —— 只有 ready 后才读取
+  // localStorage 初始化自动开关（loading/failed 期间开关保持关闭）。
+  useEffect(() => {
+    loadRedactor();
+    const unsubscribe = subscribeRedactStatus((s) => {
+      setRedactStatus(s);
+      if (s === 'ready') {
+        try {
+          setRedactAuto(localStorage.getItem(REDACT_LOCAL_STORAGE_KEY) === '1');
+        } catch {
+          setRedactAuto(false);
+        }
+      } else {
+        setRedactAuto(false); // loading/failed 强制关闭（不读 localStorage）
+      }
+    });
+    return unsubscribe;
   }, []);
 
   const createSession = async () => {
@@ -509,9 +535,22 @@ export default function ChatPage() {
     const hasInput = !!input.trim();
     if ((!hasInput && attachments.length === 0 && pdfs.length === 0) || streaming) return;
 
+    // SPEC-093: 自动脱敏（开关开启且模型就绪）。先脱敏再校验/构造消息；
+    // 弹窗动画覆盖推理期（streaming 尚未启动）。失败报错并中止发送（第 5 条拍板）。
+    let finalInput = input;
+    if (redactAuto && redactStatus === 'ready') {
+      try {
+        finalInput = await autoRedact(input);
+      } catch (err) {
+        console.error('[redact] 自动脱敏失败:', err);
+        showRedactError('自动脱敏失败，已取消发送');
+        return;
+      }
+    }
+
     // 文字合并校验（用户提示词 + PDF 解析文字）100KB，UTF-8 字节（SPEC-077 §4.3）。
     const enc = new TextEncoder();
-    const textBytes = enc.encode(input).length;
+    const textBytes = enc.encode(finalInput).length;
     const pdfBytes = pdfs.reduce((sum, p) => sum + enc.encode(p.text).length, 0);
     if (textBytes + pdfBytes > MAX_CHAT_TEXT_BYTES) {
       setAttachError('消息文字超过 100KB 上限');
@@ -523,7 +562,7 @@ export default function ChatPage() {
     const sendPdfs = pdfs.map((p) => ({ name: p.name, text: p.text }));
     const userMsg: Message = {
       role: 'user',
-      content: input,
+      content: finalInput,
       type: 'text',
       timestamp: new Date(),
       images: attachments.map((a) => a.dataUrl),
@@ -648,6 +687,53 @@ export default function ChatPage() {
     setStreaming(false);
     setStopNotice('已停止生成');
     setTimeout(() => setStopNotice(''), 3000);
+  };
+
+  // ── SPEC-093: 本地脱敏 ──
+
+  // 弹窗最小展示时长（防闪烁，§5.3.1）。
+  const MIN_REDACT_OVERLAY_MS = 300;
+  const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  const showRedactError = (msg: string) => {
+    setRedactError(msg);
+    setTimeout(() => setRedactError(''), 4000);
+  };
+
+  // 自动脱敏开关切换（强制门控：仅 ready 态可切换；值仅存 localStorage）。
+  const toggleRedactAuto = () => {
+    if (redactStatus !== 'ready') return;
+    const next = !redactAuto;
+    setRedactAuto(next);
+    try {
+      localStorage.setItem(REDACT_LOCAL_STORAGE_KEY, next ? '1' : '0');
+    } catch { /* ignore */ }
+  };
+
+  // 手动点击脱敏（第 6 条拍板：失败报错，输入框保持原样）。
+  const handleManualRedact = async () => {
+    if (redactStatus !== 'ready' || redacting || !input.trim()) return;
+    setRedacting(true);
+    try {
+      const [result] = await Promise.all([redactText(input), delay(MIN_REDACT_OVERLAY_MS)]);
+      setInput(result);
+    } catch (err) {
+      console.error('[redact] 手动脱敏失败:', err);
+      showRedactError('脱敏失败，请重试');
+    } finally {
+      setRedacting(false);
+    }
+  };
+
+  // 自动脱敏执行（供 sendMessage 调用）：弹窗覆盖推理期；失败向上抛错。
+  const autoRedact = async (text: string): Promise<string> => {
+    setRedacting(true);
+    try {
+      const [result] = await Promise.all([redactText(text), delay(MIN_REDACT_OVERLAY_MS)]);
+      return result;
+    } finally {
+      setRedacting(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -923,6 +1009,36 @@ export default function ChatPage() {
             {stopNotice && (
               <p className="text-xs text-[var(--text-secondary)] mb-2" data-testid="chat-stop-notice">{stopNotice}</p>
             )}
+            {redactError && (
+              <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-redact-error">{redactError}</p>
+            )}
+            {/* SPEC-093: 脱敏工具栏（按钮 + 自动开关 + 状态提示；强制门控） */}
+            <div className="flex items-center gap-3 mb-2" data-testid="chat-redact-toolbar">
+              <button
+                onClick={handleManualRedact}
+                disabled={redactStatus !== 'ready' || redacting || !input.trim()}
+                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
+                className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-all"
+                data-testid="chat-redact-btn"
+              >🛡️ 脱敏</button>
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={redactAuto && redactStatus === 'ready'}
+                  onChange={toggleRedactAuto}
+                  disabled={redactStatus !== 'ready'}
+                  data-testid="chat-redact-auto-toggle"
+                />
+                自动脱敏
+              </label>
+              <span
+                className="text-[10px] text-[var(--text-secondary)]"
+                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
+                data-testid="chat-redact-status"
+              >
+                {redactStatus === 'loading' ? '脱敏模型加载中…' : redactStatus === 'failed' ? '脱敏不可用' : ''}
+              </span>
+            </div>
             <div className="flex gap-3">
               <textarea
                 value={input}
@@ -1077,6 +1193,9 @@ export default function ChatPage() {
       {humanEvent && (
         <HumanChannelDialog event={humanEvent} onReply={replyHuman} />
       )}
+
+      {/* SPEC-093: 脱敏中弹窗动画（手动点击 + 提交自动脱敏两场景均展示） */}
+      {redacting && <RedactOverlay />}
     </AppLayout>
   );
 }
