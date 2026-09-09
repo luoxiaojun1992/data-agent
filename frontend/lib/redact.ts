@@ -1,165 +1,51 @@
-// lib/redact.ts — Chat 输入框本地脱敏核心模块（SPEC-093）。
+// lib/redact.ts — Chat 输入框脱敏 API 封装（SPEC-093）。
 //
-// 职责：
-//  1. 单例加载 openai/privacy-filter（transformers.js + onnxruntime-web）
-//  2. 设备降级：webgpu → wasm（D2 拍板）
-//  3. 推理 + span 替换（类别占位 + 尖括号，与 Presidio 风格一致，D1 拍板）
-//
-// 模型加载（D7 修订 2026-09-09）：**不进代码库、不预下载**，运行时由
-// transformers.js 直接从 HuggingFace 下载加载（浏览器 Cache API 自动缓存，
-// 后续加载命中缓存）。
-
-import type { TokenClassificationPipeline } from '@huggingface/transformers';
-
-// 模型生命周期状态（不含「推理中」——推理进行中由调用方的弹窗状态管理）。
-export type RedactStatus = 'loading' | 'ready' | 'failed';
+// 脱敏能力由后端 Presidio 服务提供（POST /api/v1/chat/redact，权限与增强
+// 提示词相同）。本模块只负责调用与开关状态持久化，不含任何模型加载逻辑。
 
 export const REDACT_LOCAL_STORAGE_KEY = 'chat_auto_redact'; // D4
 
-type StatusListener = (s: RedactStatus) => void;
-
-let status: RedactStatus = 'loading';
-let classifierPromise: Promise<TokenClassificationPipeline> | null = null;
-const listeners = new Set<StatusListener>();
-
-export function getRedactStatus(): RedactStatus {
-  return status;
-}
-
-/** 订阅模型状态变化；返回取消订阅函数。 */
-export function subscribeRedactStatus(fn: StatusListener): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-
-function setStatus(s: RedactStatus) {
-  status = s;
-  listeners.forEach((fn) => fn(s));
-}
-
-/** 实体名 → 占位符：类别大写 + 尖括号（D1，与 Presidio `<PII>` 同风格）。 */
-export function placeholderFor(entity: string): string {
-  const normalized = String(entity || '').replace(/^[BIS]-/, '');
-  return `<${normalized.toUpperCase()}>`;
-}
-
-/** 模型分类实体 span（aggregation 后）。 */
-export interface RedactSpan {
-  start: number;
-  end: number;
-  entity: string;
-}
-
-/**
- * 纯函数：按字符偏移把 spans 就地替换为占位符。倒序替换避免偏移失效；
- * 越界 span 自动裁剪；空 span 跳过。输出为「原文被替换」的脱敏文本。
- */
-export function applySpans(text: string, spans: RedactSpan[]): string {
-  if (!text) return text;
-  const sorted = [...spans].sort((a, b) => b.start - a.start);
-  let result = text;
-  for (const s of sorted) {
-    const start = Math.max(0, Math.min(text.length, s.start));
-    const end = Math.max(start, Math.min(text.length, s.end));
-    if (end <= start) continue;
-    result = result.slice(0, start) + placeholderFor(s.entity) + result.slice(end);
-  }
-  return result;
-}
-
-/** 懒加载 transformers.js（动态 import，避免 SSR 副作用）。
- *  next.config.js 已 alias 到浏览器入口 transformers.web.js，
- *  避免 webpack 走 exports 的 node condition 拖入 onnxruntime-node 二进制。 */
-async function importTransformers() {
-  return import('@huggingface/transformers');
-}
-
-/**
- * 创建 token-classification pipeline。webgpu 失败自动降级 wasm（D2）；
- * 两者均失败抛错 → 状态 failed。
- */
-async function createClassifier(): Promise<TokenClassificationPipeline> {
-  const { pipeline, env } = await importTransformers();
-  // D7 修订：运行时从 HF 下载加载。浏览器缓存策略按环境条件化：
-  // - https/localhost（安全上下文）：Cache API 可用 → 开启，避免重复下载
-  // - http 明文（如内网测试服务器）：window.caches 未定义，transformers.js
-  //   useBrowserCache=true 会直接抛 "Browser cache is not available" →
-  //   关闭，依赖浏览器 HTTP 磁盘缓存（HF 响应带 ETag）。
-  env.useBrowserCache = typeof caches !== 'undefined';
-  // webpack 打包下 ort 的 ESM bundle 无法用 import.meta.url 自定位 wasm
-  // 运行时（已 alias 到 UMD 版 ort.webgpu.min.js），显式指向 /ort/ 静态目录。
-  // 用字符串目录形式（非对象形式）：对象形式会触发 ensureWasmLoaded 把 mjs
-  // 转 blob URL，导致 webgpu EP 无法从同目录推导 jsep 文件（webgpuInit
-  // is not a function）；字符串形式走 ort 原生定位 + HTTP 缓存。
-  // 文件由 Dockerfile 构建时从 node_modules/onnxruntime-web/dist 拷入
-  // public/ort/（运行时资源，不进 git，D7 只约束模型权重）。
-  env.backends.onnx.wasm!.wasmPaths = '/ort/';
-  // 设备策略（q4 量化模型的 GatherBlockQuantized 算子在 wasm/CPU EP 无内核，
-  // q4 系列是 WebGPU-only；CPU 兜底必须用 q8（model_quantized.onnx，embedding
-  // 保持 fp32）。onnxruntime-web 由 overrides 锁定 1.27.0（QMoE 算子内核
-  // 1.27 才有，transformers.js 4.2 内置的 1.26-dev 缺）。
+/** 读取自动脱敏开关（localStorage，默认关闭）。 */
+export function loadRedactAuto(): boolean {
   try {
-    return await pipeline('token-classification', 'openai/privacy-filter', {
-      dtype: 'q4f16',
-      device: 'webgpu',
-    });
-  } catch (err) {
-    console.warn('[redact] webgpu 初始化失败，降级 wasm (q8):', err);
-    return await pipeline('token-classification', 'openai/privacy-filter', {
-      dtype: 'q8',
-      device: 'wasm',
-    });
-  }
-}
-
-/**
- * 启动模型加载（幂等）。页面 mount 时调用；加载完成后状态变 ready / failed。
- * 返回是否就绪。
- */
-export async function loadRedactor(): Promise<boolean> {
-  if (classifierPromise) {
-    try {
-      await classifierPromise;
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  setStatus('loading');
-  classifierPromise = createClassifier();
-  try {
-    await classifierPromise;
-    setStatus('ready');
-    return true;
-  } catch (err) {
-    classifierPromise = null;
-    setStatus('failed');
-    console.error('[redact] 模型加载失败:', err);
+    return localStorage.getItem(REDACT_LOCAL_STORAGE_KEY) === '1';
+  } catch {
     return false;
   }
 }
 
-/**
- * 对文本执行本地脱敏推理。要求模型已 ready；推理抛错时向上传播
- * （调用方负责报错，第 5/6 条拍板）。
- */
-export async function redactText(text: string): Promise<string> {
-  if (!classifierPromise) {
-    throw new Error('脱敏模型未加载');
+/** 持久化自动脱敏开关。 */
+export function saveRedactAuto(on: boolean): void {
+  try {
+    localStorage.setItem(REDACT_LOCAL_STORAGE_KEY, on ? '1' : '0');
+  } catch {
+    // ignore (private mode)
   }
-  const classifier = await classifierPromise;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const output = (await classifier(text, {
-    aggregation_strategy: 'simple',
-  })) as any[];
+}
 
-  // v4: simple 聚合输出用 entity_group（raw 输出用 entity），兼容两者。
-  const spans: RedactSpan[] = (output || []).map((o) => ({
-    start: o?.start ?? 0,
-    end: o?.end ?? 0,
-    entity: String(o?.entity_group ?? o?.entity ?? ''),
-  }));
-  return applySpans(text, spans);
+/**
+ * 调用后端脱敏 API。失败时抛错——由调用方展示错误提示（手动脱敏保留原文；
+ * 自动脱敏中止发送）。
+ */
+export async function redactText(
+  apiFetch: (url: string, init?: RequestInit) => Promise<Response>,
+  text: string,
+): Promise<string> {
+  const res = await apiFetch('/chat/redact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    let msg = `脱敏失败 (${res.status})`;
+    try {
+      const data = await res.json();
+      if (data?.error) msg = data.error;
+    } catch {
+      // keep default message
+    }
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return data.redacted ?? text;
 }

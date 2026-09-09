@@ -6,7 +6,7 @@ import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_CHAT_TEXT_BYTES, type Attachment, type PdfAttachment } from '@/lib/attachment';
 import { parsePdf } from '@/lib/pdf';
-import { loadRedactor, redactText, subscribeRedactStatus, getRedactStatus, REDACT_LOCAL_STORAGE_KEY, type RedactStatus } from '@/lib/redact';
+import { loadRedactAuto, saveRedactAuto, redactText } from '@/lib/redact';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
@@ -184,10 +184,9 @@ export default function ChatPage() {
   // SPEC-082 §5.1: abort controller for the in-flight SSE stream (stop button).
   const abortControllerRef = useRef<AbortController | null>(null);
   const [stopNotice, setStopNotice] = useState('');
-  // SPEC-093: 本地脱敏（OpenAI Privacy Filter）。
-  const [redactStatus, setRedactStatus] = useState<RedactStatus>(() => getRedactStatus());
-  const [redactAuto, setRedactAuto] = useState(false); // 自动脱敏开关（仅 ready 后由 localStorage 初始化）
-  const [redacting, setRedacting] = useState(false); // 推理中 → 弹窗动画
+  // SPEC-093: 输入框脱敏（后端 Presidio API，无前端模型）。
+  const [redactAuto, setRedactAuto] = useState<boolean>(() => loadRedactAuto()); // 自动脱敏开关（localStorage，默认关闭）
+  const [redacting, setRedacting] = useState(false); // 脱敏请求中 → 弹窗动画
   const [redactError, setRedactError] = useState('');
 
   useEffect(() => {
@@ -196,25 +195,6 @@ export default function ChatPage() {
 
   useEffect(() => () => {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
-  }, []);
-
-  // SPEC-093: 进入页面自动加载脱敏模型；强制门控 —— 只有 ready 后才读取
-  // localStorage 初始化自动开关（loading/failed 期间开关保持关闭）。
-  useEffect(() => {
-    loadRedactor();
-    const unsubscribe = subscribeRedactStatus((s) => {
-      setRedactStatus(s);
-      if (s === 'ready') {
-        try {
-          setRedactAuto(localStorage.getItem(REDACT_LOCAL_STORAGE_KEY) === '1');
-        } catch {
-          setRedactAuto(false);
-        }
-      } else {
-        setRedactAuto(false); // loading/failed 强制关闭（不读 localStorage）
-      }
-    });
-    return unsubscribe;
   }, []);
 
   const createSession = async () => {
@@ -535,10 +515,10 @@ export default function ChatPage() {
     const hasInput = !!input.trim();
     if ((!hasInput && attachments.length === 0 && pdfs.length === 0) || streaming) return;
 
-    // SPEC-093: 自动脱敏（开关开启且模型就绪）。先脱敏再校验/构造消息；
-    // 弹窗动画覆盖推理期（streaming 尚未启动）。失败报错并中止发送（第 5 条拍板）。
+    // SPEC-093: 自动脱敏（开关开启）。先脱敏再校验/构造消息；弹窗动画
+    // 覆盖请求期（streaming 尚未启动）。失败报错并中止发送（第 5 条拍板）。
     let finalInput = input;
-    if (redactAuto && redactStatus === 'ready') {
+    if (redactAuto) {
       try {
         finalInput = await autoRedact(input);
       } catch (err) {
@@ -700,22 +680,19 @@ export default function ChatPage() {
     setTimeout(() => setRedactError(''), 4000);
   };
 
-  // 自动脱敏开关切换（强制门控：仅 ready 态可切换；值仅存 localStorage）。
+  // 自动脱敏开关切换（值仅存 localStorage，无模型门控）。
   const toggleRedactAuto = () => {
-    if (redactStatus !== 'ready') return;
     const next = !redactAuto;
     setRedactAuto(next);
-    try {
-      localStorage.setItem(REDACT_LOCAL_STORAGE_KEY, next ? '1' : '0');
-    } catch { /* ignore */ }
+    saveRedactAuto(next);
   };
 
   // 手动点击脱敏（第 6 条拍板：失败报错，输入框保持原样）。
   const handleManualRedact = async () => {
-    if (redactStatus !== 'ready' || redacting || !input.trim()) return;
+    if (redacting || !input.trim()) return;
     setRedacting(true);
     try {
-      const [result] = await Promise.all([redactText(input), delay(MIN_REDACT_OVERLAY_MS)]);
+      const [result] = await Promise.all([redactText(apiFetch, input), delay(MIN_REDACT_OVERLAY_MS)]);
       setInput(result);
     } catch (err) {
       console.error('[redact] 手动脱敏失败:', err);
@@ -725,11 +702,11 @@ export default function ChatPage() {
     }
   };
 
-  // 自动脱敏执行（供 sendMessage 调用）：弹窗覆盖推理期；失败向上抛错。
+  // 自动脱敏执行（供 sendMessage 调用）：弹窗覆盖请求期；失败向上抛错。
   const autoRedact = async (text: string): Promise<string> => {
     setRedacting(true);
     try {
-      const [result] = await Promise.all([redactText(text), delay(MIN_REDACT_OVERLAY_MS)]);
+      const [result] = await Promise.all([redactText(apiFetch, text), delay(MIN_REDACT_OVERLAY_MS)]);
       return result;
     } finally {
       setRedacting(false);
@@ -956,34 +933,22 @@ export default function ChatPage() {
                 onClick={handleEnhance}
                 disabled={enhancing}
               >{enhancing ? '⏳ 增强中...' : '✨ 增强'}</button>
-              {/* SPEC-093: 脱敏按钮 + 自动开关（与增强按钮同行；强制门控） */}
+              {/* SPEC-093: 脱敏按钮 + 自动开关（与增强按钮同行；后端 Presidio API） */}
               <button
                 onClick={handleManualRedact}
-                disabled={redactStatus !== 'ready' || redacting || !input.trim()}
-                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
+                disabled={redacting || !input.trim()}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-redact-btn"
               >🛡️ 脱敏</button>
-              <label
-                className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer"
-                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
-              >
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={redactAuto && redactStatus === 'ready'}
+                  checked={redactAuto}
                   onChange={toggleRedactAuto}
-                  disabled={redactStatus !== 'ready'}
                   data-testid="chat-redact-auto-toggle"
                 />
                 自动脱敏
               </label>
-              <span
-                className="text-[10px] text-[var(--text-secondary)]"
-                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
-                data-testid="chat-redact-status"
-              >
-                {redactStatus === 'loading' ? '脱敏模型加载中…' : redactStatus === 'failed' ? '脱敏不可用' : ''}
-              </span>
             </div>
 
             {/* Image attachments preview */}

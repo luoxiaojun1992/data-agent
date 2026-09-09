@@ -30,6 +30,7 @@ type RouteDeps struct {
 	Chat          *ChatHandler
 	HumanChannel  *HumanChannelHandler
 	Enhance       *EnhanceHandler
+	Redact        *RedactHandler
 	Session       *SessionHandler
 	Artifact      *ArtifactHandler
 	Knowledge     *KnowledgeHandler
@@ -154,6 +155,11 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 		RegisterChatRoutes(chatRoutes, deps.Chat)
 		if deps.Enhance != nil {
 			RegisterEnhanceRoute(chatRoutes, deps.Enhance)
+		}
+		if deps.Redact != nil {
+			// SPEC-093: chat-input PII redaction shares the enhance endpoint's
+			// permission (chat:view via the group middleware).
+			RegisterRedactRoute(chatRoutes, deps.Redact)
 		}
 		if deps.HumanChannel != nil {
 			// SPEC-089: human-in-the-loop channel shares the chat permission
