@@ -96,16 +96,19 @@ async function createClassifier(): Promise<TokenClassificationPipeline> {
   // 文件由 Dockerfile 构建时从 node_modules/onnxruntime-web/dist 拷入
   // public/ort/（运行时资源，不进 git，D7 只约束模型权重）。
   env.backends.onnx.wasm!.wasmPaths = '/ort/';
-  const options = { dtype: 'q4f16' as const };
+  // 设备策略（q4 量化模型的 GatherBlockQuantized 算子在 wasm/CPU EP 无内核，
+  // q4 系列是 WebGPU-only；CPU 兜底必须用 q8（model_quantized.onnx，embedding
+  // 保持 fp32）。onnxruntime-web 由 overrides 锁定 1.27.0（QMoE 算子内核
+  // 1.27 才有，transformers.js 4.2 内置的 1.26-dev 缺）。
   try {
     return await pipeline('token-classification', 'openai/privacy-filter', {
-      ...options,
+      dtype: 'q4f16',
       device: 'webgpu',
     });
   } catch (err) {
-    console.warn('[redact] webgpu 初始化失败，降级 wasm:', err);
+    console.warn('[redact] webgpu 初始化失败，降级 wasm (q8):', err);
     return await pipeline('token-classification', 'openai/privacy-filter', {
-      ...options,
+      dtype: 'q8',
       device: 'wasm',
     });
   }
