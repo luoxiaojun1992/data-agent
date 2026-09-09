@@ -14,6 +14,17 @@ COPY package.json package-lock.json ./
 ENV ONNXRUNTIME_NODE_INSTALL=skip
 RUN npm ci --registry=https://registry.npmmirror.com
 COPY . .
+# SPEC-093: ort wasm 运行时（webgpu/wasm EP + jsep）拷入 public/ort/。
+# webpack 打包下 ort 无法用 import.meta.url 自定位，运行时经 env.wasm.wasmPaths
+# 指向 /ort/。构建时从 node_modules 拷贝，不进 git（D7 只约束模型权重）。
+RUN mkdir -p public/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm \
+    node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm \
+    node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm \
+    node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jspi.wasm \
+    node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs \
+    node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs \
+    node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs \
+    node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jspi.mjs public/ort/
 RUN npm run build
 
 # Stage 2: Runtime

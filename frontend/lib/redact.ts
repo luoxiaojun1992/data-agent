@@ -85,6 +85,16 @@ async function createClassifier(): Promise<TokenClassificationPipeline> {
   // D7 修订：运行时从 HF 下载加载；浏览器 Cache API 缓存模型文件（显式开启，
   // v4 默认即 true）——首次加载后同源请求命中缓存，不再重复下载。
   env.useBrowserCache = true;
+  // webpack 打包下 ort 的 ESM bundle 无法用 import.meta.url 自定位 wasm
+  // 运行时（已 alias 到 UMD 版 ort.webgpu.min.js），显式指向 /ort/ 静态目录。
+  // 对象形式会触发 transformers.js 的 ensureWasmLoaded 预加载 + Cache 缓存，
+  // 并提供 wasmBinary，避免 ort 内部 new URL(...) 定位失败。
+  // 文件由 Dockerfile 构建时从 node_modules/onnxruntime-web/dist 拷入
+  // public/ort/（运行时资源，不进 git，D7 只约束模型权重）。
+  env.backends.onnx.wasm!.wasmPaths = {
+    wasm: '/ort/ort-wasm-simd-threaded.wasm',
+    mjs: '/ort/ort-wasm-simd-threaded.mjs',
+  };
   const options = { dtype: 'q4f16' as const };
   try {
     return await pipeline('token-classification', 'openai/privacy-filter', {

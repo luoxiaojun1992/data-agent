@@ -66,3 +66,4 @@ mockllm/mockllm
 tests/ui/smoke-*.mjs
 tests/ui/*-verify.mjs
 tests/*_e2e.py
+frontend/public/ort/

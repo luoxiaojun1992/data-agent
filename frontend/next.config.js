@@ -14,16 +14,17 @@ const nextConfig = {
       __dirname,
       'node_modules/@huggingface/transformers/dist/transformers.web.js',
     );
-    // onnxruntime-web 的 bundle（ort.*.mjs）含 import.meta/ESM 语法，
-    // 必须按 ESM 解析（默认被 swc 当 CJS 导致 parse failed）。
-    config.module.rules.push({
-      test: /node_modules\/onnxruntime-web\/.*\.mjs$/,
-      type: 'javascript/esm',
-    });
-    config.module.rules.push({
-      test: /node_modules\/@huggingface\/transformers\/.*\.mjs$/,
-      type: 'javascript/esm',
-    });
+    // 浏览器 bundle 不需要 onnxruntime-node（官方 Next.js 教程同款配置）。
+    config.resolve.alias['onnxruntime-node$'] = false;
+    // 关键修复：transformers.js v4 通过 `onnxruntime-web/webgpu` 子路径引入
+    // ort。webpack 命中 exports 的 import condition → ort.*.min.mjs，其顶层
+    // `import.meta.url` 被 webpack 编译成模块对象引用（`new U(module)`），
+    // 运行时抛 "e.replace is not a function"。强制 alias 到 UMD 版
+    // （ort.webgpu.min.js，零 import.meta，wasm 定位走 env.wasm.wasmPaths）。
+    config.resolve.alias['onnxruntime-web/webgpu$'] = path.resolve(
+      __dirname,
+      'node_modules/onnxruntime-web/dist/ort.webgpu.min.js',
+    );
     // 兜底：onnxruntime-node 的 .node 二进制即使被引用也按源文本嵌入，不 parse。
     config.module.rules.push({
       test: /\.node$/,
