@@ -1,6 +1,6 @@
 # Chat 输入框本地脱敏（OpenAI Privacy Filter / WebGPU）
 
-> **SPEC-093** | Status: 设计已定稿（决策点 D1~D7 全部拍板，2026-09-08；补充脱敏中弹窗动画 2026-09-09）
+> **SPEC-093** | Status: ✅ 已实现（2026-09-09；D7 修订：模型不进代码库，运行时从 HF 下载 + 浏览器 Cache API 缓存）
 
 > **术语红线**：**脱敏（redact）≠ 校验（validate）≠ 审计（audit）**。
 > - **脱敏**：把输入框文本中的 PII span 就地替换为类别占位符（如 `[private_email]`），**不可逆、不回填原文**，仅在发送前作用于输入框文本。
