@@ -1,6 +1,6 @@
 # Chat 输入框本地脱敏（OpenAI Privacy Filter / WebGPU）
 
-> **SPEC-093** | Status: 设计已定稿（决策点 D1~D7 全部拍板，2026-09-08）
+> **SPEC-093** | Status: 设计已定稿（决策点 D1~D7 全部拍板，2026-09-08；补充脱敏中弹窗动画 2026-09-09）
 
 > **术语红线**：**脱敏（redact）≠ 校验（validate）≠ 审计（audit）**。
 > - **脱敏**：把输入框文本中的 PII span 就地替换为类别占位符（如 `[private_email]`），**不可逆、不回填原文**，仅在发送前作用于输入框文本。
@@ -101,11 +101,25 @@
 - **长度确认（第 4 条拍板）**：输入框上限 100KB UTF-8（MaxChatTextBytes）≈ 25~30K token，**远小于**模型 128K token 上下文，无需额外长度限制。
 - **状态提示**：按钮旁小字显示模型状态（「脱敏模型加载中…」/「脱敏不可用」），`data-testid="chat-redact-status"`。**加载失败态**（第 7 条拍板）：按钮禁用 + 开关禁用且强制关闭 + 状态元素 hover 提示「模型加载失败，联系管理员处理」（title 属性 / tooltip）。
 
+### 5.3.1 脱敏中弹窗动画（新增拍板 2026-09-09）
+
+- **触发时机**：手动点击「脱敏」按钮 或 自动脱敏（提交时）的推理执行期间展示。
+- **UI 结构**（`frontend/app/components/RedactOverlay.tsx`，新组件）：
+  - 全屏半透明遮罩（复用项目弹窗玻璃规范 .glass + 遮罩透明度 0.5，与 SPEC-085 统一遮罩一致），`z-index` 高于聊天弹窗层级；
+  - 中央**安全盾牌图标** + 环绕光环 + 「脱敏中…」文案，`data-testid="chat-redact-overlay"`（容器）/ `chat-redact-shield`（盾牌）。
+- **动画**：纯 CSS `@keyframes`（无额外依赖）——盾牌呼吸脉冲 + 光环旋转/扫描效果，深色/浅色主题下颜色随 `var(--accent)`（SPEC-076 落地时变量化收尾）。
+- **防闪烁**：推理 <300ms 时弹窗最小展示 300ms 再关闭，避免一闪而过；推理 ≥300ms 时推理结束立即关闭。
+- **交互约束**：
+  - 脱敏中按钮保持 loading 态（disabled），**阻止重复触发**；
+  - 弹窗**不可手动关闭**（点击遮罩无响应），推理结束（成功或失败）自动关闭；
+  - 推理失败：弹窗关闭 + 错误提示（第 5/6 条拍板的行为不变）。
+- **实现约束**：弹窗渲染条件与 `redactStatus === "running"` 绑定，由 `lib/redact.ts` 状态机驱动；不新增全局状态库。
+
 ### 5.4 与现有校验/限制的关系
 
 - 脱敏发生在**前端**；发送后的后端 `ValidateXSS`（SPEC-077/081 §4.4）、100KB 合并校验（MaxChatTextBytes）照常执行，脱敏不改变这些约束。
-- 脱敏替换占位符 `[private_email]` 为纯 ASCII 方括号文本，不引入 XSS 向量。
-- 超长文本（接近 100KB）的推理耗时可能达数秒（50M 激活单 token 推理，长序列线性增长）；实现时以实测为准，若 >3s 在按钮上做 loading 提示即可，不做长度限制（D6）。
+- 脱敏替换占位符 `<PRIVATE_EMAIL>` 等为纯 ASCII 尖括号文本，不引入 XSS 向量。
+- 超长文本（接近 100KB）的推理耗时可能达数秒（50M 激活单 token 推理，长序列线性增长）；实现时以实测为准，弹窗动画全程覆盖推理耗时，不做长度限制（D6）。
 
 ## 6. 可行性分析
 
@@ -129,6 +143,7 @@
 | `frontend/lib/redact.ts` | 模型加载/推理/span 替换封装（单例 + 状态机 + 纯函数） | New |
 | `frontend/app/chat/page.tsx` | 脱敏按钮 + 自动开关 + 状态提示 + sendMessage 自动脱敏 | Medium |
 | `frontend/public/models/privacy-filter/` | 预下载模型文件（onnx q4 + tokenizer） | New（二进制资源） |
+| `frontend/app/components/RedactOverlay.tsx` | 脱敏中弹窗动画（盾牌 + 遮罩 + 最小展示时长） | New |
 | `frontend/package.json` | + `@huggingface/transformers` | Small |
 | `frontend/next.config.mjs` | 静态资源/构建配置（onnx 不打 webpack 压缩、public 直拷） | Small（如需要） |
 | `tests/ui/chat-redact.spec.ts` | UI E2E（mock 推理层） | New |
@@ -143,6 +158,7 @@
 2. **E2E tests**（`tests/ui/chat-redact.spec.ts`，编号 `UI-XXX`）：
    - 模型加载中：脱敏按钮 disabled、开关 disabled 且 OFF；
    - 模型就绪：按钮可用，点击后输入框文本被替换（mock 推理返回固定 span）；
+   - **脱敏中弹窗**：推理期间 `chat-redact-overlay` 可见（盾牌动画元素在）；推理结束弹窗关闭；最小展示时长防闪烁（mock 慢推理/快推理两分支）；
    - 自动开关：开启 → 发送时 input 被脱敏（请求体断言）；localStorage 持久化（刷新后仍开启）；默认关闭；
    - 强制门控：localStorage 预置 true 但模型 failed → 开关仍 OFF、不可开；
    - 图片/PDF 附件不受脱敏影响（发送报文 images/pdfs 原样）。
@@ -180,7 +196,8 @@
 10. **手动脱敏失败**（推理抛错）：显示错误提示，输入框文本保持原样，不发送。
 11. **自动脱敏失败**（提交时推理抛错）：显示错误提示，**中止发送**（不发原文、streaming 复位），用户可重试。
 12. **长度**：100KB 输入无需额外限制（25~30K token ≪ 128K token 模型上限）。
-13. 前端 build 通过；E2E 用例通过；无 Go 改动（`git diff` 校验 `internal/` 与后端零变更）。
+13. **脱敏中弹窗**：手动/自动脱敏推理期间遮罩 + 盾牌动画可见（`chat-redact-overlay`/`chat-redact-shield`）；推理结束自动关闭；快推理（<300ms）弹窗仍可见 ≥300ms 防闪烁；推理失败弹窗关闭 + 错误提示；脱敏中按钮 disabled 不可重复触发、点击遮罩不关闭。
+14. 前端 build 通过；E2E 用例通过；无 Go 改动（`git diff` 校验 `internal/` 与后端零变更）。
 
 ## 附：设计决策点（已全部拍板 2026-09-08）
 
