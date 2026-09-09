@@ -81,8 +81,10 @@ async function importTransformers() {
  * 两者均失败抛错 → 状态 failed。
  */
 async function createClassifier(): Promise<TokenClassificationPipeline> {
-  const { pipeline } = await importTransformers();
-  // D7 修订：默认远程加载（HF Hub），浏览器 Cache API 缓存后续请求。
+  const { pipeline, env } = await importTransformers();
+  // D7 修订：运行时从 HF 下载加载；浏览器 Cache API 缓存模型文件（显式开启，
+  // v4 默认即 true）——首次加载后同源请求命中缓存，不再重复下载。
+  env.useBrowserCache = true;
   const options = { dtype: 'q4f16' as const };
   try {
     return await pipeline('token-classification', 'openai/privacy-filter', {
