@@ -82,9 +82,12 @@ async function importTransformers() {
  */
 async function createClassifier(): Promise<TokenClassificationPipeline> {
   const { pipeline, env } = await importTransformers();
-  // D7 修订：运行时从 HF 下载加载；浏览器 Cache API 缓存模型文件（显式开启，
-  // v4 默认即 true）——首次加载后同源请求命中缓存，不再重复下载。
-  env.useBrowserCache = true;
+  // D7 修订：运行时从 HF 下载加载。浏览器缓存策略按环境条件化：
+  // - https/localhost（安全上下文）：Cache API 可用 → 开启，避免重复下载
+  // - http 明文（如内网测试服务器）：window.caches 未定义，transformers.js
+  //   useBrowserCache=true 会直接抛 "Browser cache is not available" →
+  //   关闭，依赖浏览器 HTTP 磁盘缓存（HF 响应带 ETag）。
+  env.useBrowserCache = typeof caches !== 'undefined';
   // webpack 打包下 ort 的 ESM bundle 无法用 import.meta.url 自定位 wasm
   // 运行时（已 alias 到 UMD 版 ort.webgpu.min.js），显式指向 /ort/ 静态目录。
   // 用字符串目录形式（非对象形式）：对象形式会触发 ensureWasmLoaded 把 mjs
