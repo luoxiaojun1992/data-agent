@@ -87,14 +87,12 @@ async function createClassifier(): Promise<TokenClassificationPipeline> {
   env.useBrowserCache = true;
   // webpack 打包下 ort 的 ESM bundle 无法用 import.meta.url 自定位 wasm
   // 运行时（已 alias 到 UMD 版 ort.webgpu.min.js），显式指向 /ort/ 静态目录。
-  // 对象形式会触发 transformers.js 的 ensureWasmLoaded 预加载 + Cache 缓存，
-  // 并提供 wasmBinary，避免 ort 内部 new URL(...) 定位失败。
+  // 用字符串目录形式（非对象形式）：对象形式会触发 ensureWasmLoaded 把 mjs
+  // 转 blob URL，导致 webgpu EP 无法从同目录推导 jsep 文件（webgpuInit
+  // is not a function）；字符串形式走 ort 原生定位 + HTTP 缓存。
   // 文件由 Dockerfile 构建时从 node_modules/onnxruntime-web/dist 拷入
   // public/ort/（运行时资源，不进 git，D7 只约束模型权重）。
-  env.backends.onnx.wasm!.wasmPaths = {
-    wasm: '/ort/ort-wasm-simd-threaded.wasm',
-    mjs: '/ort/ort-wasm-simd-threaded.mjs',
-  };
+  env.backends.onnx.wasm!.wasmPaths = '/ort/';
   const options = { dtype: 'q4f16' as const };
   try {
     return await pipeline('token-classification', 'openai/privacy-filter', {
