@@ -66,3 +66,7 @@ mockllm/mockllm
 tests/ui/smoke-*.mjs
 tests/ui/*-verify.mjs
 tests/*_e2e.py
+
+# SPEC-093 脱敏模型大权重（809MB，超出 GitHub 100MB 限制；部署时 scp 到服务器
+# 持久目录 /root/data-agent-models/ 并挂载 volume，不进 git 不进镜像）
+frontend/public/models/openai/privacy-filter/onnx/*.onnx_data

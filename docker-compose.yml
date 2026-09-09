@@ -264,6 +264,11 @@ services:
         NEXT_PUBLIC_API_URL: /api/v1
     ports:
       - "3000:3000"
+    volumes:
+      # SPEC-093: 脱敏模型大权重（q4f16 onnx_data 809MB，超 GitHub 100MB 限制不进
+      # git/镜像）。部署时 scp model_q4f16.onnx + model_q4f16.onnx_data 到服务器
+      # /root/data-agent-models/privacy-filter-onnx/，只读挂载覆盖容器内 onnx 目录。
+      - /root/data-agent-models/privacy-filter-onnx:/app/public/models/openai/privacy-filter/onnx:ro
     depends_on:
       data-agent:
         condition: service_healthy
