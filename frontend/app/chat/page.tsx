@@ -956,6 +956,34 @@ export default function ChatPage() {
                 onClick={handleEnhance}
                 disabled={enhancing}
               >{enhancing ? '⏳ 增强中...' : '✨ 增强'}</button>
+              {/* SPEC-093: 脱敏按钮 + 自动开关（与增强按钮同行；强制门控） */}
+              <button
+                onClick={handleManualRedact}
+                disabled={redactStatus !== 'ready' || redacting || !input.trim()}
+                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
+                data-testid="chat-redact-btn"
+              >🛡️ 脱敏</button>
+              <label
+                className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer"
+                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
+              >
+                <input
+                  type="checkbox"
+                  checked={redactAuto && redactStatus === 'ready'}
+                  onChange={toggleRedactAuto}
+                  disabled={redactStatus !== 'ready'}
+                  data-testid="chat-redact-auto-toggle"
+                />
+                自动脱敏
+              </label>
+              <span
+                className="text-[10px] text-[var(--text-secondary)]"
+                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
+                data-testid="chat-redact-status"
+              >
+                {redactStatus === 'loading' ? '脱敏模型加载中…' : redactStatus === 'failed' ? '脱敏不可用' : ''}
+              </span>
             </div>
 
             {/* Image attachments preview */}
@@ -1012,33 +1040,6 @@ export default function ChatPage() {
             {redactError && (
               <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-redact-error">{redactError}</p>
             )}
-            {/* SPEC-093: 脱敏工具栏（按钮 + 自动开关 + 状态提示；强制门控） */}
-            <div className="flex items-center gap-3 mb-2" data-testid="chat-redact-toolbar">
-              <button
-                onClick={handleManualRedact}
-                disabled={redactStatus !== 'ready' || redacting || !input.trim()}
-                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
-                className="px-3 py-1 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-all"
-                data-testid="chat-redact-btn"
-              >🛡️ 脱敏</button>
-              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={redactAuto && redactStatus === 'ready'}
-                  onChange={toggleRedactAuto}
-                  disabled={redactStatus !== 'ready'}
-                  data-testid="chat-redact-auto-toggle"
-                />
-                自动脱敏
-              </label>
-              <span
-                className="text-[10px] text-[var(--text-secondary)]"
-                title={redactStatus === 'failed' ? '模型加载失败，联系管理员处理' : undefined}
-                data-testid="chat-redact-status"
-              >
-                {redactStatus === 'loading' ? '脱敏模型加载中…' : redactStatus === 'failed' ? '脱敏不可用' : ''}
-              </span>
-            </div>
             <div className="flex gap-3">
               <textarea
                 value={input}

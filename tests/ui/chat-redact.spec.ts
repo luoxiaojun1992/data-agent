@@ -31,12 +31,16 @@ test.describe('CHAT — 本地脱敏 (SPEC-093)', () => {
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
   });
 
-  // ═══ UI-219: 脱敏工具栏渲染 ═══
-  test('[UI-219] Redact — 工具栏渲染（按钮/开关/状态提示）', async ({ page }) => {
-    await expect(page.locator('[data-testid="chat-redact-toolbar"]')).toBeVisible({ timeout: 5000 });
+  // ═══ UI-219: 脱敏工具栏渲染（与「✨ 增强」按钮同一行） ═══
+  test('[UI-219] Redact — 工具栏渲染（按钮/开关/状态提示，与增强按钮同行）', async ({ page }) => {
+    await expect(page.locator('[data-testid="chat-enhance-btn"]')).toBeVisible();
     await expect(page.locator('[data-testid="chat-redact-btn"]')).toBeVisible();
     await expect(page.locator('[data-testid="chat-redact-auto-toggle"]')).toBeVisible();
     await expect(page.locator('[data-testid="chat-redact-status"]')).toBeVisible();
+    // 同一行断言：脱敏按钮与增强按钮的纵向位置一致（同 flex 行）
+    const enhanceBox = await page.locator('[data-testid="chat-enhance-btn"]').boundingBox();
+    const redactBox = await page.locator('[data-testid="chat-redact-btn"]').boundingBox();
+    expect(enhanceBox && redactBox && Math.abs(enhanceBox.y - redactBox.y) < 4).toBeTruthy();
   });
 
   // ═══ UI-220: 模型非就绪（加载中/失败）强制门控 ═══
