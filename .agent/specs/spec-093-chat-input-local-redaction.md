@@ -1,6 +1,28 @@
-# Chat 输入框本地脱敏（OpenAI Privacy Filter / WebGPU）
+# Chat 输入框脱敏（Presidio 后端 API）
 
-> **SPEC-093** | Status: ✅ 已实现（2026-09-09；D7 修订：模型不进代码库，运行时从 HF 下载 + 浏览器 Cache API 缓存）
+> **SPEC-093** | Status: ✅ 已实现（2026-09-10；最终方案：后端 Presidio API，前端模型方案已废弃）
+
+> ## 实现修订记录（最终方案，以此为准）
+>
+> 原设计（浏览器本地运行 openai/privacy-filter）经实测发现不可行，已废弃：
+> - 模型下载依赖 HF CDN（cdn-lfs），国内网络不可达（浏览器/服务器直连均失败）；
+> - q4 量化模型的 `GatherBlockQuantized` 算子无 wasm/CPU 内核（WebGPU-only），
+>   多数办公环境的浏览器无 WebGPU；
+> - transformers.js v4 与 webpack 集成存在 import.meta.url 编译链问题。
+>
+> **最终实现（2026-09-09 重构，commit eb62926）**：
+> 1. **后端**新增 `POST /api/v1/chat/redact`（handler/redact.go），复用 SPEC-068 的
+>    PIIRedactor（Presidio analyze + anonymize，`<PII>` 占位）；权限与「增强提示词」
+>    相同（`/api/v1/chat` 组 + `chat:view`）；空文本 400 / 服务故障 500 / pii 开关
+>    关闭返回原文 200（跳过≠失败）。
+> 2. **前端**彻底移除 transformers.js / onnxruntime-web 模型链路（依赖、webpack
+>    alias、Dockerfile ort 拷贝、public/ort 全删）；`lib/redact.ts` 重写为 API 封装；
+>    脱敏按钮 + 提交自动脱敏调用新 API；**去掉模型可用性提示与强制门控**；自动开关
+>    mount 即读 localStorage（默认关闭）；API 报错仍前端报错（手动保原文/自动中止
+>    发送）；盾牌弹窗动画保留。
+> 3. 脱敏文本**经过后端**（与 SPEC-068 Presidio 服务端脱敏链路一致），不再是纯前端。
+>
+> 下文为原设计方案，仅作历史记录保留。
 
 > **术语红线**：**脱敏（redact）≠ 校验（validate）≠ 审计（audit）**。
 > - **脱敏**：把输入框文本中的 PII span 就地替换为类别占位符（如 `[private_email]`），**不可逆、不回填原文**，仅在发送前作用于输入框文本。
