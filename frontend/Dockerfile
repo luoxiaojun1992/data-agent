@@ -7,11 +7,11 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-# onnxruntime-node（transformers.js 的 optional dep）postinstall 从 GitHub 下载二进制，
-# 服务器直连 GitHub 302 失败；走 npmmirror 二进制镜像（SPEC-093）。
-# 注意：npm config 不支持 onnxruntime_* 键（npm error: not a valid npm option），
-# 必须用 install.js 识别的环境变量 ONNXRUNTIME_NODE_BINARY_HOST_MIRROR。
-ENV ONNXRUNTIME_NODE_BINARY_HOST_MIRROR=https://registry.npmmirror.com/-/binary/onnxruntime
+# onnxruntime-node 1.24.x 的 install 脚本不再支持 binary host mirror，改为从
+# Nuget feed（api.nuget.org）下载 CUDA EP 二进制，服务器直连被 302 阻断。
+# 浏览器端走 onnxruntime-web（webgpu/wasm），本就不需要 node 二进制 →
+# ONNXRUNTIME_NODE_INSTALL=skip 直接跳过 install 脚本（零下载）。
+ENV ONNXRUNTIME_NODE_INSTALL=skip
 RUN npm ci --registry=https://registry.npmmirror.com
 COPY . .
 RUN npm run build
