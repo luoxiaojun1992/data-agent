@@ -5,8 +5,9 @@
 //  2. 设备降级：webgpu → wasm（D2 拍板）
 //  3. 推理 + span 替换（类别占位 + 尖括号，与 Presidio 风格一致，D1 拍板）
 //
-// 模型文件位于 public/models/openai/privacy-filter/（D7：直入代码库/部署资源），
-// 运行时零外网请求。
+// 模型加载（D7 修订 2026-09-09）：**不进代码库、不预下载**，运行时由
+// transformers.js 直接从 HuggingFace 下载加载（浏览器 Cache API 自动缓存，
+// 后续加载命中缓存）。
 
 import type { TokenClassificationPipeline } from '@huggingface/transformers';
 
@@ -80,13 +81,8 @@ async function importTransformers() {
  * 两者均失败抛错 → 状态 failed。
  */
 async function createClassifier(): Promise<TokenClassificationPipeline> {
-  const { pipeline, env } = await importTransformers();
-  // 本地模型：public/models/ → URL 路径 /models/。零外网（含 wasm 运行时）。
-  env.localModelPath = '/models/';
-  env.allowLocalModels = true;
-  // wasm 降级运行时也走本地（public/models/ort/），零 CDN 依赖。
-  env.backends.onnx.wasm!.wasmPaths = '/models/ort/';
-
+  const { pipeline } = await importTransformers();
+  // D7 修订：默认远程加载（HF Hub），浏览器 Cache API 缓存后续请求。
   const options = { dtype: 'q4f16' as const };
   try {
     return await pipeline('token-classification', 'openai/privacy-filter', {

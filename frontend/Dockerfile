@@ -7,7 +7,10 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --registry=https://registry.npmmirror.com
+# onnxruntime-node（transformers.js 的 optional dep）postinstall 从 GitHub 下载二进制，
+# 服务器直连 GitHub 302 失败；走 npmmirror 二进制镜像（SPEC-093）。
+RUN npm config set onnxruntime_node_binary_host_mirror https://registry.npmmirror.com/-/binary/onnxruntime \
+  && npm ci --registry=https://registry.npmmirror.com
 COPY . .
 RUN npm run build
 
