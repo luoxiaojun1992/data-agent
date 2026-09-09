@@ -16,26 +16,14 @@ export default function HermesPage() {
           </p>
         </div>
 
-        <div className="glass p-8 text-center" data-testid="hermes-search-area">
-          <span className="text-5xl block mb-4">🔍</span>
-          <p className="text-lg text-[var(--text-primary)] mb-2">连接数据库并开始探索</p>
-          <p className="text-sm text-[var(--text-secondary)] mb-6">
-            输入数据库连接信息，Hermes 将帮助你发现数据洞察
+        <div className="glass p-12 text-center" data-testid="hermes-under-construction">
+          <span className="text-5xl block mb-4">🚧</span>
+          <p className="text-lg text-[var(--text-primary)] mb-2" data-testid="hermes-uc-title">
+            功能建设中
           </p>
-          <div className="max-w-lg mx-auto">
-            <textarea
-              placeholder="在此输入自然语言查询，例如：查询 sales 表中过去 30 天的收入趋势..."
-              rows={3}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none focus:border-[var(--accent)] transition-all"
-              data-testid="hermes-query-input"
-            />
-            <button
-              className="mt-3 px-6 py-2 bg-[var(--accent)] text-white rounded-xl font-medium hover:opacity-90 transition-all"
-              data-testid="hermes-submit-btn"
-            >
-              执行查询
-            </button>
-          </div>
+          <p className="text-sm text-[var(--text-secondary)]">
+            敬请期待，Hermes 自由探索功能即将上线
+          </p>
         </div>
       </div>
     </AppLayout>
