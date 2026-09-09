@@ -9,8 +9,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # onnxruntime-node（transformers.js 的 optional dep）postinstall 从 GitHub 下载二进制，
 # 服务器直连 GitHub 302 失败；走 npmmirror 二进制镜像（SPEC-093）。
-RUN npm config set onnxruntime_node_binary_host_mirror https://registry.npmmirror.com/-/binary/onnxruntime \
-  && npm ci --registry=https://registry.npmmirror.com
+# 注意：npm config 不支持 onnxruntime_* 键（npm error: not a valid npm option），
+# 必须用 install.js 识别的环境变量 ONNXRUNTIME_NODE_BINARY_HOST_MIRROR。
+ENV ONNXRUNTIME_NODE_BINARY_HOST_MIRROR=https://registry.npmmirror.com/-/binary/onnxruntime
+RUN npm ci --registry=https://registry.npmmirror.com
 COPY . .
 RUN npm run build
 

@@ -70,7 +70,7 @@ export function applySpans(text: string, spans: RedactSpan[]): string {
 }
 
 /** 懒加载 transformers.js（动态 import，避免 SSR 副作用）。
- *  next.config.mjs 已 alias 到浏览器入口 transformers.web.js，
+ *  next.config.js 已 alias 到浏览器入口 transformers.web.js，
  *  避免 webpack 走 exports 的 node condition 拖入 onnxruntime-node 二进制。 */
 async function importTransformers() {
   return import('@huggingface/transformers');
