@@ -1,6 +1,6 @@
 # 前端 XSS 输出转义组件 + 后端输入限制校验补齐
 
-> **SPEC-094** | Status: 📐 立项（暂不深化，稍后调查完善，定稿后再实现）
+> **SPEC-094** | Status: 📐 调研完成，待拍板 D1~D5 后定稿（2026-09-10）
 
 > **术语红线**：**输入校验（validate）≠ 输出转义（escape）**。本 spec 的立场：
 > 后端只补**结构性限制**（文本长度、图片数量/大小），XSS 校验后端**不做**；
@@ -22,40 +22,67 @@
 | SPEC-084 | ✅ | task 创建校验（title/description ValidateXSS，e486197）已就绪 |
 | — | — | 无阻塞项；立项阶段不实现 |
 
-## 2. 背景（现状调查，2026-09-10 快查）
+## 2. 现状调查结论（2026-09-10 全量调研，已闭环）
 
-后端校验现状盘点：
+### 2.1 后端结构性限制现状矩阵（逐文件核实）
 
-| 模块 | 文本长度 | 图片数量/大小 | XSS | 备注 |
-|------|---------|--------------|-----|------|
-| KB | ✅ 标题 200 runes 截断 + 正文 5MB | ✅ 10 张 / 1MB/张 | ✅ 标题 ValidateXSS | `handler/knowledge.go` + `logic/webimport` |
-| Chat | ✅ 100KB 合并（`validateChatTextSize`） | ✅ `ValidateImages`（5 张 / 2MB/张 / 总量 5MB / MIME 白名单） | ✅ 用户提示词 ValidateXSS | `domain/chat/image.go` + `service/chat` |
-| Task | ❓ **文本长度待查** | ✅ 复用 `ValidateImages`（domain 共用） | ✅ title ValidateXSS | `handler/task.go:54`；message/params 长度上限待确认 |
-| Chat PDF | ❓ **PDF 大小待查** | — | — | 前端限 20MB，后端是否有对应限制待确认 |
+| 模块 | 文本长度 | 图片数量 | 图片大小 | XSS（现状） | 核实位置 |
+|------|---------|---------|---------|------------|---------|
+| **chat 消息** | ✅ 100KB（用户+PDF文字合并，字节） | ✅ ≤5 张 | ✅ ≤2MB/张 + ≤5MB/总量 + MIME 白名单 | ✅ 用户提示词（PDF 文字豁免） | `service/chat/chat_service.go:90,96,232` + `domain/chat/image.go` |
+| **chat PDF** | ⚠️ 解析文字并入 100KB | ❌ **无数量上限** | ❌ **文件大小无后端校验**（前端 20MB） | ❌ 豁免（SPEC-077 §4.4 设计如此） | `validateChatTextSize` |
+| **KB** | ✅ 正文 5MB / 标题 200 runes 截断 | ⚠️ 用户上传=单文件（天然无批量）；URL 导入 webimport 截断 ≤10 张 | ✅ ≤1MB/张 | ✅ 标题（handler 入口 block） | `handler/knowledge.go:53,69,92` + `service/knowledge/service.go:162,194` |
+| **task 创建** | ❌ **title/description/params 均无长度限制** | ✅ ≤5 张（复用 `ValidateImages`） | ✅ ≤2MB/5MB（复用） | ✅ title+description（`handler/task.go:54-61`） | `handler/task.go:46,54` |
+| **task 运行** | ❌ 同上（params 直透） | ✅ executor 二次校验（纵深防御） | ✅ 同上 | ❌ params.message（LLM 输入，允许代码样例） | `logic/agent/executor.go:373` + `orchestrator.go:76` |
+| **redact API** | ❌ **text 无长度限制**（SPEC-093 新 API 缺口） | — | — | ❌ 无需（脱敏目标文本） | `handler/redact.go`（无 len 检查） |
+| **feishu webhook** | ❌ MVP echo 无限制（不落库不进 LLM） | — | — | ❌ 无需（JSON 编码 echo） | `service/im/service.go:111` |
 
-**待调查清单（定稿前必须逐项确认）**：
-1. task 创建/运行的文本参数（message、params、title/description）后端长度上限
-2. chat PDF 附件大小后端限制（前端 20MB 是否有后端兜底）
-3. 前端输出渲染管线现状：Markdown 组件、session title、KB 文档内容、task 结果、
-   notification 消息、human channel 消息等所有「后端/LLM 文本 → DOM」的出口
-4. XSS 转义组件的落点：Markdown 渲染器内部转义 vs 独立 `SafeText` 包装组件；
-   react-markdown 等依赖的默认转义行为
-5. 现有 `ValidateXSS` 校验点的收编策略（是否保留后端校验作为纵深防御，还是
-   按本 spec 立场统一收敛到输出转义）
+### 2.2 前端输出渲染管线现状
 
-## 3. 设计方向（暂不深化）
+| 项 | 现状 | 结论 |
+|----|------|------|
+| `dangerouslySetInnerHTML` | **项目代码零使用**（仅 node_modules 第三方） | ✅ React 文本插值全链路自动转义 |
+| Markdown 渲染 | `components/Markdown.tsx`：react-markdown + remark-gfm + 自定义组件（无 html 渲染） | ✅ react-markdown 默认**不渲染 raw HTML**（转义为纯文本） |
+| 链接安全 | `a` 标签 `target="_blank" rel="noopener noreferrer"`；react-markdown 内置 `defaultUrlTransform` 过滤 `javascript:`/`data:` 危险协议 | ✅ 已防护 |
+| **总体结论** | 当前输出渲染**已基本安全**（隐式安全） | spec 的转义组件定位 = **把隐式安全收编为显式统一出口** + 兜底审计 |
+
+### 2.3 缺口清单（后端需补的结构性限制）
+
+| # | 缺口 | 建议方案 | 优先级 |
+|---|------|---------|:---:|
+| G1 | task title/description/params 文本长度 | title ≤200 runes（对齐 KB）；description/message ≤100KB（对齐 chat） | P0 |
+| G2 | chat PDF 数量上限 | ≤5 个（对齐图片数量）；文字 100KB 已兜底 | P0 |
+| G3 | chat PDF「文件大小」后端校验 | **不可复现**：后端收到的 Pdfs 只有 `{name, text}`（前端已解析），文件本身不进后端。后端能兜底的只有「解析文字字节数」（已并入 100KB）。前端 20MB 限制保持前端职责，spec 记录此边界 | 无需后端改动 |
+| G4 | redact API text 长度 | ≤100KB（对齐 chat） | P0 |
+| G5 | feishu webhook body 大小 | `http.MaxBytesReader`（如 1MB）；MVP echo 阶段低优先 | P2 |
+
+### 2.4 待拍板决策点
+
+| # | 决策点 | 建议（默认） | 备选 |
+|---|--------|-------------|------|
+| D1 | task 文本长度取值 | title ≤200 runes、description/message ≤100KB | 统一 64KB |
+| D2 | chat PDF 数量上限 | ≤5（与图片对齐） | ≤10 |
+| D3 | 现有后端 `ValidateXSS`（chat 提示词/KB 标题/task title+description 3 处）去留 | **保留**为纵深防御（输入侧拒绝明显攻击，输出侧转义兜底，双保险） | 按 spec 立场移除、纯输出转义 |
+| D4 | redact API 长度 | ≤100KB | 与 chat 解耦取 1MB |
+| D5 | SafeText 组件形态 | `escapeHtml` 工具函数 + `<SafeText>` 包装组件（纯文本出口），Markdown 出口走 react-markdown（已转义，仅补 href 协议白名单显式化） | 侵入 Markdown 渲染管线 |
+
+## 3. 设计方向（调研已闭环，待 D1~D5 拍板后定稿）
 
 ### 3.1 前端 XSS 输出转义组件
 
-- 核心：一个出口转义函数/组件（`escapeHtml` + `<SafeText>`），所有动态文本渲染
-  统一走该出口。
-- 与 Markdown 渲染的关系（允许 `**bold**` 等语法 vs 转义 HTML 标签）待调查定稿。
-- 定稿前暂不实现。
+- 核心：`lib/escape.ts`（`escapeHtml` 纯函数，L1 可单测）+ `components/SafeText.tsx`
+  （纯文本出口包装）。所有「后端/LLM 文本 → DOM」的**纯文本出口**统一走该组件。
+- Markdown 出口（chat 消息正文、KB 内容、task 结果）：react-markdown 已默认转义
+  raw HTML，**不侵入渲染管线**；仅将 `a` 组件显式加协议白名单
+  （`http/https/mailto`，`javascript:`/`data:` 拒绝）作为显式化收尾（D5）。
+- 出口枚举（定稿时逐一点名）：chat 消息正文（Markdown）、session 标题、
+  KB 文档标题/内容、task 标题/描述/结果、通知消息、human channel 消息。
 
 ### 3.2 后端输入限制补齐
 
-- 只补结构性限制：文本长度、图片数量/大小（对齐现有 domain 常量，单一事实源）。
-- **不做**后端 XSS 校验（现有 ValidateXSS 校验点是否保留/移除，待调查定稿）。
+- 只补结构性限制：G1（task 长度）/G2（chat PDF 数量）/G4（redact 长度），
+  对齐现有 domain 常量，单一事实源（`domain/chat` / `domain/task`）。
+- G3 结论：PDF 文件大小后端不可复现（文件不进后端），记录边界、不做改动。
+- 现有 `ValidateXSS` 3 处校验点按 D3 决定去留（建议保留为纵深防御）。
 
 ## 6. 可行性分析
 
@@ -125,8 +152,10 @@
 - `.agent/skills/go-ut-audit/SKILL.md` — UT 审计 skill
 - `.github/workflows/ut-workflow.yml` — CI UT workflow
 
-## 10. 验证标准（立项级，定稿时扩展）
+## 10. 验证标准（调研级，定稿时扩展）
 
-1. 待调查清单 5 项全部有明确结论并写入本 spec 后，方可定稿。
-2. 定稿后：前端所有动态文本渲染出口走转义组件（`git grep` 可枚举）；后端
-   KB/chat/task 三条链路的长度与图片限制均有 handler/service 层兜底与单测覆盖。
+1. ✅ 待调查清单 5 项已全部闭环（见 §2.1/§2.2 逐文件核实结论）。
+2. 待拍板 D1~D5 → 定稿 → 实现：
+   - 前端所有纯文本渲染出口走 `SafeText`（`git grep` 可枚举）；
+   - Markdown `a` 组件协议白名单显式化；
+   - 后端 G1/G2/G4 缺口补齐，handler/service 层兜底 + 单测覆盖（对齐 L3 98% 底线）。
