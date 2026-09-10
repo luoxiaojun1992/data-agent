@@ -1,106 +1,120 @@
-# 前端 XSS 输出转义组件 + 后端输入限制校验补齐
+# 前端统一 XSS 输出转义（渲染层出口组件）
 
-> **SPEC-094** | Status: 📐 调研完成，待拍板 D1~D5 后定稿（2026-09-10）
+> **SPEC-094** | Status: 📐 深化调研完成，待拍板 D1~D3 后定稿（2026-09-10）
 
-> **术语红线**：**输入校验（validate）≠ 输出转义（escape）**。本 spec 的立场：
-> 后端只补**结构性限制**（文本长度、图片数量/大小），XSS 校验后端**不做**；
-> XSS 防护由**前端输出转义组件**统一承担（渲染任何后端/LLM 返回文本前转义）。
+> **术语红线**：**输入校验（validate）≠ 输出转义（escape）**。本 spec 的最终立场：
+> - **后端校验一律不动**（结构性限制 + `ValidateXSS` 输入校验均已正确，PDF 文字豁免是
+>   SPEC-077 §4.4 的既定设计）。
+> - XSS 防护收敛到**前端输出转义**，且**只在渲染层做**（出口组件），不在请求层做
+>   （请求层转义会破坏 Markdown/HTML 并造成 double-escape，详见 §3.1）。
 
 ## 1. 目标
 
-1. 前端新增 **XSS 转义组件**（如 `SafeText` / `escapeHtml` 工具函数），用于所有
-   后端/LLM 返回内容的**输出转义**（暂不深化，待调查 Markdown 渲染管线后定稿）。
-2. 调查并补齐后端输入限制缺口：**KB、chat、task** 三条链路的文本长度、图片
-   数量/大小校验必须**后端兜底**（不能只靠前端限制）。
+1. 前端新增**统一 XSS 输出转义出口组件**（`lib/escape.ts` + `components/SafeText.tsx`），
+   把所有「后端/LLM 文本 → DOM」的**纯文本出口**收编为显式安全边界。
+2. Markdown 出口（chat 正文、task/run 结果、KB 内容）走既有 `Markdown` 组件
+   （react-markdown 默认不渲染 raw HTML），仅补 `a` 组件协议白名单显式化。
+3. **不改后端任何校验**；**不引入请求层转义中间件**（技术不可行，见 §3.1）。
 
-## 1.5. 前置依赖检查
+## 2. 现状调查结论（2026-09-10 二次深化，已闭环）
 
-| 前置 Spec | 状态 | 备注 |
-|-----------|:---:|------|
-| SPEC-077 | ✅ | chat 附件/PDF 限制（前端 100KB/5 图/2MB/PDF 20MB）已就绪，后端已有部分 |
-| SPEC-081 | ✅ | `security.ValidateXSS` 与 KB 限制常量（MaxKBTitleRunes=200 / MaxKBTextBytes=5MB / MaxKBImageBytes=1MB / MaxKBImageCount=10）已就绪 |
-| SPEC-084 | ✅ | task 创建校验（title/description ValidateXSS，e486197）已就绪 |
-| — | — | 无阻塞项；立项阶段不实现 |
+### 2.1 后端安全现状（逐文件核实）
 
-## 2. 现状调查结论（2026-09-10 全量调研，已闭环）
+| 层 | 机制 | 核实位置 | 结论 |
+|----|------|---------|------|
+| 输入校验 | `ValidateXSS`（block 明显 XSS 输入，PDF 文字豁免） | `service/chat/chat_service.go:90`、`handler/knowledge.go`、`handler/task.go:54` | ✅ 正确，不动 |
+| 输入审计 | `AuditInput`（PII 脱敏 Presidio + fallback regex） | `domain/security/auditor.go:116` | ✅ 正确，不动 |
+| 输出审计 | `AuditOutput`（PII 脱敏 + fallback regex，含 `xss` rule） | `domain/security/auditor.go:154` | ⚠️ 见 §2.2 |
+| 输出调用点 | LLM 层 `modelcfg/audited.go:103` + runtime 层 `runtime.go:327` | 输出审计挂在 ADK 层 | ✅ 已挂，不动 |
+| 结构性限制 | chat 100KB/5 图/2MB、KB 5MB/1MB/10 图、task 图片复用 | `service/chat`、`service/knowledge`、`handler/task.go` | ✅ 正确，不动 |
 
-### 2.1 后端结构性限制现状矩阵（逐文件核实）
+### 2.2 后端输出侧 XSS 现状（关键发现）
 
-| 模块 | 文本长度 | 图片数量 | 图片大小 | XSS（现状） | 核实位置 |
-|------|---------|---------|---------|------------|---------|
-| **chat 消息** | ✅ 100KB（用户+PDF文字合并，字节） | ✅ ≤5 张 | ✅ ≤2MB/张 + ≤5MB/总量 + MIME 白名单 | ✅ 用户提示词（PDF 文字豁免） | `service/chat/chat_service.go:90,96,232` + `domain/chat/image.go` |
-| **chat PDF** | ⚠️ 解析文字并入 100KB | ❌ **无数量上限** | ❌ **文件大小无后端校验**（前端 20MB） | ❌ 豁免（SPEC-077 §4.4 设计如此） | `validateChatTextSize` |
-| **KB** | ✅ 正文 5MB / 标题 200 runes 截断 | ⚠️ 用户上传=单文件（天然无批量）；URL 导入 webimport 截断 ≤10 张 | ✅ ≤1MB/张 | ✅ 标题（handler 入口 block） | `handler/knowledge.go:53,69,92` + `service/knowledge/service.go:162,194` |
-| **task 创建** | ❌ **title/description/params 均无长度限制** | ✅ ≤5 张（复用 `ValidateImages`） | ✅ ≤2MB/5MB（复用） | ✅ title+description（`handler/task.go:54-61`） | `handler/task.go:46,54` |
-| **task 运行** | ❌ 同上（params 直透） | ✅ executor 二次校验（纵深防御） | ✅ 同上 | ❌ params.message（LLM 输入，允许代码样例） | `logic/agent/executor.go:373` + `orchestrator.go:76` |
-| **redact API** | ❌ **text 无长度限制**（SPEC-093 新 API 缺口） | — | — | ❌ 无需（脱敏目标文本） | `handler/redact.go`（无 len 检查） |
-| **feishu webhook** | ❌ MVP echo 无限制（不落库不进 LLM） | — | — | ❌ 无需（JSON 编码 echo） | `service/im/service.go:111` |
+后端 LLM 输出侧**已经存在**一段 XSS sanitize：`domain/security/auditor.go` 的
+`OutputRules` 含 `xss` rule（regex `(?i)<\s*script`），`sanitizeByType("xss", s)` 把
+`<` `>` 替换为 `&lt;` `&gt;`。该 sanitize 挂在 `AuditOutput`，由 ADK 层
+（`modelcfg/audited.go`、`runtime/runtime.go`）在 LLM 输出时调用。
 
-### 2.2 前端输出渲染管线现状
+**结论**：
+- 它**只覆盖 `<script`**，漏 `<img onerror>` / `<svg onload>` / `<a href=javascript:>`
+  等其它 XSS 向量，**不是完整防护**。
+- 它**不破坏 Markdown/HTML**：正常 LLM 输出不含 `<script` 字面量；即便代码块里示范
+  `<script>`，前端 react-markdown 会把 `&lt;` 按 entity 解码还原为 `<` 文本渲染。
+- **按用户决策：保持现状不动**（它不是主防护，主防护在前端渲染层）。
 
-| 项 | 现状 | 结论 |
-|----|------|------|
-| `dangerouslySetInnerHTML` | **项目代码零使用**（仅 node_modules 第三方） | ✅ React 文本插值全链路自动转义 |
-| Markdown 渲染 | `components/Markdown.tsx`：react-markdown + remark-gfm + 自定义组件（无 html 渲染） | ✅ react-markdown 默认**不渲染 raw HTML**（转义为纯文本） |
-| 链接安全 | `a` 标签 `target="_blank" rel="noopener noreferrer"`；react-markdown 内置 `defaultUrlTransform` 过滤 `javascript:`/`data:` 危险协议 | ✅ 已防护 |
-| **总体结论** | 当前输出渲染**已基本安全**（隐式安全） | spec 的转义组件定位 = **把隐式安全收编为显式统一出口** + 兜底审计 |
+### 2.3 前端渲染管线现状（逐文件核实）
 
-### 2.3 缺口清单（后端需补的结构性限制）
+| 出口 | 现状 | 安全性 |
+|------|------|--------|
+| `dangerouslySetInnerHTML` | 项目代码**零使用**（仅 node_modules） | ✅ |
+| Markdown 出口 | `components/Markdown.tsx`：react-markdown + remark-gfm + 自定义组件（无 html 渲染）；`defaultUrlTransform` 过滤 `javascript:`/`data:` | ✅ 安全（默认不渲染 raw HTML） |
+| 纯文本插值出口 | chat system/user 消息 `{msg.content}`、task 标题、run 标题/描述、toast | ✅ React JSX 文本插值自动转义 |
+| Markdown 使用点 | 仅 3 处：`chat/page.tsx`（正文）、`agent/runs/[runId]/page.tsx`（结果+消息）、`Markdown.tsx` 自身 | ✅ 全走安全组件 |
 
-| # | 缺口 | 建议方案 | 优先级 |
-|---|------|---------|:---:|
-| G1 | task title/description/params 文本长度 | title ≤200 runes（对齐 KB）；description/message ≤100KB（对齐 chat） | P0 |
-| G2 | chat PDF 数量上限 | ≤5 个（对齐图片数量）；文字 100KB 已兜底 | P0 |
-| G3 | chat PDF「文件大小」后端校验 | **不可复现**：后端收到的 Pdfs 只有 `{name, text}`（前端已解析），文件本身不进后端。后端能兜底的只有「解析文字字节数」（已并入 100KB）。前端 20MB 限制保持前端职责，spec 记录此边界 | 无需后端改动 |
-| G4 | redact API text 长度 | ≤100KB（对齐 chat） | P0 |
-| G5 | feishu webhook body 大小 | `http.MaxBytesReader`（如 1MB）；MVP echo 阶段低优先 | P2 |
+**总体结论**：当前输出渲染**已隐式安全**。本 spec 的转义组件定位 = **把隐式安全收编
+为显式统一出口**（`SafeText` 纯文本 / `Markdown` Markdown），提供审计锚点与未来防护。
 
-### 2.4 待拍板决策点
+## 3. 设计方向
 
-| # | 决策点 | 建议（默认） | 备选 |
+### 3.1 核心判断：请求层「转义中间件」不可行
+
+> 用户方案为「封装统一后端请求组件，挂转义中间件，所有后端返回数据统一转义」。
+> 经调研，该方案在 React 生态下**技术上不可行**，原因如下：
+
+| # | 障碍 | 说明 |
+|---|------|------|
+| 1 | **double-escape** | 请求层把 `<` → `&lt;` 后，前端 `{text}` 插值渲染，React 会把 `&` 再转义为 `&amp;`，最终显示 `&lt;script&gt;` 乱码。要避免只能改用 `dangerouslySetInnerHTML` —— 这恰恰是引入 XSS 的反模式 |
+| 2 | **字段语义不可统一** | 同一响应里 `content`（Markdown）与 `title`/`username`（纯文本）处理方式相反：Markdown 不能 HTML 转义（会破坏内联 HTML 与代码块），纯文本才需要。请求层无法感知字段语义，只能维护脆弱的白名单/黑名单清单 |
+| 3 | **破坏内容** | 全量转义会破坏 Markdown 语法（代码块 ` ``` `、内联代码里的 `<` `>`）、URL、base64 data URI 等非文本字段 |
+
+**正确统一出口 = 渲染层组件**（XSS 的物理位置本来就在渲染层）：纯文本走 `SafeText`，
+Markdown 走 `Markdown`。React 文本插值本就自动转义，`SafeText` 的作用是把这层隐式安全
+**显式化、可 grep 枚举、防未来误改**。
+
+> 「统一请求组件」本身可保留为**独立优化项**（收编 `apiFetch` 为 `lib/http.ts`，
+> 自动 JSON 解析/错误/401 处理），但**与 XSS 解耦**——它负责「请求收口」，不负责「转义」。
+
+### 3.2 前端实现
+
+- **`lib/escape.ts`**：`escapeHtml(s)` 纯函数（`& < > " '` 五元转义），L1 可单测。
+- **`components/SafeText.tsx`**：纯文本出口组件 `<SafeText text={...} />`，内部
+  `escapeHtml` 后经 React 插值渲染（即便 React 再转义一次，五元转义对已转义实体幂等
+  ——`escapeHtml` 不重复转义 `&lt;` 中的 `&`，见 §3.3 幂等性）。
+- **`components/Markdown.tsx`**：`a` 组件加显式协议白名单
+  （`http:`/`https:`/`mailto:`，其余 `javascript:`/`data:` 等拒绝），作为显式化收尾。
+
+### 3.3 escapeHtml 幂等性（避免 double-escape）
+
+`escapeHtml` 必须先判断「是否已转义」：对已含 `&lt;`/`&gt;`/`&amp;` 的文本不重复转义，
+保证 `SafeText` 与 React 插值、以及后端 `AuditOutput` 已转义的 `&lt;script` 组合时**幂等**，
+不会出现 `&amp;lt;` 乱码。实现为：先转义裸 `&`（排除已转义实体），再转 `< > " '`。
+
+## 3.5 待拍板决策点
+
+| # | 决策点 | 推荐（默认） | 备选 |
 |---|--------|-------------|------|
-| D1 | task 文本长度取值 | title ≤200 runes、description/message ≤100KB | 统一 64KB |
-| D2 | chat PDF 数量上限 | ≤5（与图片对齐） | ≤10 |
-| D3 | 现有后端 `ValidateXSS`（chat 提示词/KB 标题/task title+description 3 处）去留 | **保留**为纵深防御（输入侧拒绝明显攻击，输出侧转义兜底，双保险） | 按 spec 立场移除、纯输出转义 |
-| D4 | redact API 长度 | ≤100KB | 与 chat 解耦取 1MB |
-| D5 | SafeText 组件形态 | `escapeHtml` 工具函数 + `<SafeText>` 包装组件（纯文本出口），Markdown 出口走 react-markdown（已转义，仅补 href 协议白名单显式化） | 侵入 Markdown 渲染管线 |
-
-## 3. 设计方向（调研已闭环，待 D1~D5 拍板后定稿）
-
-### 3.1 前端 XSS 输出转义组件
-
-- 核心：`lib/escape.ts`（`escapeHtml` 纯函数，L1 可单测）+ `components/SafeText.tsx`
-  （纯文本出口包装）。所有「后端/LLM 文本 → DOM」的**纯文本出口**统一走该组件。
-- Markdown 出口（chat 消息正文、KB 内容、task 结果）：react-markdown 已默认转义
-  raw HTML，**不侵入渲染管线**；仅将 `a` 组件显式加协议白名单
-  （`http/https/mailto`，`javascript:`/`data:` 拒绝）作为显式化收尾（D5）。
-- 出口枚举（定稿时逐一点名）：chat 消息正文（Markdown）、session 标题、
-  KB 文档标题/内容、task 标题/描述/结果、通知消息、human channel 消息。
-
-### 3.2 后端输入限制补齐
-
-- 只补结构性限制：G1（task 长度）/G2（chat PDF 数量）/G4（redact 长度），
-  对齐现有 domain 常量，单一事实源（`domain/chat` / `domain/task`）。
-- G3 结论：PDF 文件大小后端不可复现（文件不进后端），记录边界、不做改动。
-- 现有 `ValidateXSS` 3 处校验点按 D3 决定去留（建议保留为纵深防御）。
+| D1 | **转义出口位置** | **渲染层出口组件**（`SafeText` + `Markdown`，请求层转义因 double-escape/破坏 Markdown 不可行） | 请求层中间件（需字段白名单 + 改用 dangerouslySetInnerHTML，反模式，不建议） |
+| D2 | 统一请求组件收编 | 一并封装 `lib/http.ts`（自动 JSON/错误/401），但**不挂转义**，与 XSS 解耦 | 维持现状 `apiFetch` 不动 |
+| D3 | `SafeText` 是否显式转义 | **显式 `escapeHtml`**（幂等实现），作为审计收编层，出口即安全 | 仅透传（依赖 React 隐式转义，不新增组件价值） |
 
 ## 6. 可行性分析
 
 | 检查项 | 结论 |
 |--------|------|
 | 是否需要新 DB 集合 | No |
-| 是否影响现有 API | 可能（task 长度限制等新增 400 错误映射） |
-| 性能影响 | 忽略不计（O(n) 长度检查） |
+| 是否影响现有 API | **No**（后端零改动） |
+| 性能影响 | 忽略不计（O(n) 转义，仅纯文本出口） |
 | 是否需要新增 Skill | No |
 
 ## 7. 相关文件（预估，定稿时精化）
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
-| `frontend/components/SafeText.tsx`（或 lib） | XSS 输出转义组件 | New |
-| `frontend/app/**`（chat/kb/task/notification 等渲染出口） | 接入转义组件 | Medium |
-| `internal/domain/task` + `internal/service/task` | task 文本长度限制 | Small |
-| `internal/api/handler/chat.go` / `service/chat` | chat PDF 大小限制（如需） | Small |
+| `frontend/lib/escape.ts` | `escapeHtml` 幂等纯函数 | New |
+| `frontend/components/SafeText.tsx` | 纯文本出口组件 | New |
+| `frontend/components/Markdown.tsx` | `a` 协议白名单显式化 | Small |
+| `frontend/app/**`（chat/agent/knowledge 纯文本插值点） | 接入 `SafeText` | Small |
+| `frontend/lib/http.ts`（若 D2 采纳） | 统一请求客户端（与 XSS 解耦） | New |
 
 ## 9. UI Test / E2E 验收规则
 
@@ -116,46 +130,13 @@
 
 ## 9.5. Go Unit Test 验收规则
 
-> 开发任务完成后必须编写 Go 单元测试并通过 CI（ut-workflow）。
+> 本 spec 后端零改动，仅前端；Go UT 无新增（不触发 ut-workflow 增量门禁）。
 
-### 覆盖率底线
+## 10. 验证标准（定稿时扩展）
 
-| Tier | 特征 | 目标 | 示例 |
-|:---:|------|:---:|------|
-| L1 | 纯函数/纯结构体，无外部依赖 | **100%** | `logic/sql`, `logic/openapi`, `logic/report`, `config` |
-| L2 | 依赖接口，可 mock | **100%** | `queue/`, service interfaces |
-| L3 | 依赖 MongoDB/Redis/HTTP | **98%** | `service/*`, `api/handler/*` |
-| Overall | 全量 | ≥98% | CI `ut-workflow.yml` gate |
-
-### 断言质量要求
-
-- [ ] **必须** 每个 Success 测试至少包含 **2 个行为验证断言**（除 `err == nil` 外必须验证实际值/状态/副作用）
-- [ ] **必须** Handler 测试使用 `gomonkey.ApplyMethodFunc`（非 `ApplyMethodReturn`）验证 handler→service 参数传递正确性
-- [ ] **必须** Service 测试的写操作（`UpdateOne`, `InsertOne` 等）验证写入内容的字段和值
-- [ ] **严禁** `t.Skip()` 绕过无法测试的场景（如确实不可行，需文档注释说明原因并记录到 spec 中）
-- [ ] **严禁** Success 测试只验证 `err == nil` 而不验证操作的实际结果
-
-### 测试模式
-
-- Handler: `httptest.NewRecorder` + `gin.CreateTestContext` + real handler → mock service
-- Service: 直接注入 mock repository / 使用 `gomonkey` 模拟 MongoDB collection
-- Logic (L1): 纯 table-driven test，无 mock 依赖
-
-### CI 门禁
-
-- [ ] `go test -race -gcflags=all=-l -coverprofile=coverage.out ./internal/... ./skills/...` 全部通过
-- [ ] 覆盖率 ≥ 98%（`ut-workflow.yml` gate）
-- [ ] `go vet` 无警告
-
-参考:
-- `.agent/specs/spec-045-go-service-ut.md` — Go UT 全覆盖 spec
-- `.agent/skills/go-ut-audit/SKILL.md` — UT 审计 skill
-- `.github/workflows/ut-workflow.yml` — CI UT workflow
-
-## 10. 验证标准（调研级，定稿时扩展）
-
-1. ✅ 待调查清单 5 项已全部闭环（见 §2.1/§2.2 逐文件核实结论）。
-2. 待拍板 D1~D5 → 定稿 → 实现：
-   - 前端所有纯文本渲染出口走 `SafeText`（`git grep` 可枚举）；
-   - Markdown `a` 组件协议白名单显式化；
-   - 后端 G1/G2/G4 缺口补齐，handler/service 层兜底 + 单测覆盖（对齐 L3 98% 底线）。
+1. ✅ 后端安全现状（输入校验 + 输出 AuditOutput xss sanitize + 结构性限制）已逐文件核实，均不动。
+2. ✅ 前端渲染管线现状（零 dangerouslySetInnerHTML、react-markdown 安全、React 插值自动转义）已核实。
+3. 待拍板 D1~D3 → 定稿 → 实现：
+   - 前端纯文本出口统一走 `SafeText`（`git grep` 可枚举）；
+   - `Markdown` 的 `a` 组件协议白名单显式化；
+   - `escapeHtml` 幂等单测（含「已转义实体不重复转义」用例）。

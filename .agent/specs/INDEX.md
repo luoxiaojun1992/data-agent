@@ -107,7 +107,7 @@
 | SPEC-091 | KB 设 shared 联动更新知识图谱 is_public（GraphRepository 新增 SetDocPublic；SetPublicFlag 补图谱同步；可见性维持两级语义：system_admin 豁免 / 其余看自己+public） | **P15** | [spec-091-kb-shared-graph-visibility-sync.md](spec-091-kb-shared-graph-visibility-sync.md) | ✅ 已实现 |
 | SPEC-092 | Session 并发写入治理 + Relevance 基准修正（relevance 基准改用压缩 events 最近 user/tool 输出；per-session 锁替代全局锁；compaction 同步时序与多 tool call 合并已由 ADK 保证，记录验证） | **P15** | [spec-092-session-concurrency-governance.md](spec-092-session-concurrency-governance.md) | ✅ 已实现 |
 | SPEC-093 | Chat 输入框脱敏（后端 Presidio API：脱敏按钮 + 自动脱敏开关 localStorage 默认关闭；仅限输入框文本不含图片/PDF；失败报错 + 盾牌弹窗动画；权限与增强提示词相同） | **P15** | [spec-093-chat-input-local-redaction.md](spec-093-chat-input-local-redaction.md) | ✅ 已实现 |
-| SPEC-094 | 前端 XSS 输出转义组件 + 后端输入限制校验补齐（KB/chat/task 文本长度与图片数量/大小后端兜底；XSS 不做后端，统一由前端输出转义承担） | **P15** | [spec-094-frontend-xss-output-escape-and-backend-input-limits.md](spec-094-frontend-xss-output-escape-and-backend-input-limits.md) | 📐 调研完成，待拍板 D1~D5 |
+| SPEC-094 | 前端统一 XSS 输出转义（渲染层出口组件 `SafeText` + `Markdown` 协议白名单）；后端校验一律不动（结构性限制 + ValidateXSS 输入校验均已正确）；请求层转义中间件判定不可行（double-escape/破坏 Markdown） | **P15** | [spec-094-frontend-xss-output-escape-and-backend-input-limits.md](spec-094-frontend-xss-output-escape-and-backend-input-limits.md) | 📐 深化调研完成，待拍板 D1~D3 |
 
 ## Phase 对应与依赖
 
@@ -423,6 +423,6 @@ SPEC-006│               │
 | 13.9 | SPEC-091 | ✅ KB 设 shared 联动更新知识图谱 is_public | 已实现（2026-09-06）；GraphRepository 新增 SetDocPublic（ArcadeDB MATCH doc_id SET is_public）；SetPublicFlag 补图谱同步（副作用先行/doc 最后提交点）；可见性维持两级语义（system_admin 豁免 / 其余看自己+public）不改查询隔离 |
 | 13.10 | SPEC-092 | ✅ Session 并发写入治理 + Relevance 基准修正 | 已实现（2026-09-06）；relevance 基准改用压缩 events 最近 user/tool 输出（LastRelevanceBase）；per-session 锁替代全局锁（跨 session 并行、同 session 串行）；compaction 同步时序 + 多 tool call WaitGroup 合并由 ADK 已保证，仅记录验证；mockllm 4+1 场景端到端验证 20 项断言通过 |
 | 13.11 | SPEC-093 | ✅ Chat 输入框脱敏（后端 Presidio API） | 已实现（2026-09-10 重构）；原前端 Privacy Filter 模型方案废弃（HF cdn-lfs 国内不可达 / q4 算子 WebGPU-only / webpack import.meta 链）；最终：POST /api/v1/chat/redact 复用 SPEC-068 PIIRedactor（<PII> 占位），权限同增强提示词（chat 组 chat:view）；前端删 transformers.js/ort 全链路，脱敏按钮+自动开关（localStorage 默认关闭，mount 即读）调 API；去掉模型可用性提示；失败报错保留；盾牌弹窗保留；handler 测试 6 用例 + 服务器冒烟 4/4（登录/脱敏/400/401） |
-| 13.12 | SPEC-094 | 📐 前端 XSS 输出转义 + 后端输入限制补齐 | 调研完成（2026-09-10）：后端现状矩阵逐文件核实——chat ✅100KB/5图/2MB/5MB总量/XSS、KB ✅5MB/200runes/1MB/XSS、task ❌无文本长度（图片复用✅）、chat PDF ❌数量无上限（文字并入100KB、文件大小后端不可复现）、redact API ❌无长度；前端零 dangerouslySetInnerHTML + react-markdown 默认转义 = 输出已基本安全，转义组件定位为显式统一出口；缺口 G1~G5 + 决策点 D1~D5 待晓军拍板后定稿 |
+| 13.12 | SPEC-094 | 📐 前端统一 XSS 输出转义（渲染层出口组件） | 深化调研完成（2026-09-10 二次）：后端安全现状逐文件核实——输入 ValidateXSS（chat/KB/task，PDF 文字豁免）+ AuditInput/AuditOutput（PII+XSS sanitize）+ 结构性限制均正确，**一律不动**；关键发现后端输出侧已有 xss sanitize（regex `<script`→`&lt;`，仅覆盖 script 不完整，但前端渲染层为主防护）；前端零 dangerouslySetInnerHTML + react-markdown 默认转义 = 输出已隐式安全，转义组件定位为显式统一出口；**核心判断：请求层「转义中间件」不可行**（double-escape/破坏 Markdown/字段语义不可统一），正确出口=渲染层 SafeText + Markdown 协议白名单；待拍板 D1（渲染层 vs 请求层）/D2（统一请求组件收编）/D3（SafeText 显式转义） |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
