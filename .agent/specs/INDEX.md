@@ -107,7 +107,7 @@
 | SPEC-091 | KB 设 shared 联动更新知识图谱 is_public（GraphRepository 新增 SetDocPublic；SetPublicFlag 补图谱同步；可见性维持两级语义：system_admin 豁免 / 其余看自己+public） | **P15** | [spec-091-kb-shared-graph-visibility-sync.md](spec-091-kb-shared-graph-visibility-sync.md) | ✅ 已实现 |
 | SPEC-092 | Session 并发写入治理 + Relevance 基准修正（relevance 基准改用压缩 events 最近 user/tool 输出；per-session 锁替代全局锁；compaction 同步时序与多 tool call 合并已由 ADK 保证，记录验证） | **P15** | [spec-092-session-concurrency-governance.md](spec-092-session-concurrency-governance.md) | ✅ 已实现 |
 | SPEC-093 | Chat 输入框脱敏（后端 Presidio API：脱敏按钮 + 自动脱敏开关 localStorage 默认关闭；仅限输入框文本不含图片/PDF；失败报错 + 盾牌弹窗动画；权限与增强提示词相同） | **P15** | [spec-093-chat-input-local-redaction.md](spec-093-chat-input-local-redaction.md) | ✅ 已实现 |
-| SPEC-094 | 前端 XSS 输出安全收编（React 结构性安全 + `SafeText` 纯文本语义出口 + `Markdown` 协议白名单显式化）；后端校验一律不动 | **P15** | [spec-094-frontend-xss-output-escape-and-backend-input-limits.md](spec-094-frontend-xss-output-escape-and-backend-input-limits.md) | 📐 已定稿（技术结论闭环，待确认 SafeText 定位） |
+| SPEC-094 | ~~前端 XSS 输出安全收编~~（调研后判定前端渲染层已天然 XSS 安全，无需实施） | **P15** | [spec-094-frontend-xss-output-escape-and-backend-input-limits.md](spec-094-frontend-xss-output-escape-and-backend-input-limits.md) | 🗑 已废弃（现状已安全，无需新增代码） |
 
 ## Phase 对应与依赖
 
@@ -423,6 +423,6 @@ SPEC-006│               │
 | 13.9 | SPEC-091 | ✅ KB 设 shared 联动更新知识图谱 is_public | 已实现（2026-09-06）；GraphRepository 新增 SetDocPublic（ArcadeDB MATCH doc_id SET is_public）；SetPublicFlag 补图谱同步（副作用先行/doc 最后提交点）；可见性维持两级语义（system_admin 豁免 / 其余看自己+public）不改查询隔离 |
 | 13.10 | SPEC-092 | ✅ Session 并发写入治理 + Relevance 基准修正 | 已实现（2026-09-06）；relevance 基准改用压缩 events 最近 user/tool 输出（LastRelevanceBase）；per-session 锁替代全局锁（跨 session 并行、同 session 串行）；compaction 同步时序 + 多 tool call WaitGroup 合并由 ADK 已保证，仅记录验证；mockllm 4+1 场景端到端验证 20 项断言通过 |
 | 13.11 | SPEC-093 | ✅ Chat 输入框脱敏（后端 Presidio API） | 已实现（2026-09-10 重构）；原前端 Privacy Filter 模型方案废弃（HF cdn-lfs 国内不可达 / q4 算子 WebGPU-only / webpack import.meta 链）；最终：POST /api/v1/chat/redact 复用 SPEC-068 PIIRedactor（<PII> 占位），权限同增强提示词（chat 组 chat:view）；前端删 transformers.js/ort 全链路，脱敏按钮+自动开关（localStorage 默认关闭，mount 即读）调 API；去掉模型可用性提示；失败报错保留；盾牌弹窗保留；handler 测试 6 用例 + 服务器冒烟 4/4（登录/脱敏/400/401） |
-| 13.12 | SPEC-094 | 📐 前端 XSS 输出安全收编（React 结构性安全） | 已定稿（2026-09-10 三次深化）：核心结论——**React 生态无「字符串 HTML 转义」，`{text}` 插值是结构性安全（createTextNode），对文本做 escapeHtml 反而 double-escape**；后端校验一律不动（ValidateXSS + AuditInput/AuditOutput + 结构性限制均正确）；前端现状已 XSS 安全（零 dangerouslySetInnerHTML + react-markdown v9 无 rehype-raw 不渲染 raw HTML + defaultUrlTransform 过滤 javascript:/data:）；方案=SafeText 纯文本语义出口（不转义）+ Markdown a 协议白名单显式化；请求层转义中间件判定不可行；统一请求组件收编已取消；待确认 D1（SafeText 定位为语义锚点） |
+| 13.12 | SPEC-094 | 🗑 前端 XSS 输出安全收编（废弃，现状已安全） | 已废弃（2026-09-10）：三次深化调研后判定——React `{text}` 插值是结构性安全（createTextNode）非字符串转义；前端零 dangerouslySetInnerHTML + react-markdown v9（无 rehype-raw + defaultUrlTransform 过滤危险协议）已天然 XSS 安全；后端 ValidateXSS 输入校验 + AuditInput/AuditOutput + 结构性限制均正确。三层已构成完整闭环，**无需新增任何代码**，spec 废弃、仅留调研结论备查 |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |

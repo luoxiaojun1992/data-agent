@@ -1,6 +1,12 @@
 # 前端 XSS 输出安全收编（React 结构性安全 + Markdown 协议白名单显式化）
 
-> **SPEC-094** | Status: 📐 已定稿（技术结论闭环，待确认 SafeText 定位后进入实现，2026-09-10）
+> **SPEC-094** | Status: 🗑 **已废弃**（2026-09-10）
+
+> **废弃原因**：经三次深化调研，前端渲染层已天然 XSS 安全（React `{text}` 插值结构性安全
+> + 零 `dangerouslySetInnerHTML` + react-markdown v9 默认不渲染 raw HTML +
+> `defaultUrlTransform` 过滤危险协议），后端输入校验（`ValidateXSS`）+ 结构性限制也已正确。
+> 现有三层（前端渲染层主防护 + 后端输入校验纵深防御 + 后端输出侧 xss sanitize 辅助）已构成
+> 完整安全闭环，**无需新增任何代码**。本 spec 不再实施，仅保留调研结论备查。
 
 > **术语红线（本 spec 的核心前提）**：
 > - **React 生态没有「字符串 HTML 转义」这回事**。React 的 `{text}` 文本插值是
