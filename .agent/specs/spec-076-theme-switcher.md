@@ -1,6 +1,6 @@
 # 前端主题切换 + 蓝白 Light 主题
 
-> **SPEC-076** | Status: ✅ 已实现（commit 644a3b5，2026-09-10）
+> **SPEC-076** | Status: ✅ 已实现（commit 644a3b5 功能 + 66356d9 图标优化，2026-09-10；§9 已回写实现差异）
 
 ## 1. 目标
 
@@ -63,6 +63,16 @@ ThemeToggle 组件 → setTheme('light')
 | `--glass-bg` | `rgba(255, 255, 255, 0.04)` | `rgba(255, 255, 255, 0.6)` |
 | `--glass-hover` | `rgba(255, 255, 255, 0.08)` | `rgba(255, 255, 255, 0.9)` |
 
+**实际实现新增变量**（上表为基础，落地时补充以下语义变量）：
+
+| 变量 | 深色（`:root`） | Light（`[data-theme="light"]`） | 用途 |
+|------|-----------------|--------------------------------|------|
+| `--surface-3/4/5/6/8/10/15/20/30` | `rgba(255,255,255,.0X)` | `rgba(15,23,42,.0X)` | 白色透明档位，变量化收尾统一出口 |
+| `--dropdown-bg` | `#1a1a2e` | `#ffffff` | 下拉面板/弹窗实底 |
+| `--code-bg` / `--code-bg-strong` | `rgba(0,0,0,.2/.3)` | `rgba(15,23,42,.05)` | 代码块/结果区深色容器（含主文字） |
+| `--scrollbar-thumb` / `--scrollbar-thumb-hover` | `rgba(255,255,255,.1/.2)` | `rgba(15,23,42,.15/.25)` | 滚动条 |
+| `--aurora-1/2/3` | 蓝紫 `rgba(92,124,250,.08)` 等 | 浅蓝 `rgba(37,99,235,.05)` 等 | Aurora 背景三处 radial-gradient |
+
 ### 4.2 蓝白 Light 主题的 Aurora 背景
 
 `body::before` 的深色 Aurora（蓝紫 radial-gradient）在 Light 主题下会显得过暗/突兀，需同步提供 Light 版：
@@ -90,9 +100,15 @@ ThemeToggle 组件 → setTheme('light')
 
 ### 4.5 ThemeToggle 组件与入口
 
-- 新建 `app/components/ThemeToggle.tsx`：按钮切换 dark/light（图标 + 可选动画）
-- 挂载点：顶栏（`providers.tsx` 中 `main` 顶部的 header 区域，与 `NotificationBell` 同级），或 `Sidebar` 底部
+- 新建 `app/components/ThemeToggle.tsx`：按钮切换 dark/light
+- 挂载点：顶栏（`providers.tsx` 中 `main` 顶部的 header 区域，`NotificationBell` 前）
 - `data-testid="theme-toggle"` 供 E2E 断言
+- **图标（最终实现）**：lucide 风格内联 SVG 线条图标（非 emoji）
+  - 太阳 `SunIcon`：中心圆 `<circle r=4>` + 8 条射线 `<path>`
+  - 月亮 `MoonIcon`：月牙 `<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z">`
+  - `stroke="currentColor"` 跟随 `var(--text-secondary)`，`strokeWidth=2`，18×18
+  - 语义：`isDark ? 太阳 : 月亮`（深色显示太阳=可切到白天，与 aria-label「切换到浅色/深色主题」自洽）
+- **切换动画**：图标容器 `key={theme}` 触发 remount + `.theme-icon-anim`（`theme-icon-pop` 0.35s cubic-bezier 旋转 -60deg + scale 0.6 → none）。to 帧 `transform: none`（遵循 fadeIn 铁律，避免残留 transform 成为 containing block 破坏 fixed 定位）
 
 ### 4.6 既有硬编码色值的变量化收尾（本 spec 范围，重要）
 
@@ -104,6 +120,14 @@ ThemeToggle 组件 → setTheme('light')
 | 历史遗留（各页面 inline style） | 各页内联 `style={{...}}` 中的色值（如分页 active `#5c7cfa`、toast `#34d399`/`#ef4444` 等） | 逐页排查，改为 `var(--*)` 引用（`--accent`、`--success`、`--danger`） |
 
 > 红线：变量化收尾只改「颜色表达方式」，**禁止**改变视觉设计（色值换算为两套主题下的对应值，深色主题视觉保持原样）、**禁止**破坏布局（对齐 SPEC-078 红线）。
+
+**实现落地（实际采用的方案，与上表"建议"有偏离）**：
+
+- 未引入 `--btn-primary`/`--modal-bg`/`--success`/`--danger` 语义变量。改为**统一档位变量** `--surface-3/4/5/6/8/10/15/20/30`（深色=白色透明等价、light=深色透明），Python 脚本批量替换 **144 处硬编码 / 25 文件**（排除 login/register 未登录页）。
+- `#1a1a2e`（弹窗/下拉实底）→ `--dropdown-bg`（深色 #1a1a2e、light #ffffff）。
+- 深色容器 `bg-black/20`、`bg-black/30`（含 `var(--text-primary)` 文字，light 下深字深底不可读）→ `--code-bg` / `--code-bg-strong`（深色 rgba(0,0,0,.2/.3)、light rgba(15,23,42,.05)）。
+- **语义色保留未变量化**：主按钮渐变 `#5c7cfa→#7c3aed`、toast 绿 `#34d399`、红 `#ef4444` 等——两套主题下语义色均成立，无需区分，保留原样（避免过度变量化）。
+- 深色主题视觉零变化（变量值等价替换）；login/register 未登录页全硬编码深色，不参与主题切换。
 
 ## 5. 可行性分析
 
@@ -145,3 +169,18 @@ ThemeToggle 组件 → setTheme('light')
 4. 刷新页面后主题保持（localStorage 持久化）。
 5. 切换无白屏闪烁（inline script 首帧前设置 `data-theme`）。
 6. 两套主题下 `--text-*` 与 `--bg-*` 对比度满足可读性（WCAG AA 建议）。
+
+## 9. 实现记录（设计稿 vs 实现的差异）
+
+> 状态头标 ✅ 已实现后，正文同步回写实现落地细节（2026-09-10）。
+
+| # | 差异点 | 设计稿 | 实际实现 | commit |
+|---|--------|--------|---------|--------|
+| 1 | 变量名 | 仅 10 个基础变量 | + `--surface-3~30` / `--dropdown-bg` / `--code-bg(-strong)` / `--scrollbar-*` / `--aurora-1/2/3` | 644a3b5 |
+| 2 | 变量化收尾方案 | 建议提取 `--btn-primary`/`--modal-bg`/`--success`/`--danger` | 统一档位 `--surface-N` 批量替换 144 处/25 文件；语义色（渐变/绿/红）保留不变量化 | 644a3b5 |
+| 3 | 深色容器 | 未提及 | `bg-black/20/30` 含文字容器 → `--code-bg(-strong)`（light 下深字深底不可读的坑） | 644a3b5 |
+| 4 | 图标 | "图标 + 可选动画" | lucide 风格 SVG 线条（太阳/月亮）+ `theme-icon-pop` 旋转淡入动画 | 66356d9 |
+| 5 | 防闪烁 | layout.tsx inline script（推荐） | 采用推荐方案，`suppressHydrationWarning` | 644a3b5 |
+| 6 | 未登录页 | 未提及 | login/register 全硬编码深色，不参与主题切换 | 644a3b5 |
+
+**验证方式**：agent-browser + ssh 隧道实测（登录 → 切换 → 截图 → localStorage 持久化），深色/浅色两套图标视觉均通过；curl 验证 CSS 含 `[data-theme=light]` 覆盖块 + `theme-icon-pop` 动画。commit 644a3b5（功能）+ 66356d9（图标优化）。
