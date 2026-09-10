@@ -89,7 +89,7 @@
 | SPEC-073 | 领域内聚重构（业务领域 logic/service/db_model 垂直切片，替换水平分层） | **P15** | [spec-073-domain-cohesion-refactor.md](spec-073-domain-cohesion-refactor.md) | 📐 立项（不展开） |
 | SPEC-074 | 可搜索下拉选择器统一设计（模型/角色/父角色/权限，DB 层过滤排序截取） | **P15** | [spec-074-searchable-dropdown-selector.md](spec-074-searchable-dropdown-selector.md) | ✅ 已实现 |
 | SPEC-075 | 前端列表搜索/分页后端化重构（统一 DB 层筛选分页） | **P15** | [spec-075-frontend-list-search-pagination-backend.md](spec-075-frontend-list-search-pagination-backend.md) | ✅ 已实现 |
-| SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | 📐 设计已定稿 |
+| SPEC-076 | 前端主题切换 + 蓝白 Light 主题（localStorage 持久化，默认深色） | **P15** | [spec-076-theme-switcher.md](spec-076-theme-switcher.md) | ✅ 已实现（CSS 变量 + data-theme；144 处硬编码变量化；浅底深字；防闪烁 script；纯前端） |
 | SPEC-077 | Chat 附件支持 PDF（解析文字前置 + 图片等价限制） | **P15** | [spec-077-chat-pdf-attachment.md](spec-077-chat-pdf-attachment.md) | ✅ 已实现 |
 | SPEC-078 | 前端列表页 UI 规范统一（分页组件 / 顶部主按钮 / 弹窗玻璃样式） | **P15** | [spec-078-frontend-list-ui-consistency.md](spec-078-frontend-list-ui-consistency.md) | ✅ 已实现（14 页分页/按钮/弹窗收敛，4 处弹窗视觉完全统一） |
 | SPEC-079 | 全局在线指示灯 + 后端健康检查 API（统一右上角在线指示灯，关联后端健康检查；治理登录页 toast 重叠） | **P15** | [spec-079-global-online-indicator-health-check.md](spec-079-global-online-indicator-health-check.md) | ✅ 已实现（部署验证 19/19；vault 探活 Sys().HealthWithContext；亚毫秒 latency 向上取整） |
@@ -355,11 +355,12 @@ SPEC-006│               │
                     模型搜索复用 SPEC-074 q 走 Search 模式;
                     依赖 SPEC-074(模型q搜索/父角色过滤复用))
 
-[P15] SPEC-076 ─── 前端主题切换 + 蓝白 Light 主题 (设计已定稿)
+[P15] SPEC-076 ─── 前端主题切换 + 蓝白 Light 主题 (✅ 已实现)
                    (CSS 变量 + data-theme 两套主题;
                     保留深色为默认, 新增蓝白 Light;
                     ThemeToggle + localStorage 持久化, 默认 dark;
-                    inline script 防闪烁; 纯前端无后端改动)
+                    inline script 防闪烁; 纯前端无后端改动;
+                    144 处硬编码 rgba/bg-white/N/#1a1a2e 变量化收尾)
 
 [P15] SPEC-077 ─── Chat 附件支持 PDF (✅ 已实现)
                    (复用 lib/pdf.ts parsePdf 解析;
@@ -407,7 +408,7 @@ SPEC-006│               │
 | 2 | SPEC-075 | ✅ 前端列表搜索/分页后端化 | 依赖 074 的 q/limit DB 层搜索模式；已完成（2026-09-01）：知识库/会话新增 q 后端过滤 + 模型搜索复用 074 |
 | 3 | SPEC-078 | ✅ 前端列表 UI 规范统一 | 已完成（2026-09-02）：分页收敛到 Pagination.tsx、主按钮渐变 #5c7cfa→#7c3aed、弹窗玻璃样式统一（模型/skill/飞书/提示词 4 处视觉完全一致） |
 | 4 | SPEC-077 | ✅ Chat 附件 PDF | 已实现（commit 3edbe12 + 25598c5） |
-| 5 | SPEC-076 | 前端主题切换 | 纯前端；放 078 后（078 已定稿不考虑多主题，076 落地时对 078 引入的色值做变量化收尾） |
+| 5 | SPEC-076 | ✅ 前端主题切换 | 已实现（2026-09-10，commit 644a3b5）；CSS 变量 + data-theme 两套主题，localStorage 持久化默认深色，防闪烁 inline script；144 处硬编码变量化收尾（含 078 色值）；纯前端无后端改动 |
 | 6 | SPEC-079 | ✅ 全局在线指示灯 + 后端健康检查 API | 已实现并部署验证（2026-09-03，commit 55209fd/ca69db0/7f344d9）；依赖 076 落地后指示灯色值做变量化收尾 |
 | 7 | SPEC-080 | ✅ 时间 + 规划 skill + Plan 意图隐藏引导 | 已实现（2026-09-06）；2 个无依赖 function tool（get_current_time/get_plan_method）+ guard 三分类 + hidden 事件机制（[intent]/[plan_hint] 不进前端聊天记录），不动 Runtime/use case |
 | 8 | SPEC-081 | ✅ KB URL 导入 | 独立可插队；后端 headless 渲染 + SSRF 防护 + 统一上传限制；复用 CreateDoc/GridFS/索引管道 |
