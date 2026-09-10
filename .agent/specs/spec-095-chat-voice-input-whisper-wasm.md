@@ -60,7 +60,7 @@
 
 | 风险 | 说明 | 关联 |
 |------|------|------|
-| 模型文件加载 | ggml 模型体积大（tiny ~75MB+），需从 CDN 或本地托管加载；**国内 CDN（HF cdn-lfs）不可达是 SPEC-093 前端脱敏模型方案废弃的同一坑** | ⚠️ 高 |
+| 模型文件加载 | ggml 模型体积大（tiny ~75MB+）；~~需从 CDN 或本地托管加载~~ → **已拍板：模型文件直接提交到代码仓库**（D2 已定稿），绕开国内 CDN（HF cdn-lfs 不可达，SPEC-093 同坑）；代价是仓库体积 +75MB、clone/pull 变慢、前端镜像变大 | ✅ 已解决 |
 | 纯 CPU 速度 | 纯 CPU 转写长音频较慢（取决于设备），需评估 tiny/base 档位取舍 | 中 |
 | 安全上下文 | getUserMedia 要求 HTTPS 或 localhost；测试服务器需确认 https 或走隧道 | 中 |
 | 浏览器兼容 | WASM SIMD / MediaRecorder 兼容性需核实 | 低 |
@@ -73,7 +73,7 @@
 | 是否影响现有 API | No（纯前端，无后端接口） |
 | 是否需要新增 Skill | No |
 | 是否需要后端改动 | No |
-| 性能影响 | 首次加载需下载模型（75MB+），转写占用 CPU；不影响现有聊天链路 |
+| 性能影响 | 首次加载模型文件到内存（tiny ~75MB，本地静态资源），转写占用 CPU；不影响现有聊天链路 |
 | License | whisper.cpp = MIT，whisper.wasm = MIT，合规（需在实现时二次确认） |
 
 ## 6. 相关文件
@@ -83,7 +83,8 @@
 | `frontend/app/chat/page.tsx` | 语音按钮 + 录音/转写状态 + 回填 textarea | Medium |
 | `frontend/lib/voice.ts`（或 hook） | whisper.wasm 加载/录音/转写封装（新） | New |
 | `frontend/app/components/VoiceInputButton.tsx`（可选） | 麦克风按钮组件（新） | New |
-| `frontend/package.json` | 引入 whisper.wasm 依赖 / 或本地托管模型 | Small |
+| `frontend/package.json` | 引入 whisper.wasm 依赖（模型文件不走 npm，见下） | Small |
+| `frontend/public/models/whisper/` | ggml 模型文件（tiny.en ~75MB）**直接提交仓库**，Next.js 静态托管 | New（+75MB） |
 
 ## 7. 测试策略
 
@@ -118,7 +119,7 @@
 | # | 决策点 | 说明 |
 |---|--------|------|
 | D1 | 模型档位 | tiny（快/差）vs base（慢/好）vs small；默认哪档 |
-| D2 | 模型托管 | CDN vs 本地托管（国内可达性，见 §4.4 风险 1） |
+| D2 | 模型托管 | ✅ **已定稿（2026-09-10）**：模型文件直接提交代码仓库 `frontend/public/models/whisper/`，由 Next.js 静态托管（相对路径 `/models/whisper/xx.bin`），前端本地加载、无 CDN 依赖。tiny 档 ~75MB 在 GitHub 100MB 单文件限制内，**暂不引入 git-lfs**；若未来升级 base(~142MB)/small(~466MB) 超限再评估 git-lfs。代价：仓库 +75MB、clone/pull 变慢、前端镜像变大，已接受 |
 | D3 | 回填策略 | 追加到现有文本末尾 vs 覆盖替换 |
 | D4 | 录音停止方式 | 手动再点一次 vs 静音自动停止 vs 时长上限 |
 | D5 | 依赖引入方式 | npm 包 vs 直接引用 whisper.wasm 产物（license/体积） |
