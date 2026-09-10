@@ -109,6 +109,7 @@
 | SPEC-093 | Chat 输入框脱敏（后端 Presidio API：脱敏按钮 + 自动脱敏开关 localStorage 默认关闭；仅限输入框文本不含图片/PDF；失败报错 + 盾牌弹窗动画；权限与增强提示词相同） | **P15** | [spec-093-chat-input-local-redaction.md](spec-093-chat-input-local-redaction.md) | ✅ 已实现 |
 | SPEC-094 | ~~前端 XSS 输出安全收编~~（调研后判定前端渲染层已天然 XSS 安全，无需实施） | **P15** | [spec-094-frontend-xss-output-escape-and-backend-input-limits.md](spec-094-frontend-xss-output-escape-and-backend-input-limits.md) | 🗑 已废弃（现状已安全，无需新增代码） |
 | SPEC-095 | Chat 语音输入（whisper.wasm 纯 CPU 本地转写，音频不上传；转写结果回填输入框、不自动提交；与增强/脱敏按钮并存） | **P15** | [spec-095-chat-voice-input-whisper-wasm.md](spec-095-chat-voice-input-whisper-wasm.md) | 📐 立项（暂不实现、暂不深化） |
+| SPEC-096 | Task PDF 解析（仅常规创建弹窗，日常总结模版不加）+ kb/chat/task 三端 Excel 解析（纯文本、无图片）；task 描述隐藏 PDF 内容只显示 📄；校验/显示/XSS 豁免与 PDF 一致 | **P15** | [spec-096-task-pdf-and-excel-parsing.md](spec-096-task-pdf-and-excel-parsing.md) | 📐 立项（暂不实现、暂不深化） |
 
 ## Phase 对应与依赖
 
@@ -427,5 +428,6 @@ SPEC-006│               │
 | 13.11 | SPEC-093 | ✅ Chat 输入框脱敏（后端 Presidio API） | 已实现（2026-09-10 重构）；原前端 Privacy Filter 模型方案废弃（HF cdn-lfs 国内不可达 / q4 算子 WebGPU-only / webpack import.meta 链）；最终：POST /api/v1/chat/redact 复用 SPEC-068 PIIRedactor（<PII> 占位），权限同增强提示词（chat 组 chat:view）；前端删 transformers.js/ort 全链路，脱敏按钮+自动开关（localStorage 默认关闭，mount 即读）调 API；去掉模型可用性提示；失败报错保留；盾牌弹窗保留；handler 测试 6 用例 + 服务器冒烟 4/4（登录/脱敏/400/401） |
 | 13.12 | SPEC-094 | 🗑 前端 XSS 输出安全收编（废弃，现状已安全） | 已废弃（2026-09-10）：三次深化调研后判定——React `{text}` 插值是结构性安全（createTextNode）非字符串转义；前端零 dangerouslySetInnerHTML + react-markdown v9（无 rehype-raw + defaultUrlTransform 过滤危险协议）已天然 XSS 安全；后端 ValidateXSS 输入校验 + AuditInput/AuditOutput + 结构性限制均正确。三层已构成完整闭环，**无需新增任何代码**，spec 废弃、仅留调研结论备查 |
 | 13.13 | SPEC-095 | 📐 Chat 语音输入（whisper.wasm 纯 CPU 本地转写） | 立项（2026-09-10，暂不实现暂不深化）；纯前端，无后端改动；whisper.wasm 纯 CPU WASM 本地转写（音频不上传），结果回填 textarea 不自动提交；已知风险：ggml 模型体积大（tiny ~75MB）且国内 CDN 不可达（SPEC-093 同坑）、纯 CPU 速度、getUserMedia 需 HTTPS；待定稿 D1~D5（模型档位/托管/回填策略/停止方式/依赖引入） |
+| 13.14 | SPEC-096 | 📐 Task PDF 解析 + kb/chat/task Excel 解析 | 立项（2026-09-11，暂不实现暂不深化）；R1 task 常规创建弹窗加 PDF 上传（日常总结模版不加）复用 chat parsePdf，图片合并入 task 图片、文字合并入 task 文本；R2 task 描述隐藏 PDF 内容只显示 📄；R3 kb/chat/task 三端 Excel 解析（纯文本、无图片，chat 历史显示 📊）；校验/显示/XSS 豁免与 PDF 一致；待定稿 D1~D6（PDF 存储方式/task 文本上限/Excel 标签协议/解析范围/解析库选型/kb FileType） |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
