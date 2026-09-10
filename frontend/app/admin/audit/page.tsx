@@ -170,7 +170,7 @@ export default function AuditPage() {
         <div className="glass" style={{ overflow: 'hidden' }}>
           <table data-testid="audit-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <tr style={{ background: 'var(--surface-3)' }}>
                 <th style={thStyle}>时间</th>
                 <th style={thStyle}>操作人</th>
                 <th style={thStyle}>操作类型</th>
@@ -180,7 +180,7 @@ export default function AuditPage() {
             </thead>
             <tbody>
               {logs.map((log) => (
-                <tr key={log.id} data-testid={`audit-row-${log.id}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <tr key={log.id} data-testid={`audit-row-${log.id}`} style={{ borderBottom: '1px solid var(--surface-6)' }}>
                   <td data-testid="audit-row-time" style={tdStyle}>{log.created_at ? new Date(log.created_at).toLocaleString('zh-CN') : '—'}</td>
                   <td data-testid="audit-row-user" style={tdStyle}>{log.user_id || '—'}</td>
                   <td data-testid="audit-row-type" style={tdStyle}><span style={actionPill(log.action)}>{log.action}</span></td>
@@ -242,7 +242,7 @@ export default function AuditPage() {
               </div>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                 <button onClick={() => setShowExport(false)}
-                  style={{ padding: '8px 20px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                  style={{ padding: '8px 20px', background: 'var(--surface-6)', border: '1px solid var(--surface-10)',
                     borderRadius: '8px', fontSize: '13px', color: '#7A7A7A', cursor: 'pointer' }}>取消</button>
                 <button data-testid="audit-export-submit" onClick={handleExport}
                   style={{ padding: '8px 20px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)', color: '#fff',
@@ -263,9 +263,9 @@ const actionPill = (a: string): React.CSSProperties => ({
 
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '11px', color: '#666', marginBottom: '4px' };
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '14px',
+  width: '100%', padding: '8px 12px', background: 'var(--surface-6)',
+  border: '1px solid var(--surface-10)', borderRadius: '8px', fontSize: '14px',
   color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
 };
-const thStyle: React.CSSProperties = { padding: '12px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#666', borderBottom: '1px solid rgba(255,255,255,0.06)' };
+const thStyle: React.CSSProperties = { padding: '12px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#666', borderBottom: '1px solid var(--surface-6)' };
 const tdStyle: React.CSSProperties = { padding: '10px', fontSize: '13px', color: '#7A7A7A' };

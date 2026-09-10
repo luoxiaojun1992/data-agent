@@ -66,8 +66,8 @@ export default function Pagination({
 
   const btn = 'min-w-[36px] h-9 px-3 rounded text-sm flex items-center justify-center transition-colors';
   const active = 'bg-[#B1E2FF] text-black';
-  const inactive = 'bg-white/5 text-[var(--text-secondary)] hover:bg-white/10';
-  const disabled = 'bg-white/5 text-[var(--text-secondary)] opacity-40 cursor-not-allowed';
+  const inactive = 'bg-[var(--surface-5)] text-[var(--text-secondary)] hover:bg-[var(--surface-10)]';
+  const disabled = 'bg-[var(--surface-5)] text-[var(--text-secondary)] opacity-40 cursor-not-allowed';
 
   return (
     <div data-testid={tid('pagination')} className={`flex items-center justify-center gap-2 mt-4 flex-wrap ${className}`}>
@@ -79,7 +79,7 @@ export default function Pagination({
           data-testid={tid('page-size-select')}
           value={pageSize ?? pageSizeOptions[0]}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          className="h-9 px-2 rounded text-[13px] bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none"
+          className="h-9 px-2 rounded text-[13px] bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] focus:outline-none"
         >
           {pageSizeOptions.map((s) => (
             <option key={s} value={s}>{s}</option>

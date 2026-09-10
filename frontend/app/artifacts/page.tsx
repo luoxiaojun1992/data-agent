@@ -121,7 +121,7 @@ function ArtifactsContent() {
           <div>
             <div className="space-y-3" data-testid="artifacts-list">
               {artifacts.map((a) => (
-                <div key={a.id} className="glass p-4 flex items-center justify-between hover:bg-white/5 transition-colors" data-testid={`artifact-row-${a.id}`}>
+                <div key={a.id} className="glass p-4 flex items-center justify-between hover:bg-[var(--surface-5)] transition-colors" data-testid={`artifact-row-${a.id}`}>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[var(--text-primary)] truncate">{a.name}</p>
                     <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-secondary)]">

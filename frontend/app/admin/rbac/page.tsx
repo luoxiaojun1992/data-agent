@@ -149,7 +149,7 @@ export default function RBACPage() {
           <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>名称</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>模块</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Key</th>
@@ -159,7 +159,7 @@ export default function RBACPage() {
               </thead>
               <tbody>
                 {perms.map(p => (
-                  <tr key={p.id} data-testid={`rbac-perm-${p.id}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <tr key={p.id} data-testid={`rbac-perm-${p.id}`} style={{ borderBottom: '1px solid var(--surface-6)' }}>
                     <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.name}</td>
                     <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.module}</td>
                     <td style={{ padding: '10px 12px', fontSize: 13 }}><code style={{ fontSize: 12 }}>{p.key}</code></td>

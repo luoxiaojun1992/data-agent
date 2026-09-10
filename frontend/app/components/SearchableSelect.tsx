@@ -144,7 +144,7 @@ export default function SearchableSelect({
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-[var(--border-glass)] bg-[#1a1a2e] shadow-xl overflow-hidden">
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-[var(--border-glass)] bg-[var(--dropdown-bg)] shadow-xl overflow-hidden">
           <input
             autoFocus
             value={query}

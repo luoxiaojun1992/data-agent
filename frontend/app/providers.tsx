@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from './components/Sidebar';
 import NotificationBell from './components/NotificationBell';
+import ThemeToggle from './components/ThemeToggle';
 import IdleTimer from './components/IdleTimer';
 import ScrollToTop from './components/ScrollToTop';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -69,6 +70,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             ☰
           </button>
           <div style={{ flex: 1 }} />
+          <ThemeToggle />
           <NotificationBell />
           <IdleTimer />
         </div>

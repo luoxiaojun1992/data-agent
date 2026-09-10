@@ -122,7 +122,7 @@ function AddRoleModal({ apiFetch, userId, maxReached, onAdd, onClose }: {
         {!loading && !error && items.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>无结果</p>}
         {!loading && items.map((r) => (
           <div key={r.id} data-testid={`rbac-avail-role-${r.id}`}
-            style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--surface-6)' }}>
             <div>
               <span style={{ fontSize: 14 }}>{r.display_name}</span>
               <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, marginLeft: 8,

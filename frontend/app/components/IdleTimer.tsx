@@ -120,7 +120,7 @@ export default function IdleTimer() {
             继续使用
           </button>
           <button
-            className="px-6 py-2 border border-[var(--border-glass)] text-[var(--text-secondary)] rounded-xl hover:bg-white/10 transition-all"
+            className="px-6 py-2 border border-[var(--border-glass)] text-[var(--text-secondary)] rounded-xl hover:bg-[var(--surface-10)] transition-all"
             onClick={handleLogout}
             data-testid="session-timeout-logout-btn"
           >

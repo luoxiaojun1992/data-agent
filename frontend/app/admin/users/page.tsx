@@ -284,7 +284,7 @@ export default function UsersPage() {
           <div className="glass" data-testid="admin-users-table" style={{ overflow: 'hidden' }}>
             <table data-testid="user-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <tr style={{ background: 'var(--surface-3)' }}>
                   <th style={{ ...thStyle, width: '40px' }}>
                     <input type="checkbox" data-testid="user-select-all"
                       checked={selected.size === users.length && users.length > 0}
@@ -310,10 +310,10 @@ export default function UsersPage() {
                     key={user.id}
                     data-testid={`user-row-${user.id}`}
                     style={{
-                      borderBottom: '1px solid rgba(255,255,255,0.06)',
+                      borderBottom: '1px solid var(--surface-6)',
                       transition: 'background 0.15s',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   >
                     <td style={tdStyle}>
@@ -610,7 +610,7 @@ const thStyle: React.CSSProperties = {
   fontWeight: 700,
   textTransform: 'uppercase',
   color: '#666',
-  borderBottom: '1px solid rgba(255,255,255,0.06)',
+  borderBottom: '1px solid var(--surface-6)',
 };
 
 const tdStyle: React.CSSProperties = {
@@ -676,7 +676,7 @@ const inputStyle: React.CSSProperties = {
 const cancelBtnStyle: React.CSSProperties = {
   padding: '8px 16px',
   background: 'transparent',
-  border: '1px solid rgba(255,255,255,0.1)',
+  border: '1px solid var(--surface-10)',
   borderRadius: '8px',
   color: 'var(--text-secondary)',
   fontSize: '14px',

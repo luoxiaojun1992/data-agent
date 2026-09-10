@@ -200,7 +200,7 @@ export default function TaskRunsPage() {
             <div className="space-y-3" data-testid="runs-list">
             {runs.map((run, idx) => (
               <button key={run.run_id} onClick={() => openRun(run.run_id)}
-                className="glass w-full text-left p-4 hover:bg-white/5 transition-colors"
+                className="glass w-full text-left p-4 hover:bg-[var(--surface-5)] transition-colors"
                 data-testid={`runs-row-${idx}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex-1">

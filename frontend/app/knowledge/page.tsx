@@ -257,12 +257,12 @@ export default function KnowledgePage() {
             + 上传文档
           </button>
           <button data-testid="kb-import-url-btn" onClick={() => { setShowImportUrl(true); setImportUrlError(''); }}
-            style={{ ...primaryButtonStyle, background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-primary)' }}>
+            style={{ ...primaryButtonStyle, background: 'transparent', border: '1px solid var(--surface-20)', color: 'var(--text-primary)' }}>
             🔗 导入网址
           </button>
           <input data-testid="kb-search-input" placeholder="搜索文档..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+            style={{ padding: '10px 16px', background: 'var(--surface-6)', border: '1px solid var(--surface-10)',
               borderRadius: '8px', fontSize: '14px', color: 'var(--text-primary)', outline: 'none', flex: 1, minWidth: '200px' }} />
         </div>
 
@@ -275,7 +275,7 @@ export default function KnowledgePage() {
                 上传文档
               </h3>
               <div data-testid="kb-drop-zone" style={{ padding: '40px', textAlign: 'center',
-                border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '12px', marginBottom: '16px',
+                border: '2px dashed var(--surface-15)', borderRadius: '12px', marginBottom: '16px',
                 color: '#7A7A7A', fontSize: '14px', cursor: 'pointer' }}
                 onClick={() => fileInputRef.current?.click()}>
                 📤 拖拽文件到此处或点击选择
@@ -286,7 +286,7 @@ export default function KnowledgePage() {
                     <div key={i} data-testid={`kb-file-item-${i}`}
                       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         padding: '6px 8px', fontSize: '13px', color: 'var(--text-primary)',
-                        background: 'rgba(255,255,255,0.04)', borderRadius: '6px', marginBottom: '4px' }}>
+                        background: 'var(--surface-4)', borderRadius: '6px', marginBottom: '4px' }}>
                       <span>{f.name}</span>
                       {uploadComplete[i] ? (
                         <span data-testid={`kb-file-done-${i}`}>✅</span>
@@ -326,8 +326,8 @@ export default function KnowledgePage() {
                 value={importUrlValue}
                 onChange={(e) => { setImportUrlValue(e.target.value); setImportUrlError(''); }}
                 disabled={importingUrl}
-                style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', fontSize: '14px',
+                style={{ width: '100%', padding: '10px 12px', background: 'var(--surface-6)',
+                  border: '1px solid var(--surface-15)', borderRadius: '8px', fontSize: '14px',
                   color: 'var(--text-primary)', outline: 'none', marginBottom: '12px', boxSizing: 'border-box' }}
               />
               {importUrlError && (
@@ -338,7 +338,7 @@ export default function KnowledgePage() {
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                 <button onClick={() => { if (!importingUrl) { setShowImportUrl(false); setImportUrlError(''); } }}
                   disabled={importingUrl}
-                  style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+                  style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--surface-15)',
                     borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '14px', cursor: 'pointer' }}>
                   取消
                 </button>

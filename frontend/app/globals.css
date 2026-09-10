@@ -13,6 +13,71 @@
   --border-glass: rgba(255, 255, 255, 0.08);
   --glass-bg: rgba(255, 255, 255, 0.04);
   --glass-hover: rgba(255, 255, 255, 0.08);
+
+  /* 语义表面色：白色透明档位（深色主题）。light 主题下映射为深色透明（见 [data-theme="light"]）。
+     SPEC-076 变量化收尾统一出口，深色值与原硬编码 rgba(255,255,255,X) 等价，视觉零变化。 */
+  --surface-3: rgba(255, 255, 255, 0.03);
+  --surface-4: rgba(255, 255, 255, 0.04);
+  --surface-5: rgba(255, 255, 255, 0.05);
+  --surface-6: rgba(255, 255, 255, 0.06);
+  --surface-8: rgba(255, 255, 255, 0.08);
+  --surface-10: rgba(255, 255, 255, 0.10);
+  --surface-15: rgba(255, 255, 255, 0.15);
+  --surface-20: rgba(255, 255, 255, 0.20);
+  --surface-30: rgba(255, 255, 255, 0.30);
+
+  /* 下拉面板实底（通知铃铛 / 可搜索下拉）：深色实底，light 下变白 */
+  --dropdown-bg: #1a1a2e;
+
+  /* 内容容器底（代码块 / PDF 标签 / 结果展示区）：深色半透明底，
+     内含 var(--text-primary) 文字，light 下须变浅底否则深字深底不可读 */
+  --code-bg: rgba(0, 0, 0, 0.2);
+  --code-bg-strong: rgba(0, 0, 0, 0.3);
+
+  /* 滚动条 */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+
+  /* Aurora 背景（body::before 三处 radial-gradient 色） */
+  --aurora-1: rgba(92, 124, 250, 0.08);
+  --aurora-2: rgba(124, 58, 237, 0.06);
+  --aurora-3: rgba(16, 185, 129, 0.04);
+}
+
+/* 蓝白 Light 主题（SPEC-076）：覆盖所有变量，深色主题视觉保持不变 */
+[data-theme="light"] {
+  --bg-primary: #f5f7fb;
+  --bg-secondary: #eef2f9;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --text-primary: #1a2233;
+  --text-secondary: #5a6b85;
+  --accent: #2563eb;
+  --accent-glow: rgba(37, 99, 235, 0.18);
+  --border-glass: rgba(15, 23, 42, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-hover: rgba(255, 255, 255, 0.9);
+
+  --surface-3: rgba(15, 23, 42, 0.03);
+  --surface-4: rgba(15, 23, 42, 0.04);
+  --surface-5: rgba(15, 23, 42, 0.05);
+  --surface-6: rgba(15, 23, 42, 0.06);
+  --surface-8: rgba(15, 23, 42, 0.08);
+  --surface-10: rgba(15, 23, 42, 0.10);
+  --surface-15: rgba(15, 23, 42, 0.15);
+  --surface-20: rgba(15, 23, 42, 0.20);
+  --surface-30: rgba(15, 23, 42, 0.30);
+
+  --dropdown-bg: #ffffff;
+
+  --code-bg: rgba(15, 23, 42, 0.05);
+  --code-bg-strong: rgba(15, 23, 42, 0.05);
+
+  --scrollbar-thumb: rgba(15, 23, 42, 0.15);
+  --scrollbar-thumb-hover: rgba(15, 23, 42, 0.25);
+
+  --aurora-1: rgba(37, 99, 235, 0.05);
+  --aurora-2: rgba(147, 129, 255, 0.04);
+  --aurora-3: rgba(16, 185, 129, 0.03);
 }
 
 * {
@@ -39,9 +104,9 @@ body::before {
   width: 200%;
   height: 200%;
   background:
-    radial-gradient(ellipse at 20% 50%, rgba(92, 124, 250, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(124, 58, 237, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.04) 0%, transparent 50%);
+    radial-gradient(ellipse at 20% 50%, var(--aurora-1) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, var(--aurora-2) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, var(--aurora-3) 0%, transparent 50%);
   z-index: -1;
   pointer-events: none;
 }
@@ -57,7 +122,7 @@ body::before {
 
 .glass-hover:hover {
   background: var(--glass-hover);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: var(--surface-15);
   transition: all 0.2s ease;
 }
 
@@ -69,11 +134,11 @@ body::before {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Animations */

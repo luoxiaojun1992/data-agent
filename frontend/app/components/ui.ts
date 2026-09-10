@@ -40,13 +40,13 @@ export const modalPanelStyle: React.CSSProperties = {
   boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
 };
 
-// 弹窗面板 input 样式（SPEC-085：边框 rgba(255,255,255,0.15) 可见，替代 var(--border)/0.1）
+// 弹窗面板 input 样式（SPEC-085：边框 var(--surface-15) 可见，替代 var(--border)/0.1）
 export const modalInputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
   fontSize: '14px',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.15)',
+  background: 'var(--surface-6)',
+  border: '1px solid var(--surface-15)',
   borderRadius: '8px',
   color: 'var(--text-primary)',
   outline: 'none',
@@ -68,7 +68,7 @@ export const modalSelectStyle: React.CSSProperties = { ...modalInputStyle };
 export const modalCancelBtnStyle: React.CSSProperties = {
   padding: '8px 16px',
   background: 'transparent',
-  border: '1px solid rgba(255,255,255,0.15)',
+  border: '1px solid var(--surface-15)',
   borderRadius: '8px',
   color: 'var(--text-secondary)',
   fontSize: '14px',

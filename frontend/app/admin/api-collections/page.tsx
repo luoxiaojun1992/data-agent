@@ -84,11 +84,11 @@ export default function APICollectionsPage() {
               <div className="space-y-3">
                 <div>
                   <input placeholder="名称" value={uploadName} onChange={e => setUploadName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm" />
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm" />
                 </div>
                 <div>
                   <input placeholder="描述" value={uploadDesc} onChange={e => setUploadDesc(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm" />
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm" />
                 </div>
                 <div>
                   <input type="file" accept=".json,.yaml,.yml" onChange={e => setUploadFile(e.target.files?.[0] || null)}
@@ -107,7 +107,7 @@ export default function APICollectionsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-[var(--text-primary)]">
             <thead>
-              <tr className="border-b border-white/10 text-left text-[var(--text-secondary)]">
+              <tr className="border-b border-[var(--surface-10)] text-left text-[var(--text-secondary)]">
                 <th className="py-3 px-4">名称</th>
                 <th className="py-3 px-4">描述</th>
                 <th className="py-3 px-4">状态</th>
@@ -118,7 +118,7 @@ export default function APICollectionsPage() {
             </thead>
             <tbody>
               {collections.map((c: any) => (
-                <tr key={c.id} className="border-b border-white/5 hover:bg-white/5">
+                <tr key={c.id} className="border-b border-[var(--surface-5)] hover:bg-[var(--surface-5)]">
                   <td className="py-3 px-4">{c.name}</td>
                   <td className="py-3 px-4 text-[var(--text-secondary)] max-w-[200px] truncate">{c.description}</td>
                   <td className="py-3 px-4">

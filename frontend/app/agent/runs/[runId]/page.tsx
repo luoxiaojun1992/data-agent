@@ -241,7 +241,7 @@ export default function RunDetailPage() {
         {run.result && (
           <div className="glass p-4 mb-6" data-testid="run-result">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📊 执行结果</h3>
-            <div className="bg-black/30 rounded-lg p-4 max-h-96 overflow-y-auto" data-testid="run-result-content">
+            <div className="bg-[var(--code-bg-strong)] rounded-lg p-4 max-h-96 overflow-y-auto" data-testid="run-result-content">
               <Markdown>{run.result.content || JSON.stringify(run.result, null, 2)}</Markdown>
             </div>
           </div>

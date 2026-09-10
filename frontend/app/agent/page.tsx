@@ -223,7 +223,7 @@ export default function AgentPage() {
             {showTemplateMenu && (
               <div className="absolute right-0 top-11 z-40 glass rounded-xl p-2 w-64" data-testid="agent-template-menu">
                 <button onClick={() => { setShowDailySummaryModal(true); setShowTemplateMenu(false); }}
-                  className="w-full text-left p-3 rounded-lg hover:bg-white/5 transition-colors"
+                  className="w-full text-left p-3 rounded-lg hover:bg-[var(--surface-5)] transition-colors"
                   data-testid="agent-template-daily-summary">
                   <p className="text-sm font-medium text-[var(--text-primary)]">日常总结</p>
                   <p className="text-xs text-[var(--text-secondary)] mt-0.5">每天 01:00 自动总结当天记忆，写入知识库</p>
@@ -249,7 +249,7 @@ export default function AgentPage() {
               <div key={task.task_id} className="glass" data-testid={`agent-task-row-${idx}`}>
                 {/* Row header */}
                 <button onClick={() => openTask(task.task_id)}
-                  className="w-full text-left p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
+                  className="w-full text-left p-4 flex items-center justify-between hover:bg-[var(--surface-5)] transition-colors"
                   data-testid={`agent-task-title-${idx}`}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
@@ -265,7 +265,7 @@ export default function AgentPage() {
                         <button onClick={(e) => { e.stopPropagation(); toggleScheduledEnabled(task); }}
                           style={{
                             fontSize: '10px', padding: '1px 6px', borderRadius: '4px', cursor: 'pointer',
-                            border: '1px solid rgba(255,255,255,0.15)',
+                            border: '1px solid var(--surface-15)',
                             background: task.scheduled_enabled !== false ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.1)',
                             color: task.scheduled_enabled !== false ? '#10b981' : '#ef4444',
                           }}>
@@ -343,7 +343,7 @@ export default function AgentPage() {
                   <div className="flex flex-wrap gap-2 mb-2" data-testid="agent-task-attachments">
                     {attachments.map((att, idx) => (
                       <div key={idx} className="relative" data-testid={`agent-task-attachment-${idx}`}>
-                        <img src={att.dataUrl} alt={att.name} className="w-14 h-14 rounded-lg object-cover border border-white/20" />
+                        <img src={att.dataUrl} alt={att.name} className="w-14 h-14 rounded-lg object-cover border border-[var(--surface-20)]" />
                         <button onClick={() => removeAttachment(idx)} title="移除图片"
                           data-testid={`agent-task-attachment-remove-${idx}`}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90">✕</button>

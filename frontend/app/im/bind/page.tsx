@@ -71,8 +71,8 @@ function BindPage() {
             <input data-testid="im-bind-app-id" value={appId}
               onChange={(e) => setAppId(e.target.value)}
               placeholder="cli_xxxxxxxx"
-              style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '14px',
+              style={{ width: '100%', padding: '8px 12px', background: 'var(--surface-6)',
+                border: '1px solid var(--surface-10)', borderRadius: '8px', fontSize: '14px',
                 color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div style={{ marginBottom: '12px' }}>
@@ -80,8 +80,8 @@ function BindPage() {
             <input data-testid="im-bind-app-secret" type="password" value={appSecret}
               onChange={(e) => setAppSecret(e.target.value)}
               placeholder="••••••••"
-              style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '14px',
+              style={{ width: '100%', padding: '8px 12px', background: 'var(--surface-6)',
+                border: '1px solid var(--surface-10)', borderRadius: '8px', fontSize: '14px',
                 color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }} />
           </div>
           {status === 'error' && (

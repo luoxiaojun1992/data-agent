@@ -93,8 +93,8 @@ export default function SettingsPage() {
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'var(--surface-5)',
+    border: '1px solid var(--surface-10)',
     borderRadius: '6px',
     padding: '8px 12px',
     color: 'var(--text-primary)',
@@ -126,7 +126,7 @@ export default function SettingsPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
                   <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '320px' }}>配置项</th>
                   <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>自定义值</th>
                   <th style={{ textAlign: 'center', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '90px' }}>来源</th>
@@ -137,7 +137,7 @@ export default function SettingsPage() {
                 {paged.map((c) => {
                   const isEditing = editingKey === c.key;
                   return (
-                    <tr key={c.key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`settings-row-${c.key}`}>
+                    <tr key={c.key} style={{ borderBottom: '1px solid var(--surface-5)' }} data-testid={`settings-row-${c.key}`}>
                       <td style={{ padding: '12px' }}>
                         {c.description && (
                           <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{c.description}</div>
@@ -161,7 +161,7 @@ export default function SettingsPage() {
                       <td style={{ padding: '12px', textAlign: 'center' }}>
                         <span style={{
                           display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '11px',
-                          background: c.source === 'stored' ? 'rgba(92,124,250,0.15)' : 'rgba(255,255,255,0.06)',
+                          background: c.source === 'stored' ? 'rgba(92,124,250,0.15)' : 'var(--surface-6)',
                           color: c.source === 'stored' ? '#5c7cfa' : '#7A7A7A',
                         }}>
                           {c.source === 'stored' ? '已保存' : '默认'}
@@ -176,14 +176,14 @@ export default function SettingsPage() {
                               {saving ? '…' : '保存'}
                             </button>
                             <button onClick={() => setEditingKey(null)}
-                              style={{ padding: '4px 10px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>
+                              style={{ padding: '4px 10px', background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>
                               取消
                             </button>
                           </div>
                         ) : (
                           <button onClick={() => openEdit(c.key, c.value)}
                             data-testid={`settings-edit-${c.key}`}
-                            style={{ padding: '4px 10px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: 'var(--accent)', fontSize: '12px', cursor: 'pointer' }}>
+                            style={{ padding: '4px 10px', background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', color: 'var(--accent)', fontSize: '12px', cursor: 'pointer' }}>
                             编辑
                           </button>
                         )}

@@ -76,7 +76,7 @@ export default function RolePermissionsPage() {
         <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
                 <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Key</th>
                 <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>名称</th>
                 <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>模块</th>
@@ -85,7 +85,7 @@ export default function RolePermissionsPage() {
             </thead>
             <tbody>
               {perms.map(p => (
-                <tr key={p.id} data-testid={`rbac-role-perm-${p.id}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <tr key={p.id} data-testid={`rbac-role-perm-${p.id}`} style={{ borderBottom: '1px solid var(--surface-6)' }}>
                   <td style={{ padding: '10px 12px', fontSize: 13 }}><code style={{ fontSize: 12 }}>{p.key}</code></td>
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.name}</td>
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.module}</td>
@@ -143,7 +143,7 @@ function AddPermModal({ apiFetch, roleId, onAdd, onClose }: {
         {!loading && error && <p style={{ color: '#ef4444', fontSize: 13 }}>{error}</p>}
         {!loading && !error && items.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>无结果</p>}
         {!loading && items.map((p) => (
-          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--surface-6)' }}>
             <div><code style={{ fontSize: 12 }}>{p.key}</code><span style={{ fontSize: 13, marginLeft: 8 }}>{p.name}</span></div>
             <button onClick={() => onAdd(p.id)} style={{ ...btnSm, color: '#5c7cfa' }}>添加</button>
           </div>

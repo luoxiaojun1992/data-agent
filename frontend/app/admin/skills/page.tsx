@@ -98,8 +98,8 @@ export default function SkillsAdminPage() {
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'var(--surface-5)',
+    border: '1px solid var(--surface-10)',
     borderRadius: '6px',
     padding: '8px 12px',
     color: 'var(--text-primary)',
@@ -138,7 +138,7 @@ export default function SkillsAdminPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500, width: '160px' }}>名称</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>显示名</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>描述</th>
@@ -148,7 +148,7 @@ export default function SkillsAdminPage() {
               </thead>
               <tbody>
                 {skills.map((s) => (
-                  <tr key={s.name} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                  <tr key={s.name} style={{ borderBottom: '1px solid var(--surface-5)' }}
                     data-testid={`skill-row-${s.name}`}>
                     <td style={{ padding: '10px 12px' }}>
                       <code style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{s.name}</code>
@@ -161,7 +161,7 @@ export default function SkillsAdminPage() {
                         width: '36px',
                         height: '20px',
                         borderRadius: '10px',
-                        background: s.enabled ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                        background: s.enabled ? 'var(--accent)' : 'var(--surface-15)',
                         position: 'relative',
                         verticalAlign: 'middle',
                       }}>
@@ -183,7 +183,7 @@ export default function SkillsAdminPage() {
                         onClick={() => openEdit(s)}
                         style={{
                           background: 'transparent',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: '1px solid var(--surface-10)',
                           borderRadius: '4px',
                           padding: '4px 12px',
                           color: 'var(--accent)',
@@ -243,7 +243,7 @@ export default function SkillsAdminPage() {
 
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
                 <button onClick={closeEdit}
-                  style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 16px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px' }}>
+                  style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '6px', padding: '6px 16px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px' }}>
                   取消</button>
                 <button
                   data-testid="skill-save-btn"

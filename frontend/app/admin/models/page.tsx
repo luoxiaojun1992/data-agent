@@ -378,7 +378,7 @@ export default function ModelsPage() {
           <div style={{ overflowX: 'auto' }} data-testid="model-list-table">
             <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
                   <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>模型</th>
                   <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>接口地址</th>
                   <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>密钥</th>
@@ -401,7 +401,7 @@ export default function ModelsPage() {
                   const isRevealed = revealedKeys.has(rowId);
                   const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
                   return (
-                    <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`model-list-row-${i}`}>
+                    <tr key={rowId} style={{ borderBottom: '1px solid var(--surface-5)' }} data-testid={`model-list-row-${i}`}>
                       <td style={{ padding: '6px 8px' }}>
                         <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
                         <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
@@ -424,7 +424,7 @@ export default function ModelsPage() {
                                 return next;
                               })}
                               title={isRevealed ? '隐藏' : '查看明文'}
-                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                              style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
                             ><EyeIcon open={isRevealed} /></button>
                           )}
                         </div>
@@ -479,7 +479,7 @@ export default function ModelsPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
                   <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>模型</th>
                   <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>接口地址</th>
                   <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>密钥</th>
@@ -502,7 +502,7 @@ export default function ModelsPage() {
                   // slice — fall back to m.is_default for forward-compat.
                   const isEmbeddingDefault = !!m.is_default || (m.is_default_for || []).includes('embedding');
                   return (
-                    <tr key={rowId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }} data-testid={`embedding-list-row-${i}`}>
+                    <tr key={rowId} style={{ borderBottom: '1px solid var(--surface-5)' }} data-testid={`embedding-list-row-${i}`}>
                       <td style={{ padding: '6px 8px' }}>
                         <div style={{ color: 'var(--text-primary)', fontWeight: 500, maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
                         <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '10px', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rowId}>{rowId}</div>
@@ -523,7 +523,7 @@ export default function ModelsPage() {
                                 return next;
                               })}
                               title={isRevealed ? '隐藏' : '查看明文'}
-                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                              style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
                             ><EyeIcon open={isRevealed} /></button>
                           )}
                         </div>
@@ -550,14 +550,14 @@ export default function ModelsPage() {
                               data-testid={`embedding-list-unset-default-${i}`}
                               onClick={() => unsetDefault(['embedding'])}
                               title="取消默认"
-                              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px 6px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}
+                              style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px 6px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}
                             >取消</button>
                           </div>
                         ) : (
                           <button
                           data-testid={`embedding-list-set-default-${i}`}
                             onClick={() => setDefaultModel(rowId)}
-                          style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '2px 8px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}
+                          style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px 8px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}
                           >设为默认</button>
                         )}
                       </td>
@@ -609,7 +609,7 @@ export default function ModelsPage() {
                 data-testid="hermes-api-key-eye-toggle"
                 onClick={toggleHermesVisibility}
                 title={hermesKeyVisible ? '隐藏' : '查看明文'}
-                style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
               ><EyeIcon open={hermesKeyVisible} /></button>
             </div>
           </Field>
@@ -659,7 +659,7 @@ export default function ModelsPage() {
                           fontSize: '12px',
                           borderRadius: '6px',
                           border: '1px solid',
-                          borderColor: active ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                          borderColor: active ? 'var(--accent)' : 'var(--surface-15)',
                           background: active ? 'var(--accent)' : 'transparent',
                           color: active ? '#fff' : 'var(--text-primary)',
                           cursor: locked ? 'not-allowed' : 'pointer',
@@ -703,7 +703,7 @@ export default function ModelsPage() {
                     onClick={() => setShowEditKey(!showEditKey)}
                     title={showEditKey ? '隐藏' : '显示明文'}
                     disabled={!editKeyLoaded}
-                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 10px', cursor: editKeyLoaded ? 'pointer' : 'not-allowed', color: editKeyLoaded ? 'var(--text-secondary)' : 'rgba(255,255,255,0.2)', display: 'inline-flex', alignItems: 'center', opacity: editKeyLoaded ? 1 : 0.5 }}
+                    style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '6px', padding: '6px 10px', cursor: editKeyLoaded ? 'pointer' : 'not-allowed', color: editKeyLoaded ? 'var(--text-secondary)' : 'var(--surface-20)', display: 'inline-flex', alignItems: 'center', opacity: editKeyLoaded ? 1 : 0.5 }}
                   ><EyeIcon open={showEditKey} /></button>
                 </div>
                 {!editKeyLoaded && (
@@ -738,7 +738,7 @@ export default function ModelsPage() {
               )}
 
               <div className="flex gap-3 justify-end pt-2">
-                <button onClick={closeEdit} className="px-4 py-2 text-sm rounded-lg border border-[var(--border-glass)] text-[var(--text-primary)] hover:bg-white/5">取消</button>
+                <button onClick={closeEdit} className="px-4 py-2 text-sm rounded-lg border border-[var(--border-glass)] text-[var(--text-primary)] hover:bg-[var(--surface-5)]">取消</button>
                 <button
                   data-testid="model-edit-save-btn"
                   onClick={editingId !== null ? saveEdit : addModel}
@@ -758,8 +758,8 @@ const inputStyle: React.CSSProperties = {
   padding: '8px 12px',
   fontSize: '13px',
   borderRadius: '6px',
-  background: 'rgba(255,255,255,0.05)',
-  border: '1px solid rgba(255,255,255,0.15)',
+  background: 'var(--surface-5)',
+  border: '1px solid var(--surface-15)',
   color: 'var(--text-primary)',
   outline: 'none',
 };
@@ -878,7 +878,7 @@ function UseCaseChips({
           type="button"
           data-testid={`model-list-uc-clear-${modelId || ''}`}
           onClick={onClear}
-          style={{ marginTop: '4px', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+          style={{ marginTop: '4px', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', background: 'transparent', border: '1px dashed var(--surface-20)', color: 'var(--text-secondary)', cursor: 'pointer' }}
           title="全选全部 use case"
         >全选</button>
       )}
@@ -902,7 +902,7 @@ function UseCaseChips({
           padding: '2px 6px',
           borderRadius: '4px',
           border: '1px solid',
-          borderColor: count > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+          borderColor: count > 0 ? 'var(--accent)' : 'var(--surface-15)',
           background: 'transparent',
           color: count > 0 ? 'var(--accent)' : 'var(--text-secondary)',
           cursor: 'pointer',

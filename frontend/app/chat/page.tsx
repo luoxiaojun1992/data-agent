@@ -802,7 +802,7 @@ export default function ChatPage() {
                       {msg.args && Object.keys(msg.args).length > 0 && (
                         <details className="mt-1">
                           <summary className="cursor-pointer text-[var(--text-secondary)]">参数</summary>
-                          <pre className="mt-1 p-2 rounded text-[10px] bg-black/20 overflow-x-auto max-h-32">
+                          <pre className="mt-1 p-2 rounded text-[10px] bg-[var(--code-bg)] overflow-x-auto max-h-32">
                             {formatPayload(msg.args)}
                           </pre>
                         </details>
@@ -814,7 +814,7 @@ export default function ChatPage() {
                       {hasPayload(msg.result) && (
                         <details className="mt-1">
                           <summary className="cursor-pointer text-[var(--text-secondary)]">结果</summary>
-                          <pre className="mt-1 p-2 rounded text-[10px] bg-black/20 overflow-x-auto max-h-32">
+                          <pre className="mt-1 p-2 rounded text-[10px] bg-[var(--code-bg)] overflow-x-auto max-h-32">
                             {formatPayload(msg.result)}
                           </pre>
                         </details>
@@ -829,7 +829,7 @@ export default function ChatPage() {
                           {msg.pdfs.map((pdf, idx) => (
                             <div
                               key={idx}
-                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/20 bg-white/10"
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--surface-20)] bg-[var(--surface-10)]"
                               data-testid={`chat-msg-pdf-${i}-${idx}`}
                             >
                               <span className="text-sm leading-none">📄</span>
@@ -845,7 +845,7 @@ export default function ChatPage() {
                               key={idx}
                               src={src}
                               alt={`附件 ${idx + 1}`}
-                              className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-white/20"
+                              className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-[var(--surface-20)]"
                               data-testid={`chat-msg-image-${i}-${idx}`}
                             />
                           ))}
@@ -959,7 +959,7 @@ export default function ChatPage() {
                     <img
                       src={att.dataUrl}
                       alt={att.name}
-                      className="w-16 h-16 rounded-lg object-cover border border-white/20"
+                      className="w-16 h-16 rounded-lg object-cover border border-[var(--surface-20)]"
                     />
                     <button
                       onClick={() => removeAttachment(idx)}
@@ -978,7 +978,7 @@ export default function ChatPage() {
                 {pdfs.map((pdf, idx) => (
                   <div
                     key={idx}
-                    className="relative flex items-center gap-2 pl-3 pr-8 py-2 rounded-lg border border-white/20 bg-black/20"
+                    className="relative flex items-center gap-2 pl-3 pr-8 py-2 rounded-lg border border-[var(--surface-20)] bg-[var(--code-bg)]"
                     data-testid={`chat-pdf-attachment-${idx}`}
                   >
                     <span className="text-lg leading-none">📄</span>
@@ -1051,7 +1051,7 @@ export default function ChatPage() {
               {/* Active sessions (可点击进入聊天) */}
               {sessions.map(s => (
                   <button key={s.id} onClick={() => selectSession(s.id)}
-                    className={`w-full text-left px-2 py-1.5 text-xs hover:bg-white/5 rounded transition-colors ${s.id === sessionId ? 'bg-[var(--accent)]/10' : ''}`}
+                    className={`w-full text-left px-2 py-1.5 text-xs hover:bg-[var(--surface-5)] rounded transition-colors ${s.id === sessionId ? 'bg-[var(--accent)]/10' : ''}`}
                     data-testid={`session-item-${s.id}`}>
                     <div className="flex items-start justify-between gap-1">
                       <span className="text-[var(--text-primary)] line-clamp-2 break-all" data-testid="session-item-title">
@@ -1122,7 +1122,7 @@ export default function ChatPage() {
                 <p className="text-xs text-[var(--text-secondary)] mb-2 uppercase">系统预设</p>
                 {['今日数据概览', '本月销售趋势', '同比环比分析', 'TOP10 产品'].map((p, i) => (
                   <button key={i} onClick={() => { setInput(p); setShowPromptModal(false); }}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-white/5 transition-colors"
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-5)] transition-colors"
                     data-testid={`prompt-modal-chip-${i}`}>{p}</button>
                 ))}
               </div>
@@ -1131,7 +1131,7 @@ export default function ChatPage() {
                   <p className="text-xs text-[var(--text-secondary)] mb-2 uppercase">我的常用</p>
                   {customPrompts.map((p, i) => (
                     <button key={i} onClick={() => { setInput(p); setShowPromptModal(false); }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-white/5 transition-colors"
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-5)] transition-colors"
                       data-testid={`prompt-modal-custom-${i}`}>{p}</button>
                   ))}
                 </div>
@@ -1175,7 +1175,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
         if (block.type === 'sql' && block.code) {
           return (
             <div key={i} className="rounded-lg border border-emerald-400/20 overflow-hidden" data-testid="chat-sql-block">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-black/20">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--code-bg)]">
                 <span className="text-xs text-emerald-400 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />SQL
                 </span>
@@ -1202,7 +1202,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
                 </thead>
                 <tbody>
                   {block.rows.map((row, ri) => (
-                    <tr key={ri} className={ri % 2 === 0 ? 'bg-white/5' : ''}>
+                    <tr key={ri} className={ri % 2 === 0 ? 'bg-[var(--surface-5)]' : ''}>
                       {row.map((cell, ci) => (
                         <td key={ci} className="px-2 py-1 text-[var(--text-secondary)]">{cell}</td>
                       ))}
@@ -1218,7 +1218,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
           return (
             <div key={i} className="rounded-lg border border-[var(--border-glass)] overflow-hidden" data-testid={`chat-tool-call-card-${i}`}>
               <button
-                className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5 transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2 hover:bg-[var(--surface-5)] transition-colors"
                 onClick={() => setExpanded(!expanded)}
                 data-testid="chat-tool-call-header"
               >
@@ -1240,7 +1240,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
         if ((block as any).type === 'kpi' && (block as any).items) {
           const items = (block as any).items as { label: string; value: string }[];
           return (
-            <div key={i} className="flex flex-wrap gap-3 p-3 rounded-lg bg-white/5" data-testid="chat-inline-kpi">
+            <div key={i} className="flex flex-wrap gap-3 p-3 rounded-lg bg-[var(--surface-5)]" data-testid="chat-inline-kpi">
               {items.map((item, idx) => (
                 <div key={idx} className="text-center min-w-[80px]">
                   <div className="text-lg font-mono font-bold text-[var(--accent)]" data-testid="chat-inline-kpi-val">{item.value}</div>
@@ -1255,7 +1255,7 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
           const max = Math.max(...values, 1);
           const h = (v: number) => Math.max(4, (v / max) * 72);
           return (
-            <div key={i} className="p-3 rounded-lg bg-white/5" data-testid="chat-inline-chart">
+            <div key={i} className="p-3 rounded-lg bg-[var(--surface-5)]" data-testid="chat-inline-chart">
               {title && <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">{title}</p>}
               <div className="flex items-end gap-1" style={{ height: '80px' }}>
                 {labels.map((l: string, idx: number) => (

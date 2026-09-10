@@ -165,7 +165,7 @@ function InvitesContent() {
 
       {/* Create form */}
       {showForm && (
-        <div className="mb-6 glass p-6" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }} data-testid="invites-create-form">
+        <div className="mb-6 glass p-6" style={{ background: 'var(--surface-3)', border: '1px solid var(--surface-8)', borderRadius: '12px' }} data-testid="invites-create-form">
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div data-testid="invites-email-field">
@@ -175,7 +175,7 @@ function InvitesContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="newuser@company.com"
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm placeholder-white/30 focus:outline-none focus:border-[#B1E2FF]"
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm placeholder-[var(--surface-30)] focus:outline-none focus:border-[#B1E2FF]"
                   data-testid="invites-email-input"
                 />
               </div>
@@ -184,7 +184,7 @@ function InvitesContent() {
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[#B1E2FF]"
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[#B1E2FF]"
                   data-testid="invites-role-select"
                 >
                   <option value="user">普通用户 (user)</option>
@@ -196,7 +196,7 @@ function InvitesContent() {
                 <select
                   value={expireHours}
                   onChange={(e) => setExpireHours(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[#B1E2FF]"
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[#B1E2FF]"
                   data-testid="invites-expire-select"
                 >
                   <option value={24}>24 小时</option>
@@ -240,7 +240,7 @@ function InvitesContent() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="invites-table">
               <thead>
-                <tr className="border-b border-white/10 text-left">
+                <tr className="border-b border-[var(--surface-10)] text-left">
                   <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">邮箱</th>
                   <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">角色</th>
                   <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">状态</th>
@@ -251,7 +251,7 @@ function InvitesContent() {
               </thead>
               <tbody>
                 {invites.map((inv) => (
-                  <tr key={inv.invite_id} className="border-b border-white/5 hover:bg-white/5" data-testid="invites-row">
+                  <tr key={inv.invite_id} className="border-b border-[var(--surface-5)] hover:bg-[var(--surface-5)]" data-testid="invites-row">
                     <td className="py-3 px-4 text-[var(--text-primary)]">{inv.email || '—'}</td>
                     <td className="py-3 px-4 text-[var(--text-secondary)]">{inv.role}</td>
                     <td className="py-3 px-4">

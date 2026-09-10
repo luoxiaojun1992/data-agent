@@ -69,11 +69,11 @@ export default function APICollectionDetailPage() {
         <div className="mb-6">
           {editing ? (
             <div className="space-y-3 mb-4">
-              <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-lg font-bold" />
-              <input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--text-primary)] text-sm" />
+              <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-lg font-bold" />
+              <input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm" />
               <div className="flex gap-2">
                 <button onClick={handleUpdate} className="px-4 py-1.5 bg-[#B1E2FF] text-black rounded text-sm">保存</button>
-                <button onClick={() => setEditing(false)} className="px-4 py-1.5 bg-white/10 text-[var(--text-secondary)] rounded text-sm">取消</button>
+                <button onClick={() => setEditing(false)} className="px-4 py-1.5 bg-[var(--surface-10)] text-[var(--text-secondary)] rounded text-sm">取消</button>
               </div>
             </div>
           ) : (
@@ -86,7 +86,7 @@ export default function APICollectionDetailPage() {
                 </span>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setEditing(true)} className="px-3 py-1.5 bg-white/10 text-[var(--text-secondary)] rounded text-sm hover:bg-white/20">编辑</button>
+                <button onClick={() => setEditing(true)} className="px-3 py-1.5 bg-[var(--surface-10)] text-[var(--text-secondary)] rounded text-sm hover:bg-[var(--surface-20)]">编辑</button>
                 {isSysAdmin && (
                   <div className="flex gap-2">
                     {collection.status !== 'approved' && (
@@ -108,7 +108,7 @@ export default function APICollectionDetailPage() {
             <div className="space-y-2">
               {Object.entries(collection.openapi_spec.paths as Record<string, any>).map(([path, methods]: [string, any]) =>
                 Object.keys(methods || {}).filter(m => !['parameters','servers','summary','description'].includes(m)).map(method => (
-                  <div key={`${path}-${method}`} className="p-3 rounded-lg bg-white/5 border border-white/10 flex items-center gap-3">
+                  <div key={`${path}-${method}`} className="p-3 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] flex items-center gap-3">
                     <span className="uppercase text-xs px-2 py-0.5 rounded bg-[#B1E2FF]/20 text-[#B1E2FF] font-mono">{method}</span>
                     <span className="text-sm text-[var(--text-primary)] font-mono">{path}</span>
                     {methods[method]?.summary && <span className="text-xs text-[var(--text-secondary)] ml-auto">{methods[method].summary}</span>}

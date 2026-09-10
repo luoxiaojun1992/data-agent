@@ -100,7 +100,7 @@ export default function HumanChannelDialog({
                     className={`text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
                       selected === opt
                         ? 'bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--text-primary)]'
-                        : 'bg-white/5 border-white/10 text-[var(--text-secondary)] hover:bg-white/10'
+                        : 'bg-[var(--surface-5)] border-[var(--surface-10)] text-[var(--text-secondary)] hover:bg-[var(--surface-10)]'
                     }`}
                   >
                     {opt}

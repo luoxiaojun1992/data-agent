@@ -123,10 +123,10 @@ export default function NotificationBell() {
 
       {open && (
         <div data-testid="notif-dropdown" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 1000,
-          width: '360px', maxHeight: '400px', overflowY: 'auto', background: '#1a1a2e',
-          border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          width: '360px', maxHeight: '400px', overflowY: 'auto', background: 'var(--dropdown-bg)',
+          border: '1px solid var(--surface-10)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
           <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            borderBottom: '1px solid var(--surface-6)' }}>
             <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>通知</span>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {unread > 0 && (
@@ -158,7 +158,7 @@ export default function NotificationBell() {
                 onClick={() => !n.read && handleMarkRead(n.id)}
                 style={{ padding: '12px 16px', cursor: n.read ? 'default' : 'pointer',
                   background: n.read ? 'transparent' : 'rgba(59,130,246,0.05)',
-                  borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  borderBottom: '1px solid var(--surface-4)' }}>
                 <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
                   {n.read ? '' : '● '}{n.title}
                 </p>
@@ -204,6 +204,6 @@ export default function NotificationBell() {
   );
 }
 
-const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '14px', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', background: 'var(--surface-6)', border: '1px solid var(--surface-10)', borderRadius: '8px', fontSize: '14px', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' };
 const primaryBtn: React.CSSProperties = { padding: '8px 20px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' };
-const secondaryBtn: React.CSSProperties = { padding: '8px 20px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '14px', color: '#7A7A7A', cursor: 'pointer' };
+const secondaryBtn: React.CSSProperties = { padding: '8px 20px', background: 'var(--surface-6)', border: '1px solid var(--surface-10)', borderRadius: '8px', fontSize: '14px', color: '#7A7A7A', cursor: 'pointer' };

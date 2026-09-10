@@ -96,4 +96,4 @@ export default function ChangePasswordPage() {
 }
 
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' };
-const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '14px', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', background: 'var(--surface-6)', border: '1px solid var(--surface-10)', borderRadius: '8px', fontSize: '14px', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' };
