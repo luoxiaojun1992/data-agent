@@ -164,3 +164,13 @@ body::before {
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* 主题切换图标：旋转淡入。to 帧必须 none（同 fadeIn，避免残留 transform 成为 containing block）。 */
+@keyframes theme-icon-pop {
+  from { opacity: 0; transform: rotate(-60deg) scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+
+.theme-icon-anim {
+  animation: theme-icon-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
