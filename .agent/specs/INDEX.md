@@ -110,7 +110,7 @@
 | SPEC-094 | ~~前端 XSS 输出安全收编~~（调研后判定前端渲染层已天然 XSS 安全，无需实施） | **P15** | [spec-094-frontend-xss-output-escape-and-backend-input-limits.md](spec-094-frontend-xss-output-escape-and-backend-input-limits.md) | 🗑 已废弃（现状已安全，无需新增代码） |
 | SPEC-095 | Chat 语音输入（whisper.wasm 纯 CPU 本地转写，音频不上传；转写结果回填输入框、不自动提交；与增强/脱敏按钮并存） | **P15** | [spec-095-chat-voice-input-whisper-wasm.md](spec-095-chat-voice-input-whisper-wasm.md) | 📐 立项（暂不实现、暂不深化） |
 | SPEC-096 | Task PDF 解析（仅常规创建弹窗，日常总结模版不加）+ kb/chat/task 三端 Excel 解析（纯文本、无图片）；task 描述隐藏 PDF 内容只显示 📄；校验/显示/XSS 豁免与 PDF 一致 | **P15** | [spec-096-task-pdf-and-excel-parsing.md](spec-096-task-pdf-and-excel-parsing.md) | 📐 立项（暂不实现、暂不深化） |
-| SPEC-097 | API Host 系统配置 + 公开查询接口（无需 RBAC）+ 前端运行时动态获取（拿不到 fallback 到当前前端 host） | **P15** | [spec-097-api-host-config-and-public-endpoint.md](spec-097-api-host-config-and-public-endpoint.md) | 📐 立项（暂不实现、暂不深化） |
+| SPEC-097 | API Host 系统配置 + 公开查询接口（无 JWT、无 RBAC）+ 前端运行时动态获取（登录接口也走动态 host；拿不到 fallback 到当前前端 host） | **P15** | [spec-097-api-host-config-and-public-endpoint.md](spec-097-api-host-config-and-public-endpoint.md) | 📐 深化中（已定稿 D3/D4，待拍板 D1/D2） |
 
 ## Phase 对应与依赖
 
@@ -430,6 +430,6 @@ SPEC-006│               │
 | 13.12 | SPEC-094 | 🗑 前端 XSS 输出安全收编（废弃，现状已安全） | 已废弃（2026-09-10）：三次深化调研后判定——React `{text}` 插值是结构性安全（createTextNode）非字符串转义；前端零 dangerouslySetInnerHTML + react-markdown v9（无 rehype-raw + defaultUrlTransform 过滤危险协议）已天然 XSS 安全；后端 ValidateXSS 输入校验 + AuditInput/AuditOutput + 结构性限制均正确。三层已构成完整闭环，**无需新增任何代码**，spec 废弃、仅留调研结论备查 |
 | 13.13 | SPEC-095 | 📐 Chat 语音输入（whisper.wasm 纯 CPU 本地转写） | 立项（2026-09-10，暂不实现暂不深化）；纯前端，无后端改动；whisper.wasm 纯 CPU WASM 本地转写（音频不上传），结果回填 textarea 不自动提交；已知风险：ggml 模型体积大（tiny ~75MB）且国内 CDN 不可达（SPEC-093 同坑）、纯 CPU 速度、getUserMedia 需 HTTPS；待定稿 D1~D5（模型档位/托管/回填策略/停止方式/依赖引入） |
 | 13.14 | SPEC-096 | 📐 Task PDF 解析 + kb/chat/task Excel 解析 | 立项（2026-09-11，暂不实现暂不深化）；R1 task 常规创建弹窗加 PDF 上传（日常总结模版不加）复用 chat parsePdf，图片合并入 task 图片、文字合并入 task 文本；R2 task 描述隐藏 PDF 内容只显示 📄；R3 kb/chat/task 三端 Excel 解析（纯文本、无图片，chat 历史显示 📊）；校验/显示/XSS 豁免与 PDF 一致；待定稿 D1~D6（PDF 存储方式/task 文本上限/Excel 标签协议/解析范围/解析库选型/kb FileType） |
-| 13.15 | SPEC-097 | 📐 API Host 系统配置 + 公开查询接口 + 前端动态获取 | 立项（2026-09-11，暂不实现暂不深化）；系统配置 `SystemBuiltins()` 新增 API_HOST 项；`GET /api/v1/api-host` 无 RBAC（Public routes 区块，套用 SPEC-079 /health 范式）；前端 `getApiHost()` 运行时获取、拿不到/空则 fallback `window.location.origin`；解耦构建时 NEXT_PUBLIC_API_URL 硬编码；待定稿 D1~D4（key 命名/api_host 语义/前端消费方式/fallback 优先级） |
+| 13.15 | SPEC-097 | 📐 API Host 系统配置 + 公开查询接口 + 前端动态获取 | 立项并深化（2026-09-11）；系统配置 `SystemBuiltins()` 新增 API_HOST 项；`GET /api/v1/api-host` **完全公开（无 JWT、无 RBAC）**，套用 SPEC-079 /health 范式；前端 `getApiHost()` 相对路径运行时获取、拿不到/空则 fallback `window.location.origin`；**登录接口也走动态 host**（API_BASE 从编译时常量改运行时解析，`await ensureApiHost()`）；已定稿 D3（重构 API_BASE）/D4（origin fallback）；待拍板 D1（key 命名）/D2（api_host 语义，推荐完整 base URL） |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |

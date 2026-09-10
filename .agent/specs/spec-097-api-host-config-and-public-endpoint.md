@@ -1,10 +1,10 @@
 # API Host 系统配置 + 公开查询接口 + 前端动态获取
 
-> **SPEC-097** | Status: 📐 立项（暂不实现、暂不深化）
+> **SPEC-097** | Status: 📐 深化中（已定稿 D3/D4，待拍板 D1/D2；暂不实现）
 
 ## 1. 目标
 
-在系统配置（sysconfig）中新增一个「API host」配置项，并提供一个**无需 RBAC 鉴权**的公开接口返回该值；前端运行时动态获取该 API host，**获取失败或未配置时 fallback 到当前前端 host**（`window.location.origin`），从而把「后端 API 地址」从构建时硬编码（`NEXT_PUBLIC_API_URL`）解耦为运行时可配置。
+在系统配置（sysconfig）中新增一个「API host」配置项，并提供一个**完全公开（无 JWT、无 RBAC）**的接口返回该值；前端运行时动态获取该 API host，**获取失败或未配置时 fallback 到当前前端 host**（`window.location.origin`），从而把「后端 API 地址」从构建时硬编码（`NEXT_PUBLIC_API_URL`）解耦为运行时可配置。**登录接口同样使用该动态 API host**——即登录请求也走运行时解析出的地址，而非构建时常量。
 
 ## 前置依赖检查
 
@@ -27,7 +27,7 @@
 
 | Method | Path | Description | 鉴权 |
 |--------|------|-------------|:---:|
-| GET | `/api/v1/api-host` | 返回系统配置中的 API host（未配置返回空串） | **无**（Public routes 区块） |
+| GET | `/api/v1/api-host` | 返回系统配置中的 API host（未配置返回空串） | **无**（无 JWT、无 RBAC，Public routes 区块） |
 
 响应示例：
 
@@ -37,6 +37,8 @@
 { "api_host": "" }
 ```
 
+> **鉴权红线**：本接口与 `/health` 同属「完全公开」——**不挂 `JWTManager.AuthMiddleware()`（无 JWT）、不挂 `RequirePermission`（无 RBAC）**，登录前后皆可访问（登录请求本身依赖它，故必须先于登录可用）。
+
 ## 5. 详细设计
 
 ### 数据流
@@ -44,23 +46,32 @@
 ```
 admin 在系统设置页配置 API_HOST 值
   → config.Service.Upsert(key="API_HOST", value, desc) → MongoDB system_configs
-前端启动/需要时：
-  fetch('/api/v1/api-host')  (相对路径，走 nginx 同源代理，必定可达)
-    ├─ 200 且 api_host 非空 → 使用该值
-    └─ 失败 / 空串       → fallback 到 window.location.origin
+
+前端（无论是否登录，含登录前）：
+  getApiHost()
+    → fetch('/api/v1/api-host')   ← 相对路径，走同源 nginx 代理，不依赖任何预置 API_BASE
+       ├─ 200 且 api_host 非空 → 缓存并作为 API_BASE
+       └─ 失败 / 空串          → fallback 到 window.location.origin（+ /api/v1）
+  → 之后所有请求（含 login /auth/login、apiFetch）都用解析出的 API_BASE
 ```
+
+### 关键闭环（登录也依赖 API host）
+
+「获取 API host」的请求本身**必须用相对路径**（`fetch('/api/v1/api-host')`），因为此时尚未确定 API host，若用绝对地址会形成「先知道 host 才能问 host」的死循环。相对路径在同源部署下由 nginx 代理 `/api/v1/*` 必然可达后端，从而在**登录前**就能拿到后端地址。
+
+`login()` 当前在 `lib/api.ts` 里用模块级常量 `const API_BASE = process.env.NEXT_PUBLIC_API_URL || ...` 发起 `fetch(\`${API_BASE}/auth/login\`)`。本 spec 要求**登录也走动态 host**，因此必须把 `API_BASE` 从编译时常量改为运行时解析（模块级可变状态 + 首次请求前 `await ensureApiHost()`）。
 
 ### 后端改动
 
 1. **配置项**：`internal/service/config/service.go` 的 `SystemBuiltins()` 增加一项
    `{Key: "API_HOST", Description: "对外 API 基地址（前端运行时获取后端地址，空则回退到前端同源）", Default: ""}`
 2. **Handler**：新增 `internal/api/handler/config.go` 或独立 `api_host.go`，读 `config.Service`（或 `SysConfigRepository`）取 `API_HOST` 值返回。
-3. **路由**：`routes.go` Public routes 区块新增 `router.GET("/api/v1/api-host", h.GetAPIHost)`（**不挂 AuthMiddleware、不挂 RequirePermission**）。
+3. **路由**：`routes.go` Public routes 区块新增 `router.GET("/api/v1/api-host", h.GetAPIHost)`（**不挂 `AuthMiddleware`（无 JWT）、不挂 `RequirePermission`（无 RBAC）**）。
 
 ### 前端改动
 
-1. 新增 `frontend/lib/api-host.ts`：`getApiHost()` 封装上述 fetch + fallback 逻辑。
-2. （待定稿 D3）是否重构 `lib/api.ts` 的 `API_BASE` 为运行时动态获取，还是仅新增独立函数供特定场景使用。
+1. 新增 `frontend/lib/api-host.ts`：`getApiHost()` 封装「相对路径 fetch + 结果缓存 + fallback」。
+2. **重构 `lib/api.ts` 的 `API_BASE` 为运行时动态**（D3 已定稿）：`login()` 与 `apiFetch()` 均在发请求前 `await ensureApiHost()`；`chat/page.tsx` 里 4 处 `process.env.NEXT_PUBLIC_API_URL` 直用同步收敛到统一出口。
 
 ## 6. 可行性分析
 
@@ -81,7 +92,8 @@ admin 在系统设置页配置 API_HOST 值
 | `internal/api/handler/routes.go` | Public routes 注册 `/api/v1/api-host` | Small |
 | `cmd/server/wire.go` | 注入依赖（如 handler 需要 config.Service） | Small |
 | `frontend/lib/api-host.ts` | 新增 `getApiHost()` 封装 | New |
-| `frontend/lib/api.ts`（待定稿 D3） | 可能重构 `API_BASE` | Small |
+| `frontend/lib/api.ts` | **重构** `API_BASE` 为运行时动态（`login`/`apiFetch` 均 `await ensureApiHost()`） | Medium |
+| `frontend/app/chat/page.tsx` | 4 处 `process.env.NEXT_PUBLIC_API_URL` 收敛到统一出口 | Small |
 
 ## 8. 测试策略
 
@@ -122,15 +134,16 @@ admin 在系统设置页配置 API_HOST 值
 ## 10. 验证标准
 
 1. 系统设置页（admin/settings）出现「API Host」配置项，可编辑保存。
-2. `GET /api/v1/api-host` 无需登录返回 200；未配置时返回 `{"api_host":""}`。
+2. `GET /api/v1/api-host` **无需登录、无 JWT、无 RBAC** 返回 200；未配置时返回 `{"api_host":""}`。
 3. 配置非空值后接口返回该值。
-4. 前端 `getApiHost()`：接口可达且非空 → 用配置值；不可达/空 → fallback `window.location.origin`。
+4. 前端 `getApiHost()`：接口可达且非空 → 用配置值；不可达/空 → fallback `window.location.origin`（+ `/api/v1`）。
+5. **登录闭环**：清空缓存后，`login()` 在无 token 状态下仍能正确解析 API host 并发起 `/auth/login`（验证登录前即可用）。
 
 ## 11. 待定稿决策点
 
-| # | 决策点 | 选项 | 备注 |
-|---|--------|------|------|
-| D1 | 配置项 key 命名 | `API_HOST`（大驼峰，同 `INVITE_BASE_URL`）vs `api_host`（小写蛇形，同 `pii_redaction_enabled`） | 现有两套命名混用 |
-| D2 | `api_host` 返回值语义 | 完整 base URL（含 `/api/v1`）vs 纯 origin（不含路径） | 影响前端如何拼接 |
-| D3 | 前端消费方式 | 重构 `lib/api.ts` 的 `API_BASE` 为运行时动态 vs 仅新增 `getApiHost()` 独立函数 | 核心分歧：是否动现有请求链路 |
-| D4 | fallback 值优先级 | `window.location.origin` vs 现有 `NEXT_PUBLIC_API_URL` | 用户已明确「当前前端 host」，倾向 origin |
+| # | 决策点 | 状态 | 选项 | 备注 |
+|---|--------|:---:|------|------|
+| D1 | 配置项 key 命名 | ⏳ 待拍板 | `API_HOST`（大驼峰，同 `INVITE_BASE_URL`）vs `api_host`（小写蛇形） | 现有两套命名混用 |
+| D2 | `api_host` 返回值语义 | ⏳ 待拍板（推荐：完整 base URL） | 完整 base URL（含 `/api/v1`）vs 纯 origin | 影响拼接：完整 base URL 可直接替代现有 `API_BASE`；纯 origin 则前端拼 `/api/v1`。**推荐完整 base URL**（fallback 用 `origin + '/api/v1'`，与现 `API_BASE` 语义一致） |
+| D3 | 前端消费方式 | ✅ 已定稿 | **重构 `lib/api.ts` 的 `API_BASE` 为运行时动态** | 用户明确「登录接口也需要知道 API host」→ 登录在 api.ts 内，必须动态化 |
+| D4 | fallback 值优先级 | ✅ 已定稿 | `window.location.origin`（+ `/api/v1`） | 用户明确「当前前端 host」 |
