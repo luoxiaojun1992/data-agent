@@ -72,6 +72,9 @@ admin 在系统设置页配置 API_HOST 值
 2. **Handler**：新增 `internal/api/handler/config.go` 或独立 `api_host.go`，读 `config.Service`（或 `SysConfigRepository`）取 `API_HOST` 值返回。
 3. **路由**：`routes.go` Public routes 区块新增 `router.GET("/api/v1/api-host", h.GetAPIHost)`（**不挂 `AuthMiddleware`（无 JWT）、不挂 `RequirePermission`（无 RBAC）**）。
 
+> **原始 seed 数据同步（已确认，2026-09-12）**：`SystemBuiltins()` 是系统配置的**唯一 seed 来源**，新增 `API_HOST` 项即完成「原始 seed 数据」的同步。`SeedBuiltins()`（`config/service.go:91`）是**逐 key 补缺**逻辑——`for _, b := range SystemBuiltins()` 遍历每个内置项，已存在则保留用户值并同步 description、缺失则用 Default 值 `Upsert`。因此**服务重启时（`wire.go:427` 启动调用）会自动把 `API_HOST` 补进 `system_configs`，无需任何手动脚本**。
+> 这与 SPEC-098 的 skill seed（`SeedSkills` 整体「已存在则跳过」、需一次性脚本直改 DB）机制**不同**：系统配置 seed 天然补齐新增 key，不存在「已存在则跳过导致新项漏 seed」的问题。
+
 ### 前端改动
 
 1. 新增 `frontend/lib/api-host.ts`：`getApiHost()` 封装「相对路径 fetch + 结果缓存 + 拼 `/api/v1` + fallback」。
