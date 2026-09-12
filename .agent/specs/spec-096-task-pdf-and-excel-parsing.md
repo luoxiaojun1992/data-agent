@@ -1,6 +1,6 @@
 # Task PDF 解析 + kb/chat/task Excel 解析
 
-> **SPEC-096** | Status: 📐 深化中（D1~D6 已定稿；D5 遗留 .xls 格式范围待确认；暂不实现）
+> **SPEC-096** | Status: 📐 深化中（D1~D6 已定稿；暂不实现）
 
 ## 1. 目标
 
@@ -45,7 +45,7 @@
 | 环节 | 现状 | 缺口 |
 |------|------|------|
 | 创建接口 | `POST /tasks`（`handler/task.go CreateTask`）接收 `title/description/images/cron/schedule/model_id` | 无 `pdfs` 字段 |
-| 图片附件 | `Images []domainchat.ImagePart` → `validateRequestImages`（复用 `ValidateImages`，≤5 张/2MB）→ `EncodeImages` 存 `params["images"]` | 已复用 chat 图片校验 |
+| 图片附件 | `Images []domainchat.ImagePart` → `validateRequestImages`（复用 `ValidateImages`，≤5 张/2MB）→ `EncodeImages` 存 `params["images"]` | 已复用 chat 图片校验（D2 定稿：改为 task 特有常量/类型/函数，去 `domainchat` 依赖） |
 | 文本 | `description` → `params["description"]`；XSS 校验 title/description | **无文本长度上限**（SPEC-094 已确认缺口） |
 | 执行消费 | executor `deriveUserMessageFromParams` 取 text（query/message/prompt/description）+ images；`buildTaskContent` 组装 genai.Content | 无 PDF 文字前置、无 Excel |
 | 前端弹窗 | 常规创建弹窗（`agent-task-modal`，title+desc+📎图片+模型+定时）vs 日常总结模版弹窗（`agent-template-daily-summary-title`，独立于常规弹窗） | 常规弹窗无 PDF 上传；日常总结不涉及 |
@@ -57,14 +57,14 @@
 
 ### 2.5 三端校验现状矩阵（D2 确认结论，2026-09-12 逐文件核实）
 
-| 校验项 | chat | kb | task（现状） |
+| 校验项 | chat | kb | task（现状 → D2 定稿后） |
 |--------|:---:|:---:|:---:|
-| 文本长度 | ✅ `MaxChatTextBytes=100KB`（用户+PDF 合并） | ✅ `MaxKBTextBytes=5MB` | ❌ **无**（缺口，D2 补 `MaxTaskTextBytes=100KB`） |
-| XSS | ✅ `ValidateXSS`（用户提示词，PDF 文字豁免） | ✅ `ValidateXSS`（标题；正文不校验） | ✅ `ValidateXSS`（title/description，`handler/task.go:54/58`） |
-| 图片数量 | ✅ `MaxImages=5`（`domain/chat/image.go`） | ✅ `MaxKBImageCount=10` | ✅ 复用 `validateRequestImages` → `domainchat.ValidateImages`（≤5） |
-| 图片大小 | ✅ `MaxImageBytes=2MB` / `MaxTotalBytes=5MB` | ✅ `MaxKBImageBytes=1MB` | ✅ 复用 `ValidateImages`（2MB/5MB） |
+| 文本长度 | ✅ `MaxChatTextBytes=100KB`（用户+PDF 合并） | ✅ `MaxKBTextBytes=5MB` | ❌ **无** → ✅ 新增 task 特有 `MaxTaskTextBytes=100KB` |
+| XSS | ✅ `ValidateXSS`（用户提示词，PDF 文字豁免） | ✅ `ValidateXSS`（标题；正文不校验） | ✅ `ValidateXSS`（title/description，`handler/task.go:54/58`；封装为 task 特有校验入口） |
+| 图片数量 | ✅ `MaxImages=5`（`domain/chat/image.go`） | ✅ `MaxKBImageCount=10` | ❌ 复用 chat → ✅ 新增 task 特有 `MaxTaskImages=5` + `ValidateTaskImages` |
+| 图片大小 | ✅ `MaxImageBytes=2MB` / `MaxTotalBytes=5MB` | ✅ `MaxKBImageBytes=1MB` | ❌ 复用 chat → ✅ 新增 task 特有 `MaxTaskImageBytes=2MB` / `MaxTaskTotalBytes=5MB` |
 
-> **结论**：chat/kb 四类校验全齐；task **仅缺「文本长度」**（XSS 已在 `handler/task.go:54/58`，图片数量/大小已复用 `validateRequestImages` → `domainchat.ValidateImages`）。D2 只需补 `MaxTaskTextBytes=100KB`，并明确「XSS 仅校验用户手输原文、PDF/Excel 解析文字豁免（同 chat PDF 豁免）」。
+> **结论**：chat/kb 四类校验全齐；task 的 XSS 规则调用已存在，但**文本长度与图片校验当前借用 `domainchat` 的常量/函数**，违反「各 domain 边界独立」的分层铁律。D2 定稿：**task 域新增自己特有的校验常量与校验函数**（`internal/domain/task/limits.go`），不再 import `domainchat` —— 文本长度 `MaxTaskTextBytes=100KB`、图片数量/大小 `MaxTaskImages=5`/`MaxTaskImageBytes=2MB`/`MaxTaskTotalBytes=5MB`、特有 `ImagePart` 类型与 `ValidateTaskImages`；XSS 规则仍复用 `security.ValidateXSS`（安全规则单点维护），但由 task 特有校验函数封装调用。
 
 ## 3. 需求分解
 
@@ -80,9 +80,9 @@
 
 - 前端：常规创建弹窗增加「📄 添加 PDF」入口，复用 `parsePdf(file)` 解析出 `{ text, images }`。
   - PDF 文件大小 ≤ `MAX_PDF_BYTES`（20MB）。
-  - 解析出的图片并入 task 图片附件，共享「≤5 张、每张 2MB」计数（与 chat 一致：PDF 配图 + 手动上传图片合并计数）。
-  - 解析出的文字与 description 合并，受新增的 `MaxTaskTextBytes = 100KB` 上限约束（D2 已定稿）。
-- 后端：`CreateTask` 请求体新增 `pdfs []PdfAttachment`（复用 `domain/chat.PdfAttachment`），图片照旧走 `params["images"]`，PDF 文字按 D1（B）以 `[PDF:name]…[/PDF:name]` 标签拼进 description 存储。
+  - 解析出的图片并入 task 图片附件，受 task 特有图片校验常量约束（`MaxTaskImages=5` / `MaxTaskImageBytes=2MB` / `MaxTaskTotalBytes=5MB`，D2 已定稿 task 域独立常量）：PDF 配图 + 手动上传图片合并计数。
+  - 解析出的文字与 description 合并，受 task 特有 `MaxTaskTextBytes = 100KB` 上限约束（D2 已定稿）。
+- 后端：`CreateTask` 请求体新增 `pdfs []PdfAttachment`（复用 `domain/chat.PdfAttachment`），图片照旧走 `params["images"]`（改用 task 特有 `EncodeImages`），PDF 文字按 D1（B）以 `[PDF:name]…[/PDF:name]` 标签拼进 description 存储。
 - **日常总结模版弹窗不加 PDF 入口**（红线，用户明确）。
 
 ### 4.2 R2 — task 描述隐藏 PDF 内容（D1 已定稿 B）
@@ -98,7 +98,7 @@
 
 ### 4.3 R3 — Excel 解析（kb/chat/task 三端）
 
-- **前端解析**：新增 Excel 解析库 `read-excel-file`（D5 已定稿，MIT），把 `.xlsx` 解析为**纯文本**（逐 sheet 拼接单元格文本，不提取图片）。⚠️ `read-excel-file` 仅支持 `.xlsx`、不支持 `.xls`（见 D5 遗留确认）。
+- **前端解析**：新增 Excel 解析库 `read-excel-file`（D5 已定稿，MIT），把 `.xlsx` 解析为**纯文本**（逐 sheet 拼接单元格文本，不提取图片）。`read-excel-file` **仅支持 `.xlsx`、不支持 `.xls`**（D5 已收敛，`.xls` 不在范围内）。
   - 复用 `parsePdf` 的返回形态思路，新增 `parseExcel(file): Promise<{ text: string }>`（**无 images**）。
 - **标签协议**：与 `[PDF:name]…[/PDF:name]` 对称，新增 `[Excel:name]…[/Excel:name]`；前端剥离函数从 `stripPdfBlocks` 泛化为同时处理 PDF/Excel 标签（返回 `{ text, pdfs, excels }`）。
 - **三端落地**：
@@ -114,7 +114,7 @@
 
 ### 4.4 文件类型判断
 
-- 复用/扩展 `frontend/lib/pdf.ts` 的 `isPdfFile` / `SUPPORTED_EXTENSIONS`，新增 `isExcelFile(fileName)`（`.xlsx`；`.xls` 是否支持取决于 D5 遗留确认）。
+- 复用/扩展 `frontend/lib/pdf.ts` 的 `isPdfFile` / `SUPPORTED_EXTENSIONS`，新增 `isExcelFile(fileName)`（仅 `.xlsx`，D5 已收敛不支持 `.xls`）。
 
 ## 5. 可行性分析
 
@@ -123,7 +123,7 @@
 | 是否需要新 DB 集合 | No（task 复用 `Task.Params` 存 pdfs/excel 文字） |
 | 是否影响现有 API | Yes：`POST /tasks` 请求体新增 `pdfs`（及 excel 文字字段） |
 | 是否需要新增 Skill | No（纯前端解析 + task handler/service 扩展） |
-| 是否需要后端改动 | Yes：task handler（`pdfs` 字段 + XSS 豁免 + 文本上限）+ executor（`params["pdfs"]` 消费 + `formatPDFText` 前置） |
+| 是否需要后端改动 | Yes：task handler（`pdfs` 字段 + 特有校验常量 + XSS 豁免 + 文本上限）+ executor（`params["pdfs"]` 消费 + `formatPDFText` 前置） |
 | 性能影响 | 前端 PDF/Excel 解析占用浏览器内存；task 文本上限兜底，不影响现有链路 |
 | License | unpdf（PDF，已用）；Excel 库 `read-excel-file`（MIT，✅ 合规，D5 已定稿；**严禁** GPL/AGPL/SSPL） |
 
@@ -136,15 +136,16 @@
 | `frontend/app/agent/page.tsx` | 常规创建弹窗加 PDF 上传 + 图片合并；日常总结模版不加 | Medium |
 | `frontend/app/chat/page.tsx` | 加 Excel 附件解析 + 📊 卡片；`stripPdfBlocks` 泛化处理 Excel 标签 | Medium |
 | `frontend/app/knowledge/page.tsx` | 加 Excel 上传解析 → `CreateFromText` | Medium |
+| `internal/domain/task/limits.go` | **新增** task 特有校验常量/类型/函数（`MaxTaskTextBytes`/`MaxTaskImages`/`MaxTaskImageBytes`/`MaxTaskTotalBytes`/`ImagePart`/`ValidateTaskImages`/`ValidateTaskText`），去 `domainchat` 依赖 | Small |
 | `internal/domain/chat/contract.go` | 复用 `PdfAttachment`；可能新增 Excel 标签常量 | Small |
-| `internal/api/handler/task.go` | `CreateTask` 加 `pdfs`/excel 字段 + 文本上限 + XSS 豁免 | Medium |
+| `internal/api/handler/task.go` | `CreateTask` 加 `pdfs`/excel 字段；图片/文本校验改用 task 特有常量（去 `domainchat` import）+ XSS 豁免 | Medium |
 | `internal/logic/agent/executor.go` | `deriveUserMessageFromParams` 取 pdfs/excel + `buildTaskContent` 前置 | Medium |
 | `internal/service/task/service.go` | `CreateTask` 透传 pdfs/excel 到 `params` | Small |
 | `frontend/package.json` | 新增 Excel 解析库（D5） | Small |
 
 ## 7. 测试策略
 
-1. **Unit tests（Go）**：task handler `CreateTask` 的 pdfs 字段解析/文本上限/XSS 豁免；executor `buildTaskContent` 的 PDF/Excel 标签前置；`formatPDFText`/`formatExcelText`。
+1. **Unit tests（Go）**：task handler `CreateTask` 的 pdfs 字段解析/文本上限/XSS 豁免；task 域 `ValidateTaskImages`/`ValidateTaskText`；executor `buildTaskContent` 的 PDF/Excel 标签前置；`formatPDFText`/`formatExcelText`。
 2. **E2E tests（前端）**：task 创建带 PDF → 描述显示 📄 不显示 PDF 文字 → 执行成功；chat 带 Excel → 历史显示 📊；kb 上传 Excel → 建 doc。
 3. **手动验证**：真实 PDF/Excel 文件解析效果。
 
@@ -162,22 +163,22 @@
 
 ## 9. 验证标准
 
-1. task 常规创建弹窗可上传 PDF，解析文字 + 配图分别并入 task 文本/图片（计数/尺寸校验生效）。
+1. task 常规创建弹窗可上传 PDF，解析文字 + 配图分别并入 task 文本/图片（计数/尺寸校验生效，走 task 特有常量）。
 2. 日常总结模版弹窗**无** PDF 上传入口（红线）。
 3. task 列表/详情展示 description 时**只显示 📄 卡片，不显示 PDF 文字**。
 4. task 执行时 LLM 能读到 PDF 文字（标签前置生效）。
-5. kb/chat/task 均可上传 Excel，解析为纯文本（无图片）。
+5. kb/chat/task 均可上传 `.xlsx`，解析为纯文本（无图片）；`.xls` 不支持（前端拒绝）。
 6. chat 历史中 Excel 附件显示 📊 卡片（非 📄）。
 7. Excel 解析文字含 `<script>` 不触发 XSS（豁免同 PDF）。
-8. 三端 PDF/Excel 的文件大小、文本长度、图片计数限制一致生效；task 的「description（用户原文 + PDF 文字 + Excel 文字合并）」≤ `MaxTaskTextBytes=100KB`。
+8. 三端 PDF/Excel 的文件大小、文本长度、图片计数限制一致生效；task 的「description（用户原文 + PDF 文字 + Excel 文字合并）」≤ task 特有 `MaxTaskTextBytes=100KB`。
 
 ## 10. 待定稿决策点（深化阶段拍板）
 
 | # | 决策点 | 说明 |
 |---|--------|------|
 | D1 | PDF 文字存储方式 | ✅ **已定稿（2026-09-12）**：**B 方案**——PDF 文字以 `[PDF:name]…[/PDF:name]` 标签拼进 description 存 DB（与 chat 存储协议完全一致；前端 `stripPdfBlocks` 剥离 + 📄 卡片；executor 直接用 description 作 text） |
-| D2 | task 文本长度上限 | ✅ **已定稿（2026-09-12）**：**新增独立 `MaxTaskTextBytes = 100KB`**（与 chat 对齐）。校验对象 = 整个 description（用户手输原文 + PDF 文字 + Excel 文字合并，UTF-8 bytes ≤ 100KB）；XSS 仅校验用户手输原文（PDF/Excel 解析文字豁免，同 chat）；图片（含 PDF 解析配图）复用 `ValidateImages`（≤5 张 / 每张 2MB / 总量 5MB）。详见 §2.5 校验矩阵 |
+| D2 | task 校验常量归属 | ✅ **已定稿（2026-09-12）**：**task 域新增自己特有的校验常量与校验函数**（新建 `internal/domain/task/limits.go`），**不再复用 `domainchat` 的常量/函数**（分层铁律：domain 边界独立）。文本长度 `MaxTaskTextBytes=100KB`（对齐 chat，常量独立定义）；图片 `MaxTaskImages=5` / `MaxTaskImageBytes=2MB` / `MaxTaskTotalBytes=5MB` + 特有 `ImagePart` 类型 + `ValidateTaskImages`；XSS 规则仍复用 `security.ValidateXSS`（安全规则单点维护），由 task 特有 `ValidateTaskText` 封装调用（XSS 仅校验用户手输原文，PDF/Excel 解析文字豁免，同 chat）。校验对象 = 整个 description（用户原文 + PDF 文字 + Excel 文字合并，UTF-8 bytes ≤ 100KB）。详见 §2.5 校验矩阵 |
 | D3 | Excel 标签协议 | ✅ **已定稿（2026-09-12）**：`[Excel:name]…[/Excel:name]`（对称 PDF，name 用于前端 📊 卡片、text 供 LLM） |
 | D4 | Excel 解析范围 | ✅ **已定稿（2026-09-12）**：**全部 sheet 拼接**（按 sheet 顺序逐 sheet 拼单元格文本）；单元格类型序列化方式（数字/日期/公式）留实现阶段细化 |
-| D5 | Excel 解析库选型 | ✅ **已定稿（2026-09-12）**：**`read-excel-file`**（MIT，持续维护）。**导入 = npm `package.json`**（`npm install read-excel-file`，Next.js 走 bundler 直接装）；另有**可选** CDN standalone 版（官方 README 仅建议非 bundler 场景用，本项目不用）。⚠️ **遗留确认**：官方 README 明确「Read `*.xlsx` files」——**仅 `.xlsx`、不支持 `.xls`**；spec 原写 `.xlsx/.xls` → 需确认收敛为仅 `.xlsx`（若 `.xls` 硬需求则回退 SheetJS，其 npm 停更 + CVE-2023-30533、0.20.x 仅官方 CDN 分发） |
+| D5 | Excel 解析库选型与格式范围 | ✅ **已定稿（2026-09-12）**：**`read-excel-file`**（MIT，持续维护），**仅 `.xlsx`、不支持 `.xls`**（`.xls` 不在本 spec 范围内，前端 `isExcelFile` 仅放行 `.xlsx`）。**导入 = npm `package.json`**（`npm install read-excel-file`，Next.js 走 bundler 直接装）；CDN standalone 版仅官方 README 建议非 bundler 场景用，本项目不用 |
 | D6 | kb Excel 建 doc 的 FileType | ✅ **已定稿（2026-09-12）**：复用 `txt`（纯文本），不新增 `xlsx` 类型 |
