@@ -1,6 +1,6 @@
 # Chat 语音输入（whisper.wasm 纯 CPU 本地转写）
 
-> **SPEC-095** | Status: 📐 立项（暂不实现、暂不深化，定稿后进入实现）
+> **SPEC-095** | Status: ✅ 设计定稿（D1~D5 已全部定稿；暂不实现）
 
 ## 1. 目标
 
@@ -84,7 +84,7 @@
 | `frontend/app/chat/page.tsx` | 语音按钮 + 录音/转写状态 + 回填 textarea | Medium |
 | `frontend/lib/voice.ts`（或 hook） | whisper.wasm 加载/录音/转写封装（新） | New |
 | `frontend/app/components/VoiceInputButton.tsx`（可选） | 麦克风按钮组件（新） | New |
-| `frontend/package.json` | 引入 whisper.wasm 依赖（模型文件不走 npm，见下） | Small |
+| `frontend/package.json` | 引入 whisper.cpp 官方 npm 包依赖（D5 已定稿；模型 `.bin` 文件不走 npm，走代码仓库托管，见下） | Small |
 | `frontend/public/models/whisper/` | ggml 模型文件（tiny.en ~75MB）**直接提交仓库**，Next.js 静态托管 | New（+75MB） |
 
 ## 7. 测试策略
@@ -119,8 +119,8 @@
 
 | # | 决策点 | 说明 |
 |---|--------|------|
-| D1 | 模型档位 | tiny（快/差）vs base（慢/好）vs small；默认哪档 |
+| D1 | 模型档位 | ✅ **已定稿（2026-09-12）**：用 **tiny**（~75MB，纯 CPU 速度可接受；转写质量满足语音输入回填场景） |
 | D2 | 模型托管 | ✅ **已定稿（2026-09-10）**：模型文件直接提交代码仓库 `frontend/public/models/whisper/`，由 Next.js 静态托管（相对路径 `/models/whisper/xx.bin`），前端本地加载、无 CDN 依赖。tiny 档 ~75MB 在 GitHub 100MB 单文件限制内，**暂不引入 git-lfs**；若未来升级 base(~142MB)/small(~466MB) 超限再评估 git-lfs。代价：仓库 +75MB、clone/pull 变慢、前端镜像变大，已接受 |
 | D3 | 回填策略 | ✅ **已定稿（2026-09-10）**：追加到现有文本末尾（`setInput(prev => prev + 转写文本)`），不覆盖已有输入 |
 | D4 | 录音停止方式 | ✅ **已定稿（2026-09-10）**：手动再点一次停止——点击麦克风 icon 开始录音并变为「录制中」icon，再点「录制中」icon 停止并变回麦克风 icon；不做静音自动停止 |
-| D5 | 依赖引入方式 | npm 包 vs 直接引用 whisper.wasm 产物（license/体积） |
+| D5 | 依赖引入方式 | ✅ **已定稿（2026-09-12）**：用 **whisper.cpp 官方 npm 包**（`whisper.cpp`，MIT，内部即 whisper.wasm，模型仍为 ggml `.bin` 与 D2 强一致），省去手写 C API 胶水；**排除 transformers.js**（`@huggingface/transformers`，ONNX Runtime 引擎 + `.onnx` 模型，与 D2 的 ggml `.bin` 托管冲突）。实现阶段若官方包 API 不满足「麦克风分段转写→回填」，退回直接引 whisper.wasm 产物 + 自写胶水（模型仍是 `.bin`，不影响 D2） |
