@@ -115,7 +115,7 @@ func GenerateHTML(html string, outputPath string) error {
 
 `predefinedSkills()` 中 `pptx_generator` 的 `Description` 由「从 markdown 内容生成」改为「从 markdown 或 HTML 内容生成 .pptx（HTML 支持表格/图片/逐元素样式，更精美，推荐）」。
 
-> ⚠️ **同步机制注意**：`SeedSkills` 幂等逻辑「已存在则跳过」——线上 DB 中已存在的 `pptx_generator` 记录**不会**因 seed 改动自动更新描述。实现时需**一次性手动同步**线上记录（部署脚本或 admin 面板改描述），或将本 skill 的 description 视为「随代码版本」的只读内置项。此点见决策点 D3。
+> ⚠️ **同步机制注意（D3 已定稿）**：`SeedSkills` 幂等逻辑「已存在则跳过」——线上 DB 中已存在的 `pptx_generator` 记录**不会**因 seed 改动自动更新描述。故 D3 定稿为：**① 代码层更新 `predefinedSkills()` 原始 seed 数据（保证新建环境/新 seed 正确）；② 实现时写一次性脚本直接更新线上 DB 中 `pptx_generator` 的 description**，不走 SeedSkills 幂等跳过逻辑。脚本定位：按 skill `name=pptx_generator`（或 `_id`）更新 `description` 字段，与代码 seed 保持一致。
 
 ### 5.4 HTML 用法指导（写入 tool description / jsonschema）
 

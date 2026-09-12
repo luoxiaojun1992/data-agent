@@ -111,7 +111,7 @@
 | SPEC-095 | Chat 语音输入（whisper.wasm 纯 CPU 本地转写，音频不上传；转写结果回填输入框、不自动提交；与增强/脱敏按钮并存） | **P15** | [spec-095-chat-voice-input-whisper-wasm.md](spec-095-chat-voice-input-whisper-wasm.md) | ✅ 设计定稿（D1~D5 全定稿；暂不实现） |
 | SPEC-096 | Task PDF 解析（仅常规创建弹窗，日常总结模版不加）+ kb/chat/task 三端 Excel 解析（纯文本、无图片）；task 描述隐藏 PDF 内容只显示 📄；校验/显示/XSS 豁免与 PDF 一致 | **P15** | [spec-096-task-pdf-and-excel-parsing.md](spec-096-task-pdf-and-excel-parsing.md) | 📐 深化中（D1~D6 已定稿；暂不实现） |
 | SPEC-097 | API Host 系统配置 + 公开查询接口（无 JWT、无 RBAC）+ 前端运行时动态获取（登录接口也走动态 host；拿不到 fallback 到当前前端 host） | **P15** | [spec-097-api-host-config-and-public-endpoint.md](spec-097-api-host-config-and-public-endpoint.md) | ✅ 设计定稿（D1~D4 全定稿；暂不实现） |
-| SPEC-098 | pptx skill 优化 — 同时支持 Markdown 与 HTML（HTML 支持表格/图片/逐元素样式更精美；同步原始 seed 数据） | **P15** | [spec-098-pptx-skill-html-support.md](spec-098-pptx-skill-html-support.md) | 📝 立项（待深化；暂不实现） |
+| SPEC-098 | pptx skill 优化 — 同时支持 Markdown 与 HTML（HTML 支持表格/图片/逐元素样式更精美；同步原始 seed 数据） | **P15** | [spec-098-pptx-skill-html-support.md](spec-098-pptx-skill-html-support.md) | ✅ 设计定稿（D1~D3 全定稿；暂不实现） |
 
 ## Phase 对应与依赖
 
