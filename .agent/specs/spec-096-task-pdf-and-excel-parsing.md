@@ -1,6 +1,6 @@
 # Task PDF 解析 + kb/chat/task Excel 解析
 
-> **SPEC-096** | Status: 📐 立项（暂不实现、暂不深化，定稿后进入实现）
+> **SPEC-096** | Status: 📐 深化中（D1~D6 已定稿；D5 遗留 .xls 格式范围待确认；暂不实现）
 
 ## 1. 目标
 
@@ -55,6 +55,17 @@
 - 三端均**无任何 Excel 解析能力**。
 - 前端**无 Excel 解析库**（`package.json` 仅有 `unpdf`，无 xlsx/exceljs/read-excel-file）。
 
+### 2.5 三端校验现状矩阵（D2 确认结论，2026-09-12 逐文件核实）
+
+| 校验项 | chat | kb | task（现状） |
+|--------|:---:|:---:|:---:|
+| 文本长度 | ✅ `MaxChatTextBytes=100KB`（用户+PDF 合并） | ✅ `MaxKBTextBytes=5MB` | ❌ **无**（缺口，D2 补 `MaxTaskTextBytes=100KB`） |
+| XSS | ✅ `ValidateXSS`（用户提示词，PDF 文字豁免） | ✅ `ValidateXSS`（标题；正文不校验） | ✅ `ValidateXSS`（title/description，`handler/task.go:54/58`） |
+| 图片数量 | ✅ `MaxImages=5`（`domain/chat/image.go`） | ✅ `MaxKBImageCount=10` | ✅ 复用 `validateRequestImages` → `domainchat.ValidateImages`（≤5） |
+| 图片大小 | ✅ `MaxImageBytes=2MB` / `MaxTotalBytes=5MB` | ✅ `MaxKBImageBytes=1MB` | ✅ 复用 `ValidateImages`（2MB/5MB） |
+
+> **结论**：chat/kb 四类校验全齐；task **仅缺「文本长度」**（XSS 已在 `handler/task.go:54/58`，图片数量/大小已复用 `validateRequestImages` → `domainchat.ValidateImages`）。D2 只需补 `MaxTaskTextBytes=100KB`，并明确「XSS 仅校验用户手输原文、PDF/Excel 解析文字豁免（同 chat PDF 豁免）」。
+
 ## 3. 需求分解
 
 | # | 子需求 | 涉及端 | 关键点 |
@@ -70,24 +81,24 @@
 - 前端：常规创建弹窗增加「📄 添加 PDF」入口，复用 `parsePdf(file)` 解析出 `{ text, images }`。
   - PDF 文件大小 ≤ `MAX_PDF_BYTES`（20MB）。
   - 解析出的图片并入 task 图片附件，共享「≤5 张、每张 2MB」计数（与 chat 一致：PDF 配图 + 手动上传图片合并计数）。
-  - 解析出的文字与 description 合并，**需引入 task 文本长度上限**（见 D2，建议复用 `MaxChatTextBytes=100KB` 或新增 `MaxTaskTextBytes`）。
-- 后端：`CreateTask` 请求体新增 `pdfs []PdfAttachment`（复用 `domain/chat.PdfAttachment`），图片照旧走 `params["images"]`，PDF 文字按 D1 存储。
+  - 解析出的文字与 description 合并，受新增的 `MaxTaskTextBytes = 100KB` 上限约束（D2 已定稿）。
+- 后端：`CreateTask` 请求体新增 `pdfs []PdfAttachment`（复用 `domain/chat.PdfAttachment`），图片照旧走 `params["images"]`，PDF 文字按 D1（B）以 `[PDF:name]…[/PDF:name]` 标签拼进 description 存储。
 - **日常总结模版弹窗不加 PDF 入口**（红线，用户明确）。
 
-### 4.2 R2 — task 描述隐藏 PDF 内容（D1 决策点）
+### 4.2 R2 — task 描述隐藏 PDF 内容（D1 已定稿 B）
 
-目标：task 列表/详情展示 description 时**只显示 📄 卡片、绝不显示 PDF 解析文字**。两种落地方式待定稿：
+目标：task 列表/详情展示 description 时**只显示 📄 卡片、绝不显示 PDF 解析文字**。两种落地方式（D1 已定稿 B）：
 
 | 方案 | 存储 | 前端显示 | executor 消费 | 备注 |
 |------|------|---------|--------------|------|
-| **A（推荐）** | PDF 文字单独存 `params["pdfs"]`（`[{name,text}]`），description 保持纯净 | description 天然不含 PDF 文字；从 `params["pdfs"]` 拿文件名渲染 📄 卡片 | `deriveUserMessageFromParams` 额外取 `params["pdfs"]`，`buildTaskContent` 用 `formatPDFText` 前置标签（复用 chat 逻辑） | 结构性隐藏，无泄漏风险；description 不污染 |
-| B | PDF 文字以 `[PDF:name]…[/PDF:name]` 标签拼进 description 存 DB | 前端 `stripPdfBlocks` 剥离 + 📄 卡片（完全复用 chat） | executor 直接用 description 作 text | 与 chat 存储协议完全一致，但 description 被污染 |
+| A | PDF 文字单独存 `params["pdfs"]`（`[{name,text}]`），description 保持纯净 | description 天然不含 PDF 文字；从 `params["pdfs"]` 拿文件名渲染 📄 卡片 | `deriveUserMessageFromParams` 额外取 `params["pdfs"]`，`buildTaskContent` 用 `formatPDFText` 前置标签（复用 chat 逻辑） | 结构性隐藏，description 不污染；但需新增 `params["pdfs"]` 字段 + executor 多一处消费 |
+| **B ✅** | PDF 文字以 `[PDF:name]…[/PDF:name]` 标签拼进 description 存 DB | 前端 `stripPdfBlocks` 剥离 + 📄 卡片（完全复用 chat） | executor 直接用 description 作 text | **与 chat 存储协议完全一致**，复用度最高；description 含标签 |
 
-> 倾向 A：task 的 description 是持久化字段（非流式），PDF 文字独立存 `params["pdfs"]` 更干净、更安全；LLM 输入侧仍复用 `formatPDFText` 标签协议，保证「逻辑与 chat 一致」。
+> **D1 定稿 B**（2026-09-12）：与 chat 存储协议完全同构，前端 `stripPdfBlocks` 剥离 + 📄 卡片、executor 直接用 description 作 text，复用度最高、无额外 `params["pdfs"]` 字段；「description 被污染」可控（前端展示必剥离标签）。
 
 ### 4.3 R3 — Excel 解析（kb/chat/task 三端）
 
-- **前端解析**：新增 Excel 解析库（D5 待定稿），把 `.xlsx/.xls` 解析为**纯文本**（逐 sheet 拼接单元格文本，不提取图片）。
+- **前端解析**：新增 Excel 解析库 `read-excel-file`（D5 已定稿，MIT），把 `.xlsx` 解析为**纯文本**（逐 sheet 拼接单元格文本，不提取图片）。⚠️ `read-excel-file` 仅支持 `.xlsx`、不支持 `.xls`（见 D5 遗留确认）。
   - 复用 `parsePdf` 的返回形态思路，新增 `parseExcel(file): Promise<{ text: string }>`（**无 images**）。
 - **标签协议**：与 `[PDF:name]…[/PDF:name]` 对称，新增 `[Excel:name]…[/Excel:name]`；前端剥离函数从 `stripPdfBlocks` 泛化为同时处理 PDF/Excel 标签（返回 `{ text, pdfs, excels }`）。
 - **三端落地**：
@@ -96,14 +107,14 @@
 |----|---------------|------|------|
 | kb | `CreateFromText` 建 doc（`FileType=txt`，纯文本） | 不支持 | 标题/文件名，无图片 |
 | chat | 前置到 user 文本（`[Excel:name]` 标签），合并入 `MaxChatTextBytes` | 不支持 | 历史显示 📊 卡片（非 📄） |
-| task | 按 D1 方案并入 task 文本（LLM 消费），合并入 task 文本上限 | 不支持 | 描述/详情显示 📊 卡片 |
+| task | 按 D1（B）以 `[Excel:name]…[/Excel:name]` 标签拼进 description（LLM 消费），合并入 `MaxTaskTextBytes` 上限 | 不支持 | 描述/详情显示 📊 卡片 |
 
 - **校验/XSS 豁免与 PDF 一致**：Excel 解析文字同样**豁免 `ValidateXSS`**（单元格可能含 `<script>`/HTML 片段，属正常数据）；文件大小、文本长度、图片计数限制与 PDF 对齐。
 - **Excel 不支持图片**：`parseExcel` 不提取嵌入图片，不并入图片附件。
 
 ### 4.4 文件类型判断
 
-- 复用/扩展 `frontend/lib/pdf.ts` 的 `isPdfFile` / `SUPPORTED_EXTENSIONS`，新增 `isExcelFile(fileName)`（`.xlsx/.xls`）。
+- 复用/扩展 `frontend/lib/pdf.ts` 的 `isPdfFile` / `SUPPORTED_EXTENSIONS`，新增 `isExcelFile(fileName)`（`.xlsx`；`.xls` 是否支持取决于 D5 遗留确认）。
 
 ## 5. 可行性分析
 
@@ -114,7 +125,7 @@
 | 是否需要新增 Skill | No（纯前端解析 + task handler/service 扩展） |
 | 是否需要后端改动 | Yes：task handler（`pdfs` 字段 + XSS 豁免 + 文本上限）+ executor（`params["pdfs"]` 消费 + `formatPDFText` 前置） |
 | 性能影响 | 前端 PDF/Excel 解析占用浏览器内存；task 文本上限兜底，不影响现有链路 |
-| License | unpdf（PDF，已用）；Excel 库待定稿 D5（倾向 MIT：`read-excel-file` / `exceljs`，**严禁** GPL/AGPL/SSPL） |
+| License | unpdf（PDF，已用）；Excel 库 `read-excel-file`（MIT，✅ 合规，D5 已定稿；**严禁** GPL/AGPL/SSPL） |
 
 ## 6. 相关文件
 
@@ -158,15 +169,15 @@
 5. kb/chat/task 均可上传 Excel，解析为纯文本（无图片）。
 6. chat 历史中 Excel 附件显示 📊 卡片（非 📄）。
 7. Excel 解析文字含 `<script>` 不触发 XSS（豁免同 PDF）。
-8. 三端 PDF/Excel 的文件大小、文本长度、图片计数限制一致生效。
+8. 三端 PDF/Excel 的文件大小、文本长度、图片计数限制一致生效；task 的「description（用户原文 + PDF 文字 + Excel 文字合并）」≤ `MaxTaskTextBytes=100KB`。
 
 ## 10. 待定稿决策点（深化阶段拍板）
 
 | # | 决策点 | 说明 |
 |---|--------|------|
-| D1 | PDF 文字存储方式 | A（推荐）：独立存 `params["pdfs"]`、description 纯净 vs B：标签拼进 description 存 DB |
-| D2 | task 文本长度上限 | 复用 `MaxChatTextBytes=100KB` vs 新增独立 `MaxTaskTextBytes`（SPEC-094 已确认 task 现无上限，引入 PDF/Excel 后必须补） |
-| D3 | Excel 标签协议 | `[Excel:name]…[/Excel:name]`（对称 PDF）vs 复用 `[PDF:name]` 统一标签 |
-| D4 | Excel 解析范围 | 全部 sheet 拼接 vs 仅首个 sheet；单元格类型（数字/日期/公式）如何序列化为文本 |
-| D5 | Excel 解析库选型 | `read-excel-file`(MIT,轻量) / `exceljs`(MIT,成熟) / `xlsx`(Apache-2.0,已停更 npm)；**严禁** GPL/AGPL/SSPL；需先查 license 再定 |
-| D6 | kb Excel 建 doc 的 FileType | 复用 `txt`（纯文本）vs 新增 `xlsx` 类型（影响列表展示/筛选） |
+| D1 | PDF 文字存储方式 | ✅ **已定稿（2026-09-12）**：**B 方案**——PDF 文字以 `[PDF:name]…[/PDF:name]` 标签拼进 description 存 DB（与 chat 存储协议完全一致；前端 `stripPdfBlocks` 剥离 + 📄 卡片；executor 直接用 description 作 text） |
+| D2 | task 文本长度上限 | ✅ **已定稿（2026-09-12）**：**新增独立 `MaxTaskTextBytes = 100KB`**（与 chat 对齐）。校验对象 = 整个 description（用户手输原文 + PDF 文字 + Excel 文字合并，UTF-8 bytes ≤ 100KB）；XSS 仅校验用户手输原文（PDF/Excel 解析文字豁免，同 chat）；图片（含 PDF 解析配图）复用 `ValidateImages`（≤5 张 / 每张 2MB / 总量 5MB）。详见 §2.5 校验矩阵 |
+| D3 | Excel 标签协议 | ✅ **已定稿（2026-09-12）**：`[Excel:name]…[/Excel:name]`（对称 PDF，name 用于前端 📊 卡片、text 供 LLM） |
+| D4 | Excel 解析范围 | ✅ **已定稿（2026-09-12）**：**全部 sheet 拼接**（按 sheet 顺序逐 sheet 拼单元格文本）；单元格类型序列化方式（数字/日期/公式）留实现阶段细化 |
+| D5 | Excel 解析库选型 | ✅ **已定稿（2026-09-12）**：**`read-excel-file`**（MIT，持续维护）。**导入 = npm `package.json`**（`npm install read-excel-file`，Next.js 走 bundler 直接装）；另有**可选** CDN standalone 版（官方 README 仅建议非 bundler 场景用，本项目不用）。⚠️ **遗留确认**：官方 README 明确「Read `*.xlsx` files」——**仅 `.xlsx`、不支持 `.xls`**；spec 原写 `.xlsx/.xls` → 需确认收敛为仅 `.xlsx`（若 `.xls` 硬需求则回退 SheetJS，其 npm 停更 + CVE-2023-30533、0.20.x 仅官方 CDN 分发） |
+| D6 | kb Excel 建 doc 的 FileType | ✅ **已定稿（2026-09-12）**：复用 `txt`（纯文本），不新增 `xlsx` 类型 |
