@@ -749,7 +749,8 @@ export default function ChatPage() {
 
   // 点击麦克风：idle → 录音；recording → 停止并转写回填。
   const handleVoiceToggle = async () => {
-    if (voiceLoading || voicePhase === 'recording' || voicePhase === 'transcribing') return; // 加载/录制/转写中禁止重复触发
+    // 仅在模型加载中或转写中禁止重复触发；recording 状态必须放行，否则无法点击停止录制。
+    if (voiceLoading || voicePhase === 'transcribing') return;
     setVoiceError('');
     try {
       if (voicePhase === 'idle') {
