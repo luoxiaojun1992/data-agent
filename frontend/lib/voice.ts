@@ -160,6 +160,7 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
 
   const g = window as unknown as { Module?: { print?: (t: string) => void; printErr?: (t: string) => void } };
   const prevPrint = g.Module?.print;
+  const prevPrintErr = g.Module?.printErr;
 
   return new Promise<string>((resolve, reject) => {
     const lines: string[] = [];
@@ -172,13 +173,17 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
       fn();
     };
 
-    // 转写完成标志：whisper_print_timings 输出（whisper_full 结束后由引擎打印）。
-    g.Module!.print = (t: string) => {
+    // 关键：whisper 的实时转写文本走 stdout（printf → Module.print），
+    // 而完成标志 whisper_print_timings 的 "total time" 走 stderr（fputs(stderr) → Module.printErr）。
+    // 必须同时监听两个流，否则收不到完成标志 → 120s 超时。
+    const onOutput = (t: string) => {
       lines.push(t);
-      if (t.includes('whisper_print_timings') || t.includes('total time')) {
+      if (t.includes('total time') || t.includes('whisper_print_timings')) {
         finish(() => resolve(parseTranscript(lines.join('\n'))));
       }
     };
+    g.Module!.print = onOutput;
+    g.Module!.printErr = onOutput;
 
     const timeout = setTimeout(() => {
       finish(() => reject(new Error('转写超时')));
@@ -193,6 +198,9 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
       finish(() => reject(e as Error));
     }
   }).finally(() => {
-    if (g.Module) g.Module.print = prevPrint;
+    if (g.Module) {
+      g.Module.print = prevPrint;
+      g.Module.printErr = prevPrintErr;
+    }
   });
 }
