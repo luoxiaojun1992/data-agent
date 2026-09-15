@@ -1,5 +1,9 @@
 // SPEC-095: Chat 语音输入（whisper.wasm 纯 CPU 本地转写）
 // 音频全程本地处理、不上传。封装 whisper.cpp 官方 wasm 产物（/whisper/libmain.js）。
+// ⚠️ 产物为自编译「同步执行版」：emscripten.cpp 去掉了原版 std::thread（pthread
+// worker 的 stdout/stderr 无法转发到主线程 Module.print/printErr → 永远收不到输出
+// → 转写超时）。同步模式下 full_default 在主线程执行、返回时转写已完成，
+// ggml 内部并行由 PTHREAD_POOL_SIZE=8 预热的 compute worker 提供。
 
 export type VoicePhase = 'idle' | 'recording' | 'transcribing';
 
@@ -47,6 +51,14 @@ export async function ensureWhisper(): Promise<void> {
 
       await loadScript(WASM_SCRIPT_URL);
       moduleInstance = (window as unknown as { Module: WhisperModule }).Module;
+
+      // FS 方法在 wasm 实例化完成后才挂到 Module 上；快网络下模型 fetch 可能早于
+      // runtime ready 完成，必须轮询等待，否则 FS_createDataFile not a function。
+      const rt0 = Date.now();
+      while (typeof moduleInstance.FS_createDataFile !== 'function') {
+        if (Date.now() - rt0 > 30000) throw new Error('whisper 引擎初始化超时');
+        await new Promise((r) => setTimeout(r, 50));
+      }
 
       const resp = await fetch(MODEL_URL);
       if (!resp.ok) throw new Error('模型加载失败');
@@ -173,9 +185,9 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
       fn();
     };
 
-    // 关键：whisper 的实时转写文本走 stdout（printf → Module.print），
-    // 而完成标志 whisper_print_timings 的 "total time" 走 stderr（fputs(stderr) → Module.printErr）。
-    // 必须同时监听两个流，否则收不到完成标志 → 120s 超时。
+    // 关键：whisper 转写跑在主线程（同步编译版，emscripten.cpp 已去 std::thread）——
+    // printf 实时文本走 stdout → Module.print，whisper_print_timings 的 "total time"
+    // 走 stderr → Module.printErr，两个流都能收到。full_default 返回时转写已完成。
     const onOutput = (t: string) => {
       lines.push(t);
       if (t.includes('total time') || t.includes('whisper_print_timings')) {
@@ -191,7 +203,11 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
 
     try {
       const ret = moduleInstance!.full_default(whisperIndex, audio, lang, 4, false);
-      if (ret !== 0) {
+      // 同步模式兜底：返回 0 即转写完成、输出已全部到达 print/printErr，
+      // 直接 resolve（不依赖 total time 文本匹配）；非 0 才是失败。
+      if (ret === 0) {
+        finish(() => resolve(parseTranscript(lines.join('\n'))));
+      } else {
         finish(() => reject(new Error('转写失败：' + ret)));
       }
     } catch (e) {
