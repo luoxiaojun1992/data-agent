@@ -139,8 +139,9 @@
 | 3 | 新增 COOP/COEP 头 | §4.4 仅提「getUserMedia 需 HTTPS」 | `nginx/default.conf` 前端 `location /` 加 `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp` | 编译产物 `-s USE_PTHREADS=1`，`full_default` 用 `std::thread` 跑转写，**强制要求 SharedArrayBuffer（cross-origin isolated）**，无 COOP/COEP 则 pthread 创建失败抛异常 |
 | 4 | package.json | 引入 whisper.cpp npm 依赖 | **零 npm 依赖改动** | 走自编译产物，前端仅自写 `lib/voice.ts` 胶水 |
 | 5 | 音频处理 | 未细化 | MediaRecorder 录音 → `decodeAudioData` 解码 → `OfflineAudioContext` 重采样到 16kHz 单声道 → `Float32Array` 喂给 `full_default` | whisper 要求 16kHz 单声道；录音浏览器默认 48kHz，需重采样（实现初版重采样参数写错，已修） |
-| 6 | 转写完成标志 | 未细化 | 捕获 `Module.print` stdout，检测 `total time`（`whisper_print_timings` 输出）作为完成标志，`[ts --> ts]  text` 正则提取文本 | `full_default` 立即返回 0、转写在后台 `std::thread` 跑，完成只能靠 stdout 标志 |
+| 6 | 转写完成标志 | 未细化 | 同时捕获 `Module.print`（实时文本，stdout）+ `Module.printErr`（完成标志，stderr），检测 `total time` 判完成，`[ts --> ts]  text` 正则提取文本 | `full_default` 立即返回 0、转写在后台 `std::thread` 跑；实时文本 `printf`→stdout→print，`whisper_print_timings` 的 `total time`→`fputs(stderr)`→printErr，两流分离必须都监听 |
 | 7 | 模型加载时机（后续增强，commit 665222f） | 设计为「点击麦克风才加载」 | 进入 chat 页 `useEffect` 即后台预加载，加载完成前麦克风按钮 `disabled` 显示「⏳ 加载中」，完成后变「🎤 语音」恢复可用 | 首次点击才加载 74MB 体验差；预加载把等待前置到页面进入时，点击即秒开录音 |
+| 8 | 转写超时 bug（commit 4ccc3d1） | 初版只监听 `Module.print` | 真实录音首测报「转写超时」——完成标志 `total time` 走 stderr（`Module.printErr`）未监听 → 120s 超时。修复：`transcribe()` 同时监听 `print` + `printErr` | whisper 日志走 `WHISPER_LOG_INFO`→`whisper_log_callback_default`→`fputs(text, stderr)`（whisper.cpp:9305）；此前 headless 无麦克风测试未走到 `transcribe()` 故未暴露 |
 
 ### 11.0 模型缓存 / 压缩结论（2026-09-15 调研）
 
