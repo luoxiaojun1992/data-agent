@@ -140,6 +140,13 @@
 | 4 | package.json | 引入 whisper.cpp npm 依赖 | **零 npm 依赖改动** | 走自编译产物，前端仅自写 `lib/voice.ts` 胶水 |
 | 5 | 音频处理 | 未细化 | MediaRecorder 录音 → `decodeAudioData` 解码 → `OfflineAudioContext` 重采样到 16kHz 单声道 → `Float32Array` 喂给 `full_default` | whisper 要求 16kHz 单声道；录音浏览器默认 48kHz，需重采样（实现初版重采样参数写错，已修） |
 | 6 | 转写完成标志 | 未细化 | 捕获 `Module.print` stdout，检测 `total time`（`whisper_print_timings` 输出）作为完成标志，`[ts --> ts]  text` 正则提取文本 | `full_default` 立即返回 0、转写在后台 `std::thread` 跑，完成只能靠 stdout 标志 |
+| 7 | 模型加载时机（后续增强，commit 665222f） | 设计为「点击麦克风才加载」 | 进入 chat 页 `useEffect` 即后台预加载，加载完成前麦克风按钮 `disabled` 显示「⏳ 加载中」，完成后变「🎤 语音」恢复可用 | 首次点击才加载 74MB 体验差；预加载把等待前置到页面进入时，点击即秒开录音 |
+
+### 11.0 模型缓存 / 压缩结论（2026-09-15 调研）
+
+- **浏览器缓存现状**：Next.js 对 `public/` 文件默认 `Cache-Control: public, max-age=0`，模型走 ETag 304 条件缓存——**刷新不重复下载 body，但每次发条件请求**，非完全离线。真正的耗时大头是 `init()` 把 74MB 权重 load 进 WASM 内存 + 构建计算图，**每次刷新必重跑、无法被任何缓存跳过**（whisper.wasm 方案天花板，Service Worker 也存不了内存态）。
+- **压缩收益（实测，不推荐）**：`ggml-tiny.bin` 74.1MB → gzip -9 省 10.3%（66.5MB）、brotli -9 省 11.4%（65.6MB）。ggml 是 float16 量化权重、高熵，压不动；省 8MB 却要额外解压 CPU 1~2s + 引入 `DecompressionStream` 逻辑，得不偿失。
+- **可选的进一步优化（未实施）**：若需「刷新后完全离线、零条件请求」，可给 `/models/whisper/` 与 `/whisper/` 加 `Cache-Control: public, max-age=31536000, immutable`（文件名需带内容哈希，否则换模型会踩缓存坑）。
 
 ### 11.1 编译产物说明（供后续重建）
 
