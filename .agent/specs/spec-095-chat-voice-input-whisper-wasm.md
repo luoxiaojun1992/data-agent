@@ -1,6 +1,6 @@
 # Chat 语音输入（whisper.wasm 纯 CPU 本地转写）
 
-> **SPEC-095** | Status: ✅ 设计定稿（D1~D5 已全部定稿；暂不实现）
+> **SPEC-095** | Status: ✅ 已完成（2026-09-15 实现并部署验证；commit 7e8816c）
 
 ## 1. 目标
 
@@ -79,13 +79,16 @@
 
 ## 6. 相关文件
 
+> ⚠️ 下表为**设计预期**；实际实现有差异，见文末「§11 实现差异回写」。
+
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `frontend/app/chat/page.tsx` | 语音按钮 + 录音/转写状态 + 回填 textarea | Medium |
-| `frontend/lib/voice.ts`（或 hook） | whisper.wasm 加载/录音/转写封装（新） | New |
-| `frontend/app/components/VoiceInputButton.tsx`（可选） | 麦克风按钮组件（新） | New |
-| `frontend/package.json` | 引入 whisper.cpp 官方 npm 包依赖（D5 已定稿；模型 `.bin` 文件不走 npm，走代码仓库托管，见下） | Small |
-| `frontend/public/models/whisper/` | ggml 模型文件（tiny.en ~75MB）**直接提交仓库**，Next.js 静态托管 | New（+75MB） |
+| `frontend/lib/voice.ts` | whisper.wasm 加载/录音/转写封装（新） | New |
+| ~~`frontend/package.json`~~ | ~~引入 whisper.cpp npm 包~~ → **实现未改 package.json**（走自编译产物，无 npm 依赖） | — |
+| `frontend/public/whisper/libmain.js` | **Emscripten 自编译 whisper.wasm 产物（新，1.8MB 单文件）** | New（+1.8MB） |
+| `frontend/public/models/whisper/ggml-tiny.bin` | **多语言 tiny 模型（74MB，非 tiny.en）直接提交仓库**，Next.js 静态托管 | New（+74MB） |
+| `nginx/default.conf` | **新增 COOP/COEP 头**（pthread/SharedArrayBuffer 前提） | Small |
 
 ## 7. 测试策略
 
@@ -123,4 +126,32 @@
 | D2 | 模型托管 | ✅ **已定稿（2026-09-10）**：模型文件直接提交代码仓库 `frontend/public/models/whisper/`，由 Next.js 静态托管（相对路径 `/models/whisper/xx.bin`），前端本地加载、无 CDN 依赖。tiny 档 ~75MB 在 GitHub 100MB 单文件限制内，**暂不引入 git-lfs**；若未来升级 base(~142MB)/small(~466MB) 超限再评估 git-lfs。代价：仓库 +75MB、clone/pull 变慢、前端镜像变大，已接受 |
 | D3 | 回填策略 | ✅ **已定稿（2026-09-10）**：追加到现有文本末尾（`setInput(prev => prev + 转写文本)`），不覆盖已有输入 |
 | D4 | 录音停止方式 | ✅ **已定稿（2026-09-10）**：手动再点一次停止——点击麦克风 icon 开始录音并变为「录制中」icon，再点「录制中」icon 停止并变回麦克风 icon；不做静音自动停止 |
-| D5 | 依赖引入方式 | ✅ **已定稿（2026-09-12）**：用 **whisper.cpp 官方 npm 包**（`whisper.cpp`，MIT，内部即 whisper.wasm，模型仍为 ggml `.bin` 与 D2 强一致），省去手写 C API 胶水；**排除 transformers.js**（`@huggingface/transformers`，ONNX Runtime 引擎 + `.onnx` 模型，与 D2 的 ggml `.bin` 托管冲突）。实现阶段若官方包 API 不满足「麦克风分段转写→回填」，退回直接引 whisper.wasm 产物 + 自写胶水（模型仍是 `.bin`，不影响 D2） |
+| D5 | 依赖引入方式 | ✅ **已定稿（2026-09-12）→ 实现走 fallback（2026-09-15）**：调研发现 npm 上 `whisper.cpp` 官方包是 **Node.js-only**（`bindings/javascript/`，运行需 `node --experimental-wasm-threads`，浏览器不可用），D5 原「官方 npm 包」前提不成立 → 触发定稿预留的 fallback：**用 whisper.cpp 官方 `examples/whisper.wasm` 产物 + 自写胶水**。流程：Emscripten 6.0.9 自编译 `examples/whisper.wasm`（`-DWHISPER_WASM_SINGLE_FILE=ON -s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE_STRICT=0`），产出单文件 `libmain.js`（1.8MB，wasm 内嵌），直接提交 `frontend/public/whisper/libmain.js`；前端自写胶水 `lib/voice.ts` 封装 `Module.init/full_default/FS_createDataFile` + MediaRecorder 录音 + 16kHz 重采样。**不引入任何 npm 依赖、不改 package.json**（排除 transformers.js 的结论不变） |
+
+## 11. 实现差异回写（2026-09-15，commit 7e8816c）
+
+实现与设计定稿的差异，逐条记录：
+
+| # | 差异点 | 设计预期 | 实际实现 | 原因 |
+|---|--------|---------|---------|------|
+| 1 | D5 依赖方式 | whisper.cpp 官方 npm 包 | Emscripten 自编译官方 `examples/whisper.wasm` 产物 + 自写胶水 | npm 官方包是 Node-only（浏览器不可用），触发 D5 预留 fallback |
+| 2 | 模型档位 | D1 定稿 `tiny`，但 §3/§6 笔误写 `tiny.en` | `ggml-tiny.bin`（多语言，74MB） | 用户为中文场景，`tiny.en` 英文特化对中文识别差，用多语言 tiny |
+| 3 | 新增 COOP/COEP 头 | §4.4 仅提「getUserMedia 需 HTTPS」 | `nginx/default.conf` 前端 `location /` 加 `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp` | 编译产物 `-s USE_PTHREADS=1`，`full_default` 用 `std::thread` 跑转写，**强制要求 SharedArrayBuffer（cross-origin isolated）**，无 COOP/COEP 则 pthread 创建失败抛异常 |
+| 4 | package.json | 引入 whisper.cpp npm 依赖 | **零 npm 依赖改动** | 走自编译产物，前端仅自写 `lib/voice.ts` 胶水 |
+| 5 | 音频处理 | 未细化 | MediaRecorder 录音 → `decodeAudioData` 解码 → `OfflineAudioContext` 重采样到 16kHz 单声道 → `Float32Array` 喂给 `full_default` | whisper 要求 16kHz 单声道；录音浏览器默认 48kHz，需重采样（实现初版重采样参数写错，已修） |
+| 6 | 转写完成标志 | 未细化 | 捕获 `Module.print` stdout，检测 `total time`（`whisper_print_timings` 输出）作为完成标志，`[ts --> ts]  text` 正则提取文本 | `full_default` 立即返回 0、转写在后台 `std::thread` 跑，完成只能靠 stdout 标志 |
+
+### 11.1 编译产物说明（供后续重建）
+
+- 工具链：Emscripten 6.0.9（工作区 `.build-tools/emsdk`，非仓库内）
+- 源码：whisper.cpp（工作区 `.build-tools/whisper.cpp`）
+- 编译命令：`emcmake cmake .. -DWHISPER_WASM_SINGLE_FILE=ON -DCMAKE_BUILD_TYPE=Release && make -j4`
+- 产物：`examples/whisper.wasm` 的 `libmain.js`（单文件，wasm 内嵌，无独立 `.worker.js`）
+- 提交位置：`frontend/public/whisper/libmain.js`（1.8MB）
+- ⚠️ 若未来升级 whisper.cpp 版本或改编译参数，需重新编译并替换该产物
+
+### 11.2 部署要点
+
+- 前端镜像 Dockerfile `COPY --from=builder /app/public ./public` 自动包含模型 + wasm（无 .dockerignore 排除）
+- nginx 重启即拾取 COOP/COEP（`./nginx/default.conf` 挂载）
+- 模型首次加载：本地隧道测试 74MB 下载约 171s；生产环境（不走隧道）预计数秒，浏览器 HTTP 缓存后续命中
