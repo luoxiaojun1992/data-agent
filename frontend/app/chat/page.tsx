@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_CHAT_TEXT_BYTES, type Attachment, type PdfAttachment } from '@/lib/attachment';
 import { parsePdf } from '@/lib/pdf';
 import { loadRedactAuto, saveRedactAuto, redactText } from '@/lib/redact';
+import { startRecording, stopRecording, transcribe, type VoicePhase } from '@/lib/voice';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
@@ -188,6 +189,9 @@ export default function ChatPage() {
   const [redactAuto, setRedactAuto] = useState<boolean>(() => loadRedactAuto()); // 自动脱敏开关（localStorage，默认关闭）
   const [redacting, setRedacting] = useState(false); // 脱敏请求中 → 弹窗动画
   const [redactError, setRedactError] = useState('');
+  // SPEC-095: 语音输入（whisper.wasm 纯 CPU 本地转写）。
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
+  const [voiceError, setVoiceError] = useState('');
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -713,6 +717,38 @@ export default function ChatPage() {
     }
   };
 
+  // ── SPEC-095: 语音输入（whisper.wasm 纯 CPU 本地转写，只回填不自动提交）──
+
+  const showVoiceError = (msg: string) => {
+    setVoiceError(msg);
+    setTimeout(() => setVoiceError(''), 5000);
+  };
+
+  // 点击麦克风：idle → 录音；recording → 停止并转写回填。
+  const handleVoiceToggle = async () => {
+    if (voicePhase === 'transcribing' || voicePhase === 'loading-model') return; // 处理中禁止重复触发
+    setVoiceError('');
+    try {
+      if (voicePhase === 'idle') {
+        setVoicePhase('loading-model');
+        await startRecording(); // 内部预加载 whisper 引擎 + 模型（首次较慢）
+        setVoicePhase('recording');
+      } else if (voicePhase === 'recording') {
+        setVoicePhase('transcribing');
+        const audio = await stopRecording();
+        const text = await transcribe(audio);
+        if (text) {
+          setInput((prev) => (prev ? prev + text : text)); // 追加回填，不覆盖已有输入
+        }
+        setVoicePhase('idle');
+      }
+    } catch (err) {
+      console.error('[voice] 语音输入失败:', err);
+      setVoicePhase('idle');
+      showVoiceError(err instanceof Error ? err.message : '语音输入失败，请重试');
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
@@ -940,6 +976,15 @@ export default function ChatPage() {
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-redact-btn"
               >🛡️ 脱敏</button>
+              {/* SPEC-095: 语音输入按钮（麦克风 ⇄ 录制中；转写结果追加回填、不自动提交） */}
+              <button
+                onClick={handleVoiceToggle}
+                disabled={streaming}
+                className={voicePhase === 'recording'
+                  ? 'px-3 py-1.5 text-xs rounded-lg border border-[#ef4444] text-[#ef4444] hover:opacity-90 transition-colors'
+                  : 'px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40'}
+                data-testid="chat-voice-btn"
+              >{voicePhase === 'recording' ? '⏺️ 录制中' : voicePhase === 'transcribing' ? '⏳ 转写中' : voicePhase === 'loading-model' ? '⏳ 加载中' : '🎤 语音'}</button>
               <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                 <input
                   type="checkbox"
@@ -1004,6 +1049,9 @@ export default function ChatPage() {
             )}
             {redactError && (
               <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-redact-error">{redactError}</p>
+            )}
+            {voiceError && (
+              <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-voice-error">{voiceError}</p>
             )}
             <div className="flex gap-3">
               <textarea
