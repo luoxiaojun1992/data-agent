@@ -45,9 +45,12 @@ export async function ensureWhisper(): Promise<void> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const g = window as any;
       g.Module = g.Module || {};
-      // stdout 回调在 transcribe() 时动态绑定，此处先占位避免 undefined
-      g.Module.print = g.Module.print || (() => {});
-      g.Module.printErr = g.Module.printErr || (() => {});
+      // 关键：glue 在脚本执行期一次性绑定 out/err = Module.print/printErr，
+      // 此后动态修改 Module.print 无效（实测 init('nonexistent.bin') 验证）。
+      // 因此必须在 glue 执行【前】设置稳定 wrapper，转写时只替换 __outHandler。
+      g.Module.__outHandler = null;
+      g.Module.print = (t: string) => (g.Module.__outHandler as ((t: string) => void) | null)?.(t);
+      g.Module.printErr = (t: string) => (g.Module.__outHandler as ((t: string) => void) | null)?.(t);
 
       await loadScript(WASM_SCRIPT_URL);
       moduleInstance = (window as unknown as { Module: WhisperModule }).Module;
@@ -170,9 +173,7 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
   await ensureWhisper();
   if (!moduleInstance || !whisperIndex) throw new Error('whisper 未就绪');
 
-  const g = window as unknown as { Module?: { print?: (t: string) => void; printErr?: (t: string) => void } };
-  const prevPrint = g.Module?.print;
-  const prevPrintErr = g.Module?.printErr;
+  const g = window as unknown as { Module?: { __outHandler?: ((t: string) => void) | null } };
 
   return new Promise<string>((resolve, reject) => {
     const lines: string[] = [];
@@ -185,17 +186,17 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
       fn();
     };
 
-    // 关键：whisper 转写跑在主线程（同步编译版，emscripten.cpp 已去 std::thread）——
-    // printf 实时文本走 stdout → Module.print，whisper_print_timings 的 "total time"
-    // 走 stderr → Module.printErr，两个流都能收到。full_default 返回时转写已完成。
+    // 同步编译模式：whisper 在主线程执行，printf 实时文本走 stdout、
+    // whisper_print_timings 的 "total time" 走 stderr，均经 glue 绑定的
+    // 稳定 wrapper（Module.print/printErr）转发到 __outHandler。
+    // ⛔ 不能动态修改 Module.print —— glue 执行期已一次性绑定，改了无效。
     const onOutput = (t: string) => {
       lines.push(t);
       if (t.includes('total time') || t.includes('whisper_print_timings')) {
         finish(() => resolve(parseTranscript(lines.join('\n'))));
       }
     };
-    g.Module!.print = onOutput;
-    g.Module!.printErr = onOutput;
+    g.Module!.__outHandler = onOutput;
 
     const timeout = setTimeout(() => {
       finish(() => reject(new Error('转写超时')));
@@ -203,8 +204,8 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
 
     try {
       const ret = moduleInstance!.full_default(whisperIndex, audio, lang, 4, false);
-      // 同步模式兜底：返回 0 即转写完成、输出已全部到达 print/printErr，
-      // 直接 resolve（不依赖 total time 文本匹配）；非 0 才是失败。
+      // 同步模式兜底：返回 0 即转写完成、输出已全部到达，直接 resolve
+      //（不依赖 total time 文本匹配）；非 0 才是失败。
       if (ret === 0) {
         finish(() => resolve(parseTranscript(lines.join('\n'))));
       } else {
@@ -214,9 +215,6 @@ export async function transcribe(audio: Float32Array, lang = 'auto'): Promise<st
       finish(() => reject(e as Error));
     }
   }).finally(() => {
-    if (g.Module) {
-      g.Module.print = prevPrint;
-      g.Module.printErr = prevPrintErr;
-    }
+    if (g.Module) g.Module.__outHandler = null;
   });
 }
