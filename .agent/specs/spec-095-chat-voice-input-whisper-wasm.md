@@ -142,6 +142,10 @@
 | 6 | 转写完成标志 | 未细化 | 同时捕获 `Module.print`（实时文本，stdout）+ `Module.printErr`（完成标志，stderr），检测 `total time` 判完成，`[ts --> ts]  text` 正则提取文本 | `full_default` 立即返回 0、转写在后台 `std::thread` 跑；实时文本 `printf`→stdout→print，`whisper_print_timings` 的 `total time`→`fputs(stderr)`→printErr，两流分离必须都监听 |
 | 7 | 模型加载时机（后续增强，commit 665222f） | 设计为「点击麦克风才加载」 | 进入 chat 页 `useEffect` 即后台预加载，加载完成前麦克风按钮 `disabled` 显示「⏳ 加载中」，完成后变「🎤 语音」恢复可用 | 首次点击才加载 74MB 体验差；预加载把等待前置到页面进入时，点击即秒开录音 |
 | 8 | 转写超时 bug（commit 4ccc3d1） | 初版只监听 `Module.print` | 真实录音首测报「转写超时」——完成标志 `total time` 走 stderr（`Module.printErr`）未监听 → 120s 超时。修复：`transcribe()` 同时监听 `print` + `printErr` | whisper 日志走 `WHISPER_LOG_INFO`→`whisper_log_callback_default`→`fputs(text, stderr)`（whisper.cpp:9305）；此前 headless 无麦克风测试未走到 `transcribe()` 故未暴露 |
+| 9 | **转写超时真正根因：pthread worker 输出不可达**（commit fc41291） | #6/#8 的 print+printErr 双流监听在线上实测仍超时 | **Emscripten pthread 模式下 `std::thread` 跑的转写在 Web Worker 里，worker 的 stdout/stderr 走 worker 自己的 console，不转发主线程 `Module.print/printErr`**（libmain.js 反编译确认：主线程消息协议只有 cmd=1/2/4，无 stdout 转发；函数回调不可 postMessage）。修复：emscripten.cpp 去 `std::thread`，`full_default` **主线程同步执行**（返回时转写已完成）；CMakeLists 加 `-s PTHREAD_POOL_SIZE=8` 预热线程池，ggml 内部 4 线程并行在同步上下文中可用 | 同步执行后全部输出经主线程 out/err 到达回调（本地端到端验证：stdout/stderr/total time 全达，5s 音频 15.5s 完成） |
+| 10 | **glue 一次性绑定 out/err，动态改 Module.print 无效**（commit 4c9d70f） | #9 后线上合成音频实测 `ret=0` 但输出 0 行 | **glue 脚本执行期一次性绑定 `out/err = Module.print/printErr`，之后修改 `Module.print` 属性完全无效**（实测铁证：glue 后改 Module.print 再 `init('nonexistent.bin')` 触发 stderr，输出全打到 glue 期旧回调，late 捕获 0 行）。旧 voice.ts 先设占位空函数、transcribe 时换真回调 → out 绑死空函数。修复：`ensureWhisper` 在 glue 执行**前**设置稳定 wrapper（读 `Module.__outHandler` 转发），`transcribe()` 只替换 `__outHandler`，不碰 `Module.print` | 官方 demo 能工作的原因正是它在 glue 前用 `var Module = { print: printTextarea }` 设置了最终回调；前端 wrapper 模式端到端验证 lines=14、totalTimeLine=YES |
+| 11 | runtime ready 时序竞态 | loadScript 返回即认为引擎可用 | glue 的 FS 方法（`FS_createDataFile` 等）在 **wasm 实例化完成后**才挂到 Module 上；快网络下模型 fetch 可能早于 runtime ready → `FS_createDataFile is not a function`。修复：`ensureWhisper` 加轮询等待（50ms 间隔，30s 超时） | 本地 localhost 测试毫秒级 fetch 完成暴露；线上慢网络此前掩盖了该问题 |
+| 12 | 转写完成判定兜底 | 靠捕获 `total time` 文本判完成 | 同步模式下 `full_default` 返回 0 即转写完成、输出已全部到达，直接 resolve（文本仍从捕获行正则提取）；非 0 才 reject | 不再依赖完成标志文本匹配，对日志格式变化免疫；同步阻塞期间 UI 已有「转写中」状态 |
 
 ### 11.0 模型缓存 / 压缩结论（2026-09-15 调研）
 
@@ -153,10 +157,12 @@
 
 - 工具链：Emscripten 6.0.9（工作区 `.build-tools/emsdk`，非仓库内）
 - 源码：whisper.cpp（工作区 `.build-tools/whisper.cpp`）
+- ⚠️ **emscripten.cpp 已自改**：`full_default` 去 `std::thread`（主线程同步执行，见差异 #9），勿用官方原版覆盖
 - 编译命令：`emcmake cmake .. -DWHISPER_WASM_SINGLE_FILE=ON -DCMAKE_BUILD_TYPE=Release && make -j4`
+- 关键链接参数：`-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=8`（ggml 内部并行 compute worker 池）`-s INITIAL_MEMORY=512MB -s FORCE_FILESYSTEM=1`
 - 产物：`examples/whisper.wasm` 的 `libmain.js`（单文件，wasm 内嵌，无独立 `.worker.js`）
 - 提交位置：`frontend/public/whisper/libmain.js`（1.8MB）
-- ⚠️ 若未来升级 whisper.cpp 版本或改编译参数，需重新编译并替换该产物
+- ⚠️ 若未来升级 whisper.cpp 版本或改编译参数，需重新编译并替换该产物（**emscripten.cpp 的同步化改动需重新应用**）
 
 ### 11.2 部署要点
 
