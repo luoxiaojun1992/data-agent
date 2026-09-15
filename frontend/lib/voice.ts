@@ -1,7 +1,7 @@
 // SPEC-095: Chat 语音输入（whisper.wasm 纯 CPU 本地转写）
 // 音频全程本地处理、不上传。封装 whisper.cpp 官方 wasm 产物（/whisper/libmain.js）。
 
-export type VoicePhase = 'idle' | 'loading-model' | 'recording' | 'transcribing';
+export type VoicePhase = 'idle' | 'recording' | 'transcribing';
 
 const WASM_SCRIPT_URL = '/whisper/libmain.js';
 const MODEL_URL = '/models/whisper/ggml-tiny.bin';
@@ -31,32 +31,42 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-// 确保 whisper 引擎 + 模型已就绪（幂等，只加载一次）。
+// 确保 whisper 引擎 + 模型已就绪（幂等，只加载一次；失败后可重试）。
 export async function ensureWhisper(): Promise<void> {
   if (whisperIndex > 0) return;
   if (modelPromise) return modelPromise;
 
   modelPromise = (async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const g = window as any;
-    g.Module = g.Module || {};
-    // stdout 回调在 transcribe() 时动态绑定，此处先占位避免 undefined
-    g.Module.print = g.Module.print || (() => {});
-    g.Module.printErr = g.Module.printErr || (() => {});
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const g = window as any;
+      g.Module = g.Module || {};
+      // stdout 回调在 transcribe() 时动态绑定，此处先占位避免 undefined
+      g.Module.print = g.Module.print || (() => {});
+      g.Module.printErr = g.Module.printErr || (() => {});
 
-    await loadScript(WASM_SCRIPT_URL);
-    moduleInstance = (window as unknown as { Module: WhisperModule }).Module;
+      await loadScript(WASM_SCRIPT_URL);
+      moduleInstance = (window as unknown as { Module: WhisperModule }).Module;
 
-    const resp = await fetch(MODEL_URL);
-    if (!resp.ok) throw new Error('模型加载失败');
-    const buf = new Uint8Array(await resp.arrayBuffer());
-    moduleInstance.FS_createDataFile('/', MODEL_FS_NAME, buf, true, true);
+      const resp = await fetch(MODEL_URL);
+      if (!resp.ok) throw new Error('模型加载失败');
+      const buf = new Uint8Array(await resp.arrayBuffer());
+      moduleInstance.FS_createDataFile('/', MODEL_FS_NAME, buf, true, true);
 
-    whisperIndex = moduleInstance.init(MODEL_FS_NAME);
-    if (!whisperIndex) throw new Error('whisper 模型初始化失败');
+      whisperIndex = moduleInstance.init(MODEL_FS_NAME);
+      if (!whisperIndex) throw new Error('whisper 模型初始化失败');
+    } catch (e) {
+      modelPromise = null; // 失败后重置，允许下次重试（否则会一直拿到同一个 rejected promise）
+      throw e;
+    }
   })();
 
   return modelPromise;
+}
+
+// 模型是否已就绪（引擎已加载 + 模型初始化完成）。
+export function isWhisperReady(): boolean {
+  return whisperIndex > 0;
 }
 
 // ── 录音 ──

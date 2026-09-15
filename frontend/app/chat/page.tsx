@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_CHAT_TEXT_BYTES, type Attachment, type PdfAttachment } from '@/lib/attachment';
 import { parsePdf } from '@/lib/pdf';
 import { loadRedactAuto, saveRedactAuto, redactText } from '@/lib/redact';
-import { startRecording, stopRecording, transcribe, type VoicePhase } from '@/lib/voice';
+import { startRecording, stopRecording, transcribe, ensureWhisper, type VoicePhase } from '@/lib/voice';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
@@ -192,6 +192,29 @@ export default function ChatPage() {
   // SPEC-095: 语音输入（whisper.wasm 纯 CPU 本地转写）。
   const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
   const [voiceError, setVoiceError] = useState('');
+  const [voiceLoading, setVoiceLoading] = useState(true); // 模型加载中（进入页面即预加载）
+  const [voiceModelReady, setVoiceModelReady] = useState(false);
+
+  // SPEC-095: 进入 chat 页面即预下载 + 预加载 whisper 模型（后台），加载完成前禁用麦克风按钮。
+  useEffect(() => {
+    let cancelled = false;
+    setVoiceLoading(true);
+    ensureWhisper()
+      .then(() => {
+        if (!cancelled) {
+          setVoiceModelReady(true);
+          setVoiceLoading(false);
+        }
+      })
+      .catch((err) => {
+        // 预加载失败不阻塞页面；按钮恢复可点，用户点击时通过 handleVoiceToggle 重试。
+        if (!cancelled) {
+          console.error('[voice] 模型预加载失败（点击麦克风时将重试）:', err);
+          setVoiceLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -726,12 +749,17 @@ export default function ChatPage() {
 
   // 点击麦克风：idle → 录音；recording → 停止并转写回填。
   const handleVoiceToggle = async () => {
-    if (voicePhase === 'transcribing' || voicePhase === 'loading-model') return; // 处理中禁止重复触发
+    if (voiceLoading || voicePhase === 'recording' || voicePhase === 'transcribing') return; // 加载/录制/转写中禁止重复触发
     setVoiceError('');
     try {
       if (voicePhase === 'idle') {
-        setVoicePhase('loading-model');
-        await startRecording(); // 内部预加载 whisper 引擎 + 模型（首次较慢）
+        setVoiceLoading(true);
+        try {
+          await startRecording(); // 内部 ensureWhisper（幂等；预加载未完成或失败时在此等待/重试）
+          setVoiceModelReady(true);
+        } finally {
+          setVoiceLoading(false);
+        }
         setVoicePhase('recording');
       } else if (voicePhase === 'recording') {
         setVoicePhase('transcribing');
@@ -976,15 +1004,15 @@ export default function ChatPage() {
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-redact-btn"
               >🛡️ 脱敏</button>
-              {/* SPEC-095: 语音输入按钮（麦克风 ⇄ 录制中；转写结果追加回填、不自动提交） */}
+              {/* SPEC-095: 语音输入按钮（模型加载完成前禁用；转写结果追加回填、不自动提交） */}
               <button
                 onClick={handleVoiceToggle}
-                disabled={streaming}
+                disabled={streaming || voiceLoading || voicePhase === 'transcribing'}
                 className={voicePhase === 'recording'
-                  ? 'px-3 py-1.5 text-xs rounded-lg border border-[#ef4444] text-[#ef4444] hover:opacity-90 transition-colors'
+                  ? 'px-3 py-1.5 text-xs rounded-lg border border-[#ef4444] text-[#ef4444] hover:opacity-90 transition-colors disabled:opacity-40'
                   : 'px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40'}
                 data-testid="chat-voice-btn"
-              >{voicePhase === 'recording' ? '⏺️ 录制中' : voicePhase === 'transcribing' ? '⏳ 转写中' : voicePhase === 'loading-model' ? '⏳ 加载中' : '🎤 语音'}</button>
+              >{voiceLoading ? '⏳ 加载中' : voicePhase === 'recording' ? '⏺️ 录制中' : voicePhase === 'transcribing' ? '⏳ 转写中' : '🎤 语音'}</button>
               <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                 <input
                   type="checkbox"
