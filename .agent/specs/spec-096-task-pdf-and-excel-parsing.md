@@ -1,6 +1,6 @@
 # Task PDF 解析 + kb/chat/task Excel 解析
 
-> **SPEC-096** | Status: 📐 深化中（D1~D6 已定稿；暂不实现）
+> **SPEC-096** | Status: ✅ 设计定稿（D1~D6 全定稿；暂不实现）
 
 ## 1. 目标
 
@@ -172,7 +172,7 @@
 7. Excel 解析文字含 `<script>` 不触发 XSS（豁免同 PDF）。
 8. 三端 PDF/Excel 的文件大小、文本长度、图片计数限制一致生效；task 的「description（用户原文 + PDF 文字 + Excel 文字合并）」≤ task 特有 `MaxTaskTextBytes=100KB`。
 
-## 10. 待定稿决策点（深化阶段拍板）
+## 10. 决策点定稿（2026-09-12）
 
 | # | 决策点 | 说明 |
 |---|--------|------|
