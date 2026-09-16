@@ -10,6 +10,8 @@
 | 1 | hourly record 是否关联 session | ❌ **不关联**。`stats_hourly` 保持 `{metric,hour}` 全局计数**完全不动**，不新增 `session_id` 字段 |
 | 2 | session token 统计方式 | ✅ **独立建表**统计；删 session 时**关联删除**（早于 session 主记录删除，幂等删除） |
 | 3 | 是否加时间冗余字段 | ❌ **不加**。现有 UTC `time.Time` 存储天然兼容时区（见 §2.2），一年数据量 ≤8760/指标，实时聚合足够 |
+| 4 | session 删除语义 | 级联删除**仅指硬删除（`HardDelete`）**；软删除（归档 `Delete` 设 `deleted_at`）**不级联**——session 主记录保留、可恢复，token 统计同步保留，恢复后累计继续 |
+| 5 | 日历维度分桶时区 | 按小时/星期几/几号/几月的聚合展示**按实际时区 Asia/Shanghai（UTC+8）计算**，非 UTC（见 §2.2-B；当前存在 UTC 口径偏差，本 spec 一并修正） |
 
 ## 1. 目标
 
@@ -36,15 +38,19 @@
 
 **后果**：token 用量只能全局聚合，chat/task 页面无法展示单会话用量。
 
-### 2.2 时区结论（决策 3 的依据，已确认）
+### 2.2 时区结论（决策 3 依据 + 澄清 #5）
 
-现有时间存储**天然兼容不同时区**：
+**A. 存储层天然兼容时区（决策 3 依据）**：
 
 - `stats_hourly.hour` 是 Go `time.Time`，落库前 `HourBucket()` 强制 `.UTC().Truncate(time.Hour)`。
 - MongoDB BSON Date 是**绝对时间戳**（int64 毫秒 since epoch），**不携带时区**，任何客户端/语言读取都还原为同一绝对时刻。
-- 查询侧 `clampRange`/`bucketStart` 全 `.UTC()` 归一；前端展示时按浏览器时区 `toLocaleString`/`Intl` 转换。
+- 因此「星期几 / 几号 / 几月」只是绝对时刻的日历投影，**无需冗余存储**，可在查询/展示层按需实时计算。一年 ≤8760 文档/指标，数据量小，Go 层实时聚合足够——时间维度索引下沉 MongoDB 无收益。
 
-因此「星期几 / 几号 / 几月」只是绝对时刻的日历投影，**无需冗余存储**，可在展示/查询层按需实时计算。且一年 ≤8760 文档/指标，数据量小，Go 层实时聚合足够——时间维度索引下沉 MongoDB 无收益。
+**B. 日历分桶时区口径（澄清 #5，⚠️ 当前存在偏差）**：
+
+- **现状**：`metrics.go` 的 `bucketStart`/`bucketHours` 全 `.UTC()` 分桶，`dashboard.go` 的 `now`/默认窗口也取 UTC → 按「小时/星期几/几号/几月」的**日历归属按 UTC 计算**，对 Asia/Shanghai 用户整体偏 8 小时（例：UTC 14 点被归为「14 点高峰」，实际是北京 22 点；「今天」从 UTC 00:00 起，对应北京 08:00，跨两个北京自然日）。
+- **目标口径**：日历维度分桶**按实际时区 Asia/Shanghai（UTC+8）** 计算——`bucketStart`/`bucketHours` 改用 `time.LoadLocation("Asia/Shanghai")` 做自然日/周/月边界；`dashboard.go` 默认窗口的「今天」= 北京自然日。落库 `HourBucket` **保持 UTC**（存储层绝对时间戳不变，仅展示/分桶层变）。
+- **时区来源**：默认硬编码 `Asia/Shanghai`（业务主时区）；是否支持前端传时区参数（多租户/海外）留实现阶段评估，默认 `Asia/Shanghai`。
 
 ## 3. 架构概述
 
@@ -64,7 +70,9 @@ stats_hourly（全局趋势/看板）                          session_stats（�
 
 与现有模块的关系：**不改** `stats_hourly` schema、`Metric`/`Granularity` 枚举、`Counter` 接口签名、`Sum/Series` 聚合、ROI 派生、TTL 一年上限；**新增** `SessionStatStore`（session 维度累计）、`session_stats` collection、`Recorder` 双写、`Manager.HardDelete` 级联。
 
-## 4. 删除级联落点（决策 2）
+## 4. 删除级联落点（决策 2 + 澄清 #4）
+
+> **软删除（归档）不级联**：软删除走 `Manager.Delete` → `repo.Delete`（仅设 `deleted_at`），**不触发** `session_stats` 删除——session 主记录保留、可恢复，token 统计同步保留，`Restore` 后累计继续。级联**仅发生在硬删除**。
 
 `internal/service/chat/session.go` 的 `Manager.HardDelete` 是**唯一物理删除路径**（`Cleanup` 与显式硬删都走它）：
 
@@ -150,7 +158,7 @@ if r.sessionStats != nil && rec.SessionID != "" {
 ### 5.3 API 方向
 
 - **session token 查询**：新增接口（形如 `GET /api/v1/sessions/:id/token-usage`，或 chat/task 列表接口内嵌 `billed_tokens`），直接按 `_id=session_id` 点查 `session_stats`，单文档返回，无需聚合。具体路径实现阶段定。
-- **dashboard 趋势统计**：`Sum/Series` 保持现状（全局 `stats_hourly`），无 schema 变更；仅在数据量/性能实测需要时做最小优化，不引入时间冗余字段。
+- **dashboard 趋势统计**：`Sum/Series` 无 schema 变更、不引入冗余字段；**修正日历分桶时区口径**——`bucketStart`/`bucketHours`/默认窗口由 UTC 改为 Asia/Shanghai（见 §2.2-B）。
 
 ## 6. 可行性分析
 
@@ -172,6 +180,8 @@ if r.sessionStats != nil && rec.SessionID != "" {
 | `cmd/server/wire.go` / `main.go` | DI 注入 `SessionStatStore`（赋值顺序：消费前） | Low |
 | `cmd/server/migration/*` / `internal/infra/mongo/client.go` | `session_stats` 索引（`_id` 主键 + 可选 `user_id`/`updated_at`） | Low |
 | `internal/api/handler/session.go`（或 chat/task handler） | 新增 session token 查询接口 + RBAC 归属校验（防 IDOR） | Medium |
+| `internal/infra/metrics/metrics.go` | 日历分桶 `bucketStart`/`bucketHours` 由 UTC 改 Asia/Shanghai（澄清 #5） | Medium |
+| `internal/api/handler/dashboard.go` | 默认窗口/`now` 改用 Asia/Shanghai 自然日（澄清 #5） | Low |
 | 前端 chat / task 页面 | session token 展示（回填单会话 `billed_tokens`） | Medium |
 
 ## 9. UI Test / E2E 验收规则
@@ -205,6 +215,8 @@ if r.sessionStats != nil && rec.SessionID != "" {
 - [ ] **必须** 验证 `Upsert` 幂等：同 session 多次 `$inc` 累计正确，`$setOnInsert` 首写字段不覆盖
 - [ ] **必须** 验证 `HardDelete` 级联顺序：token 统计先删、主记录后删；删除不存在的 session 幂等不报错
 - [ ] **必须** 验证 `Recorder` 双写：`SessionID` 非空写 `session_stats`，空则仅全局埋点，互不干扰
+- [ ] **必须** 验证日历分桶时区口径（Asia/Shanghai）：UTC 00:00 的样本应归入北京「前一天」；北京自然日边界 00:00（= UTC 前一日 16:00）分桶正确；`bucketStart` 对 hour/day/week/month/year 的边界样本断言正确
+- [ ] **必须** 验证软删除（归档 `Delete`）**不**级联删 `session_stats`，仅 `HardDelete` 级联
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
 
 ### CI 门禁
@@ -219,3 +231,4 @@ if r.sessionStats != nil && rec.SessionID != "" {
 3. `HardDelete` 级联正确：删除 session 后 `session_stats` 对应文档消失；删除不存在的 session 幂等；主记录删除失败时 token 统计不残留（或已先删）。
 4. chat 页 / task 页正确显示单会话 token 消耗，数值与 `session_stats` 文档一致。
 5. 趋势统计（日/周/月/年）结果正确，`stats_hourly` 查询路径无性能回退。
+6. 日历维度（小时/星期几/几号/几月）聚合按 Asia/Shanghai 归属正确：跨 8 小时时差的边界样本归入北京自然日/自然周/自然月；软删除（归档）后 `session_stats` 保留，硬删除后消失。
