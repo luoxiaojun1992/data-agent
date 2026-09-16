@@ -52,6 +52,20 @@
 - **目标口径**：日历维度分桶**按实际时区 Asia/Shanghai（UTC+8）** 计算——`bucketStart`/`bucketHours` 改用 `time.LoadLocation("Asia/Shanghai")` 做自然日/周/月边界；`dashboard.go` 默认窗口的「今天」= 北京自然日。落库 `HourBucket` **保持 UTC**（存储层绝对时间戳不变，仅展示/分桶层变）。
 - **时区来源**：默认硬编码 `Asia/Shanghai`（业务主时区）；是否支持前端传时区参数（多租户/海外）留实现阶段评估，默认 `Asia/Shanghai`。
 
+**C. 系统时区口径全景（2026-09-16 实测确认，回答「其他数据是否按服务器时区转换返回前端」→ 否）**：
+
+| 层 | 现状口径 | 证据 |
+|---|---|---|
+| 存储（MongoDB） | UTC 绝对时间戳（BSON Date，int64 ms since epoch，无时区） | mongo 容器 `date` = UTC +0000；BSON Date 规范 |
+| 后端内存/落库 | `time.Now()` = UTC 的 `time.Time` | 后端容器 `date` = UTC +0000、`TZ=[]`（compose/Dockerfile 均无 TZ 设置）；唯一显式时区是 `get_current_time` 工具（`LoadLocation("Asia/Shanghai")`，注释明言「时区显式指定，从不依赖服务器默认 TZ」） |
+| 后端返回前端 | **UTC RFC3339（`...Z`），无「服务器时区转换」这一步** | gin 序列化 UTC `time.Time` 直接输出 `...Z` |
+| 前端展示 | **浏览器本地时区**渲染 | 全站统一 `new Date(x).toLocaleString()/toLocaleDateString()` |
+| 聚合分桶（stats_hourly） | ⚠️ UTC 自然日边界（偏差，§2.2-B 修正） | `bucketStart`/`bucketHours` 全 `.UTC()` |
+
+**关键区分（两层不冲突）**：
+- **时间字段展示**（session/chat/task/kb/artifact 的 `created_at`/`updated_at` 等）：存 UTC → 返回 UTC RFC3339 → 前端浏览器时区渲染，**已正确，无需改**。
+- **聚合分桶**（趋势统计日历维度）：是**服务端聚合语义**，必须**服务端固定时区**——不能依赖浏览器时区，否则同一份数据不同用户分桶边界不同、聚合结果跨用户不一致。故本 spec 固定 `Asia/Shanghai` 分桶，与「展示用浏览器时区」正确互补。
+
 ## 3. 架构概述
 
 ```
