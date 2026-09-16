@@ -66,3 +66,6 @@ mockllm/mockllm
 tests/ui/smoke-*.mjs
 tests/ui/*-verify.mjs
 tests/*_e2e.py
+
+# nginx 自签名证书私钥（含密钥，禁 push；服务器本地生成）
+nginx/ssl/
