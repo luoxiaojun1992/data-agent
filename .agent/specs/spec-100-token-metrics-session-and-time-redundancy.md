@@ -12,7 +12,7 @@
 | 3 | 是否加时间冗余字段 | ❌ **不加**。现有 UTC `time.Time` 存储天然兼容时区（见 §2.2），一年数据量 ≤8760/指标，实时聚合足够 |
 | 4 | session 删除语义 | 级联删除**仅指硬删除（`HardDelete`）**；软删除（归档 `Delete` 设 `deleted_at`）**不级联**——session 主记录保留、可恢复，token 统计同步保留，恢复后累计继续 |
 | 5 | 日历维度分桶时区 | 按小时/星期几/几号/几月的聚合展示**按实际时区 Asia/Shanghai（UTC+8）计算**，非 UTC（见 §2.2-B；当前存在 UTC 口径偏差，本 spec 一并修正） |
-| 6 | 分桶时区机制 | 确认分桶由**后端处理**（Go `Series`/`bucketHours`）→ **后端直接按 Asia/Shanghai（后端常用时区）分桶聚合**，不改 API、不传时区参数；前端 dashboard 横轴标签同步按 Asia/Shanghai 格式化，保证「分桶口径 = 展示口径」（见 §2.2-B） |
+| 6 | 分桶时区机制 | 分桶与展示**统一按浏览器时区**：前端传 `timezone` 参数（浏览器 `Intl.DateTimeFormat().resolvedOptions().timeZone`），后端校验后按前端时区确定时间区间 → 转 UTC 区间查询 DB → **按前端传参时区分桶聚合**；横轴标签用浏览器时区 `toLocaleString` 显示，口径天然一致。缺省回退 Asia/Shanghai，无效时区 400（见 §2.2-B） |
 | 7 | 子 session token 归属 | 子 session **使用父 sessionID 计数**，`session_stats` 统一主（父）session 维度；删除子 session **不级联**删父 session token 统计（本身不关联，见 §4/§5.2） |
 | 8 | stats_hourly 是否已有 session_id | ✅ **已确认没有**：代码 `HourlyStat` 无该字段 + 线上 197 条文档字段仅 `_id/metric/hour/updated_at/value`（2026-09-16 实测），无需删除 |
 | 9 | get_current_time 时区口径 | 附带修正（归属 SPEC-080 工具）：改为**按 UTC 返回** + 输出体现时区（UTC 标注 + 业务时区参考），让 LLM 与系统 UTC 时间戳对齐（见 §2.3） |
@@ -50,11 +50,36 @@
 - MongoDB BSON Date 是**绝对时间戳**（int64 毫秒 since epoch），**不携带时区**，任何客户端/语言读取都还原为同一绝对时刻。
 - 因此「星期几 / 几号 / 几月」只是绝对时刻的日历投影，**无需冗余存储**，可在查询/展示层按需实时计算。一年 ≤8760 文档/指标，数据量小，Go 层实时聚合足够——时间维度索引下沉 MongoDB 无收益。
 
-**B. 日历分桶时区口径（澄清 #5，⚠️ 当前存在偏差）**：
+**B. 日历分桶时区口径（澄清 #5 + 决策 #6 v2，⚠️ 当前存在偏差）**：
 
-- **现状**：`metrics.go` 的 `bucketStart`/`bucketHours` 全 `.UTC()` 分桶，`dashboard.go` 的 `now`/默认窗口也取 UTC → 按「小时/星期几/几号/几月」的**日历归属按 UTC 计算**，对 Asia/Shanghai 用户整体偏 8 小时（例：UTC 14 点被归为「14 点高峰」，实际是北京 22 点；「今天」从 UTC 00:00 起，对应北京 08:00，跨两个北京自然日）。
-- **目标口径**：日历维度分桶**按实际时区 Asia/Shanghai（UTC+8）** 计算——`bucketStart`/`bucketHours` 改用 `time.LoadLocation("Asia/Shanghai")` 做自然日/周/月边界；`dashboard.go` 默认窗口的「今天」= 北京自然日。落库 `HourBucket` **保持 UTC**（存储层绝对时间戳不变，仅展示/分桶层变）。
-- **分桶机制（决策 #6，已确认现状）**：趋势分桶由**后端处理**（Go 层 `Series`/`bucketHours`），因此采用**后端直接按 `Asia/Shanghai`（后端常用时区）分桶聚合**——不改 API 签名、不引入时区参数（「前端传时区字段」仅适用于前端分桶架构，此处不需要）。前端 dashboard 横轴标签用 `Intl.DateTimeFormat` 指定 `timeZone: 'Asia/Shanghai'` 格式化，保证「分桶口径 = 展示口径」，不依赖浏览器时区，与中国用户浏览器显示（其他时间字段的 `toLocaleString`）一致。
+- **现状（偏差）**：`metrics.go` 的 `bucketStart`/`bucketHours` 全 `.UTC()` 分桶，`dashboard.go` 的 `now`/默认窗口也取 UTC → 按「小时/星期几/几号/几月」的**日历归属按 UTC 计算**，对 Asia/Shanghai 用户整体偏 8 小时（例：UTC 14 点被归为「14 点高峰」，实际是北京 22 点；「今天」从 UTC 00:00 起，对应北京 08:00，跨两个北京自然日）。
+- **目标口径（决策 #6 v2）**：分桶与展示**统一按浏览器时区**——与全站其他时间字段的 `toLocaleString`（浏览器时区）一致。落库 `HourBucket` **保持 UTC**（存储层绝对时间戳不变，仅展示/分桶层变）。
+
+**时区参数流**：
+
+```
+前端 dashboard 页面
+  tz = Intl.DateTimeFormat().resolvedOptions().timeZone   // 浏览器时区，如 "Asia/Shanghai"
+  GET /api/v1/dashboard?granularity=day&timezone=Asia/Shanghai
+  GET /api/v1/dashboard/trends?granularity=day&timezone=Asia/Shanghai
+        ↓
+后端 handler
+  1. 校验 timezone：time.LoadLocation(tz) → 失败返回 400
+     缺省 → Asia/Shanghai（后端常用时区兜底）
+  2. 确定时间区间（按统计维度 + 前端时区）：
+     since = bucketStart(now.In(loc), 对应粒度, loc)  // 前端时区的自然窗口起点
+     until = now                                      // 当下时刻
+     日视图 → 今日 00:00（loc）起；周 → 本周一 00:00；月 → 本月 1 号；年 → 本年 1 月 1 日
+  3. 查询 DB：since/until 本就是绝对时刻，直接 $match hour ∈ [since, until)
+     —— DB 存 UTC 绝对时间戳，区间无时区，无需额外转换
+  4. 分桶：bucketStart/bucketHours 用 loc 做自然日/周/月边界（.In(loc) 后 Truncate）
+  5. 返回 Bucket.Time = 分桶边界绝对时刻（UTC 表示）
+        ↓
+前端
+  横轴标签 new Date(t).toLocaleString()（浏览器时区）→ 显示即分桶边界，口径天然一致
+```
+
+**关键实现注意**：`time.LoadLocation` 依赖 IANA 时区数据库——后端容器（debian:bookworm-slim）**无 tzdata 包**时 LoadLocation 会失败。必须 `import _ "time/tzdata"`（Go 内嵌时区库，~450KB）或容器安装 tzdata；不可用 `FixedZone` 兜底（只能兜 +08:00 一种，无法支持任意 IANA 时区）。
 
 **C. 系统时区口径全景（2026-09-16 实测确认，回答「其他数据是否按服务器时区转换返回前端」→ 否）**：
 
@@ -68,7 +93,7 @@
 
 **关键区分（两层不冲突）**：
 - **时间字段展示**（session/chat/task/kb/artifact 的 `created_at`/`updated_at` 等）：存 UTC → 返回 UTC RFC3339 → 前端浏览器时区渲染，**已正确，无需改**。
-- **聚合分桶**（趋势统计日历维度）：是**服务端聚合语义**，必须**服务端固定时区**——不能依赖浏览器时区，否则同一份数据不同用户分桶边界不同、聚合结果跨用户不一致。故本 spec 固定 `Asia/Shanghai` 分桶，与「展示用浏览器时区」正确互补。
+- **聚合分桶**（趋势统计日历维度）：**与展示统一按浏览器时区**——前端传 `timezone`、后端按该时区确定区间并分桶（决策 #6 v2），横轴标签用同一浏览器时区显示，口径天然一致。不同时区用户各自看到正确归属的视图（dashboard 是用户视角的展示语义，按用户时区个性化即正确行为）。
 
 ## 2.3 附带修正：get_current_time 时区口径（决策 #9，归属 SPEC-080 工具）
 
@@ -187,7 +212,7 @@ if r.sessionStats != nil && rec.SessionID != "" {
 ### 5.3 API 方向
 
 - **session token 查询**：新增接口（形如 `GET /api/v1/sessions/:id/token-usage`，或 chat/task 列表接口内嵌 `billed_tokens`），直接按 `_id=session_id` 点查 `session_stats`，单文档返回，无需聚合。具体路径实现阶段定。
-- **dashboard 趋势统计**：`Sum/Series` 无 schema 变更、不引入冗余字段；**修正日历分桶时区口径**——`bucketStart`/`bucketHours`/默认窗口由 UTC 改为 Asia/Shanghai（见 §2.2-B，决策 #6 后端处理方案）；前端横轴标签同步按 Asia/Shanghai 格式化（`Intl.DateTimeFormat` + `timeZone: 'Asia/Shanghai'`）。
+- **dashboard 趋势统计**：`Sum/Series` 无 schema 变更（`Series` 签名加 `loc *time.Location`）、不引入冗余字段；**修正日历分桶时区口径**——新增 `timezone` 查询参数（校验 + 缺省回退 + 400），默认窗口起点与分桶边界均按前端传入时区（见 §2.2-B，决策 #6 v2）；前端横轴标签保持浏览器时区 `toLocaleString`（与分桶口径天然一致）。
 - **get_current_time 附带修正**：按 UTC 返回 + 时区标注（见 §2.3）。
 
 ## 6. 可行性分析
@@ -210,12 +235,13 @@ if r.sessionStats != nil && rec.SessionID != "" {
 | `cmd/server/wire.go` / `main.go` | DI 注入 `SessionStatStore`（赋值顺序：消费前） | Low |
 | `cmd/server/migration/*` / `internal/infra/mongo/client.go` | `session_stats` 索引（`_id` 主键 + 可选 `user_id`/`updated_at`） | Low |
 | `internal/api/handler/session.go`（或 chat/task handler） | 新增 session token 查询接口 + RBAC 归属校验（防 IDOR） | Medium |
-| `internal/infra/metrics/metrics.go` | 日历分桶 `bucketStart`/`bucketHours` 由 UTC 改 Asia/Shanghai（澄清 #5/决策 #6） | Medium |
-| `internal/api/handler/dashboard.go` | 默认窗口/`now` 改用 Asia/Shanghai 自然日（澄清 #5/决策 #6） | Low |
+| `internal/infra/metrics/metrics.go` | `Series`/`bucketStart`/`bucketHours` 加 `loc *time.Location` 参数，按传入时区做日历分桶（决策 #6 v2） | Medium |
+| `internal/api/handler/dashboard.go` | 新增 `timezone` 参数解析+校验（400/缺省回退 Asia/Shanghai）、默认窗口起点按传入时区自然日（决策 #6 v2） | Medium |
+| `cmd/server/main.go`（或 wire） | `import _ "time/tzdata"` 内嵌时区库（容器无 tzdata 包） | Low |
 | `internal/adk/tools/tools.go` | `get_current_time` 改 UTC 输出 + 时区标注（附带修正 §2.3，归属 SPEC-080） | Low |
 | 埋点出口（buildBackends `RecordingLLM`） | 子 session 归父解析（`parent_session_id` → 父 session ID 计数，决策 #7） | Medium |
 | 前端 chat / task 页面 | session token 展示（回填单会话 `billed_tokens`） | Medium |
-| 前端 dashboard 页面 | 趋势图横轴标签按 Asia/Shanghai 格式化（决策 #6） | Low |
+| 前端 dashboard 页面 | 传 `timezone` 参数（`Intl.DateTimeFormat().resolvedOptions().timeZone`），横轴保持浏览器时区 `toLocaleString` | Low |
 
 ## 9. UI Test / E2E 验收规则
 
@@ -248,7 +274,7 @@ if r.sessionStats != nil && rec.SessionID != "" {
 - [ ] **必须** 验证 `Upsert` 幂等：同 session 多次 `$inc` 累计正确，`$setOnInsert` 首写字段不覆盖
 - [ ] **必须** 验证 `HardDelete` 级联顺序：token 统计先删、主记录后删；删除不存在的 session 幂等不报错
 - [ ] **必须** 验证 `Recorder` 双写：`SessionID` 非空写 `session_stats`，空则仅全局埋点，互不干扰
-- [ ] **必须** 验证日历分桶时区口径（Asia/Shanghai）：UTC 00:00 的样本应归入北京「前一天」；北京自然日边界 00:00（= UTC 前一日 16:00）分桶正确；`bucketStart` 对 hour/day/week/month/year 的边界样本断言正确
+- [ ] **必须** 验证 `timezone` 参数链路（决策 #6 v2）：无效时区 400；缺省回退 Asia/Shanghai；`Series` 按传入时区分桶——UTC 00:00 的样本归入北京「前一天」、北京自然日边界 00:00（= UTC 前一日 16:00）分桶正确；`bucketStart` 对 hour/day/week/month/year 的边界样本断言正确（覆盖非整点偏移时区如 `Asia/Kathmandu` UTC+5:45）
 - [ ] **必须** 验证软删除（归档 `Delete`）**不**级联删 `session_stats`，仅 `HardDelete` 级联
 - [ ] **必须** 验证子 session 归父（决策 #7）：带 `parent_session_id` 上下文的埋点写**父 session** 文档；删子 session 后父 session 统计保留、无任何 `session_stats` 被级联
 - [ ] **必须** 验证 `get_current_time` 按 UTC 返回且显式体现时区（`time` 带 `Z`、`timezone=UTC`、`biz_time`/`biz_timezone` 业务时区参考正确，北京 00:00-08:00 边界处 UTC 日期/星期与北京不一致的场景断言正确）
@@ -266,6 +292,6 @@ if r.sessionStats != nil && rec.SessionID != "" {
 3. `HardDelete` 级联正确：删除 session 后 `session_stats` 对应文档消失；删除不存在的 session 幂等；主记录删除失败时 token 统计不残留（或已先删）。
 4. chat 页 / task 页正确显示单会话 token 消耗，数值与 `session_stats` 文档一致。
 5. 趋势统计（日/周/月/年）结果正确，`stats_hourly` 查询路径无性能回退。
-6. 日历维度（小时/星期几/几号/几月）聚合按 Asia/Shanghai 归属正确：跨 8 小时时差的边界样本归入北京自然日/自然周/自然月；软删除（归档）后 `session_stats` 保留，硬删除后消失。
+6. 日历维度（小时/星期几/几号/几月）聚合按**前端传入时区**归属正确：前端传 `Asia/Shanghai` 时跨 8 小时时差的边界样本归入北京自然日/自然周/自然月；无效时区返回 400；缺省回退 Asia/Shanghai；软删除（归档）后 `session_stats` 保留，硬删除后消失。
 7. 子 session token 归父正确：子 agent 运行产生的 token 计入父 session 文档（`_id == 父 session ID`）；删除子 session 后父 session 统计不受影响。
 8. `get_current_time` 按 UTC 返回并体现时区（`time` 带 `Z`、`timezone=UTC`、含业务时区参考），与系统 UTC 时间戳口径一致。
