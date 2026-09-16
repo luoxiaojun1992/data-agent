@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_CHAT_TEXT_BYTES, type Attachment, type PdfAttachment } from '@/lib/attachment';
 import { parsePdf } from '@/lib/pdf';
 import { loadRedactAuto, saveRedactAuto, redactText } from '@/lib/redact';
-import { startRecording, stopRecordingAndTranscribe, type VoicePhase } from '@/lib/voice';
+import { isVoiceInputSupported, startRecording, stopRecordingAndTranscribe, type VoicePhase } from '@/lib/voice';
 import Markdown from '../../components/Markdown';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
@@ -192,6 +192,12 @@ export default function ChatPage() {
   // SPEC-099: 语音输入（服务端分片上传转写）。
   const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
   const [voiceError, setVoiceError] = useState('');
+  // 非安全上下文（http://IP）浏览器禁用麦克风：提前禁用按钮并 hover 提示。
+  // 默认 true 避免 SSR hydration 不匹配；客户端挂载后立即校正。
+  const [voiceSupported, setVoiceSupported] = useState(true);
+  useEffect(() => {
+    setVoiceSupported(isVoiceInputSupported());
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -981,13 +987,17 @@ export default function ChatPage() {
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-redact-btn"
               >🛡️ 脱敏</button>
-              {/* SPEC-099: 语音输入按钮（服务端分片上传转写；转写结果追加回填、不自动提交） */}
+              {/* SPEC-099: 语音输入按钮（服务端分片上传转写；转写结果追加回填、不自动提交）。
+                  非安全上下文时禁用，hover 提示原因。 */}
               <button
                 onClick={handleVoiceToggle}
-                disabled={streaming || voicePhase === 'transcribing'}
+                disabled={streaming || voicePhase === 'transcribing' || !voiceSupported}
+                title={!voiceSupported
+                  ? '当前页面非安全上下文（需 HTTPS 或 localhost），麦克风不可用'
+                  : voicePhase === 'recording' ? '点击停止并转写' : '语音输入'}
                 className={voicePhase === 'recording'
                   ? 'px-3 py-1.5 text-xs rounded-lg border border-[#ef4444] text-[#ef4444] hover:opacity-90 transition-colors disabled:opacity-40'
-                  : 'px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40'}
+                  : 'px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed'}
                 data-testid="chat-voice-btn"
               >{voicePhase === 'recording' ? '⏺️ 录制中' : voicePhase === 'transcribing' ? '⏳ 转写中' : '🎤 语音'}</button>
               <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">

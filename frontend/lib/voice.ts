@@ -134,6 +134,27 @@ function enqueueFlush(apiFetch: ApiFetch): void {
 }
 
 /**
+ * getUserMedia 仅暴露给安全上下文（HTTPS / localhost）。通过 http://IP 访问时
+ * navigator.mediaDevices 为 undefined，裸调用会抛 TypeError。同步检测供 UI
+ * 提前禁用语音按钮（hover 提示），startRecording 内兜底拦截。
+ */
+export function isVoiceInputSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.isSecureContext === true &&
+    !!navigator.mediaDevices?.getUserMedia
+  );
+}
+
+function assertMicAvailable(): void {
+  if (!isVoiceInputSupported()) {
+    throw new Error(
+      '当前页面非安全上下文，浏览器已禁用麦克风。请改用 https:// 或 localhost（如 SSH 隧道）访问',
+    );
+  }
+}
+
+/**
  * 开始录音：申请麦克风 → POST /voice/start 建立会话 → MediaRecorder 本地
  * 累积原始流 → 每 5s 解码增量上传。到达 60s 硬上限时自动停止并转写，结果
  * 经 onAutoStop 回调返回。
@@ -142,6 +163,7 @@ export async function startRecording(
   apiFetch: ApiFetch,
   opts: { lang?: string; onAutoStop?: (text: string) => void } = {},
 ): Promise<void> {
+  assertMicAvailable();
   mediaStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
