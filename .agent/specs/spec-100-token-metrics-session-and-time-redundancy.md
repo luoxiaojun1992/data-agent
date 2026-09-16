@@ -12,6 +12,10 @@
 | 3 | 是否加时间冗余字段 | ❌ **不加**。现有 UTC `time.Time` 存储天然兼容时区（见 §2.2），一年数据量 ≤8760/指标，实时聚合足够 |
 | 4 | session 删除语义 | 级联删除**仅指硬删除（`HardDelete`）**；软删除（归档 `Delete` 设 `deleted_at`）**不级联**——session 主记录保留、可恢复，token 统计同步保留，恢复后累计继续 |
 | 5 | 日历维度分桶时区 | 按小时/星期几/几号/几月的聚合展示**按实际时区 Asia/Shanghai（UTC+8）计算**，非 UTC（见 §2.2-B；当前存在 UTC 口径偏差，本 spec 一并修正） |
+| 6 | 分桶时区机制 | 确认分桶由**后端处理**（Go `Series`/`bucketHours`）→ **后端直接按 Asia/Shanghai（后端常用时区）分桶聚合**，不改 API、不传时区参数；前端 dashboard 横轴标签同步按 Asia/Shanghai 格式化，保证「分桶口径 = 展示口径」（见 §2.2-B） |
+| 7 | 子 session token 归属 | 子 session **使用父 sessionID 计数**，`session_stats` 统一主（父）session 维度；删除子 session **不级联**删父 session token 统计（本身不关联，见 §4/§5.2） |
+| 8 | stats_hourly 是否已有 session_id | ✅ **已确认没有**：代码 `HourlyStat` 无该字段 + 线上 197 条文档字段仅 `_id/metric/hour/updated_at/value`（2026-09-16 实测），无需删除 |
+| 9 | get_current_time 时区口径 | 附带修正（归属 SPEC-080 工具）：改为**按 UTC 返回** + 输出体现时区（UTC 标注 + 业务时区参考），让 LLM 与系统 UTC 时间戳对齐（见 §2.3） |
 
 ## 1. 目标
 
@@ -50,7 +54,7 @@
 
 - **现状**：`metrics.go` 的 `bucketStart`/`bucketHours` 全 `.UTC()` 分桶，`dashboard.go` 的 `now`/默认窗口也取 UTC → 按「小时/星期几/几号/几月」的**日历归属按 UTC 计算**，对 Asia/Shanghai 用户整体偏 8 小时（例：UTC 14 点被归为「14 点高峰」，实际是北京 22 点；「今天」从 UTC 00:00 起，对应北京 08:00，跨两个北京自然日）。
 - **目标口径**：日历维度分桶**按实际时区 Asia/Shanghai（UTC+8）** 计算——`bucketStart`/`bucketHours` 改用 `time.LoadLocation("Asia/Shanghai")` 做自然日/周/月边界；`dashboard.go` 默认窗口的「今天」= 北京自然日。落库 `HourBucket` **保持 UTC**（存储层绝对时间戳不变，仅展示/分桶层变）。
-- **时区来源**：默认硬编码 `Asia/Shanghai`（业务主时区）；是否支持前端传时区参数（多租户/海外）留实现阶段评估，默认 `Asia/Shanghai`。
+- **分桶机制（决策 #6，已确认现状）**：趋势分桶由**后端处理**（Go 层 `Series`/`bucketHours`），因此采用**后端直接按 `Asia/Shanghai`（后端常用时区）分桶聚合**——不改 API 签名、不引入时区参数（「前端传时区字段」仅适用于前端分桶架构，此处不需要）。前端 dashboard 横轴标签用 `Intl.DateTimeFormat` 指定 `timeZone: 'Asia/Shanghai'` 格式化，保证「分桶口径 = 展示口径」，不依赖浏览器时区，与中国用户浏览器显示（其他时间字段的 `toLocaleString`）一致。
 
 **C. 系统时区口径全景（2026-09-16 实测确认，回答「其他数据是否按服务器时区转换返回前端」→ 否）**：
 
@@ -65,6 +69,16 @@
 **关键区分（两层不冲突）**：
 - **时间字段展示**（session/chat/task/kb/artifact 的 `created_at`/`updated_at` 等）：存 UTC → 返回 UTC RFC3339 → 前端浏览器时区渲染，**已正确，无需改**。
 - **聚合分桶**（趋势统计日历维度）：是**服务端聚合语义**，必须**服务端固定时区**——不能依赖浏览器时区，否则同一份数据不同用户分桶边界不同、聚合结果跨用户不一致。故本 spec 固定 `Asia/Shanghai` 分桶，与「展示用浏览器时区」正确互补。
+
+## 2.3 附带修正：get_current_time 时区口径（决策 #9，归属 SPEC-080 工具）
+
+现状（`internal/adk/tools/tools.go` 的 `currentTime()`）：返回 **Asia/Shanghai 本地时间**（`t.In(loc)` 后 RFC3339，`Timezone: "Asia/Shanghai"`）——与系统内所有 UTC 时间戳口径**不一致**，LLM 拿到「now」后若与系统 UTC 时间戳（如 session 的 `created_at`、task 的 `scheduled_at`）做比较/运算会差 8 小时。
+
+修正方向：
+
+- `time`/`date`/`weekday` 按 **UTC** 返回（RFC3339 带 `Z`），与系统时间戳口径对齐。
+- 输出**显式体现时区**：`timezone: "UTC"` + 新增业务时区参考字段（如 `biz_time` / `biz_timezone: "Asia/Shanghai"`），让 LLM 既知道 UTC 绝对时刻、也知道业务时区当前时间（「今天星期几/几号」等日历问答用 biz 字段）。
+- `unix` 保持不变（绝对时刻，无时区）。
 
 ## 3. 架构概述
 
@@ -115,7 +129,7 @@ func (m *Manager) HardDelete(id string) error {
 
 **幂等**：`DeleteBySession` 用 `DeleteOne({_id: session_id})`，删除不存在的文档返回 `deletedCount=0` 且**不报错**，天然幂等。
 
-**子 session 边界**：ADK 层 `adk/session/mongo.go` 的 `DeleteByID`/`deleteSubSessions` 负责子 agent session。若实现时确认子 session 也参与 token 埋点，则子 session 删除路径需同步级联（实现阶段确认，立项不展开）。
+**子 session 边界（决策 #7，已定）**：子 session 的 token **归父 session 计数**（`session_stats._id` 统一为顶层父 session ID），子 session **不产生独立统计**。因此删除子 session（`adk/session/mongo.go` 的 `DeleteByID`/`deleteSubSessions`、`subagent/runner.go` 的 `cleanup`）**不级联**删任何 `session_stats` 文档——统计挂在父 session 上，与子 session 无关联。父 session 删除时由其自身 `HardDelete` 级联一次覆盖。
 
 ## 5. 详细设计（方向）
 
@@ -168,11 +182,13 @@ if r.sessionStats != nil && rec.SessionID != "" {
 
 - `SessionID` 为空（理论上不应发生，LLM 调用必有会话上下文）时仅走全局埋点，不写 `session_stats`，防御性处理。
 - 不修改 `Counter` 接口签名，避免全量调用点改动。
+- **子 session 归父（决策 #7）**：子 agent 运行时的 LLM 调用，埋点用**父 session ID**（非 subID）。实现要点：`RecordingLLM`（buildBackends 统一出口）从运行上下文解析——当前 session 为子 session 时取 `parent_session_id`（`adk/subagent/runner.go` 创建子 session 时已写入，StateDelta 携带），否则取自身 ID；解析失败则降级仅全局埋点（不写 `session_stats`），不阻塞主流程。
 
 ### 5.3 API 方向
 
 - **session token 查询**：新增接口（形如 `GET /api/v1/sessions/:id/token-usage`，或 chat/task 列表接口内嵌 `billed_tokens`），直接按 `_id=session_id` 点查 `session_stats`，单文档返回，无需聚合。具体路径实现阶段定。
-- **dashboard 趋势统计**：`Sum/Series` 无 schema 变更、不引入冗余字段；**修正日历分桶时区口径**——`bucketStart`/`bucketHours`/默认窗口由 UTC 改为 Asia/Shanghai（见 §2.2-B）。
+- **dashboard 趋势统计**：`Sum/Series` 无 schema 变更、不引入冗余字段；**修正日历分桶时区口径**——`bucketStart`/`bucketHours`/默认窗口由 UTC 改为 Asia/Shanghai（见 §2.2-B，决策 #6 后端处理方案）；前端横轴标签同步按 Asia/Shanghai 格式化（`Intl.DateTimeFormat` + `timeZone: 'Asia/Shanghai'`）。
+- **get_current_time 附带修正**：按 UTC 返回 + 时区标注（见 §2.3）。
 
 ## 6. 可行性分析
 
@@ -194,9 +210,12 @@ if r.sessionStats != nil && rec.SessionID != "" {
 | `cmd/server/wire.go` / `main.go` | DI 注入 `SessionStatStore`（赋值顺序：消费前） | Low |
 | `cmd/server/migration/*` / `internal/infra/mongo/client.go` | `session_stats` 索引（`_id` 主键 + 可选 `user_id`/`updated_at`） | Low |
 | `internal/api/handler/session.go`（或 chat/task handler） | 新增 session token 查询接口 + RBAC 归属校验（防 IDOR） | Medium |
-| `internal/infra/metrics/metrics.go` | 日历分桶 `bucketStart`/`bucketHours` 由 UTC 改 Asia/Shanghai（澄清 #5） | Medium |
-| `internal/api/handler/dashboard.go` | 默认窗口/`now` 改用 Asia/Shanghai 自然日（澄清 #5） | Low |
+| `internal/infra/metrics/metrics.go` | 日历分桶 `bucketStart`/`bucketHours` 由 UTC 改 Asia/Shanghai（澄清 #5/决策 #6） | Medium |
+| `internal/api/handler/dashboard.go` | 默认窗口/`now` 改用 Asia/Shanghai 自然日（澄清 #5/决策 #6） | Low |
+| `internal/adk/tools/tools.go` | `get_current_time` 改 UTC 输出 + 时区标注（附带修正 §2.3，归属 SPEC-080） | Low |
+| 埋点出口（buildBackends `RecordingLLM`） | 子 session 归父解析（`parent_session_id` → 父 session ID 计数，决策 #7） | Medium |
 | 前端 chat / task 页面 | session token 展示（回填单会话 `billed_tokens`） | Medium |
+| 前端 dashboard 页面 | 趋势图横轴标签按 Asia/Shanghai 格式化（决策 #6） | Low |
 
 ## 9. UI Test / E2E 验收规则
 
@@ -231,6 +250,8 @@ if r.sessionStats != nil && rec.SessionID != "" {
 - [ ] **必须** 验证 `Recorder` 双写：`SessionID` 非空写 `session_stats`，空则仅全局埋点，互不干扰
 - [ ] **必须** 验证日历分桶时区口径（Asia/Shanghai）：UTC 00:00 的样本应归入北京「前一天」；北京自然日边界 00:00（= UTC 前一日 16:00）分桶正确；`bucketStart` 对 hour/day/week/month/year 的边界样本断言正确
 - [ ] **必须** 验证软删除（归档 `Delete`）**不**级联删 `session_stats`，仅 `HardDelete` 级联
+- [ ] **必须** 验证子 session 归父（决策 #7）：带 `parent_session_id` 上下文的埋点写**父 session** 文档；删子 session 后父 session 统计保留、无任何 `session_stats` 被级联
+- [ ] **必须** 验证 `get_current_time` 按 UTC 返回且显式体现时区（`time` 带 `Z`、`timezone=UTC`、`biz_time`/`biz_timezone` 业务时区参考正确，北京 00:00-08:00 边界处 UTC 日期/星期与北京不一致的场景断言正确）
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
 
 ### CI 门禁
@@ -246,3 +267,5 @@ if r.sessionStats != nil && rec.SessionID != "" {
 4. chat 页 / task 页正确显示单会话 token 消耗，数值与 `session_stats` 文档一致。
 5. 趋势统计（日/周/月/年）结果正确，`stats_hourly` 查询路径无性能回退。
 6. 日历维度（小时/星期几/几号/几月）聚合按 Asia/Shanghai 归属正确：跨 8 小时时差的边界样本归入北京自然日/自然周/自然月；软删除（归档）后 `session_stats` 保留，硬删除后消失。
+7. 子 session token 归父正确：子 agent 运行产生的 token 计入父 session 文档（`_id == 父 session ID`）；删除子 session 后父 session 统计不受影响。
+8. `get_current_time` 按 UTC 返回并体现时区（`time` 带 `Z`、`timezone=UTC`、含业务时区参考），与系统 UTC 时间戳口径一致。
