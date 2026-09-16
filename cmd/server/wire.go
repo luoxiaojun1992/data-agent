@@ -62,6 +62,7 @@ import (
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/user"
+	"github.com/luoxiaojun1992/data-agent/internal/service/voice"
 	"github.com/luoxiaojun1992/data-agent/internal/worker"
 	"go.uber.org/zap"
 
@@ -408,6 +409,25 @@ func initEnhance(deps *serverDependencies) {
 	deps.enhanceService = enhancesvc.NewService(deps.modelCfg, deps.llmCache)
 }
 
+// initVoice builds the server-side speech-to-text service (SPEC-099). The
+// sidecar client is inert (returns 503 on finish) when VOICE_ENDPOINT is
+// unset, so the route degrades gracefully without affecting other features.
+func initVoice(deps *serverDependencies, cfg *config.Config) {
+	client := voice.NewClient(voice.ClientConfig{
+		Endpoint: cfg.Voice.Endpoint,
+		Token:    getEnvOrDefault("VOICE_INTERNAL_TOKEN", ""),
+		Timeout:  cfg.Voice.Timeout,
+	})
+	manager := voice.NewManager(voice.ManagerConfig{
+		TTL:      cfg.Voice.SessionTTL,
+		MaxTotal: voice.MaxVoiceBytes,
+		MaxChunk: cfg.Voice.MaxChunkBytes,
+	})
+	deps.voiceService = voice.NewService(client, manager)
+	// Background eviction of abandoned recording sessions (never blocking).
+	go manager.StartCleanup()
+}
+
 func initSkillConfig(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	skillRepo := mongoinfra.NewSkillConfigRepo(mongoClient.DB())
 	deps.skillConfigSvc = skillsvc.NewConfigService(skillRepo)
@@ -739,6 +759,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		HumanChannel:   handler.NewHumanChannelHandler(deps.humanHub, deps.sessionManager),
 		Enhance:        handler.NewEnhanceHandler(deps.enhanceService),
 		Redact:         handler.NewRedactHandler(deps.piiRedactor),
+		Voice:          handler.NewVoiceHandler(deps.voiceService),
 		Session:        handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),
 		Artifact:       deps.artifactHandler,
 		Knowledge:      deps.kbHandler,

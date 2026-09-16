@@ -197,6 +197,32 @@ services:
       - RENDER_TIMEOUT_MS=30000
     restart: unless-stopped
 
+  # SPEC-099: whisper.cpp speech-to-text sidecar. Self-built (whisper.cpp MIT +
+  # Go bindings MIT). Pure CPU + OpenMP, model instance pool (warm-up + dynamic
+  # growth). No host port — only reached by data-agent over the compose network.
+  # Model weights (ggml-tiny.bin ~78MB) are mounted from the host, like the
+  # privacy-filter ONNX weights: scp to /root/data-agent-models/whisper/.
+  whisper:
+    build:
+      context: ./deploy/whisper
+      dockerfile: Dockerfile
+    environment:
+      - WHISPER_MODEL_PATH=/models/ggml-tiny.bin
+      - WHISPER_MIN_CONCURRENCY=2
+      - WHISPER_MAX_CONCURRENCY=4
+      - WHISPER_N_THREADS=4
+      - WHISPER_AUDIO_CTX=768
+      - WHISPER_INTERNAL_TOKEN=data-agent-dev-token
+    volumes:
+      - /root/data-agent-models/whisper:/models:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
   data-agent:
     build:
       context: .
@@ -228,6 +254,8 @@ services:
       - ARCADE_DATABASE=kbgraph
       - RENDERER_URL=http://renderer:3000
       - RENDERER_TOKEN=data-agent-dev-token
+      - VOICE_ENDPOINT=http://whisper:8081/transcribe
+      - VOICE_INTERNAL_TOKEN=data-agent-dev-token
     depends_on:
       mongodb:
         condition: service_healthy

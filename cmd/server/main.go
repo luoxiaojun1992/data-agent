@@ -56,6 +56,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/service/pii"
 	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	task_svc "github.com/luoxiaojun1992/data-agent/internal/service/task"
+	"github.com/luoxiaojun1992/data-agent/internal/service/voice"
 	"go.uber.org/zap"
 
 	"google.golang.org/adk/memory"
@@ -114,6 +115,7 @@ type serverDependencies struct {
 	taskStream     *queue.Stream
 	orchestrator   *agentlogic.Orchestrator
 	enhanceService *enhancesvc.Service
+	voiceService   *voice.Service
 	imService      *im.Service
 	// Handlers + services (populated by wire.go init functions).
 	kbService          *knowledge.Service
@@ -215,6 +217,7 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 	initAuditAndNotifications(&deps, mongoClient)
 	initTaskQueue(&deps, cfg, mongoClient, logger)
 	initEnhance(&deps)
+	initVoice(&deps, cfg)
 	initIM(&deps)
 
 	// SPEC-079: health service runs last — it snapshots every infra client's

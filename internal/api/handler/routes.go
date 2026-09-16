@@ -31,6 +31,7 @@ type RouteDeps struct {
 	HumanChannel  *HumanChannelHandler
 	Enhance       *EnhanceHandler
 	Redact        *RedactHandler
+	Voice         *VoiceHandler
 	Session       *SessionHandler
 	Artifact      *ArtifactHandler
 	Knowledge     *KnowledgeHandler
@@ -172,6 +173,13 @@ func registerFeatureRoutes(router *gin.Engine, deps *RouteDeps) {
 		sessionRoutes := router.Group("/api/v1/sessions")
 		sessionRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermChatView))
 		RegisterSessionRoutes(sessionRoutes, deps.Session, deps.RBACService)
+	}
+	if deps.Voice != nil {
+		// SPEC-099: chunked voice upload shares the chat-view permission
+		// (mirrors enhance/redact). Sessions buffer in main-backend memory.
+		voiceRoutes := router.Group("/api/v1/voice")
+		voiceRoutes.Use(deps.JWTManager.AuthMiddleware(), middleware.RequirePermission(deps.RBACService, model.PermChatView))
+		RegisterVoiceRoutes(voiceRoutes, deps.Voice)
 	}
 	if deps.Artifact != nil {
 		registerArtifactRoutes(router, deps.JWTManager, deps.Artifact, deps.RBACService)

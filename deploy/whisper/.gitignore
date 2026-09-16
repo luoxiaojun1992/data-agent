@@ -1,0 +1,5 @@
+# 本地开发 symlink（指向 .build-tools/whisper.cpp），Docker 构建走 git clone
+whisper.cpp
+# 编译产物
+whisper-server*
+*.bin
