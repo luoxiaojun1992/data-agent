@@ -46,10 +46,11 @@ file_delete/dir_delete 执行时（tools.go）
         ▼
 Deps.SkillConfigs.RequiresApproval(ctx, "file_delete")   ← 查 skill_configs.requires_approval
         │
-        ├── false ──────────────► 直接执行（现状 nil HumanGate 行为）
+        ├── 查询失败 ─────────────► ❌ 拒绝执行（fail-closed，见 §5.3 决策 1）
+        ├── false ──────────────► 直接执行
         └── true
                 │
-                ├── HumanGate == nil ──► ❌ 拒绝执行（fail-closed，见 §5.3 决策 1）
+                ├── HumanGate == nil ──► 直接执行（backward compat，见 §5.3 决策 2）
                 └── HumanGate.Confirm ──► 同意 → 执行；拒绝 → 返回「用户拒绝」
 ```
 
@@ -71,17 +72,18 @@ Deps.SkillConfigs.RequiresApproval(ctx, "file_delete")   ← 查 skill_configs.r
 2. **repo** `internal/infra/mongo/skill_config_repo.go`：`skillConfigDoc` 加 `bson:"requires_approval"`；`toSkillConfig()`/`Upsert` `$set` 同步该字段。
 3. **seed** `internal/service/skill/config.go`：`predefinedSkills()` 里 `file_delete`/`dir_delete` 设 `RequiresApproval: true`，其余全部 false（Go 零值即默认，显式写 true 的两条即可）。
 4. **tools.go**：`Deps` 加 skill config 查询依赖（接口如 `RequiresApproval(ctx, name string) (bool, error)`，由 `skill.ConfigService` 实现/适配）；`fileDelete`/`dirDelete` 函数体改为：
-   - 查开关失败 → fail-closed 拒绝（同决策 1，避免「查不到=免批准」漏洞）。
+   - 查开关失败 → fail-closed 拒绝（避免「查不到=免批准」漏洞，见 §5.3 决策 1）。
    - `requires_approval == false` → 直接执行。
-   - `requires_approval == true` → 走 `HumanGate.Confirm`；`HumanGate == nil` → fail-closed 拒绝。
+   - `requires_approval == true` → 走 `HumanGate.Confirm`；`HumanGate == nil` → 直接执行（保持现状 backward compat，见 §5.3 决策 2）。
 5. **wire.go**：注入 skill config 查询依赖到 `Deps`（赋值在消费前）。
 6. **admin skill config API**：domain 加字段后 Upsert/List 自然透传（无需新接口）；前端 admin 编辑页是否加开关控件，实现阶段评估（立项不展开）。
 
-### 5.3 关键设计决策（待晓军拍板）
+### 5.3 关键设计决策
 
-1. **HumanGate nil 且 requires_approval=true 时**：推荐 **fail-closed（拒绝执行并报错）**。现状 HumanGate nil → 直接执行（仅单测场景；生产 wire.go 恒注入）。fail-closed 更安全，避免「gate 未注入 = 免批准」漏洞。
-2. **开关读取方式**：每次执行直查 DB（`file_delete` 低频操作 + 32 条小表，一次 FindOne 可接受），不做内存缓存（缓存引入失效问题，收益为零）。
-3. **注册时机**：`file_delete`/`dir_delete` 注册不受开关影响（开关管「执行前是否批准」，不管「是否注册」）；`ask_user` 注册逻辑维持现状。
+1. **开关查询失败（DB 错误）时**：**fail-closed 拒绝执行**（删除是破坏性操作，开关不明 = 不执行，避免「查不到=免批准」漏洞）。此为唯一真实安全决策。
+2. **HumanGate nil 且 requires_approval=true 时**：**保持现状 backward compat（直接执行）**。生产恒注入——`wire.go:317` 无条件 `NewGate(...)` + 主/子 agent 共用同一 `toolDeps`（`wire.go:358-359`），HumanGate nil 仅出现在单测直接构造 `&Deps{HumanGate: nil}` 的兼容分支；改 fail-closed 无生产收益且 churn 现有单测。
+3. **开关读取方式**：每次执行直查 DB（`file_delete` 低频操作 + 32 条小表，一次 FindOne 可接受），不做内存缓存（缓存引入失效问题，收益为零）。
+4. **注册时机**：`file_delete`/`dir_delete` 注册不受开关影响（开关管「执行前是否批准」，不管「是否注册」）；`ask_user` 注册逻辑维持现状。
 
 ### 5.4 一次性脚本（线上 DB 迁移）
 
@@ -151,7 +153,7 @@ db.skill_configs.updateMany(
 ### 断言质量要求
 
 - [ ] **必须** 每个 Success 测试至少包含 **2 个行为验证断言**（除 `err == nil` 外必须验证实际值/状态/副作用）
-- [ ] **必须** 验证 `fileDelete`/`dirDelete` 全分支：开关 false → 不调用 Confirm 直接执行；开关 true → Confirm 同意执行/拒绝报错/gate 错误报错；开关 true + HumanGate nil → fail-closed 拒绝；开关查询失败 → fail-closed 拒绝
+- [ ] **必须** 验证 `fileDelete`/`dirDelete` 全分支：开关 false → 不调用 Confirm 直接执行；开关 true → Confirm 同意执行/拒绝报错/gate 错误报错；开关 true + HumanGate nil → 直接执行（backward compat，沿用现有测试语义）；开关查询失败 → fail-closed 拒绝
 - [ ] **必须** 验证 repo `Upsert` 写入 `requires_approval` 字段值正确（true/false 各一）
 - [ ] **必须** 验证 `predefinedSkills()` 中仅 `file_delete`/`dir_delete` 为 true，其余为 false
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
