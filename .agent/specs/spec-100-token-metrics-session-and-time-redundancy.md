@@ -135,10 +135,11 @@ stats_hourly（全局趋势/看板）                          session_stats（�
 
 ```go
 func (m *Manager) HardDelete(id string) error {
-    // 新增：先删 session token 统计（早于主记录删除，幂等）
+    // 新增：先删 session token 统计（早于主记录删除；不存在=成功继续，
+    // 仅 err != nil 失败即中止，主记录不删 → 无孤儿）
     if m.sessionStatStore != nil {
         if err := m.sessionStatStore.DeleteBySession(ctx, id); err != nil {
-            return err   // 失败即中止，主记录不删 → 无孤儿
+            return err
         }
     }
     if err := m.repo.HardDelete(context.Background(), id); err != nil {
@@ -156,7 +157,7 @@ func (m *Manager) HardDelete(id string) error {
 
 **顺序语义（「早于主记录删除」的理由）**：token 统计先删成功、主记录删除失败（session 仍在）时，后续埋点会重新 `upsert` 累计，**不丢数据**；反之若主记录先删、token 统计删除失败，则永久残留孤儿。
 
-**幂等**：`DeleteBySession` 用 `DeleteOne({_id: session_id})`，删除不存在的文档返回 `deletedCount=0` 且**不报错**，天然幂等。
+**幂等**：`DeleteBySession` 用 `DeleteOne({_id: session_id})`——删除**不存在的文档返回 `deletedCount=0` 且 `err == nil`，视为成功（幂等，绝不因「已不存在」报错）**；仅 `err != nil`（真实 DB 错误）才失败中止。
 
 **子 session 边界（决策 #7，已定）**：子 session 的 token **归父 session 计数**（`session_stats._id` 统一为顶层父 session ID），子 session **不产生独立统计**。因此删除子 session（`adk/session/mongo.go` 的 `DeleteByID`/`deleteSubSessions`、`subagent/runner.go` 的 `cleanup`）**不级联**删任何 `session_stats` 文档——统计挂在父 session 上，与子 session 无关联。父 session 删除时由其自身 `HardDelete` 级联一次覆盖。
 
@@ -177,7 +178,7 @@ func (m *Manager) HardDelete(id string) error {
 | `created_at` | time.Time | 首条写入（UTC 绝对时间） |
 | `updated_at` | time.Time | 最近一次 `$inc`（UTC 绝对时间） |
 
-写入（`Upsert`，幂等）：
+写入（`Incr`，幂等累加；实现为 `$inc` + upsert）：
 
 ```
 filter = {_id: session_id}
@@ -205,7 +206,7 @@ if r.counter != nil {
 }
 // 新增：session 维度累计（仅当 rec.SessionID 非空）
 if r.sessionStats != nil && rec.SessionID != "" {
-    _ = r.sessionStats.Upsert(ctx, rec.SessionID, rec.PromptTokens, rec.CompletionTokens, billed, at)
+    _ = r.sessionStats.Incr(ctx, rec.SessionID, rec.PromptTokens, rec.CompletionTokens, billed, at)
 }
 ```
 
@@ -278,8 +279,8 @@ if r.sessionStats != nil && rec.SessionID != "" {
 ### 断言质量要求
 
 - [ ] **必须** 每个 Success 测试至少包含 **2 个行为验证断言**（除 `err == nil` 外必须验证实际值/状态/副作用）
-- [ ] **必须** 验证 `Upsert` 幂等：同 session 多次 `$inc` 累计正确，`$setOnInsert` 首写字段不覆盖
-- [ ] **必须** 验证 `HardDelete` 级联顺序：token 统计先删、主记录后删；删除不存在的 session 幂等不报错
+- [ ] **必须** 验证 `Incr` 幂等：同 session 多次 `$inc` 累计正确，`$setOnInsert` 首写字段不覆盖
+- [ ] **必须** 验证 `HardDelete` 级联顺序与幂等：token 统计先删、主记录后删；**删除不存在的 session（deletedCount=0）视为成功并继续删主数据**；仅真实 DB 错误（err != nil）才中止且主记录不删
 - [ ] **必须** 验证 `Recorder` 双写：`SessionID` 非空写 `session_stats`，空则仅全局埋点，互不干扰
 - [ ] **必须** 验证 `timezone` 参数链路（决策 #6 v2）：无效时区 400；缺省回退 Asia/Shanghai；`Series` 按传入时区分桶——UTC 00:00 的样本归入北京「前一天」、北京自然日边界 00:00（= UTC 前一日 16:00）分桶正确；`bucketStart` 对 hour/day/week/month/year 的边界样本断言正确（覆盖非整点偏移时区如 `Asia/Kathmandu` UTC+5:45）
 - [ ] **必须** 验证软删除（归档 `Delete`）**不**级联删 `session_stats`，仅 `HardDelete` 级联
@@ -298,7 +299,7 @@ if r.sessionStats != nil && rec.SessionID != "" {
 
 1. `session_stats` 写入正确：埋点后同一 session 多次 LLM 调用累计到单文档，`billed_tokens`/`llm_calls` 单调递增，`_id == session_id`。
 2. `stats_hourly` 完全不受影响：`Sum/Series` 结果与改造前一致（无回归）。
-3. `HardDelete` 级联正确：删除 session 后 `session_stats` 对应文档消失；删除不存在的 session 幂等；主记录删除失败时 token 统计不残留（或已先删）。
+3. `HardDelete` 级联正确：删除 session 后 `session_stats` 对应文档消失；**删除不存在的 session 幂等成功（deletedCount=0 继续删主数据）**；仅真实 DB 错误才中止且主记录不删（无孤儿）。
 4. chat 页在消息历史下方、输入框按钮行上方正确显示「本会话消耗 X tokens」，数值与 `session_stats` 文档一致（进入会话 + 流结束刷新）；task run 详情正确显示该 run 的 token 消耗。
 5. 趋势统计（日/周/月/年）结果正确，`stats_hourly` 查询路径无性能回退。
 6. 日历维度（小时/星期几/几号/几月）聚合按**前端传入时区**归属正确：前端传 `Asia/Shanghai` 时跨 8 小时时差的边界样本归入北京自然日/自然周/自然月；无效时区返回 400；缺省回退 Asia/Shanghai；软删除（归档）后 `session_stats` 保留，硬删除后消失。
@@ -325,18 +326,20 @@ if r.sessionStats != nil && rec.SessionID != "" {
 
 ### D3 — SessionStatStore 接口（放 `internal/infra/llmstats` 同包）
 
+> 命名定稿（晓军 2026-09-17）：埋点是**增量累加语义**，方法名用 `Incr`（对齐 `metrics.Counter.Incr`），不用 `Upsert`（那是实现细节——内部用 `$inc` + upsert 实现幂等累加）。
+
 ```go
 type SessionStatStore interface {
-    // Upsert 幂等累计一次 LLM 调用的 token（不存 user_id，见 §5.1 注）。
-    Upsert(ctx context.Context, sessionID string, promptTokens, completionTokens int, billedTokens int64, at time.Time) error
-    // DeleteBySession 幂等删除（DeleteOne，不存在不报错）。
+    // Incr 幂等累加一次 LLM 调用的 token 到该 session 的累计值（不存 user_id，见 §5.1 注）。
+    Incr(ctx context.Context, sessionID string, promptTokens, completionTokens int, billedTokens int64, at time.Time) error
+    // DeleteBySession 幂等删除（DeleteOne；不存在 = deletedCount 0 + err nil = 成功）。
     DeleteBySession(ctx context.Context, sessionID string) error
     // GetBySession 单点查 billed_tokens（点查接口 + run 详情内嵌用）；无记录返回 (0, nil)。
     GetBySession(ctx context.Context, sessionID string) (int64, error)
 }
 ```
 
-Mongo 实现 `internal/infra/llmstats/session_stats.go`：collection `session_stats`；upsert `$inc` + `$setOnInsert`（`_id/session_id/created_at`）+ `$set updated_at`；文档结构同 §5.1（无 `user_id`）。
+Mongo 实现 `internal/infra/llmstats/session_stats.go`：collection `session_stats`；`Incr` = `$inc` + `$setOnInsert`（`_id/session_id/created_at`）+ `$set updated_at`；文档结构同 §5.1（无 `user_id`）。
 
 ### D4 — RecordingLLM session 解析（子 session 归父零成本实现，决策⑦落地）
 
@@ -351,12 +354,15 @@ Mongo 实现 `internal/infra/llmstats/session_stats.go`：collection `session_st
 
 - `Recorder` 加 `sessionStats SessionStatStore` 字段（nil 安全 no-op）。
 - `recording.go` 两处 `Record` 调用补 `SessionID`（经 D4 helper 从 ctx 解析；不取 UserID——session_stats 不存 user_id）。
-- `Recorder.Record()` 内 billed 计算后：`sessionStats != nil && SessionID != ""` → `Upsert`。不修改 `Counter` 接口。
+- `Recorder.Record()` 内 billed 计算后：`sessionStats != nil && SessionID != ""` → `sessionStats.Incr(...)`。不修改 `Counter` 接口。
 
-### D6 — HardDelete 级联落点
+### D6 — HardDelete 级联落点（幂等语义定稿）
 
 - `Manager` 注入 `SessionStatStore`（nil 安全，测试可省略）。
-- `HardDelete` 首行 `DeleteBySession`，失败即返回（主记录不删）→ 无孤儿。软删除不级联（决策④）。
+- `HardDelete` **首行** `DeleteBySession`（在 `repo.HardDelete` 主数据删除**之前**执行）：
+  - **文档已不存在（deletedCount=0、err==nil）→ 视为成功，继续删除主数据**（幂等，绝不因「已删过」而中止）；
+  - 仅 `err != nil`（真实 DB 错误）→ 失败即中止，主数据不删 → 无孤儿。
+- 软删除不级联（决策④）。
 
 ### D7 — 时区口径与 get_current_time 细节（决策⑤⑥⑨的签名级定稿）
 
