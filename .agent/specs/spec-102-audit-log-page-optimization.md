@@ -131,21 +131,21 @@ var actionDescriptions = map[string]string{
 | 检查项 | 结论 |
 |--------|------|
 | 是否需要新 DB 集合 | No（复用 `audit_logs`；无新字段——Action 已是模板形式） |
-| 是否影响现有 API | 影响：`/admin/audit/logs` 参数语义变更（skip/limit → q/path/status_class + page/page_size）+ 响应加 `action_desc`；export 加校验 + 可见性 |
-| 性能影响 | 正向：`q`/`path` 走 DB 层过滤；TTL 限制存量（一年）；可见性过滤走 `user_id` 条件（建议评估 `{user_id:1, created_at:-1}` 复合索引，实现阶段确认） |
+| 是否影响现有 API | 影响：`/admin/audit/logs` 参数语义变更（skip/limit → q/page/page_size）+ 响应加 `action_desc`；export 加 format 校验 + 可见性 |
+| 性能影响 | 正向：`q` 走 DB 层 $regex；可见性过滤走 `user_id` 条件（建议评估 `{user_id:1, created_at:-1}` 索引，实现阶段确认） |
 | 是否需要新增 Skill | No |
-| 数据迁移 | 新增 TTL 索引 `{created_at:1}` expire 365d（幂等 EnsureIndexes；存量超期文档由 TTL 后台自动清理） |
+| 数据迁移 | 无（不改存量数据） |
 
 ## 7. 相关文件
 
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `internal/service/audit/actions.go`（新） | hardcode action→描述 mapping | Low |
-| `internal/service/audit/service.go` | List/Export 加 viewer 可见性过滤 + q/path/status_class 过滤 + action_desc 映射 | High |
+| `internal/service/audit/service.go` | List/Export 加 viewer 可见性过滤 + q 搜索 + action_desc 映射 | High |
 | `internal/api/handler/audit.go` | 参数解析校验（400 化）+ viewer 注入 + 响应透传 | Medium |
 | `internal/api/middleware/audit.go` | 无改动（Action 已含 method+模板路径） | — |
-| `internal/infra/mongo/audit_repository.go` | 新增 TTL 索引 `{created_at:1}` expire 365d（幂等）+ 可能新增查询方法（视 service 组装方式） | Low |
-| `frontend/app/admin/audit/page.tsx` | 筛选栏（q/path/状态码下拉/日期）+ 分页参数 + action_desc 展示 + 导出弹窗收敛 | High |
+| `frontend/app/admin/audit/page.tsx` | 搜索栏/分页参数/action_desc 展示/导出弹窗收敛 | High |
+| `internal/infra/mongo/audit_repository.go` | 可能新增查询方法（q 正则 / 可见性条件透传，视 service 组装方式） | Low |
 
 ## 9. UI Test / E2E 验收规则
 
@@ -182,7 +182,6 @@ var actionDescriptions = map[string]string{
 - [ ] **必须** 验证 D3 status_class：5 个枚举各构造正确范围（`1xx→[100,200)` … `5xx→[500,600)`）；非法枚举 → 400；空 = 不筛选
 - [ ] **必须** 验证 `action_desc`：mapping 命中返回描述、未命中回退原始 Action；CSV 导出用描述
 - [ ] **必须** 验证 export format 仅 csv，非法 400
-- [ ] **必须** 验证 D7/D8：TTL 索引创建幂等（expireAfterSeconds=365d）；start 不钳制（可传任意早日期，无 MaxRange 概念）
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
 
 ### CI 门禁
@@ -198,7 +197,6 @@ var actionDescriptions = map[string]string{
 4. 可见性：普通用户/普通管理员仅见「自己的 + user 关联为空」的日志；system_admin 见全部；导出与列表一致。
 5. 前端筛选下拉 bug 消失（旧枚举值废弃），q 按 email 搜索命中正确（查无匹配 email → 空列表）。
 6. path 模糊搜索命中正确（搜 `sessions` 命中该路径相关全部 CUD 记录）；status_class 各枚举筛选范围正确（如 4xx 只返回 400~499）。
-7. `audit_logs` 存在 TTL 索引（expireAfterSeconds=365 天），超期文档被自动清理；时间筛选可传任意早的 start 不报错（自然空结果）。
 
 ## 11. 设计定稿记录
 
@@ -267,17 +265,3 @@ var actionDescriptions = map[string]string{
 | `format` | 枚举：仅 `csv`（本期） | 非法 → 400 |
 
 > 通用规则：所有校验失败统一返回 `400 {"error": "..."}`，**严禁**静默容错（现状 `ParseInt` 忽略错误的行为必须消除）；日期错误类型从 service 带类型透传（区分 400 与 500）。
-
-### D7 — 审计日志保留一年（TTL，2026-09-17 晓军拍板）
-
-1. `audit_logs` 建 **TTL 索引**：`{created_at: 1}` + `expireAfterSeconds = 365*24*3600`（一年），与 `stats_hourly` 保留口径一致（SPEC-072 先例）。
-2. TTL 索引必须是单字段 date 类型——查询复合索引（如 `{user_id:1, created_at:-1}`）另行创建，两者不冲突。
-3. 索引创建位置：启动时 EnsureIndexes（migration/或 audit_repository 初始化），幂等。
-4. 影响：超一年的日志由 MongoDB 后台任务自动删除，无需业务清理代码。
-
-### D8 — 时间筛选不限制过去一年（2026-09-17 晓军拍板）
-
-1. `start` **不设最小值限制**（不 clamp 到 now-365d）——用户可传任意早的日期，超出保留期的区间自然查不到数据（TTL 已删），无需代码层范围限制。
-2. `end` 同样不限（仅格式 + start≤end 校验，见 D6）。
-3. 前端日期选择器不设 min 属性。
-4. 与 stats_hourly 的 `clampRange`（MaxRange=365d）不同——审计不做窗口钳制，保持简单。
