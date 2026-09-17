@@ -62,14 +62,14 @@
 
 | 参数 | 说明 | 校验（需求 4） |
 |------|------|------|
-| `q` | 关键词模糊搜索（DB 层 `$regex` + `QuoteMeta`，大小写不敏感） | 长度 ≤100，超长 400 |
+| `q` | 操作人 **email 模糊搜索**（D1 定稿：`SearchByEmail(q, topN=10)` → userIDs → `$in`，见 §11） | 长度 ≤100，超长 400 |
 | `page` | 页码，从 1 起 | 非正整数/非数字 → 400（不再静默容错） |
 | `page_size` | 每页条数 | 1~100，越界/非法 → 400 |
 | `start` / `end` | 日期范围（YYYY-MM-DD，保留） | 格式非法 → **400**（现为 500） |
 
-- `q` 匹配范围：`action`（原始 `"METHOD path"` 值）+ `action_desc`（mapping 描述）+ `details`。email 搜索并入 `q`（如 `q=zhang@` 命中 user 维度则先 email→userIDs→$in，与关键词直接匹配 OR 组合——具体匹配策略实现阶段定稿）。
+- `q` = **操作人 email 模糊搜索（D1 已定稿，见 §11）**：后端 `users.SearchByEmail(q, topN=10)` → userIDs → 审计日志过滤 `user_id $in userIDs`；查无匹配用户 → 返回空列表（total=0）。q **不做** action/details 的正则匹配。
 - service 层统一转换 `page/page_size → skip/limit`（复用现有 `normalizeAuditLimit` 语义收紧到 1~100）。
-- 前端移除「操作类型下拉」与独立「邮箱」框，统一为单个 `q` 搜索框 + 日期范围。
+- 前端移除「操作类型下拉」与独立「邮箱」框，统一为单个 `q` 搜索框（placeholder「按操作人邮箱搜索」）+ 日期范围。
 
 ### 5.2 hardcode mapping（需求 3）
 
@@ -164,6 +164,7 @@ var actionDescriptions = map[string]string{
 - [ ] **必须** 每个 Success 测试至少包含 **2 个行为验证断言**（除 `err == nil` 外必须验证实际值/状态/副作用）
 - [ ] **必须** 验证可见性过滤三分支：system_admin 无过滤；非 system_admin 命中 `$or [自己, 空, 不存在]`；与其他 filter AND 叠加
 - [ ] **必须** 验证参数校验：非法 page/page_size/q 超长/日期格式 → 400（非 500 非静默）
+- [ ] **必须** 验证 D1 q 搜索链路：email 模糊 → topN userIDs → `$in` 过滤；查无匹配用户 → 空列表 total=0；与日期/可见性条件 AND 叠加
 - [ ] **必须** 验证 `action_desc`：mapping 命中返回描述、未命中回退原始 Action；CSV 导出用描述
 - [ ] **必须** 验证 export format 仅 csv，非法 400
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
@@ -175,8 +176,21 @@ var actionDescriptions = map[string]string{
 
 ## 10. 验证标准
 
-1. 搜索/分页与其他列表页一致：`q` 关键词 DB 层过滤、`page`/`page_size` DB 层分页，`explain` 无全表扫描（视索引评估）。
+1. 搜索/分页与其他列表页一致：`q`（操作人 email）经 email 模糊 → userIDs → `$in` DB 层过滤；`page`/`page_size` DB 层分页，`explain` 无全表扫描（视索引评估）。
 2. 操作类型列显示中文描述（mapping 命中），未覆盖路由显示原始 `METHOD path` 回退。
 3. 非法参数（分页/日期/format/q 超长）全部返回 400。
 4. 可见性：普通用户/普通管理员仅见「自己的 + user 关联为空」的日志；system_admin 见全部；导出与列表一致。
-5. 前端筛选下拉 bug 消失（旧枚举值废弃），q 搜索可命中 action 描述与详情。
+5. 前端筛选下拉 bug 消失（旧枚举值废弃），q 按 email 搜索命中正确（查无匹配 email → 空列表）。
+
+## 11. 设计定稿记录
+
+### D1 — q 搜索策略（2026-09-17 晓军拍板）
+
+`q` 关键词 = **操作人 email 模糊搜索**，链路定稿：
+
+1. `users.SearchByEmail(q, topN=10)`（现有方法，email 模糊匹配）→ userIDs；
+2. `len(userIDs) == 0` → 直接返回空列表（`total=0`，现有行为保留）；
+3. 审计日志查询条件加 `user_id $in userIDs`（与其他条件 AND 叠加）；
+4. `q` 不做 action/action_desc/details 的正则匹配。
+
+> 备注：这实质是现有 `UserID` 过滤参数（email keyword → top10 → `$in`）的语义平移——参数名 `user_id` 改为 `q`，逻辑不变。
