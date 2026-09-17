@@ -1,7 +1,7 @@
 # SPEC-101 Tool 用户批准执行开关（requires_approval DB 化）
 
-> **SPEC-101** | Status: 设计中（立项）
-> 日期：2026-09-17
+> **SPEC-101** | Status: ✅ 设计定稿（D1~D5 全定稿；暂不实现）
+> 日期：2026-09-17 立项 → 2026-09-17 设计定稿
 
 ## 0. 现状梳理（2026-09-17 调研实测）
 
@@ -120,9 +120,11 @@ db.skill_configs.updateMany(
 |------|------|-----------------|
 | `internal/domain/skill/model.go` | `SkillConfig` 加 `RequiresApproval` | Low |
 | `internal/infra/mongo/skill_config_repo.go` | doc 加 bson 字段 + Upsert/toSkillConfig 同步 | Low |
-| `internal/service/skill/config.go` | `predefinedSkills()` file_delete/dir_delete 设 true | Low |
-| `internal/adk/tools/tools.go` | `Deps` 加查询依赖；`fileDelete`/`dirDelete` 读开关 | Medium |
-| `cmd/server/wire.go` | 注入 skill config 查询依赖（消费前赋值） | Low |
+| `internal/service/skill/config.go` | `predefinedSkills()` file_delete/dir_delete 设 true + 新增 `RequiresApproval()` 方法 | Low |
+| `internal/adk/tools/tools.go` | `fileDelete`/`dirDelete` 读开关（复用现有 `Deps.SkillConfig`，不新增 Deps 字段） | Medium |
+| `internal/api/handler/skill_config.go` | Upsert 请求体加 `requires_approval` 字段 | Low |
+| `frontend/app/admin/skills/page.tsx` | 编辑弹窗加「需要用户批准」开关 + 列表标记 | Medium |
+| `cmd/server/wire.go` | 无需改（`Deps.SkillConfig` 已注入） | — |
 | 一次性 mongosh 脚本 | 线上 32 条存量文档补字段（实现时执行一次） | — |
 
 ## 9. UI Test / E2E 验收规则
@@ -172,3 +174,64 @@ db.skill_configs.updateMany(
 4. 开关 true 且 HumanGate 未注入 → 拒绝执行 + 错误日志；开关查询失败 → 拒绝执行。
 5. 新装环境 seed 后开关默认值与现状 hardcode 一致（仅 file_delete/dir_delete 需批准）。
 6. admin skill config 列表/详情响应含 `requires_approval`，读写正常。
+
+## 11. 设计定稿记录（2026-09-17，D1~D5 全定稿）
+
+> 立项方向（含 fail-closed 拍板）不变；本章将「实现阶段评估」项逐一定稿。
+
+### D1 — schema 落点（domain/repo/API 透传）
+
+- domain `SkillConfig` 加 `RequiresApproval bool`（`json:"requires_approval"`）。
+- `skillConfigDoc` 加 `bson:"requires_approval"`；`toSkillConfig()` 同步；`Upsert` `$set` 加字段。**不进入 `value`（config JSON）**。
+- 读取路径（`List`/`Get`/`SearchByDescription`）经 `toSkillConfig` 自动透传，无需改。
+
+### D2 — 执行路径（复用现有 Deps 字段，无新依赖）
+
+- **`Deps.SkillConfig *skillsvc.ConfigService` 已存在且已注入**（`tools.go:44` + `wire.go:321`），**不新增 Deps 字段、不改 wire**。
+- `ConfigService` 新增方法：
+
+```go
+// RequiresApproval returns whether the named tool needs user approval before
+// execution. Unknown skill or DB error → error (fail-closed upstream).
+func (s *ConfigService) RequiresApproval(ctx context.Context, name string) (bool, error)
+```
+
+- `fileDelete`/`dirDelete` 函数体（替换现有 `if deps.HumanGate != nil` 硬编码）：
+
+```go
+if deps.SkillConfig != nil {
+    need, err := deps.SkillConfig.RequiresApproval(tc, "file_delete")
+    if err != nil {
+        log.Printf("[tools] file_delete approval lookup: %v", err)  // 错误日志
+        return FileDeleteResult{}, fmt.Errorf("file_delete: 无法确认批准要求: %w", err)  // fail-closed
+    }
+    if need {
+        if deps.HumanGate == nil {
+            log.Printf("[tools] file_delete requires approval but HumanGate is not injected")
+            return FileDeleteResult{}, fmt.Errorf("file_delete: 需要用户批准但授权信道不可用")
+        }
+        ok, gErr := deps.HumanGate.Confirm(tc, sessionID, fmt.Sprintf("删除文件 %q？", args.Path))
+        if gErr != nil { return ..., fmt.Errorf("file_delete: 授权失败: %w", gErr) }
+        if !ok { return ..., fmt.Errorf("file_delete: 用户拒绝删除 %q", args.Path) }
+    }
+}
+// 继续执行删除
+```
+
+- `deps.SkillConfig == nil` 视为查询失败 → fail-closed 拒绝 + 错误日志（与 D2 同语义；仅单测构造场景）。
+- `dirDelete` 同构。
+
+### D3 — admin API
+
+- `skill_config.go` 的 `Upsert` 请求体加 `RequiresApproval bool`（`json:"requires_approval"`），与 `enabled` 并列显式赋值 `cfg.RequiresApproval`（读-改-写模式不变）。
+- `List`/`Get` 返回 domain 结构，自动含新字段，无需改。
+
+### D4 — seed + 一次性脚本
+
+- `predefinedSkills()`：仅 `file_delete`/`dir_delete` 设 `RequiresApproval: true`，其余零值 false（不写）。
+- 一次性 mongosh（幂等，`$exists: false` 条件）：`file_delete`/`dir_delete` → true；其余存量 → false。线上 32 条（2026-09-17 实测）。
+
+### D5 — 前端 admin 控件
+
+- `frontend/app/admin/skills/page.tsx` 编辑弹窗加「需要用户批准」开关（复用现有 enabled 开关样式），`editApproval` state + PUT body 加 `requires_approval`；列表项显示 🔒 标记（requires_approval=true 时）。
+- 新增 `data-testid="skill-approval-toggle"`；UI 有变更 → 同步更新/新增对应 E2E 用例（`tests/ui/`）。

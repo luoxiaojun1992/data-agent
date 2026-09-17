@@ -1,7 +1,7 @@
 # SPEC-100 优化 Token 用量埋点（session 独立统计表 + session 删除级联 + session token 展示）
 
-> **SPEC-100** | Status: 设计中（立项，方向已定）
-> 日期：2026-09-16
+> **SPEC-100** | Status: ✅ 设计定稿（D1~D7 全定稿；暂不实现）
+> 日期：2026-09-16 立项 → 2026-09-17 设计定稿
 
 ## 0. 决策记录（2026-09-16 晓军拍板）
 
@@ -299,3 +299,63 @@ if r.sessionStats != nil && rec.SessionID != "" {
 6. 日历维度（小时/星期几/几号/几月）聚合按**前端传入时区**归属正确：前端传 `Asia/Shanghai` 时跨 8 小时时差的边界样本归入北京自然日/自然周/自然月；无效时区返回 400；缺省回退 Asia/Shanghai；软删除（归档）后 `session_stats` 保留，硬删除后消失。
 7. 子 session token 归父正确：子 agent 运行产生的 token 计入父 session 文档（`_id == 父 session ID`）；删除子 session 后父 session 统计不受影响。
 8. `get_current_time` 按 UTC 返回并显式标注时区（`time` 带 `Z`、`timezone=UTC`），与系统 UTC 时间戳口径一致，无业务时区参考字段。
+
+## 11. 设计定稿记录（2026-09-17，D1~D7 全定稿）
+
+> 立项方向（决策①~⑨）不变；本章将立项遗留的「实现阶段定」项逐一定稿。
+
+### D1 — session token 查询 API：列表内嵌（不做独立点查接口）
+
+- **chat 页**：`GET /api/v1/sessions`（ListByUserPaged）响应每项加 `token_tokens`（int64，= `session_stats.billed_tokens`，无记录为 0）。handler 收集本次页内 session IDs → `GetBySessions`（`$in`）批量查 → 填充，**避免前端 N+1**。
+- **task 页**：task 列表接口（`GET /api/v1/tasks`）响应每项加 `token_tokens`（按 task def 绑定的 `session_id` 查，无绑定或无记录为 0）。
+- RBAC：复用现有接口的归属过滤与权限，**无新增权限**。
+
+### D2 — session_stats 索引：仅主键
+
+- 仅 `_id`（session_id，Mongo 自动主键）。
+- **不建** `user_id` 索引（无按用户聚合的查询需求，YAGNI）。
+- **不建** `updated_at` TTL（孤儿不可能产生：`HardDelete` 先删统计、失败即中止主记录删除；软删除（归档）保留统计与 SPEC-090「归档无 TTL」语义一致）。
+
+### D3 — SessionStatStore 接口（放 `internal/infra/llmstats` 同包）
+
+```go
+type SessionStatStore interface {
+    // Upsert 幂等累计一次 LLM 调用的 token。
+    Upsert(ctx context.Context, sessionID, userID string, promptTokens, completionTokens int, billedTokens int64, at time.Time) error
+    // DeleteBySession 幂等删除（DeleteOne，不存在不报错）。
+    DeleteBySession(ctx context.Context, sessionID string) error
+    // GetBySessions 批量查 billed_tokens（列表内嵌用，$in + projection）。
+    GetBySessions(ctx context.Context, sessionIDs []string) (map[string]int64, error)
+}
+```
+
+Mongo 实现 `internal/infra/llmstats/session_stats.go`：collection `session_stats`；upsert `$inc` + `$setOnInsert`（`_id/session_id/user_id/created_at`）+ `$set updated_at`；文档结构同 §5.1。
+
+### D4 — RecordingLLM session 解析（子 session 归父零成本实现，决策⑦落地）
+
+- `llmagent` 内部调用 model 的 `ctx` 是 `agent.InvocationContext`（vendor `agent/context.go:62`，继承 `context.Context`，含 `Session()`）。
+- 解析顺序（`recording.go` 内新增 helper）：
+  1. `ic.Session().State().Get("session_id")` → string 且非空则用之；
+  2. fallback `ic.Session().ID()`；
+  3. `userID = ic.Session().UserID()`。
+- **三场景 `state["session_id"]` 语义已天然统一（实测代码）**：主 chat = 自身（`chat_service.go:329` buildState）；task = 自身（`executor.go:155`）；**子 agent = 父 session ID**（`subagent/tool.go:59`）→ 子 session token 自动归父，无需专门解析 `parent_session_id`。
+- 解析失败（ctx 断言失败/state 缺键）→ 仅全局埋点，不写 `session_stats`，不阻塞主流程。
+
+### D5 — Recorder 双写落点
+
+- `Recorder` 加 `sessionStats SessionStatStore` 字段（nil 安全 no-op）。
+- `recording.go` 两处 `Record` 调用补 `SessionID`/`UserID`（经 D4 helper 从 ctx 解析）。
+- `Recorder.Record()` 内 billed 计算后：`sessionStats != nil && SessionID != ""` → `Upsert`。不修改 `Counter` 接口。
+
+### D6 — HardDelete 级联落点
+
+- `Manager` 注入 `SessionStatStore`（nil 安全，测试可省略）。
+- `HardDelete` 首行 `DeleteBySession`，失败即返回（主记录不删）→ 无孤儿。软删除不级联（决策④）。
+
+### D7 — 时区口径与 get_current_time 细节（决策⑤⑥⑨的签名级定稿）
+
+- `metrics.Reader.Series` 签名改为 `Series(ctx, m Metric, since, until time.Time, gran Granularity, loc *time.Location)`；`bucketStart`/`bucketHours` 加 `loc` 参数（`t.In(loc)` 后 Truncate/自然日边界）。
+- `dashboard.go`：`timezone` query 参数 → `time.LoadLocation` 失败返回 400、缺省 `Asia/Shanghai`；默认窗口 `since = bucketStart(now.In(loc), gran, loc)`、`until = now`；`Sum` 无需 loc（只依赖绝对区间）。
+- `main.go`（或 wire）`import _ "time/tzdata"` 内嵌时区库（容器无 tzdata）。
+- `get_current_time`：`CurrentTimeResult` 保持 5 字段（time/date/weekday/timezone/unix），值全 UTC（`time` RFC3339 带 `Z`、`date` UTC、`weekday` 按 UTC、`timezone="UTC"`、`unix` 不变）；删除 `time.LoadLocation` 分支。
+- 前端 dashboard：请求带 `timezone`（`resolvedOptions().timeZone`）；横轴 `toLocaleString()`（浏览器时区）显示，与分桶口径天然一致。
