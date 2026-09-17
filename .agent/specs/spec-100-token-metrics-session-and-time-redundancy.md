@@ -170,7 +170,6 @@ func (m *Manager) HardDelete(id string) error {
 |------|------|------|
 | `_id` | string | = `session_id`（`sess_` 前缀），点查 O(1) |
 | `session_id` | string | 冗余（与 `_id` 同），便于语义查询 |
-| `user_id` | string | 归属，审计/数据隔离/清理 |
 | `billed_tokens` | int64 | 累计计费 token（`(prompt+completion) × multiplier`） |
 | `prompt_tokens` | int64 | 累计 prompt token（原始，未乘 multiplier） |
 | `completion_tokens` | int64 | 累计 completion token（原始） |
@@ -185,14 +184,15 @@ filter = {_id: session_id}
 update = {
   $inc: { billed_tokens, prompt_tokens, completion_tokens, llm_calls },
   $set: { updated_at: now },
-  $setOnInsert: { _id: session_id, session_id, user_id, created_at: now },
+  $setOnInsert: { _id: session_id, session_id, created_at: now },
 }
 ```
 
-索引：
-- `_id`（session_id）——主键，点查唯一命中（会话删除/查询都靠它）。
-- `user_id` —— 按用户维度聚合/审计（可选，实现阶段评估是否需要）。
-- `updated_at` TTL —— 兜底清理（可选；主路径是 `HardDelete` 级联，TTL 仅防意外泄漏，实现阶段评估）。
+> **不存 `user_id`**（晓军确认 2026-09-17）：查询全走 session_id（点查 `_id`/级联删除/批量点查），RBAC 归属校验在上游 sessions 主表完成，user_id 无任何过滤/聚合用途，冗余不存。
+
+索引（D2 定稿）：
+- 仅 `_id`（session_id）主键——点查/删除唯一命中。
+- 不建 `user_id`、不建 TTL（见 §11 D2）。
 
 ### 5.2 埋点双写
 
@@ -205,17 +205,20 @@ if r.counter != nil {
 }
 // 新增：session 维度累计（仅当 rec.SessionID 非空）
 if r.sessionStats != nil && rec.SessionID != "" {
-    _ = r.sessionStats.Upsert(ctx, rec.SessionID, rec.UserID, rec.PromptTokens, rec.CompletionTokens, billed, at)
+    _ = r.sessionStats.Upsert(ctx, rec.SessionID, rec.PromptTokens, rec.CompletionTokens, billed, at)
 }
 ```
 
 - `SessionID` 为空（理论上不应发生，LLM 调用必有会话上下文）时仅走全局埋点，不写 `session_stats`，防御性处理。
 - 不修改 `Counter` 接口签名，避免全量调用点改动。
-- **子 session 归父（决策 #7）**：子 agent 运行时的 LLM 调用，埋点用**父 session ID**（非 subID）。实现要点：`RecordingLLM`（buildBackends 统一出口）从运行上下文解析——当前 session 为子 session 时取 `parent_session_id`（`adk/subagent/runner.go` 创建子 session 时已写入，StateDelta 携带），否则取自身 ID；解析失败则降级仅全局埋点（不写 `session_stats`），不阻塞主流程。
+- **子 session 归父（决策 #7，D4 已定稿）**：`RecordingLLM` 经 `agent.InvocationContext` 取 `state["session_id"]`——主 chat/task = 自身、子 agent = 父 session ID（`subagent/tool.go:59`），三场景天然统一，无需专门解析 `parent_session_id`。解析失败降级仅全局埋点，不阻塞主流程。
 
-### 5.3 API 方向
+### 5.3 API 方向（D1 定稿）
 
-- **session token 查询**：新增接口（形如 `GET /api/v1/sessions/:id/token-usage`，或 chat/task 列表接口内嵌 `billed_tokens`），直接按 `_id=session_id` 点查 `session_stats`，单文档返回，无需聚合。具体路径实现阶段定。
+- **session token 点查**：新增 `GET /api/v1/sessions/:id/token-usage`（挂 sessions 路由组，`PermChatView` + 复用 `verifyOwnership` 归属校验，system_admin 豁免）→ `{"token_tokens": N}`（按 `_id=session_id` 点查，无记录 0）。
+- **task run 详情内嵌**：`GET /api/v1/tasks/:task_id/runs/:run_id` 响应内嵌 `token_tokens`（`run.SessionID` 查，无=0）。
+- **列表接口不加字段**（sessions 列表 / task 列表均不动）。
+- **前端展示**：chat 页在消息历史最下方、输入框（含增强/脱敏/语音按钮行）上方显示「本会话消耗 X tokens」（`data-testid="chat-token-usage"`），进入会话时点查 + 每次流结束刷新；task run 详情页在 run 详情区显示 token。
 - **dashboard 趋势统计**：`Sum/Series` 无 schema 变更（`Series` 签名加 `loc *time.Location`）、不引入冗余字段；**修正日历分桶时区口径**——新增 `timezone` 查询参数（校验 + 缺省回退 + 400），默认窗口起点与分桶边界均按前端传入时区（见 §2.2-B，决策 #6 v2）；**分桶/聚合仅在后端执行，API 只返回聚合后的 `[]Bucket`，严禁原始 hourly 文档回前端**；前端横轴标签保持浏览器时区 `toLocaleString`（与分桶口径天然一致）。
 - **get_current_time 附带修正**：按 UTC 返回 + 时区标注（见 §2.3）。
 
@@ -234,17 +237,17 @@ if r.sessionStats != nil && rec.SessionID != "" {
 | File | Role | Change Magnitude |
 |------|------|-----------------|
 | `internal/infra/llmstats/llmstats.go` | `Recorder` 新增 `SessionStatStore` 依赖 + `Record` 双写 | Medium |
-| `internal/infra/metrics/mongo.go`（或独立 `session_stats.go`） | 新增 `SessionStatStore`（`Upsert`/`DeleteBySession`）实现 | Medium |
+| `internal/infra/llmstats/session_stats.go`（新） | `SessionStatStore` Mongo 实现（Upsert/DeleteBySession/GetBySession） | Medium |
 | `internal/service/chat/session.go` | `Manager` 注入 store；`HardDelete` 级联（先于主记录、幂等） | Medium |
-| `cmd/server/wire.go` / `main.go` | DI 注入 `SessionStatStore`（赋值顺序：消费前） | Low |
-| `cmd/server/migration/*` / `internal/infra/mongo/client.go` | `session_stats` 索引（`_id` 主键 + 可选 `user_id`/`updated_at`） | Low |
-| `internal/api/handler/session.go`（或 chat/task handler） | 新增 session token 查询接口 + RBAC 归属校验（防 IDOR） | Medium |
+| `cmd/server/wire.go` / `main.go` | DI 注入 `SessionStatStore`（赋值顺序：消费前）+ `import _ "time/tzdata"` | Low |
+| `internal/api/handler/session.go` | 新增 `GET /:id/token-usage` 点查接口 + verifyOwnership 归属校验 | Low |
+| `internal/api/handler/task.go` | `GetRun` 响应内嵌 `token_tokens`（run.SessionID 查） | Low |
 | `internal/infra/metrics/metrics.go` | `Series`/`bucketStart`/`bucketHours` 加 `loc *time.Location` 参数，按传入时区做日历分桶（决策 #6 v2） | Medium |
 | `internal/api/handler/dashboard.go` | 新增 `timezone` 参数解析+校验（400/缺省回退 Asia/Shanghai）、默认窗口起点按传入时区自然日（决策 #6 v2） | Medium |
-| `cmd/server/main.go`（或 wire） | `import _ "time/tzdata"` 内嵌时区库（容器无 tzdata 包） | Low |
 | `internal/adk/tools/tools.go` | `get_current_time` 改 UTC 输出 + 时区标注（附带修正 §2.3，归属 SPEC-080） | Low |
-| 埋点出口（buildBackends `RecordingLLM`） | 子 session 归父解析（`parent_session_id` → 父 session ID 计数，决策 #7） | Medium |
-| 前端 chat / task 页面 | session token 展示（回填单会话 `billed_tokens`） | Medium |
+| 埋点出口（buildBackends `RecordingLLM`） | 经 InvocationContext 取 state["session_id"] 归父（决策 #7，D4） | Medium |
+| 前端 chat 页面 | 消息历史下方/输入框按钮行上方显示 token（`chat-token-usage`，进入+流结束刷新） | Medium |
+| 前端 task run 详情页 | run 详情区显示 token | Low |
 | 前端 dashboard 页面 | 传 `timezone` 参数（`Intl.DateTimeFormat().resolvedOptions().timeZone`），横轴保持浏览器时区 `toLocaleString` | Low |
 
 ## 9. UI Test / E2E 验收规则
@@ -280,7 +283,9 @@ if r.sessionStats != nil && rec.SessionID != "" {
 - [ ] **必须** 验证 `Recorder` 双写：`SessionID` 非空写 `session_stats`，空则仅全局埋点，互不干扰
 - [ ] **必须** 验证 `timezone` 参数链路（决策 #6 v2）：无效时区 400；缺省回退 Asia/Shanghai；`Series` 按传入时区分桶——UTC 00:00 的样本归入北京「前一天」、北京自然日边界 00:00（= UTC 前一日 16:00）分桶正确；`bucketStart` 对 hour/day/week/month/year 的边界样本断言正确（覆盖非整点偏移时区如 `Asia/Kathmandu` UTC+5:45）
 - [ ] **必须** 验证软删除（归档 `Delete`）**不**级联删 `session_stats`，仅 `HardDelete` 级联
-- [ ] **必须** 验证子 session 归父（决策 #7）：带 `parent_session_id` 上下文的埋点写**父 session** 文档；删子 session 后父 session 统计保留、无任何 `session_stats` 被级联
+- [ ] **必须** 验证子 session 归父（决策 #7）：`state["session_id"]` = 父 session 的上下文埋点写**父 session** 文档；删子 session 后父 session 统计保留、无任何 `session_stats` 被级联
+- [ ] **必须** 验证 `token-usage` 点查接口：归属校验（他人 session 403、system_admin 豁免）、无记录返回 0、有记录返回累计值；`GetRun` 响应内嵌 `token_tokens` 正确（run.SessionID 查、无=0）
+- [ ] **必须** 验证 `GetBySession` 单点查：无记录 `(0, nil)`、有记录返回 billed_tokens
 - [ ] **必须** 验证 `get_current_time` 按 UTC 返回且显式标注时区（`time` 带 `Z`、`timezone=UTC`、`weekday`/`date` 按 UTC 计算正确；不包含业务时区参考字段）
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
 
@@ -294,7 +299,7 @@ if r.sessionStats != nil && rec.SessionID != "" {
 1. `session_stats` 写入正确：埋点后同一 session 多次 LLM 调用累计到单文档，`billed_tokens`/`llm_calls` 单调递增，`_id == session_id`。
 2. `stats_hourly` 完全不受影响：`Sum/Series` 结果与改造前一致（无回归）。
 3. `HardDelete` 级联正确：删除 session 后 `session_stats` 对应文档消失；删除不存在的 session 幂等；主记录删除失败时 token 统计不残留（或已先删）。
-4. chat 页 / task 页正确显示单会话 token 消耗，数值与 `session_stats` 文档一致。
+4. chat 页在消息历史下方、输入框按钮行上方正确显示「本会话消耗 X tokens」，数值与 `session_stats` 文档一致（进入会话 + 流结束刷新）；task run 详情正确显示该 run 的 token 消耗。
 5. 趋势统计（日/周/月/年）结果正确，`stats_hourly` 查询路径无性能回退。
 6. 日历维度（小时/星期几/几号/几月）聚合按**前端传入时区**归属正确：前端传 `Asia/Shanghai` 时跨 8 小时时差的边界样本归入北京自然日/自然周/自然月；无效时区返回 400；缺省回退 Asia/Shanghai；软删除（归档）后 `session_stats` 保留，硬删除后消失。
 7. 子 session token 归父正确：子 agent 运行产生的 token 计入父 session 文档（`_id == 父 session ID`）；删除子 session 后父 session 统计不受影响。
@@ -304,11 +309,13 @@ if r.sessionStats != nil && rec.SessionID != "" {
 
 > 立项方向（决策①~⑨）不变；本章将立项遗留的「实现阶段定」项逐一定稿。
 
-### D1 — session token 查询 API：列表内嵌（不做独立点查接口）
+### D1 — session token 展示：点查接口 + run 详情内嵌（列表不加字段，晓军拍板 2026-09-17）
 
-- **chat 页**：`GET /api/v1/sessions`（ListByUserPaged）响应每项加 `token_tokens`（int64，= `session_stats.billed_tokens`，无记录为 0）。handler 收集本次页内 session IDs → `GetBySessions`（`$in`）批量查 → 填充，**避免前端 N+1**。
-- **task 页**：task 列表接口（`GET /api/v1/tasks`）响应每项加 `token_tokens`（按 task def 绑定的 `session_id` 查，无绑定或无记录为 0）。
-- RBAC：复用现有接口的归属过滤与权限，**无新增权限**。
+- **新增点查接口** `GET /api/v1/sessions/:id/token-usage`（挂 sessions 路由组，`PermChatView` + 复用 `verifyOwnership` 归属校验，system_admin 豁免）→ `{"token_tokens": N}`（无记录 0）。
+- **task run 详情内嵌**：`GET /api/v1/tasks/:task_id/runs/:run_id`（`GetRun`）响应内嵌 `token_tokens`（`run.SessionID` 查 session_stats，无=0）。
+- **列表接口一律不加字段**（sessions 列表 / task 列表不动）。
+- **前端展示位置**：chat 页在消息历史最下方、输入框（含增强/脱敏/语音按钮行）**上方**显示「本会话消耗 X tokens」（`data-testid="chat-token-usage"`），进入会话时点查一次 + 每次流结束刷新；task run 详情页在 run 详情区显示。
+- RBAC：无新增权限（复用接口现有权限与归属校验）。
 
 ### D2 — session_stats 索引：仅主键
 
@@ -320,31 +327,30 @@ if r.sessionStats != nil && rec.SessionID != "" {
 
 ```go
 type SessionStatStore interface {
-    // Upsert 幂等累计一次 LLM 调用的 token。
-    Upsert(ctx context.Context, sessionID, userID string, promptTokens, completionTokens int, billedTokens int64, at time.Time) error
+    // Upsert 幂等累计一次 LLM 调用的 token（不存 user_id，见 §5.1 注）。
+    Upsert(ctx context.Context, sessionID string, promptTokens, completionTokens int, billedTokens int64, at time.Time) error
     // DeleteBySession 幂等删除（DeleteOne，不存在不报错）。
     DeleteBySession(ctx context.Context, sessionID string) error
-    // GetBySessions 批量查 billed_tokens（列表内嵌用，$in + projection）。
-    GetBySessions(ctx context.Context, sessionIDs []string) (map[string]int64, error)
+    // GetBySession 单点查 billed_tokens（点查接口 + run 详情内嵌用）；无记录返回 (0, nil)。
+    GetBySession(ctx context.Context, sessionID string) (int64, error)
 }
 ```
 
-Mongo 实现 `internal/infra/llmstats/session_stats.go`：collection `session_stats`；upsert `$inc` + `$setOnInsert`（`_id/session_id/user_id/created_at`）+ `$set updated_at`；文档结构同 §5.1。
+Mongo 实现 `internal/infra/llmstats/session_stats.go`：collection `session_stats`；upsert `$inc` + `$setOnInsert`（`_id/session_id/created_at`）+ `$set updated_at`；文档结构同 §5.1（无 `user_id`）。
 
 ### D4 — RecordingLLM session 解析（子 session 归父零成本实现，决策⑦落地）
 
 - `llmagent` 内部调用 model 的 `ctx` 是 `agent.InvocationContext`（vendor `agent/context.go:62`，继承 `context.Context`，含 `Session()`）。
-- 解析顺序（`recording.go` 内新增 helper）：
+- 解析顺序（`recording.go` 内新增 helper，仅需 sessionID）：
   1. `ic.Session().State().Get("session_id")` → string 且非空则用之；
-  2. fallback `ic.Session().ID()`；
-  3. `userID = ic.Session().UserID()`。
+  2. fallback `ic.Session().ID()`。
 - **三场景 `state["session_id"]` 语义已天然统一（实测代码）**：主 chat = 自身（`chat_service.go:329` buildState）；task = 自身（`executor.go:155`）；**子 agent = 父 session ID**（`subagent/tool.go:59`）→ 子 session token 自动归父，无需专门解析 `parent_session_id`。
 - 解析失败（ctx 断言失败/state 缺键）→ 仅全局埋点，不写 `session_stats`，不阻塞主流程。
 
 ### D5 — Recorder 双写落点
 
 - `Recorder` 加 `sessionStats SessionStatStore` 字段（nil 安全 no-op）。
-- `recording.go` 两处 `Record` 调用补 `SessionID`/`UserID`（经 D4 helper 从 ctx 解析）。
+- `recording.go` 两处 `Record` 调用补 `SessionID`（经 D4 helper 从 ctx 解析；不取 UserID——session_stats 不存 user_id）。
 - `Recorder.Record()` 内 billed 计算后：`sessionStats != nil && SessionID != ""` → `Upsert`。不修改 `Counter` 接口。
 
 ### D6 — HardDelete 级联落点
