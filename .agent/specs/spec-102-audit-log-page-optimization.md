@@ -95,14 +95,15 @@ var actionDescriptions = map[string]string{
 - 展示：service 层把每条 log 附 `action_desc`（`ListResult` 里 `Logs` 项加字段 `ActionDesc string`；命中 mapping 用描述，未命中回退原始 `Action`）。
 - 前端「操作类型」列显示 `action_desc`。
 - CSV 导出「操作类型」列同步用描述。
-- mapping 覆盖全量 gin 路由注册的 CUD 路径（以 `routes.go` 为清单核对），立项不展开清单，实现时补全。
+- **mapping 用途（D4 定稿）**：清单**根据路由注册创建**（以 `routes.go` 全量 CUD 路由为清单核对），**仅用于列表返回时映射 API 描述**——不作为筛选用途（`path` 搜索直接匹配 `action` 原始值，不搜描述）。
 
-### 5.3 参数校验完善（需求 4）
+### 5.3 参数校验完善（需求 4，D6 已定稿清单见 §11）
 
 - 分页参数非法 → 400（`{"error": "invalid page"}` 之类）。
 - 日期格式非法 → 400（service 的 `buildDateFilter` 错误改为带类型错误透传 → handler 区分 400/500）。
 - Export：`limit` 1~50000（已有）；`format` 枚举校验——**本期仅支持 csv**，非法值 400；前端导出弹窗移除 json/xlsx 选项（或置灰）。
 - 导出与列表**共享同一套过滤 + 可见性**逻辑。
+- 校验维度按常规方案全覆盖：**枚举值**（status_class/format）、**长度**（q/path）、**范围**（page/page_size/limit）、**格式**（start/end 日期）、**边界**（start>end）——完整清单见 §11 D6。
 
 ### 5.4 可见性过滤（需求 5）
 
@@ -113,12 +114,17 @@ var actionDescriptions = map[string]string{
 - handler 经 `ctx["user_id"]` + `ctx["role"] == "system_admin"` 取 viewer（`taskIdentity` 同模式）。
 - 前端无需改动（后端过滤，列表自然变少）。
 
-### 5.5 前端样式统一（需求 1）
+### 5.5 前端样式统一（需求 1，D5 已定稿）
 
-- 筛选栏：`q` 搜索框（复用其他列表页样式）+ 开始/结束日期两个 date input + 筛选/重置按钮。
-- 分页：现有 `Pagination` 组件（已复用），参数切换为 `page`/`page_size`。
+- **筛选栏按筛选条件适当设计、匹配现有列表整体样式**（glass 卡片 + 统一 input/select/按钮样式，参照知识库/会话列表页）：
+  - `q` 搜索框（placeholder「按操作人邮箱搜索」）
+  - `path` 搜索框（placeholder「按 API 路径搜索」）
+  - 状态码下拉（全部/1xx/2xx/3xx/4xx/5xx，`data-testid="audit-status-select"`）
+  - 开始/结束日期 date input
+  - 筛选 + 重置按钮
+- 分页：现有 `Pagination` 组件，参数 `page`/`page_size`。
 - 操作类型列显示 `action_desc`（pill 样式保留）。
-- 导出弹窗：收敛为 csv 单选项（或直接去掉格式选择）。
+- 导出弹窗：收敛为 csv 单选项（去掉 json/xlsx）。
 
 ## 6. 可行性分析
 
@@ -170,7 +176,7 @@ var actionDescriptions = map[string]string{
 
 - [ ] **必须** 每个 Success 测试至少包含 **2 个行为验证断言**（除 `err == nil` 外必须验证实际值/状态/副作用）
 - [ ] **必须** 验证可见性过滤三分支：system_admin 无过滤；非 system_admin 命中 `$or [自己, 空, 不存在]`；与其他 filter AND 叠加
-- [ ] **必须** 验证参数校验：非法 page/page_size/q 超长/日期格式 → 400（非 500 非静默）
+- [ ] **必须** 验证参数校验（D6 清单逐项）：q/path 超长 400；status_class/format 非法枚举 400；page/page_size/limit 非数字、越界 400；日期格式非法 400、start>end 400；无任何静默容错路径
 - [ ] **必须** 验证 D1 q 搜索链路：email 模糊 → topN userIDs → `$in` 过滤；查无匹配用户 → 空列表 total=0；与日期/可见性条件 AND 叠加
 - [ ] **必须** 验证 D2 path 搜索：`action` 字段 `$regex`（QuoteMeta + 忽略大小写）命中 `METHOD 模板路径`；path 超长 → 400
 - [ ] **必须** 验证 D3 status_class：5 个枚举各构造正确范围（`1xx→[100,200)` … `5xx→[500,600)`）；非法枚举 → 400；空 = 不筛选
@@ -223,3 +229,39 @@ var actionDescriptions = map[string]string{
 3. 构造范围条件：`status_code: {$gte: X*100, $lt: (X+1)*100}`（如 `4xx` → `{$gte: 400, $lt: 500}`，`1xx` → `{$gte: 100, $lt: 200}`）；
 4. 前端下拉：全部 / 1xx / 2xx / 3xx / 4xx / 5xx（`data-testid="audit-status-select"`）；
 5. 与其他过滤条件 AND 叠加。
+
+### D4 — mapping 清单来源与用途（2026-09-17 晓军拍板）
+
+1. **清单根据路由创建**：以 `routes.go` 注册的全量 CUD（非 GET/HEAD/OPTIONS）路由为清单，key = `"METHOD FullPath模板"`，value = 中文描述；实现时逐条核对补全，不允许遗漏已注册路由。
+2. **仅用于列表返回时映射 API 描述**：service 层 List 返回时为每条 log 附 `action_desc`（命中映射用描述、未命中回退原始 `Action`）；CSV 导出同用。
+3. **不作筛选用途**：`path` 搜索直接匹配 `action` 原始值（D2），不搜描述。
+
+### D5 — 前端筛选栏样式（2026-09-17 晓军拍板）
+
+按筛选条件适当设计、匹配现有列表整体样式（glass 卡片 + 统一 input/select/按钮，参照知识库/会话列表页）：`q` 框 + `path` 框 + 状态码下拉 + 开始/结束日期 + 筛选/重置按钮；分页用现有 `Pagination`（page/page_size）；操作类型列显示 `action_desc`（pill 保留）；导出弹窗收敛为 csv 单选项。
+
+### D6 — 参数校验完整清单（2026-09-17 晓军拍板，常规方案全覆盖无遗漏）
+
+**GET /api/v1/admin/audit/logs**：
+
+| 参数 | 类型/来源 | 校验维度 | 违规处理 |
+|------|----------|---------|---------|
+| `q` | query | 长度：trim 后 0~100 | 超长 → 400 |
+| `path` | query | 长度：trim 后 0~100 | 超长 → 400 |
+| `status_class` | query | 枚举：1xx/2xx/3xx/4xx/5xx（空=全部） | 非法 → 400 |
+| `page` | query | 整数，≥1，缺省 1 | 非数字/非整数/<1 → 400 |
+| `page_size` | query | 整数，1~100，缺省 20 | 非数字/越界 → 400 |
+| `start` / `end` | query | 格式 YYYY-MM-DD；`start ≤ end` | 格式非法 → 400；start>end → 400 |
+
+**POST /api/v1/admin/audit/export**（body）：
+
+| 参数 | 校验维度 | 违规处理 |
+|------|---------|---------|
+| `q` | 长度 ≤100（同列表） | 400 |
+| `path` | 长度 ≤100（同列表） | 400 |
+| `status_class` | 枚举（同列表） | 400 |
+| `start` / `end` | 格式 + start≤end（同列表） | 400 |
+| `limit` | 整数 1~50000，缺省 5000 | 非数字/越界 → 400 |
+| `format` | 枚举：仅 `csv`（本期） | 非法 → 400 |
+
+> 通用规则：所有校验失败统一返回 `400 {"error": "..."}`，**严禁**静默容错（现状 `ParseInt` 忽略错误的行为必须消除）；日期错误类型从 service 带类型透传（区分 400 与 500）。
