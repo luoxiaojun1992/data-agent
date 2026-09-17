@@ -6,10 +6,12 @@
 ## 1. 目标
 
 1. 审计日志页面的搜索、分页**样式与其他页面统一**（SPEC-075/078 规范）。
-2. 搜索、分页**全部 DB 层筛选、DB 层分页**（参数统一 `q` + `page`/`page_size`）。
+2. 搜索、分页**全部 DB 层筛选、DB 层分页**（参数统一 `q`/`path`/`status_class` + `page`/`page_size`）。
 3. 后端建立 **hardcode mapping**：`API 路径（不带 query 参数）+ method` → 人类友好描述，展示层不再裸显示 `POST /api/v1/xxx`。
 4. 完善后端 API 参数校验（分页参数、日期格式、导出参数非法值返回 400 而非 500/静默容错）。
 5. **可见性过滤**：普通用户/普通管理员看「自己的 + 无 user 关联」的日志；系统管理员看全部。
+6. 支持 **API 路径（不带 query 参数）模糊搜索**（D2 定稿）。
+7. 支持 **HTTP 状态码类别筛选**（1xx~5xx 下拉，后端枚举校验 + 范围条件，D3 定稿）。
 
 ## 1.5 前置依赖检查
 
@@ -63,13 +65,18 @@
 | 参数 | 说明 | 校验（需求 4） |
 |------|------|------|
 | `q` | 操作人 **email 模糊搜索**（D1 定稿：`SearchByEmail(q, topN=10)` → userIDs → `$in`，见 §11） | 长度 ≤100，超长 400 |
+| `path` | **API 路径模糊搜索**（D2 定稿：匹配 `action` 字段 `$regex`，见 §11） | 长度 ≤100，超长 400 |
+| `status_class` | **HTTP 状态码类别筛选**（D3 定稿：枚举 1xx/2xx/3xx/4xx/5xx → 范围条件，见 §11） | 非法枚举 → 400 |
 | `page` | 页码，从 1 起 | 非正整数/非数字 → 400（不再静默容错） |
 | `page_size` | 每页条数 | 1~100，越界/非法 → 400 |
 | `start` / `end` | 日期范围（YYYY-MM-DD，保留） | 格式非法 → **400**（现为 500） |
 
 - `q` = **操作人 email 模糊搜索（D1 已定稿，见 §11）**：后端 `users.SearchByEmail(q, topN=10)` → userIDs → 审计日志过滤 `user_id $in userIDs`；查无匹配用户 → 返回空列表（total=0）。q **不做** action/details 的正则匹配。
+- `path` = **API 路径模糊搜索（D2 已定稿）**：DB 层 `action: {$regex: QuoteMeta(path), $options: "i"}`。`Action` 值是 `"METHOD FullPath模板"`（不含 query 参数），如搜 `sessions` 命中 `POST /api/v1/sessions`、`DELETE /api/v1/sessions/:id` 等。
+- `status_class` = **状态码类别（D3 已定稿）**：枚举 `1xx`/`2xx`/`3xx`/`4xx`/`5xx`，构造范围条件 `status_code: {$gte: X00, $lt: (X+1)00}`（如 4xx → `{$gte:400, $lt:500}`）；空 = 全部。
+- 所有过滤条件（q/path/status_class/日期/可见性）**AND 叠加**。
 - service 层统一转换 `page/page_size → skip/limit`（复用现有 `normalizeAuditLimit` 语义收紧到 1~100）。
-- 前端移除「操作类型下拉」与独立「邮箱」框，统一为单个 `q` 搜索框（placeholder「按操作人邮箱搜索」）+ 日期范围。
+- 前端筛选栏：`q` 搜索框（placeholder「按操作人邮箱搜索」）+ **`path` 搜索框（placeholder「按 API 路径搜索」）** + **状态码下拉（全部/1xx/2xx/3xx/4xx/5xx）** + 日期范围；移除「操作类型下拉」（旧枚举值 bug，见 §2.1）。
 
 ### 5.2 hardcode mapping（需求 3）
 
@@ -165,6 +172,8 @@ var actionDescriptions = map[string]string{
 - [ ] **必须** 验证可见性过滤三分支：system_admin 无过滤；非 system_admin 命中 `$or [自己, 空, 不存在]`；与其他 filter AND 叠加
 - [ ] **必须** 验证参数校验：非法 page/page_size/q 超长/日期格式 → 400（非 500 非静默）
 - [ ] **必须** 验证 D1 q 搜索链路：email 模糊 → topN userIDs → `$in` 过滤；查无匹配用户 → 空列表 total=0；与日期/可见性条件 AND 叠加
+- [ ] **必须** 验证 D2 path 搜索：`action` 字段 `$regex`（QuoteMeta + 忽略大小写）命中 `METHOD 模板路径`；path 超长 → 400
+- [ ] **必须** 验证 D3 status_class：5 个枚举各构造正确范围（`1xx→[100,200)` … `5xx→[500,600)`）；非法枚举 → 400；空 = 不筛选
 - [ ] **必须** 验证 `action_desc`：mapping 命中返回描述、未命中回退原始 Action；CSV 导出用描述
 - [ ] **必须** 验证 export format 仅 csv，非法 400
 - [ ] **严禁** `t.Skip()` 绕过无法测试的场景
@@ -181,6 +190,7 @@ var actionDescriptions = map[string]string{
 3. 非法参数（分页/日期/format/q 超长）全部返回 400。
 4. 可见性：普通用户/普通管理员仅见「自己的 + user 关联为空」的日志；system_admin 见全部；导出与列表一致。
 5. 前端筛选下拉 bug 消失（旧枚举值废弃），q 按 email 搜索命中正确（查无匹配 email → 空列表）。
+6. path 模糊搜索命中正确（搜 `sessions` 命中该路径相关全部 CUD 记录）；status_class 各枚举筛选范围正确（如 4xx 只返回 400~499）。
 
 ## 11. 设计定稿记录
 
@@ -194,3 +204,22 @@ var actionDescriptions = map[string]string{
 4. `q` 不做 action/action_desc/details 的正则匹配。
 
 > 备注：这实质是现有 `UserID` 过滤参数（email keyword → top10 → `$in`）的语义平移——参数名 `user_id` 改为 `q`，逻辑不变。
+
+### D2 — path 模糊搜索（2026-09-17 晓军拍板）
+
+新增 `path` 查询参数，支持 API 路径（不带 query 参数）模糊搜索：
+
+1. 搜索对象 = `action` 字段（值 = `"METHOD FullPath模板"`，天然不含 query 参数、参数已泛化）；
+2. DB 层条件：`action: {$regex: regexp.QuoteMeta(path), $options: "i"}`；
+3. 长度 ≤100，超长 400；空 = 不筛选；
+4. 与其他过滤条件（q/status_class/日期/可见性）AND 叠加。
+
+### D3 — status_class 状态码类别筛选（2026-09-17 晓军拍板）
+
+新增 `status_class` 查询参数，前端下拉选择、后端校验枚举并构造范围：
+
+1. 合法枚举：`1xx` / `2xx` / `3xx` / `4xx` / `5xx`；空 = 全部；
+2. 后端校验：非法枚举 → **400**；
+3. 构造范围条件：`status_code: {$gte: X*100, $lt: (X+1)*100}`（如 `4xx` → `{$gte: 400, $lt: 500}`，`1xx` → `{$gte: 100, $lt: 200}`）；
+4. 前端下拉：全部 / 1xx / 2xx / 3xx / 4xx / 5xx（`data-testid="audit-status-select"`）；
+5. 与其他过滤条件 AND 叠加。
