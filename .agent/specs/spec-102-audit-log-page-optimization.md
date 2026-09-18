@@ -1,7 +1,7 @@
 # SPEC-102 审计日志页面功能优化（搜索分页统一 + action 描述 mapping + 参数校验 + 可见性过滤）
 
-> **SPEC-102** | Status: 设计中（立项）
-> 日期：2026-09-17
+> **SPEC-102** | Status: ✅ 设计定稿（D1~D9 全定稿；暂不实现）
+> 日期：2026-09-17 立项 → 2026-09-18 设计定稿
 
 ## 1. 目标
 
@@ -105,13 +105,16 @@ var actionDescriptions = map[string]string{
 - 导出与列表**共享同一套过滤 + 可见性**逻辑。
 - 校验维度按常规方案全覆盖：**枚举值**（status_class/format）、**长度**（q/path）、**范围**（page/page_size/limit）、**格式**（start/end 日期）、**边界**（start>end）——完整清单见 §11 D6。
 
-### 5.4 可见性过滤（需求 5）
+### 5.4 可见性过滤（需求 5，D9 已定稿见 §11）
 
-- `service.List`/`Export` 增加 viewer 参数：`ViewerUserID string` + `IsSystemAdmin bool`。
-- 过滤条件（与用户搜索等其他 filter **AND** 叠加）：
-  - `IsSystemAdmin == true` → 不加可见性条件。
-  - 否则 → `$or: [{user_id: ViewerUserID}, {user_id: ""}, {user_id: {$exists: false}}]`（自己的 + 无 user 关联的）。
+- **RBAC 入口（已满足，无需改）**：路由已挂 `RequirePermission(PermAuditView)`；权限矩阵 `rbac_perm_audit_view` 仅挂 `rbac_role_admin`(L1)，system_admin(L0) 经层级自动拥有 → **API 访问现状已是「仅 admin/system_admin」**，普通用户（rbac_role_user L2）无法访问。fixed 角色（data_analyst 等）定义无调用方（死代码），不参与鉴权。
+- **行级过滤（与 KB 可见性同模式）**：`service.List`/`Export` 增加 viewer 参数：`ViewerUserID string` + `IsSystemAdmin bool`。
+  - `IsSystemAdmin == true`（主角色 system_admin）→ 不加可见性条件（看所有）。
+  - 否则（**admin 与 user 同一级**）→ `$or: [{user_id: ViewerUserID}, {user_id: ""}, {user_id: {$exists: false}}]`（自己的 + 无 user 关联，等价 KB 的 public 语义）。
+  - 与其他过滤条件 **AND** 叠加。
+- **普通用户分支保留**：service 层过滤逻辑完整实现（含 user 分支）——当前 RBAC 已挡普通用户，行级逻辑保留，将来开放 user 访问直接生效。
 - handler 经 `ctx["user_id"]` + `ctx["role"] == "system_admin"` 取 viewer（`taskIdentity` 同模式）。
+- CSV 导出与列表同一套过滤。
 - 前端无需改动（后端过滤，列表自然变少）。
 
 ### 5.5 前端样式统一（需求 1，D5 已定稿）
@@ -175,7 +178,7 @@ var actionDescriptions = map[string]string{
 ### 断言质量要求
 
 - [ ] **必须** 每个 Success 测试至少包含 **2 个行为验证断言**（除 `err == nil` 外必须验证实际值/状态/副作用）
-- [ ] **必须** 验证可见性过滤三分支：system_admin 无过滤；非 system_admin 命中 `$or [自己, 空, 不存在]`；与其他 filter AND 叠加
+- [ ] **必须** 验证可见性过滤（D9）：system_admin 无过滤；**admin 与 user 同级**（非 system_admin 命中 `$or [自己, 空, 不存在]`）；与其他 filter AND 叠加；导出同过滤
 - [ ] **必须** 验证参数校验（D6 清单逐项）：q/path 超长 400；status_class/format 非法枚举 400；page/page_size/limit 非数字、越界 400；日期格式非法 400、start>end 400；无任何静默容错路径
 - [ ] **必须** 验证 D1 q 搜索链路：email 模糊 → topN userIDs → `$in` 过滤；查无匹配用户 → 空列表 total=0；与日期/可见性条件 AND 叠加
 - [ ] **必须** 验证 D2 path 搜索：`action` 字段 `$regex`（QuoteMeta + 忽略大小写）命中 `METHOD 模板路径`；path 超长 → 400
@@ -195,7 +198,7 @@ var actionDescriptions = map[string]string{
 1. 搜索/分页与其他列表页一致：`q`（操作人 email）经 email 模糊 → userIDs → `$in` DB 层过滤；`page`/`page_size` DB 层分页，`explain` 无全表扫描（视索引评估）。
 2. 操作类型列显示中文描述（mapping 命中），未覆盖路由显示原始 `METHOD path` 回退。
 3. 非法参数（分页/日期/format/q 超长）全部返回 400。
-4. 可见性：普通用户/普通管理员仅见「自己的 + user 关联为空」的日志；system_admin 见全部；导出与列表一致。
+4. 可见性：非 system_admin（admin 与 user 同级）仅见「自己的 + user 关联为空」的日志；system_admin 见全部；导出与列表一致；普通用户当前被 RBAC 挡在 API 外（403），行级逻辑保留。
 5. 前端筛选下拉 bug 消失（旧枚举值废弃），q 按 email 搜索命中正确（查无匹配 email → 空列表）。
 6. path 模糊搜索命中正确（搜 `sessions` 命中该路径相关全部 CUD 记录）；status_class 各枚举筛选范围正确（如 4xx 只返回 400~499）。
 7. `audit_logs` 存在 TTL 索引（expireAfterSeconds=365 天），超期文档被自动清理；时间筛选可传任意早的 start 不报错（自然空结果）。
@@ -281,3 +284,14 @@ var actionDescriptions = map[string]string{
 2. `end` 同样不限（仅格式 + start≤end 校验，见 D6）。
 3. 前端日期选择器不设 min 属性。
 4. 与 stats_hourly 的 `clampRange`（MaxRange=365d）不同——审计不做窗口钳制，保持简单。
+
+### D9 — 可见性过滤（2026-09-18 晓军拍板）
+
+1. **RBAC 入口已满足**：审计 API 已挂 `RequirePermission(PermAuditView)`；权限矩阵 `rbac_perm_audit_view` 仅挂 `rbac_role_admin`(L1)、system_admin(L0) 经层级自动拥有 → **仅 admin/system_admin 可访问**，普通用户（rbac_role_user L2）403。fixed 角色（data_analyst/kb_admin/auditor）定义为死代码（无调用方），不参与鉴权，**无需改 RBAC seed**。
+2. **行级过滤（与 KB 可见性同模式）**：`service.List`/`Export` 加 viewer 参数（`ViewerUserID` + `IsSystemAdmin`）：
+   - `IsSystemAdmin == true` → 不加可见性条件（看所有）；
+   - 否则（**admin 与 user 同一级**，同 KB「其余看自己+public」）→ `$or: [{user_id: ViewerUserID}, {user_id: ""}, {user_id: {$exists: false}}]`；
+   - 与其他过滤条件 AND 叠加。
+3. **判定维度**：主角色 `ctx["role"]`（user/admin/system_admin 枚举，`taskIdentity` 同模式），与 KB 可见性判定一致。
+4. **普通用户可见性处理保留**：行级过滤逻辑完整实现（含 user 分支）——当前 RBAC 已挡普通用户，逻辑保留，将来开放 user 访问直接生效。
+5. CSV 导出与列表同一套过滤；前端无需改动。
