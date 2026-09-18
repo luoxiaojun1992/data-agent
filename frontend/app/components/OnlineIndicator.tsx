@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { getApiHost } from '../../lib/api-host';
 
 // SPEC-079: 全局在线指示灯。挂在 RootLayout，所有页面（含登录/注册）统一
 // 显示后端服务与依赖组件的真实健康状态，取代原先硬编码的绿色脉冲圆点。
@@ -21,7 +22,6 @@ interface HealthResponse {
 
 type IndicatorState = 'ok' | 'degraded' | 'down';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 const POLL_INTERVAL_MS = 15000;
 const FETCH_TIMEOUT_MS = 3000;
 
@@ -74,7 +74,8 @@ export default function OnlineIndicator() {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
       try {
-        const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+        const base = await getApiHost();
+        const res = await fetch(`${base}/health`, { signal: controller.signal });
         if (!res.ok) throw new Error(`http ${res.status}`);
         const data: HealthResponse = await res.json();
         if (cancelled) return;

@@ -27,6 +27,8 @@ func SystemBuiltins() []BuiltinConfig {
 		{Key: "QDRANT_URL", Description: "Qdrant HTTP URL", Default: ""},
 		{Key: "INVITE_HMAC_SECRET", Description: "邀请 HMAC 签名密钥", Default: ""},
 		{Key: "INVITE_BASE_URL", Description: "邀请链接对外基地址", Default: ""},
+		// SPEC-097: 前端运行时获取后端地址（纯 origin，不含 /api/v1；空则回退前端同源）
+		{Key: "API_HOST", Description: "对外 API 基地址（纯 origin，不含 /api/v1；前端运行时获取后端地址，空则回退到前端同源）", Default: ""},
 		{Key: "VAULT_ADDR", Description: "HashiCorp Vault 地址", Default: ""},
 		{Key: "JWT_SECRET", Description: "JWT 签名密钥", Default: ""},
 		{Key: "SESSION_TIMEOUT", Description: "登录 Session 超时（小时）", Default: "24"},

@@ -83,6 +83,11 @@ func RegisterAllRoutes(router *gin.Engine, deps *RouteDeps) {
 	healthHandler := NewHealthHandler(deps.HealthService)
 	router.GET("/health", healthHandler.Check)
 	router.GET("/api/v1/health", healthHandler.Check)
+	// SPEC-097: API host query — fully public (no JWT, no RBAC); the login
+	// flow itself depends on it, so it must be reachable before auth.
+	if deps.SysConfig != nil {
+		router.GET("/api/v1/api-host", deps.SysConfig.GetAPIHost)
+	}
 	if deps.IMWebhook != nil {
 		router.POST("/api/v1/im/feishu/webhook", gin.WrapF(deps.IMWebhook))
 	}

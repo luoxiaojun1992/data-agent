@@ -13,8 +13,7 @@ import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
 import HumanChannelDialog, { type HumanChannelEvent, type HumanChannelReply } from '../components/HumanChannelDialog';
 import RedactOverlay from '../components/RedactOverlay';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+import { getApiHost } from '../../lib/api-host';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -270,7 +269,7 @@ export default function ChatPage() {
     setHumanEvent(null);
     if (!ev || !sessionId || !auth.token) return;
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+      const base = await getApiHost();
       await fetch(`${base}/chat/${sessionId}/human-channel/${ev.request_id}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
@@ -289,10 +288,10 @@ export default function ChatPage() {
       return;
     }
     const controller = new AbortController();
-    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
     const connect = async () => {
       try {
+        const base = await getApiHost();
         const res = await fetch(`${base}/chat/${sessionId}/human-channel`, {
           headers: { Authorization: `Bearer ${auth.token}` },
           signal: controller.signal,
@@ -431,7 +430,8 @@ export default function ChatPage() {
     try {
       const headers: Record<string,string> = { 'Content-Type': 'application/json' };
       if (auth.token) headers['Authorization'] = `Bearer ${auth.token}`;
-      const res = await fetch(`${API_BASE}/chat/enhance`, {
+      const base = await getApiHost();
+      const res = await fetch(`${base}/chat/enhance`, {
         method: 'POST', headers,
         body: JSON.stringify({ prompt: input }),
       });
@@ -599,7 +599,7 @@ export default function ChatPage() {
     };
 
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+      const base = await getApiHost();
       const endpoint = `${base}/chat`;
       const res = await fetch(endpoint, {
         method: 'POST',

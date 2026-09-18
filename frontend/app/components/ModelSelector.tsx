@@ -2,8 +2,7 @@
 
 import React, { useCallback, useRef } from 'react';
 import SearchableSelect, { SearchableOption } from './SearchableSelect';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+import { getApiHost } from '../../lib/api-host';
 
 interface ModelSelectorProps {
   value: string;
@@ -29,7 +28,8 @@ export default function ModelSelector({ value, onChange, disabled, token }: Mode
   const doFetch = useCallback(async (q: string, limit: number): Promise<SearchableOption[]> => {
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const url = `${API_BASE}/models/list?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+    const base = await getApiHost();
+    const url = `${base}/models/list?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
     const res = await fetch(url, { headers });
     if (!res.ok) throw new Error('加载模型失败');
     const data = await res.json();

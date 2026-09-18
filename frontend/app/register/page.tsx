@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+import { getApiHost } from '../../lib/api-host';
 
 function RegisterForm() {
   const searchParams = useSearchParams();
@@ -34,7 +33,8 @@ function RegisterForm() {
       return;
     }
 
-    fetch(`${API_BASE}/api/v1/auth/register?token=${encodeURIComponent(token)}`)
+    getApiHost()
+      .then((base) => fetch(`${base}/auth/register?token=${encodeURIComponent(token)}`))
       .then((res) => res.json())
       .then((data) => {
         if (data.valid) {
@@ -82,7 +82,8 @@ function RegisterForm() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/auth/complete-registration`, {
+      const base = await getApiHost();
+      const res = await fetch(`${base}/auth/complete-registration`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

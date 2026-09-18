@@ -61,3 +61,24 @@ func (h *ConfigHandler) Put(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已保存"})
 }
+
+// GetAPIHost returns the configured API host (SPEC-097). Fully public —
+// no JWT, no RBAC — because the login flow itself depends on it. The value
+// is a pure origin (scheme://host[:port]) without the /api/v1 suffix; an
+// unset/empty config yields an empty string and the frontend falls back to
+// its own origin.
+func (h *ConfigHandler) GetAPIHost(c *gin.Context) {
+	cfgs, err := h.cfgSvc.GetAll(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	apiHost := ""
+	for _, cfg := range cfgs {
+		if cfg.Key == "API_HOST" {
+			apiHost = cfg.Value
+			break
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"api_host": apiHost})
+}

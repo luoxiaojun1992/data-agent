@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { getApiHost } from './api-host';
 
 export interface AuthState {
   token: string | null;
@@ -45,8 +46,6 @@ export const NOTIFICATION_PERMS = {
   broadcast: 'notification:broadcast',
 } as const;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-
 function boolLS(key: string): boolean {
   return localStorage.getItem(key) === 'true';
 }
@@ -82,7 +81,10 @@ export function useAuth() {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    // SPEC-097: login also resolves the runtime API host first — the login
+    // request itself must go through the dynamic base, not a build-time const.
+    const base = await getApiHost();
+    const res = await fetch(`${base}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -102,7 +104,7 @@ export function useAuth() {
     // Load RBAC permissions
     let perms: string[] = [];
     try {
-      const pRes = await fetch(`${API_BASE}/rbac/me/permissions`, {
+      const pRes = await fetch(`${base}/rbac/me/permissions`, {
         headers: { 'Authorization': `Bearer ${data.access_token}` },
       });
       if (pRes.ok) {
@@ -150,9 +152,11 @@ export function useAuth() {
     if (auth.token) {
       headers['Authorization'] = `Bearer ${auth.token}`;
     }
-    // Strip leading /api/v1 from path to avoid double-prefix (API_BASE already includes it).
+    // SPEC-097: runtime-resolved base (no build-time constant).
+    const base = await getApiHost();
+    // Strip leading /api/v1 from path to avoid double-prefix (base already includes it).
     const normalized = path.startsWith('/api/v1') ? path.slice(7) : path;
-    const res = await fetch(`${API_BASE}${normalized}`, { ...options, headers });
+    const res = await fetch(`${base}${normalized}`, { ...options, headers });
     if (res.status === 401 && auth.token) {
       logout();
       throw new Error('Session expired');

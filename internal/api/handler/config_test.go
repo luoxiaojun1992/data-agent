@@ -64,3 +64,66 @@ func TestConfigHandler_Put_InvalidBody(t *testing.T) {
 	}
 }
 
+// ---- SPEC-097: GetAPIHost (public, no auth) ----
+
+func TestConfigHandler_GetAPIHost_Configured(t *testing.T) {
+	cfgSvc := configmocks.NewService(t)
+	cfgSvc.On("GetAll", mock.Anything).Return([]model.SystemConfig{
+		{Key: "MONGO_URI", Value: "x"},
+		{Key: "API_HOST", Value: "https://api.example.com"},
+	}, nil)
+	h := NewConfigHandler(cfgSvc)
+	c, w := newCfgGin("GET", "/api/v1/api-host", "")
+	h.GetAPIHost(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"api_host":"https://api.example.com"`) {
+		t.Errorf("body = %s, want api_host value", w.Body.String())
+	}
+}
+
+func TestConfigHandler_GetAPIHost_Unset(t *testing.T) {
+	cfgSvc := configmocks.NewService(t)
+	cfgSvc.On("GetAll", mock.Anything).Return([]model.SystemConfig{
+		{Key: "MONGO_URI", Value: "x"},
+		{Key: "API_HOST", Value: ""},
+	}, nil)
+	h := NewConfigHandler(cfgSvc)
+	c, w := newCfgGin("GET", "/api/v1/api-host", "")
+	h.GetAPIHost(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"api_host":""`) {
+		t.Errorf("body = %s, want empty api_host", w.Body.String())
+	}
+}
+
+func TestConfigHandler_GetAPIHost_NoKey(t *testing.T) {
+	cfgSvc := configmocks.NewService(t)
+	cfgSvc.On("GetAll", mock.Anything).Return([]model.SystemConfig{
+		{Key: "MONGO_URI", Value: "x"},
+	}, nil)
+	h := NewConfigHandler(cfgSvc)
+	c, w := newCfgGin("GET", "/api/v1/api-host", "")
+	h.GetAPIHost(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"api_host":""`) {
+		t.Errorf("body = %s, want empty api_host", w.Body.String())
+	}
+}
+
+func TestConfigHandler_GetAPIHost_Error(t *testing.T) {
+	cfgSvc := configmocks.NewService(t)
+	cfgSvc.On("GetAll", mock.Anything).Return(([]model.SystemConfig)(nil), errStr("db down"))
+	h := NewConfigHandler(cfgSvc)
+	c, w := newCfgGin("GET", "/api/v1/api-host", "")
+	h.GetAPIHost(c)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
