@@ -103,11 +103,25 @@
 - **后端返回内容一律原样显示**：LLM 对话、记忆、KB 文档、artifact、task 定义/结果、配置内容、审计 `action_desc`、通知、后端错误消息等——**不做前端翻译**。
 - 只翻译前端静态 UI 文案。
 
-### D4 — SSR 水合一致性（cookie + 防闪烁）
+### D4 — SSR 水合一致性（cookie + 防闪烁，2026-09-18 定稿 + 副作用确认）
 
-- 背景：SSR 在服务器渲染、读不到 localStorage → 若仅存 localStorage，首屏按默认中文渲染、客户端接管后变英文 → 闪烁 + hydration mismatch 警告（SPEC-076 主题切换踩过的同类坑）。
+- 背景：SSR 在服务器渲染、读不到 localStorage → 若仅存 localStorage，首屏按默认中文渲染、客户端接管后变英文 → 闪烁 + hydration mismatch 警告（SPEC-076 主题切换踩过的同类坑）。且 i18n 文案是**服务端组件渲染进 HTML 的静态文本**，inline script 无法改文本，必须让 SSR 知道语言。
 - 定稿：语言状态存 **cookie**（SSR 可读，服务器按正确语言渲染首屏）+ localStorage 镜像（客户端快速读）；采用 next-intl 标准 cookie 机制（必要时 `frontend/middleware.ts` 处理）。
 - 防闪烁：参考 SPEC-076 的 inline script 范式（React 水合前设置 `lang` 属性）。
+- **副作用与成本确认（2026-09-18）**：
+  - Cookie 大小：仅 `"zh"/"en"`（≈2 字节），远低于 4KB 限制，无问题。
+  - SameSite/跨域：同域部署（nginx 反代），SameSite=Lax 足够，无跨站问题。
+  - 后端影响：**零**（后端不读该 cookie，D3 无联动）。
+  - 依赖要求：next-intl 标准机制；必要时 Next.js 内置 middleware.ts，**无额外包**。
+  - 副作用：清 cookie/换浏览器后语言重置默认 zh——与 localStorage 行为相同，可接受。
+  - 迁移成本：无存量（i18n 为全新功能）。
+
+### D4 附注 — 主题/自动脱敏**不**迁移 cookie（2026-09-18 确认）
+
+- **主题切换（SPEC-076）**：切换的只是 `data-theme` 属性（CSS 变量），现有 inline script 在首帧前读 localStorage 设属性，**已部署验证有效、无闪烁**——不需要 cookie，改 cookie 徒增迁移成本与同步复杂度。
+- **自动脱敏（SPEC-093）**：纯客户端 checkbox 状态，不影响 SSR 渲染文本——保持现状（mount 时读 localStorage）。
+- **自动脱敏默认值依赖 API 健康度**：在**浏览器前端处理**（开关打开时才调脱敏 API、失败走现有报错降级；与语音按钮 `isVoiceInputSupported()` 检测同模式），不进 SSR/后端。
+- 结论：i18n 用 cookie 是因为文案是 SSR 渲染的静态文本（cookie 是唯一让 SSR 知道语言的手段）；主题/脱敏不属于此类，现有方案即最优。
 
 ### D5 — 一次性全站翻译 + 质量约束
 
