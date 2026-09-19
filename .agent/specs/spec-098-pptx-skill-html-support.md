@@ -1,6 +1,6 @@
 # pptx skill 优化 — 同时支持 Markdown 与 HTML
 
-> **SPEC-098** | Status: 立项（待深化；暂不实现）
+> **SPEC-098** | Status: ✅ 已实现（2026-09-19 实现并部署验证）
 
 ## 1. 目标
 
@@ -202,8 +202,8 @@ func GenerateHTML(html string, outputPath string) error {
 
 ## 11. 待定稿决策点（深化阶段拍板）
 
-| # | 决策点 | 说明 |
-|---|--------|------|
-| D1 | format 参数方式 | 推荐 **显式 `format` 参数**（markdown/html，默认 markdown）；备选：自动 sniff（检测 `<h1>`/`<table>`/`<html>`）。显式更清晰、零误判、向后兼容 |
-| D2 | HTML 默认配色 | 推荐沿用当前 markdown 深色系（`#1E3A5F` 标题 / `#333` 正文 / `#FFFFFF` 背景）保持视觉统一；是否让 LLM 通过 `<body style>` 自行覆盖背景 |
-| D3 | seed 同步机制 | `SeedSkills` 幂等「已存在则跳过」不会更新线上旧描述。方案 A：实现时一次性手动同步线上 `pptx_generator` 描述；方案 B：将内置 skill 描述设为「随代码版本」、增强 seed 逻辑覆盖（会覆盖用户自定义，需权衡） |
+| # | 决策点 | 状态 | 结论 |
+|---|--------|:---:|------|
+| D1 | format 参数方式 | ✅ 已定稿 | **显式 `format` 参数**（markdown 默认 / html），非法值报错；零误判、向后兼容 |
+| D2 | HTML 默认配色 | ✅ 已定稿 | 沿用深色系 `#1E3A5F` 标题 / `#333` 正文 / `#FFFFFF` 背景，保持视觉统一 |
+| D3 | seed 同步机制 | ✅ 已定稿 | 方案 A：实现时一次性手动同步线上 `pptx_generator` 描述（mongosh 更新，已执行） |
