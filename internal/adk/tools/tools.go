@@ -1067,9 +1067,9 @@ func specs(deps *Deps) []toolSpec {
 	if deps.SessionSvc != nil {
 		out = append(out, toolSpec{
 			name:        "pptx_generator",
-			description: "Generates a .pptx PowerPoint file from markdown content and saves it in the session workspace. The content should be well-structured markdown with # slide titles and - bullet points. Returns the relative file path (e.g. output.pptx).",
+			description: "Generates a .pptx PowerPoint file from markdown or HTML content and saves it in the session workspace. Supports two formats: html (recommended for polished decks — one <h1> per slide, <h2>~<h6> subheadings, <p> paragraphs, <ul>/<ol> lists, <table> tables, <img> images with border-radius/float, <pre><code> code, <hr>/<section> page breaks; inline styles support color / font-size(px) / text-align / background-color) and markdown (default — # slide titles, - bullet points). Returns the relative file path (e.g. output.pptx).",
 			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "pptx_generator", Description: "Generates a .pptx PowerPoint file from markdown content and saves it in the session workspace. The content should be well-structured markdown with # slide titles and - bullet points. Returns the relative file path (e.g. output.pptx)."}, pptxGenerator(deps))
+				return functiontool.New(functiontool.Config{Name: "pptx_generator", Description: "Generates a .pptx PowerPoint file from markdown or HTML content and saves it in the session workspace. Supports two formats: html (recommended for polished decks — one <h1> per slide, <h2>~<h6> subheadings, <p> paragraphs, <ul>/<ol> lists, <table> tables, <img> images with border-radius/float, <pre><code> code, <hr>/<section> page breaks; inline styles support color / font-size(px) / text-align / background-color) and markdown (default — # slide titles, - bullet points). Returns the relative file path (e.g. output.pptx)."}, pptxGenerator(deps))
 			},
 		})
 		out = append(out, toolSpec{
@@ -1308,7 +1308,8 @@ func skillDetail(deps *Deps) functiontool.Func[SkillDetailArgs, SkillDetailResul
 
 // PPTXGeneratorArgs are the arguments for the pptx_generator tool.
 type PPTXGeneratorArgs struct {
-	Content  string `json:"content" jsonschema:"Markdown content for the presentation. Use # for slide titles, ## for subtitles, - for bullet points."`
+	Content  string `json:"content" jsonschema:"Presentation content. For format=markdown: use # for slide titles, ## for subtitles, - for bullet points. For format=html: a well-formed HTML fragment (see format description for supported elements and inline styles)."`
+	Format   string `json:"format,omitempty" jsonschema:"Content format: \"markdown\" (default) or \"html\". HTML produces richer, more polished slides (tables, images with rounding/floating, per-element colors/font-size/alignment/background). Recommended for polished decks."`
 	FileName string `json:"file_name,omitempty" jsonschema:"Output file name (default: presentation.pptx)"`
 }
 
@@ -1334,8 +1335,17 @@ func pptxGenerator(deps *Deps) functiontool.Func[PPTXGeneratorArgs, PPTXGenerato
 		ws := chatsvc.SessionWorkspace(sessionID)
 		fullPath := filepath.Join(ws, fileName)
 
-		if err := pptxpkg.Generate(args.Content, fullPath); err != nil {
-			return PPTXGeneratorResult{}, fmt.Errorf("pptx_generator: %w", err)
+		var genErr error
+		switch strings.ToLower(strings.TrimSpace(args.Format)) {
+		case "", "markdown":
+			genErr = pptxpkg.Generate(args.Content, fullPath)
+		case "html":
+			genErr = pptxpkg.GenerateHTML(args.Content, fullPath)
+		default:
+			return PPTXGeneratorResult{}, fmt.Errorf("pptx_generator: unsupported format %q (must be \"markdown\" or \"html\")", args.Format)
+		}
+		if genErr != nil {
+			return PPTXGeneratorResult{}, fmt.Errorf("pptx_generator: %w", genErr)
 		}
 		return PPTXGeneratorResult{Path: fileName}, nil
 	}

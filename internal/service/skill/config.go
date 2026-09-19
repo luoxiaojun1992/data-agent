@@ -163,7 +163,7 @@ func predefinedSkills() []skill.SkillConfig {
 		{
 			Name:        "pptx_generator",
 			DisplayName: "PPTX 生成",
-			Description: "从 markdown 内容生成 .pptx PowerPoint 文件，保存到 session workspace",
+			Description: "从 markdown 或 HTML 内容生成 .pptx PowerPoint 文件（HTML 支持表格/图片/逐元素样式，更精美，推荐），保存到 session workspace",
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
