@@ -1,6 +1,6 @@
 # Task PDF 解析 + kb/chat/task Excel 解析
 
-> **SPEC-096** | Status: ✅ 设计定稿（D1~D6 全定稿；暂不实现）
+> **SPEC-096** | Status: ✅ 已实现（2026-09-20 实现并部署验证）
 
 ## 1. 目标
 
