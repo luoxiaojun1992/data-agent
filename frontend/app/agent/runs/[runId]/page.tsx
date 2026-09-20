@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppLayout from '../../../providers';
 import { useAuth } from '@/lib/api';
+import { stripAttachmentBlocks } from '@/lib/attachment';
 import Markdown from '../../../../components/Markdown';
 
 interface TaskRun {
@@ -230,7 +231,34 @@ export default function RunDetailPage() {
               {description && (
                 <div>
                   <p className="text-xs text-[var(--text-secondary)]">描述</p>
-                  <p className="text-sm text-[var(--text-primary)] mt-0.5 whitespace-pre-wrap">{description}</p>
+                  {(() => {
+                    const stripped = stripAttachmentBlocks(description);
+                    const pdfs = stripped.pdfs;
+                    const excels = stripped.excels;
+                    return (
+                      <>
+                        {(pdfs.length > 0 || excels.length > 0) && (
+                          <div className="flex flex-wrap gap-2 mt-1 mb-1">
+                            {pdfs.map((pdf, idx) => (
+                              <span key={`pdf-${idx}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--surface-20)] bg-[var(--surface-10)] text-xs" data-testid={`run-task-pdf-${idx}`}>
+                                <span>📄</span>
+                                <span className="max-w-[160px] truncate" title={pdf.name}>{pdf.name}</span>
+                              </span>
+                            ))}
+                            {excels.map((excel, idx) => (
+                              <span key={`excel-${idx}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--surface-20)] bg-[var(--surface-10)] text-xs" data-testid={`run-task-excel-${idx}`}>
+                                <span>📊</span>
+                                <span className="max-w-[160px] truncate" title={excel.name}>{excel.name}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {stripped.text && (
+                          <p className="text-sm text-[var(--text-primary)] mt-0.5 whitespace-pre-wrap">{stripped.text}</p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>

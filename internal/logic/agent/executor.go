@@ -20,7 +20,6 @@ import (
 	"google.golang.org/genai"
 
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
-	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
@@ -343,9 +342,11 @@ func buildRunState(run *domaintask.TaskRun) map[string]any {
 
 // deriveUserMessageFromParams extracts the user message (text + image
 // attachments) from Params. Images are recovered from the JSON string stored
-// under "images" (see domainchat.EncodeImages); a malformed value is ignored
-// so a corrupt task never blocks execution of its text.
-func deriveUserMessageFromParams(params map[string]interface{}) (string, []domainchat.ImagePart) {
+// under "images" (see domaintask.EncodeTaskImages); a malformed value is
+// ignored so a corrupt task never blocks execution of its text. PDF/Excel
+// parsed text is already folded into description (SPEC-096 D1 方案 B) and
+// comes back as part of the text.
+func deriveUserMessageFromParams(params map[string]interface{}) (string, []domaintask.ImagePart) {
 	var text string
 	for _, key := range []string{"query", "message", "prompt", "description"} {
 		if v, ok := params[key].(string); ok && strings.TrimSpace(v) != "" {
@@ -358,9 +359,9 @@ func deriveUserMessageFromParams(params map[string]interface{}) (string, []domai
 			text = v
 		}
 	}
-	var images []domainchat.ImagePart
+	var images []domaintask.ImagePart
 	if raw, ok := params["images"].(string); ok {
-		if decoded, dErr := domainchat.DecodeImages(raw); dErr == nil {
+		if decoded, dErr := domaintask.DecodeTaskImages(raw); dErr == nil {
 			images = decoded
 		}
 	}
@@ -369,8 +370,8 @@ func deriveUserMessageFromParams(params map[string]interface{}) (string, []domai
 
 // buildTaskContent assembles the genai user content (text + inline image
 // parts) for an async task turn, mirroring the chat path's content building.
-func buildTaskContent(text string, images []domainchat.ImagePart) (*genai.Content, error) {
-	decoded, err := domainchat.ValidateImages(images)
+func buildTaskContent(text string, images []domaintask.ImagePart) (*genai.Content, error) {
+	decoded, err := domaintask.ValidateTaskImages(images)
 	if err != nil {
 		return nil, err
 	}

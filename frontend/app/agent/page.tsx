@@ -6,7 +6,9 @@ import AppLayout from '../providers';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
 import { useAuth } from '@/lib/api';
-import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, type Attachment } from '@/lib/attachment';
+import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_EXCEL_BYTES, type Attachment, type PdfAttachment, type ExcelAttachment } from '@/lib/attachment';
+import { parsePdf, isPdfFile } from '@/lib/pdf';
+import { parseExcel, isExcelFile } from '@/lib/excel';
 
 interface AgentTask {
   task_id: string;
@@ -37,6 +39,8 @@ export default function AgentPage() {
   const [total, setTotal] = useState(0);
   const [newTask, setNewTask] = useState({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring' as 'recurring' | 'one_time', scheduledAt: '', modelId: '' });
   const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
+  const [pdfs, setPdfs] = useState<PdfAttachment[]>([]); // PDF attachments (name + parsed text)
+  const [excels, setExcels] = useState<ExcelAttachment[]>([]); // Excel attachments (name + parsed text)
   const [attachError, setAttachError] = useState('');
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   // SPEC-086: 「常用模版」入口（独立于「新建任务」弹窗）+ 日常总结确认弹窗。
@@ -74,11 +78,15 @@ export default function AgentPage() {
     finally { setLoading(false); }
   };
 
-  // Add image attachments from a FileList, enforcing the 5-image / 2MiB limits.
+  // Add image + PDF + Excel attachments from a FileList, enforcing the 5-image
+  // / 2MiB limits and the 20MiB PDF/Excel size limits (SPEC-077 / SPEC-096).
   const addAttachments = async (files: File[]) => {
     const images = files.filter((f) => f.type.startsWith('image/'));
-    if (images.length === 0) return;
-    if (attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
+    const pdfFiles = files.filter(
+      (f) => f.type === 'application/pdf' || isPdfFile(f.name),
+    );
+    const excelFiles = files.filter((f) => isExcelFile(f.name));
+    if (images.length > 0 && attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
       setAttachError(`最多 ${MAX_ATTACHMENT_IMAGES} 张图片`);
       setTimeout(() => setAttachError(''), 3000);
       return;
@@ -94,6 +102,47 @@ export default function AgentPage() {
         setAttachments((prev) => (prev.length >= MAX_ATTACHMENT_IMAGES ? prev : [...prev, att]));
       } catch {
         setAttachError('读取图片失败');
+        setTimeout(() => setAttachError(''), 3000);
+      }
+    }
+
+    // PDF 附件：解析文字存 pdfs，解析图并入图片附件（合并计数 ≤5，SPEC-096 R1）。
+    for (const f of pdfFiles) {
+      if (f.size > MAX_PDF_BYTES) {
+        setAttachError(`PDF ${f.name} 超过 20MB 限制`);
+        setTimeout(() => setAttachError(''), 3000);
+        continue;
+      }
+      try {
+        const { text, images: pdfImages } = await parsePdf(f);
+        setPdfs((prev) => [...prev, { name: f.name, text }]);
+        for (const img of pdfImages) {
+          const base64 = img.dataUrl.split(',')[1] || '';
+          if (Math.floor((base64.length * 3) / 4) > MAX_ATTACHMENT_IMAGE_BYTES) continue;
+          setAttachments((prev) =>
+            prev.length >= MAX_ATTACHMENT_IMAGES
+              ? prev
+              : [...prev, { name: f.name, mimeType: img.mimeType, base64, dataUrl: img.dataUrl }],
+          );
+        }
+      } catch {
+        setAttachError(`解析 PDF ${f.name} 失败`);
+        setTimeout(() => setAttachError(''), 3000);
+      }
+    }
+
+    // Excel 附件：解析为纯文本存 excels（无图片，SPEC-096 R3）。
+    for (const f of excelFiles) {
+      if (f.size > MAX_EXCEL_BYTES) {
+        setAttachError(`Excel ${f.name} 超过 20MB 限制`);
+        setTimeout(() => setAttachError(''), 3000);
+        continue;
+      }
+      try {
+        const { text } = await parseExcel(f);
+        setExcels((prev) => [...prev, { name: f.name, text }]);
+      } catch {
+        setAttachError(`解析 Excel ${f.name} 失败`);
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -118,6 +167,14 @@ export default function AgentPage() {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removePdf = (index: number) => {
+    setPdfs((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeExcel = (index: number) => {
+    setExcels((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const createTask = async () => {
     if (!newTask.title.trim()) return;
     if (newTask.cronEnabled && ((newTask.scheduleMode === "recurring" && !newTask.cron) || (newTask.scheduleMode === "one_time" && !newTask.scheduledAt))) { alert("请填写完整的定时信息"); return; }
@@ -133,6 +190,12 @@ export default function AgentPage() {
       if (attachments.length > 0) {
         body.images = attachments.map((a) => ({ data: a.base64, mime_type: a.mimeType }));
       }
+      if (pdfs.length > 0) {
+        body.pdfs = pdfs.map((p) => ({ name: p.name, text: p.text }));
+      }
+      if (excels.length > 0) {
+        body.excels = excels.map((e) => ({ name: e.name, text: e.text }));
+      }
       if (newTask.cronEnabled) {
         body.schedule_mode = newTask.scheduleMode;
         if (newTask.scheduleMode === 'recurring' && newTask.cron) {
@@ -147,6 +210,8 @@ export default function AgentPage() {
         setShowModal(false);
         setNewTask({ title: '', description: '', cron: '', cronEnabled: false, scheduleMode: 'recurring', scheduledAt: '', modelId: '' });
         setAttachments([]);
+        setPdfs([]);
+        setExcels([]);
         setAttachError('');
       }
     } catch (e) { console.error('[agent] task create failed:', e); }
@@ -329,11 +394,11 @@ export default function AgentPage() {
                   data-testid="agent-task-desc-input" rows={2} placeholder="描述分析目标..." />
               </div>
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">图片附件（可选，最多 5 张，可粘贴）</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">附件（可选：图片 / PDF / Excel，可粘贴）</label>
                 <input
                   ref={attachmentInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf,.pdf,.xlsx"
                   multiple
                   style={{ display: 'none' }}
                   data-testid="agent-task-attach-input"
@@ -351,11 +416,37 @@ export default function AgentPage() {
                     ))}
                   </div>
                 )}
+                {pdfs.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2" data-testid="agent-task-pdf-attachments">
+                    {pdfs.map((pdf, idx) => (
+                      <div key={idx} className="relative flex items-center gap-2 pl-3 pr-8 py-1.5 rounded-lg border border-[var(--surface-20)] bg-[var(--glass-bg)]" data-testid={`agent-task-pdf-attachment-${idx}`}>
+                        <span className="text-sm leading-none">📄</span>
+                        <span className="text-xs max-w-[140px] truncate" title={pdf.name}>{pdf.name}</span>
+                        <button onClick={() => removePdf(idx)} title="移除 PDF"
+                          data-testid={`agent-task-pdf-attachment-remove-${idx}`}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {excels.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2" data-testid="agent-task-excel-attachments">
+                    {excels.map((excel, idx) => (
+                      <div key={idx} className="relative flex items-center gap-2 pl-3 pr-8 py-1.5 rounded-lg border border-[var(--surface-20)] bg-[var(--glass-bg)]" data-testid={`agent-task-excel-attachment-${idx}`}>
+                        <span className="text-sm leading-none">📊</span>
+                        <span className="text-xs max-w-[140px] truncate" title={excel.name}>{excel.name}</span>
+                        <button onClick={() => removeExcel(idx)} title="移除 Excel"
+                          data-testid={`agent-task-excel-attachment-remove-${idx}`}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {attachError && <p className="text-xs text-[#ef4444] mb-1" data-testid="agent-task-attach-error">{attachError}</p>}
                 <button onClick={handleAttachClick}
                   disabled={attachments.length >= MAX_ATTACHMENT_IMAGES}
                   className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
-                  data-testid="agent-task-attach-btn">📎 添加图片</button>
+                  data-testid="agent-task-attach-btn">📎 添加附件</button>
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-secondary)] mb-1">模型</label>

@@ -19,7 +19,6 @@ import (
 	"google.golang.org/genai"
 
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
-	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	domaintaskmocks "github.com/luoxiaojun1992/data-agent/internal/domain/task/mocks"
@@ -511,8 +510,8 @@ func TestDeriveUserMessage(t *testing.T) {
 // ── deriveUserMessageFromParams: image recovery (task images) ──
 
 func TestDeriveUserMessageFromParams_RecoversImages(t *testing.T) {
-	img := domainchat.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
-	encoded, err := domainchat.EncodeImages([]domainchat.ImagePart{img})
+	img := domaintask.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
+	encoded, err := domaintask.EncodeTaskImages([]domaintask.ImagePart{img})
 	require.NoError(t, err)
 
 	text, images := deriveUserMessageFromParams(map[string]interface{}{
@@ -541,10 +540,10 @@ func TestDeriveUserMessageFromParams_MalformedImagesIgnored(t *testing.T) {
 // ── buildTaskContent: multimodal content assembly ──
 
 func TestBuildTaskContent(t *testing.T) {
-	img := domainchat.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
+	img := domaintask.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
 
 	// text + image → [text, inline image]
-	c, err := buildTaskContent("看这张图", []domainchat.ImagePart{img, img})
+	c, err := buildTaskContent("看这张图", []domaintask.ImagePart{img, img})
 	require.NoError(t, err)
 	assert.Equal(t, "user", c.Role)
 	require.Len(t, c.Parts, 3)
@@ -554,13 +553,13 @@ func TestBuildTaskContent(t *testing.T) {
 	assert.Equal(t, []byte("hello"), c.Parts[1].InlineData.Data)
 
 	// image-only → [inline image]
-	c, err = buildTaskContent("", []domainchat.ImagePart{img})
+	c, err = buildTaskContent("", []domaintask.ImagePart{img})
 	require.NoError(t, err)
 	require.Len(t, c.Parts, 1)
 	assert.NotNil(t, c.Parts[0].InlineData)
 
 	// validation errors propagate
-	_, err = buildTaskContent("x", []domainchat.ImagePart{{Data: "!!!", MimeType: "image/png"}})
+	_, err = buildTaskContent("x", []domaintask.ImagePart{{Data: "!!!", MimeType: "image/png"}})
 	assert.Error(t, err)
 }
 

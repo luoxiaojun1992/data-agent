@@ -4,8 +4,9 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
-import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_CHAT_TEXT_BYTES, type Attachment, type PdfAttachment } from '@/lib/attachment';
+import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_EXCEL_BYTES, MAX_CHAT_TEXT_BYTES, stripAttachmentBlocks, type Attachment, type PdfAttachment, type ExcelAttachment } from '@/lib/attachment';
 import { parsePdf } from '@/lib/pdf';
+import { parseExcel, isExcelFile } from '@/lib/excel';
 import { loadRedactAuto, saveRedactAuto, redactText } from '@/lib/redact';
 import { isVoiceInputSupported, startRecording, stopRecordingAndTranscribe, type VoicePhase } from '@/lib/voice';
 import Markdown from '../../components/Markdown';
@@ -28,6 +29,7 @@ interface Message {
   table?: { headers: string[]; rows: string[][] };
   images?: string[]; // image data URLs attached to this message
   pdfs?: { name: string }[]; // PDF attachments (name only; parsed text never rendered)
+  excels?: { name: string }[]; // Excel attachments (name only; parsed text never rendered)
   hidden?: boolean; // internal hint (SPEC-080) — not rendered
 }
 
@@ -46,16 +48,11 @@ type WireChatEvent = {
   choices?: { delta?: { content?: string } }[];
 };
 
-// 剥离后端前置的 PDF 标签块（[PDF:name]…[/PDF:name]），返回干净文本 + PDF 文件名
-// （SPEC-077 §5.3）。仅用于 user 文本事件的渲染；解析文字绝不展示给用户。
-function stripPdfBlocks(content: string): { text: string; pdfs: { name: string }[] } {
-  const re = /\[PDF:([^\]]+)\][\s\S]*?\[\/PDF:[^\]]+\]/g;
-  const pdfs: { name: string }[] = [];
-  const text = content.replace(re, (_full, name: string) => {
-    pdfs.push({ name });
-    return '';
-  });
-  return { text: text.trim(), pdfs };
+// 剥离后端前置的 PDF/Excel 标签块，返回干净文本 + 附件文件名（复用 lib 的
+// stripAttachmentBlocks，SPEC-077 §5.3 / SPEC-096 D3）。仅用于 user 文本事件
+// 的渲染；解析文字绝不展示给用户。
+function stripPdfBlocks(content: string): { text: string; pdfs: { name: string }[]; excels: { name: string }[] } {
+  return stripAttachmentBlocks(content);
 }
 
 function normalizeChatMessage(raw: WireChatEvent): Message {
@@ -63,11 +60,13 @@ function normalizeChatMessage(raw: WireChatEvent): Message {
   const role = raw.role === 'user' ? 'user' : raw.role === 'system' ? 'system' : 'assistant';
   let content = raw.content || '';
   let pdfs: { name: string }[] = [];
-  // 历史/流式 user 文本可能含后端前置的 PDF 标签块，剥离并提取文件名。
+  let excels: { name: string }[] = [];
+  // 历史/流式 user 文本可能含后端前置的 PDF/Excel 标签块，剥离并提取文件名。
   if (role === 'user' && raw.type !== 'tool_call' && raw.type !== 'tool_result') {
     const stripped = stripPdfBlocks(content);
     content = stripped.text;
     pdfs = stripped.pdfs;
+    excels = stripped.excels;
   }
   return {
     role,
@@ -79,6 +78,7 @@ function normalizeChatMessage(raw: WireChatEvent): Message {
     result,
     images: raw.images || [],
     pdfs,
+    excels,
     hidden: raw.hidden === true,
     timestamp: new Date(raw.timestamp || Date.now()),
   };
@@ -174,6 +174,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>(''); // SPEC-062: model bound to new session
   const [attachments, setAttachments] = useState<Attachment[]>([]); // image attachments (max 5)
   const [pdfs, setPdfs] = useState<PdfAttachment[]>([]); // PDF attachments (name + parsed text)
+  const [excels, setExcels] = useState<ExcelAttachment[]>([]); // Excel attachments (name + parsed text)
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [attachError, setAttachError] = useState('');
   // SPEC-089: human-in-the-loop prompt (confirm/ask) from the human-channel SSE.
@@ -443,12 +444,15 @@ export default function ChatPage() {
     setEnhancing(false);
   };
 
-  // Add image + PDF attachments from a FileList, enforcing the 5-image / 2MiB
-  // limits and the 20MiB PDF size limit (SPEC-077).
+  // Add image + PDF + Excel attachments from a FileList, enforcing the 5-image
+  // / 2MiB limits and the 20MiB PDF/Excel size limits (SPEC-077 / SPEC-096).
   const addAttachments = async (files: File[]) => {
     const images = files.filter((f) => f.type.startsWith('image/'));
     const pdfFiles = files.filter(
       (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
+    );
+    const excelFiles = files.filter(
+      (f) => f.name.toLowerCase().endsWith('.xlsx'),
     );
 
     if (images.length > 0 && attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
@@ -496,6 +500,22 @@ export default function ChatPage() {
         setTimeout(() => setAttachError(''), 3000);
       }
     }
+
+    // Excel 附件：解析为纯文本存 excels（发送时前置）。无图片（SPEC-096）。
+    for (const f of excelFiles) {
+      if (f.size > MAX_EXCEL_BYTES) {
+        setAttachError(`Excel ${f.name} 超过 20MB 限制`);
+        setTimeout(() => setAttachError(''), 3000);
+        continue;
+      }
+      try {
+        const { text } = await parseExcel(f);
+        setExcels((prev) => [...prev, { name: f.name, text }]);
+      } catch {
+        setAttachError(`解析 Excel ${f.name} 失败`);
+        setTimeout(() => setAttachError(''), 3000);
+      }
+    }
   };
 
   const handleAttachClick = () => attachmentInputRef.current?.click();
@@ -521,9 +541,13 @@ export default function ChatPage() {
     setPdfs((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removeExcel = (index: number) => {
+    setExcels((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const sendMessage = async () => {
     const hasInput = !!input.trim();
-    if ((!hasInput && attachments.length === 0 && pdfs.length === 0) || streaming) return;
+    if ((!hasInput && attachments.length === 0 && pdfs.length === 0 && excels.length === 0) || streaming) return;
 
     // SPEC-093: 自动脱敏（开关开启）。先脱敏再校验/构造消息；弹窗动画
     // 覆盖请求期（streaming 尚未启动）。失败报错并中止发送（第 5 条拍板）。
@@ -538,11 +562,13 @@ export default function ChatPage() {
       }
     }
 
-    // 文字合并校验（用户提示词 + PDF 解析文字）100KB，UTF-8 字节（SPEC-077 §4.3）。
+    // 文字合并校验（用户提示词 + PDF 解析文字 + Excel 解析文字）100KB，
+    // UTF-8 字节（SPEC-077 §4.3 / SPEC-096）。
     const enc = new TextEncoder();
     const textBytes = enc.encode(finalInput).length;
     const pdfBytes = pdfs.reduce((sum, p) => sum + enc.encode(p.text).length, 0);
-    if (textBytes + pdfBytes > MAX_CHAT_TEXT_BYTES) {
+    const excelBytes = excels.reduce((sum, e) => sum + enc.encode(e.text).length, 0);
+    if (textBytes + pdfBytes + excelBytes > MAX_CHAT_TEXT_BYTES) {
       setAttachError('消息文字超过 100KB 上限');
       setTimeout(() => setAttachError(''), 3000);
       return;
@@ -550,6 +576,7 @@ export default function ChatPage() {
 
     const sendImages = attachments.map((a) => ({ data: a.base64, mime_type: a.mimeType }));
     const sendPdfs = pdfs.map((p) => ({ name: p.name, text: p.text }));
+    const sendExcels = excels.map((e) => ({ name: e.name, text: e.text }));
     const userMsg: Message = {
       role: 'user',
       content: finalInput,
@@ -557,11 +584,13 @@ export default function ChatPage() {
       timestamp: new Date(),
       images: attachments.map((a) => a.dataUrl),
       pdfs: pdfs.map((p) => ({ name: p.name })),
+      excels: excels.map((e) => ({ name: e.name })),
     };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setAttachments([]);
     setPdfs([]);
+    setExcels([]);
     setAttachError('');
     setStreaming(true);
     pendingEventsRef.current = [];
@@ -604,7 +633,7 @@ export default function ChatPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel, images: sendImages, pdfs: sendPdfs }),
+        body: JSON.stringify({ session_id: sid, message: userMsg.content, stream: true, model: selectedModel, images: sendImages, pdfs: sendPdfs, excels: sendExcels }),
         signal: controller.signal,
       });
       if (!res.ok) throw new Error('Chat request failed');
@@ -885,6 +914,20 @@ export default function ChatPage() {
                           ))}
                         </div>
                       )}
+                      {msg.excels && msg.excels.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {msg.excels.map((excel, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--surface-20)] bg-[var(--surface-10)]"
+                              data-testid={`chat-msg-excel-${i}-${idx}`}
+                            >
+                              <span className="text-sm leading-none">📊</span>
+                              <span className="text-xs max-w-[160px] truncate" title={excel.name}>{excel.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {msg.images && msg.images.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {msg.images.map((src, idx) => (
@@ -956,7 +999,7 @@ export default function ChatPage() {
               <input
                 ref={attachmentInputRef}
                 type="file"
-                accept="image/*,application/pdf,.pdf"
+                accept="image/*,application/pdf,.pdf,.xlsx"
                 multiple
                 style={{ display: 'none' }}
                 data-testid="chat-attach-input"
@@ -965,7 +1008,7 @@ export default function ChatPage() {
               <button
                 onClick={handleAttachClick}
                 disabled={streaming || attachments.length >= MAX_ATTACHMENT_IMAGES}
-                title={attachments.length >= MAX_ATTACHMENT_IMAGES ? `最多 ${MAX_ATTACHMENT_IMAGES} 张图片` : '添加附件（图片 / PDF）'}
+                title={attachments.length >= MAX_ATTACHMENT_IMAGES ? `最多 ${MAX_ATTACHMENT_IMAGES} 张图片` : '添加附件（图片 / PDF / Excel）'}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-attach-btn"
               >📎 附件</button>
@@ -1056,6 +1099,31 @@ export default function ChatPage() {
                 ))}
               </div>
             )}
+
+            {/* Excel attachments preview (name only, parsed text never rendered) */}
+            {excels.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2" data-testid="chat-excel-attachments">
+                {excels.map((excel, idx) => (
+                  <div
+                    key={idx}
+                    className="relative flex items-center gap-2 pl-3 pr-8 py-2 rounded-lg border border-[var(--surface-20)] bg-[var(--code-bg)]"
+                    data-testid={`chat-excel-attachment-${idx}`}
+                  >
+                    <span className="text-lg leading-none">📊</span>
+                    <span
+                      className="text-xs text-[var(--text-primary)] max-w-[160px] truncate"
+                      title={excel.name}
+                    >{excel.name}</span>
+                    <button
+                      onClick={() => removeExcel(idx)}
+                      title="移除 Excel"
+                      data-testid={`chat-excel-attachment-remove-${idx}`}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
             {attachError && (
               <p className="text-xs text-[#ef4444] mb-2" data-testid="chat-attach-error">{attachError}</p>
             )}
@@ -1073,7 +1141,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入你的数据分析需求...（支持图片 / PDF 附件）"
+                placeholder="输入你的数据分析需求...（支持图片 / PDF / Excel 附件）"
                 rows={2}
                 className="flex-1 px-4 py-3 rounded-xl bg-transparent border-0 text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none"
                 data-testid="chat-input"
@@ -1088,7 +1156,7 @@ export default function ChatPage() {
               ) : (
                 <button
                   onClick={sendMessage}
-                  disabled={!input.trim() && attachments.length === 0}
+                  disabled={!input.trim() && attachments.length === 0 && pdfs.length === 0 && excels.length === 0}
                   className="px-6 py-2 bg-[var(--accent)] text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all self-end"
                   data-testid="chat-send-btn"
                 >发送</button>

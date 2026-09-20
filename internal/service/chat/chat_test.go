@@ -873,7 +873,7 @@ func TestIsCompactionEvent(t *testing.T) {
 func TestBuildUserContent(t *testing.T) {
 	img := domainchat.ImagePart{Data: "aGVsbG8=", MimeType: "image/png"}
 	// text + image: parts = [text, inline image]
-	c, err := buildUserContent("看这张图", []domainchat.ImagePart{img, img}, nil)
+	c, err := buildUserContent("看这张图", []domainchat.ImagePart{img, img}, nil, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -887,7 +887,7 @@ func TestBuildUserContent(t *testing.T) {
 		t.Fatalf("bad inline data: %+v", c.Parts[1].InlineData)
 	}
 	// image-only: parts = [inline image]
-	c, err = buildUserContent("", []domainchat.ImagePart{img}, nil)
+	c, err = buildUserContent("", []domainchat.ImagePart{img}, nil, nil)
 	if err != nil {
 		t.Fatalf("image-only build: %v", err)
 	}
@@ -895,7 +895,7 @@ func TestBuildUserContent(t *testing.T) {
 		t.Fatalf("image-only parts: %+v", c.Parts)
 	}
 	// validation error propagates
-	if _, err := buildUserContent("x", []domainchat.ImagePart{{Data: "!!!", MimeType: "image/png"}}, nil); !errors.Is(err, domainchat.ErrInvalidImage) {
+	if _, err := buildUserContent("x", []domainchat.ImagePart{{Data: "!!!", MimeType: "image/png"}}, nil, nil); !errors.Is(err, domainchat.ErrInvalidImage) {
 		t.Fatalf("expected ErrInvalidImage, got %v", err)
 	}
 }

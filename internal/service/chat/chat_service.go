@@ -80,25 +80,27 @@ func (s *Service) prepareRun(ctx context.Context, req domainchat.ChatRequest, us
 
 	lastText, images := lastUserMessage(messages)
 	pdfs := req.Pdfs
-	if strings.TrimSpace(lastText) == "" && len(images) == 0 && !hasPDFText(pdfs) {
+	excels := req.Excels
+	if strings.TrimSpace(lastText) == "" && len(images) == 0 && !hasPDFText(pdfs) && !hasExcelText(excels) {
 		err = domainchat.ErrUserMessageRequired
 		return
 	}
 
-	// XSS 校验仅针对用户手动输入的提示词；PDF 解析文字是文档内容，排除在外
-	// （SPEC-077 §4.4 红线）。
+	// XSS 校验仅针对用户手动输入的提示词；PDF/Excel 解析文字是文档内容，
+	// 排除在外（SPEC-077 §4.4 / SPEC-096 红线）。
 	if xssErr := security.ValidateXSS(lastText); xssErr != nil {
 		err = domainchat.ErrChatTextXSS
 		return
 	}
 
-	// 文字合并（用户提示词 + PDF 解析文字）100KB 上限（SPEC-077 §4.3）。
-	if sizeErr := validateChatTextSize(lastText, pdfs); sizeErr != nil {
+	// 文字合并（用户提示词 + PDF 解析文字 + Excel 解析文字）100KB 上限
+	// （SPEC-077 §4.3 / SPEC-096）。
+	if sizeErr := validateChatTextSize(lastText, pdfs, excels); sizeErr != nil {
 		err = sizeErr
 		return
 	}
 
-	content, err = buildUserContent(lastText, images, pdfs)
+	content, err = buildUserContent(lastText, images, pdfs, excels)
 	if err != nil {
 		return
 	}
@@ -228,20 +230,26 @@ func normalizeMessages(req domainchat.ChatRequest) []domainchat.Message {
 // user content: PDF parsed-text parts (when non-empty, wrapped in [PDF:…] tags)
 // first, then the user text part (when non-empty), then one InlineData part
 // per image (SPEC-077).
-func buildUserContent(text string, images []domainchat.ImagePart, pdfs []domainchat.PdfAttachment) (*genai.Content, error) {
+func buildUserContent(text string, images []domainchat.ImagePart, pdfs []domainchat.PdfAttachment, excels []domainchat.ExcelAttachment) (*genai.Content, error) {
 	decoded, err := domainchat.ValidateImages(images)
 	if err != nil {
 		return nil, err
 	}
 	parts := make([]*genai.Part, 0, len(decoded)+1)
-	// PDF 解析文字前置（特殊标签包裹）+ 用户输入合并为单个 text part，保证
-	// 一个 user 消息只有一个 text event（SPEC-077 §5.2「或合并为一个 part」）。
+	// PDF/Excel 解析文字前置（特殊标签包裹）+ 用户输入合并为单个 text part，
+	// 保证一个 user 消息只有一个 text event（SPEC-077 §5.2「或合并为一个 part」）。
 	var sb strings.Builder
 	for _, pdf := range pdfs {
 		if strings.TrimSpace(pdf.Text) == "" {
 			continue
 		}
-		sb.WriteString(formatPDFText(pdf))
+		sb.WriteString(domainchat.FormatPDFText(pdf))
+	}
+	for _, excel := range excels {
+		if strings.TrimSpace(excel.Text) == "" {
+			continue
+		}
+		sb.WriteString(domainchat.FormatExcelText(excel))
 	}
 	sb.WriteString(text)
 	if combined := sb.String(); strings.TrimSpace(combined) != "" {
@@ -251,13 +259,6 @@ func buildUserContent(text string, images []domainchat.ImagePart, pdfs []domainc
 		parts = append(parts, genai.NewPartFromBytes(img, images[i].MimeType))
 	}
 	return &genai.Content{Role: "user", Parts: parts}, nil
-}
-
-// formatPDFText wraps a PDF's parsed text in the [PDF:name]…[/PDF:name] tag
-// protocol (SPEC-077 §5.3) so the frontend can strip it from history rendering
-// while the LLM still receives the text.
-func formatPDFText(pdf domainchat.PdfAttachment) string {
-	return fmt.Sprintf("[PDF:%s]\n%s\n[/PDF:%s]", pdf.Name, pdf.Text, pdf.Name)
 }
 
 // hasPDFText reports whether any PDF carries non-empty parsed text.
@@ -270,12 +271,25 @@ func hasPDFText(pdfs []domainchat.PdfAttachment) bool {
 	return false
 }
 
+// hasExcelText reports whether any Excel attachment carries non-empty parsed text.
+func hasExcelText(excels []domainchat.ExcelAttachment) bool {
+	for _, e := range excels {
+		if strings.TrimSpace(e.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // validateChatTextSize enforces the merged text limit (user prompt + PDF parsed
-// text, UTF-8 bytes) — SPEC-077 §4.3.
-func validateChatTextSize(text string, pdfs []domainchat.PdfAttachment) error {
+// text + Excel parsed text, UTF-8 bytes) — SPEC-077 §4.3 / SPEC-096.
+func validateChatTextSize(text string, pdfs []domainchat.PdfAttachment, excels []domainchat.ExcelAttachment) error {
 	total := len(text)
 	for _, p := range pdfs {
 		total += len(p.Text)
+	}
+	for _, e := range excels {
+		total += len(e.Text)
 	}
 	if total > domainchat.MaxChatTextBytes {
 		return domainchat.ErrChatTextTooLarge

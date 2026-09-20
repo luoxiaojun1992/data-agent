@@ -6,6 +6,7 @@ import Pagination from '../components/Pagination';
 import { primaryButtonStyle, modalOverlayStyle } from '../components/ui';
 import { useAuth } from '../../lib/api';
 import { parsePdf, isPdfFile, isTxtFile, isImageFile, imageMimeType } from '../../lib/pdf';
+import { parseExcel, isExcelFile } from '../../lib/excel';
 
 interface Doc {
   id: string;
@@ -137,6 +138,17 @@ export default function KnowledgePage() {
           const text = await file.text();
           await uploadTxtDoc(file.name.replace(/\.txt$/i, ''), file.name, text);
           uploadedCount++;
+        } else if (isExcelFile(file.name)) {
+          // Excel：浏览器端解析为纯文本建 txt doc（SPEC-096 D6：复用 txt，不新增 xlsx 类型）
+          const { text } = await parseExcel(file);
+          const baseName = file.name.replace(/\.xlsx$/i, '');
+          if (text.trim()) {
+            await uploadTxtDoc(`${baseName}`, `${baseName}.txt`, text);
+            uploadedCount++;
+          } else {
+            hadError = true;
+            setUploadError(`Excel ${file.name} 解析结果为空`);
+          }
         } else if (isImageFile(file.name)) {
           const dataUrl = await fileToDataUrl(file);
           await uploadImageDoc(
@@ -148,7 +160,7 @@ export default function KnowledgePage() {
           uploadedCount++;
         } else {
           hadError = true;
-          setUploadError(`不支持的文件类型: ${file.name}（仅支持 txt、pdf、图片）`);
+          setUploadError(`不支持的文件类型: ${file.name}（仅支持 txt、pdf、xlsx、图片）`);
         }
         setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
         setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
@@ -354,7 +366,7 @@ export default function KnowledgePage() {
         )}
 
         <input ref={fileInputRef} type="file" multiple data-testid="kb-upload-file-input"
-          accept=".txt,.pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
+          accept=".txt,.pdf,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.bmp"
           style={{ display: 'none' }} onChange={handleFileSelect} />
 
         {/* Document Cards */}

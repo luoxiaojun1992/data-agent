@@ -4,11 +4,11 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
-	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	"github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
@@ -29,15 +29,17 @@ func NewTaskHandler(svc task.TaskService, runSvc task.TaskRunService) *TaskHandl
 // POST /api/v1/tasks
 func (h *TaskHandler) CreateTask(c *gin.Context) {
 	var req struct {
-		Title        string                 `json:"title"`
-		Description  string                 `json:"description"`
-		Type         string                 `json:"type"`
-		Params       map[string]interface{} `json:"params"`
-		Images       []domainchat.ImagePart `json:"images"`
-		CronExpr     string                 `json:"cron_expr"`
-		ScheduledAt  *time.Time             `json:"scheduled_at"`
-		ScheduleMode string                 `json:"schedule_mode"`
-		ModelID      string                 `json:"model_id"`
+		Title        string                        `json:"title"`
+		Description  string                        `json:"description"`
+		Type         string                        `json:"type"`
+		Params       map[string]interface{}        `json:"params"`
+		Images       []domaintask.ImagePart        `json:"images"`
+		Pdfs         []domainchat.PdfAttachment    `json:"pdfs"`
+		Excels       []domainchat.ExcelAttachment  `json:"excels"`
+		CronExpr     string                        `json:"cron_expr"`
+		ScheduledAt  *time.Time                    `json:"scheduled_at"`
+		ScheduleMode string                        `json:"schedule_mode"`
+		ModelID      string                        `json:"model_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -51,12 +53,22 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	// XSS guard on user-supplied plain-text fields (SPEC-077/081 §4.4, applied
 	// to task title/description for parity with chat prompt + KB title). Title is
 	// a display label; description feeds the agent prompt. Block, never mutate.
-	if err := security.ValidateXSS(req.Title); err != nil {
+	// PDF/Excel 解析文字是文档内容，豁免 XSS（SPEC-096），仅受长度约束。
+	if err := domaintask.ValidateTaskText(req.Title); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "标题包含非法内容"})
 		return
 	}
-	if err := security.ValidateXSS(req.Description); err != nil {
+	if err := domaintask.ValidateTaskText(req.Description); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "描述包含非法内容"})
+		return
+	}
+
+	// D1 方案 B：PDF/Excel 解析文字以标签拼进 description 存 DB，executor
+	// 直接消费 description 作 text。整个 description（用户原文 + PDF + Excel
+	// 合并）受 MaxTaskTextBytes 长度约束（SPEC-096 D2）。
+	description := prependPDFExcelText(req.Description, req.Pdfs, req.Excels)
+	if len(description) > domaintask.MaxTaskTextBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "描述超过 100KB 上限"})
 		return
 	}
 
@@ -73,8 +85,8 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	if params == nil {
 		params = make(map[string]interface{})
 	}
-	if req.Description != "" {
-		params["description"] = req.Description
+	if description != "" {
+		params["description"] = description
 	}
 	if req.Title != "" {
 		params["title"] = req.Title
@@ -83,7 +95,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		params["cron_expr"] = req.CronExpr
 	}
 	if len(req.Images) > 0 {
-		if encoded, encErr := domainchat.EncodeImages(req.Images); encErr == nil {
+		if encoded, encErr := domaintask.EncodeTaskImages(req.Images); encErr == nil {
 			params["images"] = encoded
 		}
 	}
@@ -275,12 +287,34 @@ func taskIdentity(c *gin.Context) (string, bool) {
 	return uid, role == "system_admin"
 }
 
-// validateRequestImages validates image attachments against the shared domain
-// rules (count/size/mime/base64). Returns nil when no images are present.
-func validateRequestImages(images []domainchat.ImagePart) error {
+// validateRequestImages validates image attachments against the task-domain
+// rules (count/size/mime/base64, SPEC-096 D2 定稿 task 自持常量). Returns nil
+// when no images are present.
+func validateRequestImages(images []domaintask.ImagePart) error {
 	if len(images) == 0 {
 		return nil
 	}
-	_, err := domainchat.ValidateImages(images)
+	_, err := domaintask.ValidateTaskImages(images)
 	return err
+}
+
+// prependPDFExcelText 将 PDF/Excel 解析文字以 [PDF:name]/[Excel:name] 标签
+// 前置到用户 description（SPEC-096 D1 方案 B：与 chat 存储协议完全一致）。
+// 解析文字豁免 XSS，仅由调用方对合并结果做长度约束。
+func prependPDFExcelText(description string, pdfs []domainchat.PdfAttachment, excels []domainchat.ExcelAttachment) string {
+	var sb strings.Builder
+	for _, pdf := range pdfs {
+		if strings.TrimSpace(pdf.Text) == "" {
+			continue
+		}
+		sb.WriteString(domainchat.FormatPDFText(pdf))
+	}
+	for _, excel := range excels {
+		if strings.TrimSpace(excel.Text) == "" {
+			continue
+		}
+		sb.WriteString(domainchat.FormatExcelText(excel))
+	}
+	sb.WriteString(description)
+	return sb.String()
 }

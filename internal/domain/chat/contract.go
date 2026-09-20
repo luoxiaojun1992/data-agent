@@ -26,8 +26,17 @@ type PdfAttachment struct {
 	Text string `json:"text"`
 }
 
-// MaxChatTextBytes is the merged text limit (user prompt + PDF parsed text,
-// UTF-8 bytes) — the single source of truth for chat text size (SPEC-077 §4.3).
+// ExcelAttachment carries an Excel (.xlsx) attachment's filename and its parsed
+// pure text (SPEC-096). Name is used by the frontend to render a 📊 card; Text
+// holds the parsed text (never rendered). Excel is text-only — no images.
+type ExcelAttachment struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+// MaxChatTextBytes is the merged text limit (user prompt + PDF parsed text +
+// Excel parsed text, UTF-8 bytes) — the single source of truth for chat text
+// size (SPEC-077 §4.3 / SPEC-096).
 const MaxChatTextBytes = 100 * 1024
 
 // Message represents a single chat message in a request payload.
@@ -69,8 +78,12 @@ type ChatRequest struct {
 	// Pdfs carries PDF attachments (SPEC-077): parsed text prepended to the
 	// user prompt, name used only for frontend rendering. Backward compatible —
 	// empty means no PDF attachments and behavior is unchanged.
-	Pdfs   []PdfAttachment `json:"pdfs,omitempty"`
-	Stream bool            `json:"stream"`
+	Pdfs []PdfAttachment `json:"pdfs,omitempty"`
+	// Excels carries Excel (.xlsx) attachments (SPEC-096): parsed pure text
+	// prepended to the user prompt, name used only for frontend rendering.
+	// Text-only — no images. Empty means no Excel attachments.
+	Excels []ExcelAttachment `json:"excels,omitempty"`
+	Stream bool              `json:"stream"`
 	KBID   string          `json:"kb_id,omitempty"`
 }
 

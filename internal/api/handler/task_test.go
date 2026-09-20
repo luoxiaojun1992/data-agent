@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	tasksvc "github.com/luoxiaojun1992/data-agent/internal/service/task"
 	mocktasksvc "github.com/luoxiaojun1992/data-agent/internal/service/task/mocks"
@@ -454,7 +453,7 @@ func TestCreateTask_WithImages(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected params[images] to be a JSON string, got %T", capturedParams["images"])
 	}
-	decoded, err := domainchat.DecodeImages(encoded)
+	decoded, err := task.DecodeTaskImages(encoded)
 	if err != nil || len(decoded) != 1 || decoded[0].MimeType != "image/png" {
 		t.Fatalf("unexpected decoded images: %+v err=%v", decoded, err)
 	}
@@ -484,6 +483,75 @@ func TestCreateTask_InvalidImageMime(t *testing.T) {
 	h := NewTaskHandler(svc, nil)
 
 	body := `{"title":"bad mime","images":[{"data":"aGVsbG8=","mime_type":"image/tiff"}]}`
+	c, w := newGinContext("POST", "/tasks", body)
+	c.Set("user_id", "user-1")
+	h.CreateTask(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// ── CreateTask: PDF / Excel attachments (SPEC-096) ──
+
+func TestCreateTask_WithPdfsAndExcels(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	mockTask := &task.Task{ID: "task_pdf", Type: "agent_exec"}
+	var capturedParams map[string]interface{}
+	svc.On("CreateTask", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(p map[string]interface{}) bool {
+			capturedParams = p
+			return true
+		}),
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
+
+	body := `{"title":"看文档","description":"用户描述","pdfs":[{"name":"a.pdf","text":"PDF文字"}],"excels":[{"name":"b.xlsx","text":"Excel文字"}]}`
+	c, w := newGinContext("POST", "/tasks", body)
+	c.Set("user_id", "user-1")
+	h.CreateTask(c)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+	desc, ok := capturedParams["description"].(string)
+	if !ok {
+		t.Fatalf("expected params[description] to be a string, got %T", capturedParams["description"])
+	}
+	if !strings.Contains(desc, "[PDF:a.pdf]") || !strings.Contains(desc, "[Excel:b.xlsx]") {
+		t.Fatalf("expected PDF/Excel tags in description, got: %q", desc)
+	}
+	if !strings.Contains(desc, "用户描述") {
+		t.Fatalf("expected user description preserved, got: %q", desc)
+	}
+}
+
+func TestCreateTask_PDFExcelXSSExempt(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	mockTask := &task.Task{ID: "task_xss", Type: "agent_exec"}
+	svc.On("CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockTask, nil, nil)
+
+	// PDF/Excel 解析文字含 XSS 载荷，豁免；description 用户原文干净。
+	body := `{"title":"ok","description":"正常描述","pdfs":[{"name":"a.pdf","text":"<script>alert(1)</script>"}],"excels":[{"name":"b.xlsx","text":"javascript:alert(2)"}]}`
+	c, w := newGinContext("POST", "/tasks", body)
+	c.Set("user_id", "user-1")
+	h.CreateTask(c)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 (PDF/Excel text XSS-exempt), got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateTask_TextTooLarge(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	big := strings.Repeat("a", 101*1024)
+	body := `{"title":"ok","description":"` + big + `"}`
 	c, w := newGinContext("POST", "/tasks", body)
 	c.Set("user_id", "user-1")
 	h.CreateTask(c)
