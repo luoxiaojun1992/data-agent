@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1493,9 +1494,21 @@ func fileDelete(deps *Deps) functiontool.Func[FileDeleteArgs, FileDeleteResult] 
 		if err != nil {
 			return FileDeleteResult{}, err
 		}
-		// SPEC-089: ask the user before deleting. A missing channel/subscriber
-		// (autonomous task mode) or a "deny" answer aborts the delete.
-		if deps.HumanGate != nil {
+		// SPEC-101: read the approval switch from the DB (fail-closed).
+		if deps.SkillConfig == nil {
+			log.Printf("[tools] file_delete: approval lookup unavailable (SkillConfig not injected)")
+			return FileDeleteResult{}, fmt.Errorf("file_delete: 无法确认批准要求（配置未注入）")
+		}
+		need, err := deps.SkillConfig.RequiresApproval(tc, "file_delete")
+		if err != nil {
+			log.Printf("[tools] file_delete: approval lookup: %v", err)
+			return FileDeleteResult{}, fmt.Errorf("file_delete: 无法确认批准要求: %w", err)
+		}
+		if need {
+			if deps.HumanGate == nil {
+				log.Printf("[tools] file_delete: requires approval but HumanGate is not injected")
+				return FileDeleteResult{}, fmt.Errorf("file_delete: 需要用户批准但授权信道不可用")
+			}
 			sessionID := stateString(tc, "session_id")
 			ok, gErr := deps.HumanGate.Confirm(tc, sessionID, fmt.Sprintf("删除文件 %q？", args.Path))
 			if gErr != nil {
@@ -1533,9 +1546,21 @@ func dirDelete(deps *Deps) functiontool.Func[DirDeleteArgs, DirDeleteResult] {
 		if err != nil {
 			return DirDeleteResult{}, err
 		}
-		// SPEC-089: ask the user before recursively deleting. A missing
-		// channel/subscriber (autonomous task mode) or "deny" aborts.
-		if deps.HumanGate != nil {
+		// SPEC-101: read the approval switch from the DB (fail-closed).
+		if deps.SkillConfig == nil {
+			log.Printf("[tools] dir_delete: approval lookup unavailable (SkillConfig not injected)")
+			return DirDeleteResult{}, fmt.Errorf("dir_delete: 无法确认批准要求（配置未注入）")
+		}
+		need, err := deps.SkillConfig.RequiresApproval(tc, "dir_delete")
+		if err != nil {
+			log.Printf("[tools] dir_delete: approval lookup: %v", err)
+			return DirDeleteResult{}, fmt.Errorf("dir_delete: 无法确认批准要求: %w", err)
+		}
+		if need {
+			if deps.HumanGate == nil {
+				log.Printf("[tools] dir_delete: requires approval but HumanGate is not injected")
+				return DirDeleteResult{}, fmt.Errorf("dir_delete: 需要用户批准但授权信道不可用")
+			}
 			sessionID := stateString(tc, "session_id")
 			ok, gErr := deps.HumanGate.Confirm(tc, sessionID, fmt.Sprintf("递归删除目录 %q（含其全部子目录和文件）？", args.Path))
 			if gErr != nil {

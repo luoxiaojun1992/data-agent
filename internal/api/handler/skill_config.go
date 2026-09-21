@@ -54,8 +54,9 @@ func (h *SkillConfigHandler) Get(c *gin.Context) {
 func (h *SkillConfigHandler) Upsert(c *gin.Context) {
 	name := c.Param("name")
 	var req struct {
-		Enabled    bool   `json:"enabled"`
-		ConfigJSON string `json:"config_json"`
+		Enabled           bool   `json:"enabled"`
+		ConfigJSON        string `json:"config_json"`
+		RequiresApproval  bool   `json:"requires_approval"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -68,6 +69,7 @@ func (h *SkillConfigHandler) Upsert(c *gin.Context) {
 	}
 	cfg.Enabled = req.Enabled
 	cfg.ConfigJSON = req.ConfigJSON
+	cfg.RequiresApproval = req.RequiresApproval
 	if err := h.svc.Upsert(c.Request.Context(), *cfg); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

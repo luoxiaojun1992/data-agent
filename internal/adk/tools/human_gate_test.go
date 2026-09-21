@@ -2,6 +2,7 @@ package adktools
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"os"
 	"path/filepath"
@@ -10,7 +11,9 @@ import (
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/session"
 
+	"github.com/luoxiaojun1992/data-agent/internal/domain/skill"
 	chatsvc "github.com/luoxiaojun1992/data-agent/internal/service/chat"
+	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 )
 
 // ---- test doubles ----
@@ -34,6 +37,36 @@ func (f *fakeHumanGate) Confirm(ctx context.Context, sessionID, hint string) (bo
 func (f *fakeHumanGate) Ask(ctx context.Context, sessionID, question string, options []string) (string, error) {
 	f.askCalls++
 	return f.askResult, f.askErr
+}
+
+// fakeSkillConfigRepo is a minimal SkillConfigRepository for testing the
+// approval switch (SPEC-101). Get returns a preset config (or error).
+type fakeSkillConfigRepo struct {
+	getResult *skill.SkillConfig
+	getErr    error
+}
+
+func (f *fakeSkillConfigRepo) List(ctx context.Context, skip, limit int64) ([]skill.SkillConfig, error) {
+	return nil, nil
+}
+func (f *fakeSkillConfigRepo) Count(ctx context.Context) (int64, error) { return 0, nil }
+func (f *fakeSkillConfigRepo) Get(ctx context.Context, name string) (*skill.SkillConfig, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.getResult, nil
+}
+func (f *fakeSkillConfigRepo) SearchByDescription(ctx context.Context, keyword string, limit int) ([]skill.SkillConfig, error) {
+	return nil, nil
+}
+func (f *fakeSkillConfigRepo) Upsert(ctx context.Context, cfg skill.SkillConfig) error { return nil }
+
+// approvalConfig builds a ConfigService that answers RequiresApproval with the
+// given flag for any tool name.
+func approvalConfig(approval bool) *skillsvc.ConfigService {
+	return skillsvc.NewConfigService(&fakeSkillConfigRepo{
+		getResult: &skill.SkillConfig{Name: "file_delete", RequiresApproval: approval},
+	})
 }
 
 // fakeState is a minimal session.State backed by a map.
@@ -102,7 +135,7 @@ func TestFileDeleteConfirmApproved(t *testing.T) {
 	defer os.RemoveAll(ws)
 
 	gate := &fakeHumanGate{confirmResult: true}
-	fn := fileDelete(&Deps{HumanGate: gate})
+	fn := fileDelete(&Deps{HumanGate: gate, SkillConfig: approvalConfig(true)})
 	res, err := fn(newToolContext(sessionID), FileDeleteArgs{Path: "a.txt"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -124,7 +157,7 @@ func TestFileDeleteConfirmDenied(t *testing.T) {
 	defer os.RemoveAll(ws)
 
 	gate := &fakeHumanGate{confirmResult: false}
-	fn := fileDelete(&Deps{HumanGate: gate})
+	fn := fileDelete(&Deps{HumanGate: gate, SkillConfig: approvalConfig(true)})
 	_, err := fn(newToolContext(sessionID), FileDeleteArgs{Path: "a.txt"})
 	if err == nil {
 		t.Fatal("expected error on deny")
@@ -140,7 +173,7 @@ func TestFileDeleteConfirmError(t *testing.T) {
 	defer os.RemoveAll(ws)
 
 	gate := &fakeHumanGate{confirmErr: context.Canceled}
-	fn := fileDelete(&Deps{HumanGate: gate})
+	fn := fileDelete(&Deps{HumanGate: gate, SkillConfig: approvalConfig(true)})
 	if _, err := fn(newToolContext(sessionID), FileDeleteArgs{Path: "a.txt"}); err == nil {
 		t.Fatal("expected error from confirm failure")
 	}
@@ -149,13 +182,29 @@ func TestFileDeleteConfirmError(t *testing.T) {
 	}
 }
 
-func TestFileDeleteNoGateRunsDirectly(t *testing.T) {
+func TestFileDeleteApprovalTrueNilGateRefuses(t *testing.T) {
 	sessionID := "hc-file-del-nogate"
 	ws, filePath := setupWorkspaceFile(t, sessionID, "a.txt")
 	defer os.RemoveAll(ws)
 
-	// HumanGate nil → delete proceeds without confirmation (backward compat).
-	fn := fileDelete(&Deps{HumanGate: nil})
+	// requires_approval=true + HumanGate nil → refuse (fail-closed, SPEC-101).
+	fn := fileDelete(&Deps{HumanGate: nil, SkillConfig: approvalConfig(true)})
+	if _, err := fn(newToolContext(sessionID), FileDeleteArgs{Path: "a.txt"}); err == nil {
+		t.Fatal("expected error when approval required but HumanGate is nil")
+	}
+	if _, statErr := os.Stat(filePath); statErr != nil {
+		t.Fatal("expected file to remain when gate is missing")
+	}
+}
+
+func TestFileDeleteApprovalFalseRunsDirectly(t *testing.T) {
+	sessionID := "hc-file-del-noapproval"
+	ws, filePath := setupWorkspaceFile(t, sessionID, "a.txt")
+	defer os.RemoveAll(ws)
+
+	// requires_approval=false → delete without any Confirm call.
+	gate := &fakeHumanGate{confirmResult: true}
+	fn := fileDelete(&Deps{HumanGate: gate, SkillConfig: approvalConfig(false)})
 	res, err := fn(newToolContext(sessionID), FileDeleteArgs{Path: "a.txt"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -163,8 +212,42 @@ func TestFileDeleteNoGateRunsDirectly(t *testing.T) {
 	if res.Path != "a.txt" {
 		t.Fatalf("expected path a.txt, got %q", res.Path)
 	}
+	if gate.confirmCalls != 0 {
+		t.Fatalf("expected 0 confirm calls when approval=false, got %d", gate.confirmCalls)
+	}
 	if _, statErr := os.Stat(filePath); !os.IsNotExist(statErr) {
-		t.Fatal("expected file deleted when no gate is configured")
+		t.Fatal("expected file deleted when no approval is required")
+	}
+}
+
+func TestFileDeleteApprovalLookupErrorRefuses(t *testing.T) {
+	sessionID := "hc-file-del-lookuperr"
+	ws, filePath := setupWorkspaceFile(t, sessionID, "a.txt")
+	defer os.RemoveAll(ws)
+
+	// Approval lookup failure → fail-closed refuse (SPEC-101 决策 1).
+	svc := skillsvc.NewConfigService(&fakeSkillConfigRepo{getErr: errors.New("db down")})
+	fn := fileDelete(&Deps{HumanGate: &fakeHumanGate{}, SkillConfig: svc})
+	if _, err := fn(newToolContext(sessionID), FileDeleteArgs{Path: "a.txt"}); err == nil {
+		t.Fatal("expected error when approval lookup fails")
+	}
+	if _, statErr := os.Stat(filePath); statErr != nil {
+		t.Fatal("expected file to remain on lookup failure")
+	}
+}
+
+func TestFileDeleteSkillConfigNilRefuses(t *testing.T) {
+	sessionID := "hc-file-del-nilcfg"
+	ws, filePath := setupWorkspaceFile(t, sessionID, "a.txt")
+	defer os.RemoveAll(ws)
+
+	// SkillConfig nil → fail-closed refuse (cannot determine approval).
+	fn := fileDelete(&Deps{HumanGate: &fakeHumanGate{}, SkillConfig: nil})
+	if _, err := fn(newToolContext(sessionID), FileDeleteArgs{Path: "a.txt"}); err == nil {
+		t.Fatal("expected error when SkillConfig is nil")
+	}
+	if _, statErr := os.Stat(filePath); statErr != nil {
+		t.Fatal("expected file to remain when SkillConfig is nil")
 	}
 }
 
@@ -180,7 +263,7 @@ func TestDirDeleteConfirmApproved(t *testing.T) {
 	defer os.RemoveAll(ws)
 
 	gate := &fakeHumanGate{confirmResult: true}
-	fn := dirDelete(&Deps{HumanGate: gate})
+	fn := dirDelete(&Deps{HumanGate: gate, SkillConfig: approvalConfig(true)})
 	if _, err := fn(newToolContext(sessionID), DirDeleteArgs{Path: "sub"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -199,12 +282,71 @@ func TestDirDeleteConfirmDenied(t *testing.T) {
 	defer os.RemoveAll(ws)
 
 	gate := &fakeHumanGate{confirmResult: false}
-	fn := dirDelete(&Deps{HumanGate: gate})
+	fn := dirDelete(&Deps{HumanGate: gate, SkillConfig: approvalConfig(true)})
 	if _, err := fn(newToolContext(sessionID), DirDeleteArgs{Path: "sub"}); err == nil {
 		t.Fatal("expected error on deny")
 	}
 	if _, statErr := os.Stat(dirPath); statErr != nil {
 		t.Fatal("expected dir to remain after deny")
+	}
+}
+
+func TestDirDeleteApprovalFalseRunsDirectly(t *testing.T) {
+	sessionID := "hc-dir-del-noapproval"
+	ws := chatsvc.SessionWorkspace(sessionID)
+	dirPath := filepath.Join(ws, "sub")
+	if err := os.MkdirAll(dirPath, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	defer os.RemoveAll(ws)
+
+	gate := &fakeHumanGate{confirmResult: true}
+	fn := dirDelete(&Deps{HumanGate: gate, SkillConfig: approvalConfig(false)})
+	if _, err := fn(newToolContext(sessionID), DirDeleteArgs{Path: "sub"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gate.confirmCalls != 0 {
+		t.Fatalf("expected 0 confirm calls when approval=false, got %d", gate.confirmCalls)
+	}
+	if _, statErr := os.Stat(dirPath); !os.IsNotExist(statErr) {
+		t.Fatal("expected dir deleted when no approval is required")
+	}
+}
+
+func TestDirDeleteApprovalTrueNilGateRefuses(t *testing.T) {
+	sessionID := "hc-dir-del-nogate"
+	ws := chatsvc.SessionWorkspace(sessionID)
+	dirPath := filepath.Join(ws, "sub")
+	if err := os.MkdirAll(dirPath, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	defer os.RemoveAll(ws)
+
+	fn := dirDelete(&Deps{HumanGate: nil, SkillConfig: approvalConfig(true)})
+	if _, err := fn(newToolContext(sessionID), DirDeleteArgs{Path: "sub"}); err == nil {
+		t.Fatal("expected error when approval required but HumanGate is nil")
+	}
+	if _, statErr := os.Stat(dirPath); statErr != nil {
+		t.Fatal("expected dir to remain when gate is missing")
+	}
+}
+
+func TestDirDeleteApprovalLookupErrorRefuses(t *testing.T) {
+	sessionID := "hc-dir-del-lookuperr"
+	ws := chatsvc.SessionWorkspace(sessionID)
+	dirPath := filepath.Join(ws, "sub")
+	if err := os.MkdirAll(dirPath, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	defer os.RemoveAll(ws)
+
+	svc := skillsvc.NewConfigService(&fakeSkillConfigRepo{getErr: errors.New("db down")})
+	fn := dirDelete(&Deps{HumanGate: &fakeHumanGate{}, SkillConfig: svc})
+	if _, err := fn(newToolContext(sessionID), DirDeleteArgs{Path: "sub"}); err == nil {
+		t.Fatal("expected error when approval lookup fails")
+	}
+	if _, statErr := os.Stat(dirPath); statErr != nil {
+		t.Fatal("expected dir to remain on lookup failure")
 	}
 }
 

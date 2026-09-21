@@ -189,18 +189,20 @@ func predefinedSkills() []skill.SkillConfig {
 			ConfigJSON:  "{}",
 		},
 		{
-			Name:        "file_delete",
-			DisplayName: "文件删除",
-			Description: "删除 session workspace 内的单个文件（拒绝目录）",
-			Enabled:     true,
-			ConfigJSON:  "{}",
+			Name:             "file_delete",
+			DisplayName:      "文件删除",
+			Description:      "删除 session workspace 内的单个文件（拒绝目录）",
+			Enabled:          true,
+			ConfigJSON:       "{}",
+			RequiresApproval: true,
 		},
 		{
-			Name:        "dir_delete",
-			DisplayName: "文件夹删除",
-			Description: "递归删除 session workspace 内的文件夹（含所有子目录和文件）",
-			Enabled:     true,
-			ConfigJSON:  "{}",
+			Name:             "dir_delete",
+			DisplayName:      "文件夹删除",
+			Description:      "递归删除 session workspace 内的文件夹（含所有子目录和文件）",
+			Enabled:          true,
+			ConfigJSON:       "{}",
+			RequiresApproval: true,
 		},
 		{
 			Name:        "file_read",
@@ -355,6 +357,17 @@ func (s *ConfigService) IsEnabled(ctx context.Context, name string) bool {
 		return false
 	}
 	return cfg.Enabled
+}
+
+// RequiresApproval returns whether the named tool needs user approval before
+// execution (SPEC-101). Unknown skill or DB error returns an error so the
+// caller can fail-closed (never treat "unknown" as "no approval needed").
+func (s *ConfigService) RequiresApproval(ctx context.Context, name string) (bool, error) {
+	cfg, err := s.Get(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return cfg.RequiresApproval, nil
 }
 
 // validateConfig validates a skill's JSON config against its schema.

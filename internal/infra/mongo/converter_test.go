@@ -730,3 +730,17 @@ func TestGetSubDocNonDoc(t *testing.T) {
 		t.Errorf("getSubDoc non-doc: got %v, want empty", got)
 	}
 }
+
+// TestSkillConfigDocToSkillConfig_Approval verifies the requires_approval
+// field round-trips through the bson doc → domain converter (SPEC-101).
+func TestSkillConfigDocToSkillConfig_Approval(t *testing.T) {
+	trueDoc := skillConfigDoc{Name: "file_delete", RequiresApproval: true}
+	if cfg := trueDoc.toSkillConfig(); !cfg.RequiresApproval {
+		t.Error("RequiresApproval=true should round-trip to true")
+	}
+
+	falseDoc := skillConfigDoc{Name: "file_read", RequiresApproval: false}
+	if cfg := falseDoc.toSkillConfig(); cfg.RequiresApproval {
+		t.Error("RequiresApproval=false should round-trip to false")
+	}
+}

@@ -10,6 +10,7 @@ import (
 
 type fakeRepo struct {
 	searchFn func(ctx context.Context, keyword string, limit int) ([]skill.SkillConfig, error)
+	getFn    func(ctx context.Context, name string) (*skill.SkillConfig, error)
 }
 
 func (f *fakeRepo) List(ctx context.Context, skip, limit int64) ([]skill.SkillConfig, error) {
@@ -17,7 +18,10 @@ func (f *fakeRepo) List(ctx context.Context, skip, limit int64) ([]skill.SkillCo
 }
 func (f *fakeRepo) Count(ctx context.Context) (int64, error) { return 0, nil }
 func (f *fakeRepo) Get(ctx context.Context, name string) (*skill.SkillConfig, error) {
-	return nil, nil
+	if f.getFn == nil {
+		return nil, nil
+	}
+	return f.getFn(ctx, name)
 }
 func (f *fakeRepo) SearchByDescription(ctx context.Context, keyword string, limit int) ([]skill.SkillConfig, error) {
 	if f.searchFn == nil {
@@ -99,5 +103,81 @@ func TestSearchByDescription_ReturnsResults(t *testing.T) {
 	}
 	if got[0].Name != "file_write" {
 		t.Errorf("result[0].Name = %q", got[0].Name)
+	}
+}
+
+func TestRequiresApproval_True(t *testing.T) {
+	repo := &fakeRepo{getFn: func(ctx context.Context, name string) (*skill.SkillConfig, error) {
+		return &skill.SkillConfig{Name: name, RequiresApproval: true}, nil
+	}}
+	s := NewConfigService(repo)
+	got, err := s.RequiresApproval(context.Background(), "file_delete")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got {
+		t.Error("RequiresApproval should be true")
+	}
+}
+
+func TestRequiresApproval_False(t *testing.T) {
+	repo := &fakeRepo{getFn: func(ctx context.Context, name string) (*skill.SkillConfig, error) {
+		return &skill.SkillConfig{Name: name, RequiresApproval: false}, nil
+	}}
+	s := NewConfigService(repo)
+	got, err := s.RequiresApproval(context.Background(), "file_read")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got {
+		t.Error("RequiresApproval should be false")
+	}
+}
+
+func TestRequiresApproval_UnknownSkill(t *testing.T) {
+	// Get returns nil (no such doc) → ConfigService.Get surfaces "unknown skill"
+	// which must propagate as an error (fail-closed upstream).
+	repo := &fakeRepo{} // getFn nil → returns nil, nil
+	s := NewConfigService(repo)
+	if _, err := s.RequiresApproval(context.Background(), "nope"); err == nil {
+		t.Fatal("expected error for unknown skill")
+	}
+}
+
+func TestRequiresApproval_DBError(t *testing.T) {
+	repo := &fakeRepo{getFn: func(ctx context.Context, name string) (*skill.SkillConfig, error) {
+		return nil, errors.New("db down")
+	}}
+	s := NewConfigService(repo)
+	if _, err := s.RequiresApproval(context.Background(), "file_delete"); err == nil {
+		t.Fatal("expected error on DB failure")
+	}
+}
+
+func TestPredefinedSkills_ApprovalFlags(t *testing.T) {
+	skills := predefinedSkills()
+	// Only file_delete / dir_delete require approval; everything else is false.
+	approvalSet := map[string]bool{}
+	seen := map[string]bool{}
+	for _, sk := range skills {
+		if seen[sk.Name] {
+			t.Fatalf("duplicate predefined skill: %s", sk.Name)
+		}
+		seen[sk.Name] = true
+		approvalSet[sk.Name] = sk.RequiresApproval
+	}
+	if !approvalSet["file_delete"] {
+		t.Error("file_delete should require approval")
+	}
+	if !approvalSet["dir_delete"] {
+		t.Error("dir_delete should require approval")
+	}
+	for name, need := range approvalSet {
+		if name == "file_delete" || name == "dir_delete" {
+			continue
+		}
+		if need {
+			t.Errorf("skill %q should NOT require approval, got true", name)
+		}
 	}
 }

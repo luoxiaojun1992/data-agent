@@ -105,7 +105,7 @@ func (r *SkillConfigRepo) SearchByDescription(ctx context.Context, keyword strin
 func (r *SkillConfigRepo) Upsert(ctx context.Context, cfg skill.SkillConfig) error {
 	_, err := r.coll().UpdateOne(ctx,
 		bson.M{"name": cfg.Name},
-		bson.M{"$set": bson.M{"value": cfg.ConfigJSON, "display_name": cfg.DisplayName, "description": cfg.Description, "enabled": cfg.Enabled}},
+		bson.M{"$set": bson.M{"value": cfg.ConfigJSON, "display_name": cfg.DisplayName, "description": cfg.Description, "enabled": cfg.Enabled, "requires_approval": cfg.RequiresApproval}},
 		options.Update().SetUpsert(true),
 	)
 	if err != nil {
@@ -116,19 +116,21 @@ func (r *SkillConfigRepo) Upsert(ctx context.Context, cfg skill.SkillConfig) err
 
 // skillConfigDoc is the persisted shape of a skill config document.
 type skillConfigDoc struct {
-	Name        string `bson:"name"`
-	Value       string `bson:"value"`
-	DisplayName string `bson:"display_name"`
-	Description string `bson:"description"`
-	Enabled     bool   `bson:"enabled"`
+	Name             string `bson:"name"`
+	Value            string `bson:"value"`
+	DisplayName      string `bson:"display_name"`
+	Description      string `bson:"description"`
+	Enabled          bool   `bson:"enabled"`
+	RequiresApproval bool   `bson:"requires_approval"`
 }
 
 func (d skillConfigDoc) toSkillConfig() skill.SkillConfig {
 	return skill.SkillConfig{
-		Name:        d.Name,
-		DisplayName: d.DisplayName,
-		Description: d.Description,
-		Enabled:     d.Enabled,
-		ConfigJSON:  d.Value,
+		Name:             d.Name,
+		DisplayName:      d.DisplayName,
+		Description:      d.Description,
+		Enabled:          d.Enabled,
+		ConfigJSON:       d.Value,
+		RequiresApproval: d.RequiresApproval,
 	}
 }

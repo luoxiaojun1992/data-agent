@@ -12,6 +12,7 @@ interface SkillItem {
   description: string;
   enabled: boolean;
   config_json: string;
+  requires_approval: boolean;
 }
 
 export default function SkillsAdminPage() {
@@ -23,6 +24,7 @@ export default function SkillsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editEnabled, setEditEnabled] = useState(false);
+  const [editApproval, setEditApproval] = useState(false);
   const [editConfig, setEditConfig] = useState('');
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -55,6 +57,7 @@ export default function SkillsAdminPage() {
   const openEdit = (s: SkillItem) => {
     setEditingName(s.name);
     setEditEnabled(s.enabled);
+    setEditApproval(s.requires_approval);
     setEditConfig(s.config_json || '{}');
     setEditError('');
   };
@@ -80,7 +83,7 @@ export default function SkillsAdminPage() {
       const res = await apiFetch(`/admin/skills/${editingName}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: editEnabled, config_json: editConfig }),
+        body: JSON.stringify({ enabled: editEnabled, config_json: editConfig, requires_approval: editApproval }),
       });
       if (res.ok) {
         showToast('已保存', 'success');
@@ -152,6 +155,9 @@ export default function SkillsAdminPage() {
                     data-testid={`skill-row-${s.name}`}>
                     <td style={{ padding: '10px 12px' }}>
                       <code style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{s.name}</code>
+                      {s.requires_approval && (
+                        <span title="执行前需要用户批准" style={{ marginLeft: '6px', fontSize: '12px' }}>🔒</span>
+                      )}
                     </td>
                     <td style={{ padding: '10px 12px', color: 'var(--text-primary)', fontWeight: 500 }}>{s.display_name}</td>
                     <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '12px', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.description}</td>
@@ -225,6 +231,15 @@ export default function SkillsAdminPage() {
                   <input type="checkbox" checked={editEnabled} onChange={e => setEditEnabled(e.target.checked)}
                     style={{ accentColor: 'var(--accent)' }} />
                   <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>LLM 可调用此工具</span>
+                </label>
+              </Field>
+
+              <Field label="执行批准">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input type="checkbox" data-testid="skill-approval-toggle" checked={editApproval}
+                    onChange={e => setEditApproval(e.target.checked)}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>执行前需要用户批准</span>
                 </label>
               </Field>
 
