@@ -26,6 +26,21 @@ func newSessionGin(method, path string) (*gin.Context, *httptest.ResponseRecorde
 	return c, w
 }
 
+// fakeSessionStatStore implements llmstats.SessionStatStore for handler tests
+// (SPEC-100 token-usage point lookup + GetRun embedding).
+type fakeSessionStatStore struct {
+	tokens int64
+	err    error
+}
+
+func (f *fakeSessionStatStore) Incr(_ context.Context, _ string, _, _ int, _ int64, _ time.Time) error {
+	return nil
+}
+func (f *fakeSessionStatStore) DeleteBySession(_ context.Context, _ string) error { return nil }
+func (f *fakeSessionStatStore) GetBySession(_ context.Context, _ string) (int64, error) {
+	return f.tokens, f.err
+}
+
 func TestSessionHandler_List(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
 	mgr.On("ListByUserPaged", "u1", "", 1, 15).Return([]*domainchat.Session{{ID: "s1"}}, int64(1), nil)
@@ -107,6 +122,76 @@ func TestSessionHandler_Get_NotFound(t *testing.T) {
 	h.Get(c)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+// ── SPEC-100: token-usage point lookup ──
+
+func TestSessionHandler_TokenUsage(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	h := NewSessionHandler(mgr)
+	h.SetSessionStatStore(&fakeSessionStatStore{tokens: 1234})
+	c, w := newSessionGin("GET", "/sessions/s1/token-usage")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.TokenUsage(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["token_tokens"] != float64(1234) {
+		t.Errorf("token_tokens = %v, want 1234", resp["token_tokens"])
+	}
+}
+
+func TestSessionHandler_TokenUsage_NoStore(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
+	h := NewSessionHandler(mgr) // no session stats store
+	c, w := newSessionGin("GET", "/sessions/s1/token-usage")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.TokenUsage(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["token_tokens"] != float64(0) {
+		t.Errorf("token_tokens = %v, want 0 when store is unset", resp["token_tokens"])
+	}
+}
+
+func TestSessionHandler_TokenUsage_NotFound(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "missing").Return((*domainchat.Session)(nil), errStr("not found"))
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("GET", "/sessions/missing/token-usage")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "missing"}}
+	h.TokenUsage(c)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestSessionHandler_TokenUsage_Forbidden(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "other"}, nil)
+	h := NewSessionHandler(mgr)
+	h.SetSessionStatStore(&fakeSessionStatStore{tokens: 999})
+	c, w := newSessionGin("GET", "/sessions/s1/token-usage")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.TokenUsage(c)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
 	}
 }
 

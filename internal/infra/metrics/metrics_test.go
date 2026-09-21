@@ -52,13 +52,13 @@ func TestBucketStart(t *testing.T) {
 		{GranularityYear, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
 	}
 	for _, c := range cases {
-		if got := bucketStart(at, c.g); !got.Equal(c.want) {
+		if got := bucketStart(at, c.g, time.UTC); !got.Equal(c.want) {
 			t.Errorf("bucketStart(%v) = %v, want %v", c.g, got, c.want)
 		}
 	}
 	// A Sunday rolls back to the prior Monday.
 	sun := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
-	if got := bucketStart(sun, GranularityWeek); !got.Equal(time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)) {
+	if got := bucketStart(sun, GranularityWeek, time.UTC); !got.Equal(time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("week bucket of Sunday = %v, want Monday 2026-08-24", got)
 	}
 }
@@ -72,7 +72,7 @@ func TestBucketHours(t *testing.T) {
 		d1.Add(23 * time.Hour): 5,
 		d2:                     7,
 	}
-	buckets := bucketHours(hourSums, d1, d2.Add(24*time.Hour), GranularityDay)
+	buckets := bucketHours(hourSums, d1, d2.Add(24*time.Hour), GranularityDay, time.UTC)
 	if len(buckets) != 2 {
 		t.Fatalf("bucket count = %d, want 2", len(buckets))
 	}
@@ -92,7 +92,7 @@ func TestBucketHours_IncludesPartialFinalBucket(t *testing.T) {
 	}
 	// until is mid-day on Sep 1 → the Sep 1 bucket (which holds no data here)
 	// is still emitted as the final partial bucket.
-	buckets := bucketHours(hourSums, d1, d1.Add(25*time.Hour), GranularityDay)
+	buckets := bucketHours(hourSums, d1, d1.Add(25*time.Hour), GranularityDay, time.UTC)
 	if len(buckets) != 2 {
 		t.Fatalf("bucket count = %d, want 2 (includes partial final day)", len(buckets))
 	}
@@ -112,7 +112,7 @@ func TestBucketHours_HourGranularity(t *testing.T) {
 		d1:                    10,
 		d1.Add(2 * time.Hour): 7,
 	}
-	buckets := bucketHours(hourSums, d1, d1.Add(4*time.Hour), GranularityHour)
+	buckets := bucketHours(hourSums, d1, d1.Add(4*time.Hour), GranularityHour, time.UTC)
 	if len(buckets) != 4 {
 		t.Fatalf("bucket count = %d, want 4 hour buckets", len(buckets))
 	}
@@ -120,7 +120,7 @@ func TestBucketHours_HourGranularity(t *testing.T) {
 		t.Errorf("hour values = [%d %d %d %d], want [10 0 7 0]",
 			buckets[0].Value, buckets[1].Value, buckets[2].Value, buckets[3].Value)
 	}
-	if got := bucketStart(time.Date(2026, 8, 31, 15, 47, 0, 0, time.UTC), GranularityHour); got.Hour() != 15 || got.Minute() != 0 {
+	if got := bucketStart(time.Date(2026, 8, 31, 15, 47, 0, 0, time.UTC), GranularityHour, time.UTC); got.Hour() != 15 || got.Minute() != 0 {
 		t.Errorf("bucketStart(hour) = %v, want 15:00", got)
 	}
 	if got := bucketAdvance(d1, GranularityHour); !got.Equal(d1.Add(time.Hour)) {

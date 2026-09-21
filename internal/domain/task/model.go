@@ -105,6 +105,10 @@ type TaskRun struct {
 	DurationMs  int64                  `json:"duration_ms"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
+	// TokenTokens is embedded at read time (SPEC-100), not persisted: the
+	// handler fills it from session_stats via run.SessionID. No bson tag so the
+	// Mongo converter never reads/writes it.
+	TokenTokens int64 `json:"token_tokens,omitempty"`
 }
 
 // NewTaskRun creates a new execution run for a task definition.

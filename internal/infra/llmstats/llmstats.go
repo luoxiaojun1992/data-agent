@@ -28,9 +28,11 @@ type Record struct {
 	CreatedAt        time.Time `bson:"created_at"`
 }
 
-// Recorder feeds token/call counters into the unified metrics component.
+// Recorder feeds token/call counters into the unified metrics component and,
+// when a SessionStatStore is attached, double-writes the session dimension.
 type Recorder struct {
-	counter metrics.Counter
+	counter      metrics.Counter
+	sessionStats SessionStatStore
 }
 
 // NewRecorder creates a Recorder that increments the metrics Counter. A nil
@@ -39,9 +41,18 @@ func NewRecorder(counter metrics.Counter) *Recorder {
 	return &Recorder{counter: counter}
 }
 
-// Record increments token_tokens (billed) and llm_calls for one LLM call.
-// It never returns an error — the counter is buffered and failures are
-// swallowed downstream (statistical accounting).
+// SetSessionStats attaches the session-scoped counter store. A nil store (or
+// leaving it unset) keeps session accounting a no-op while global accounting
+// still runs.
+func (r *Recorder) SetSessionStats(store SessionStatStore) *Recorder {
+	r.sessionStats = store
+	return r
+}
+
+// Record increments token_tokens (billed) and llm_calls for one LLM call, and
+// — when SessionID is non-empty and a session store is attached — accumulates
+// the same call into session_stats. It never returns an error — the counter is
+// buffered and failures are swallowed downstream (statistical accounting).
 func (r *Recorder) Record(ctx context.Context, rec Record) error {
 	if rec.CreatedAt.IsZero() {
 		rec.CreatedAt = time.Now()
@@ -50,12 +61,16 @@ func (r *Recorder) Record(ctx context.Context, rec Record) error {
 	if rec.Multiplier > 0 {
 		billed = int(float64(billed) * rec.Multiplier)
 	}
-	if r.counter == nil {
-		return nil
-	}
 	at := rec.CreatedAt
-	_ = r.counter.Incr(ctx, metrics.MetricTokenTokens, at, int64(billed))
-	_ = r.counter.Incr(ctx, metrics.MetricLLMCalls, at, 1)
+	if r.counter != nil {
+		_ = r.counter.Incr(ctx, metrics.MetricTokenTokens, at, int64(billed))
+		_ = r.counter.Incr(ctx, metrics.MetricLLMCalls, at, 1)
+	}
+	// Session dimension (SPEC-100): only when the call carries a session and a
+	// store is wired; empty SessionID means no session context (defensive).
+	if r.sessionStats != nil && rec.SessionID != "" {
+		_ = r.sessionStats.Incr(ctx, rec.SessionID, rec.PromptTokens, rec.CompletionTokens, int64(billed), at)
+	}
 	return nil
 }
 

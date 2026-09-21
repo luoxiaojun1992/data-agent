@@ -24,6 +24,7 @@ interface TaskRun {
   result?: { content: string; status: string };
   session_id?: string;
   params?: Record<string, any>;
+  token_tokens?: number;
 }
 
 const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
@@ -210,6 +211,12 @@ export default function RunDetailPage() {
             <div>
               <p className="text-xs text-[var(--text-secondary)]">状态</p>
               <p className="text-[var(--text-primary)] mt-0.5">{STATUS_LABELS[run.status]?.label || run.status}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[var(--text-secondary)]">Token 消耗</p>
+              <p className="text-[var(--text-primary)] mt-0.5" data-testid="run-token-usage">
+                {typeof run.token_tokens === 'number' ? run.token_tokens.toLocaleString() : '—'}
+              </p>
             </div>
           </div>
         </div>

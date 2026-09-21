@@ -26,7 +26,7 @@ func (f *fakeReader) Sum(_ context.Context, m metrics.Metric, _, _ time.Time) (i
 	return f.sums[m], nil
 }
 
-func (f *fakeReader) Series(_ context.Context, m metrics.Metric, _, _ time.Time, _ metrics.Granularity) ([]metrics.Bucket, error) {
+func (f *fakeReader) Series(_ context.Context, m metrics.Metric, _, _ time.Time, _ metrics.Granularity, _ *time.Location) ([]metrics.Bucket, error) {
 	return f.series[m], nil
 }
 
@@ -34,6 +34,7 @@ func (f *fakeReader) Series(_ context.Context, m metrics.Metric, _, _ time.Time,
 // assert the KPI window is driven by granularity (not a hardcoded year).
 type capturingReader struct {
 	since, until time.Time
+	loc          *time.Location
 }
 
 func (c *capturingReader) Sum(_ context.Context, _ metrics.Metric, since, until time.Time) (int64, error) {
@@ -41,7 +42,8 @@ func (c *capturingReader) Sum(_ context.Context, _ metrics.Metric, since, until 
 	return 0, nil
 }
 
-func (c *capturingReader) Series(_ context.Context, _ metrics.Metric, _, _ time.Time, _ metrics.Granularity) ([]metrics.Bucket, error) {
+func (c *capturingReader) Series(_ context.Context, _ metrics.Metric, _, _ time.Time, _ metrics.Granularity, loc *time.Location) ([]metrics.Bucket, error) {
+	c.loc = loc
 	return nil, nil
 }
 
@@ -80,8 +82,8 @@ func TestDashboardGet(t *testing.T) {
 }
 
 // TestDashboardGet_WindowFollowsGranularity verifies the KPI counters follow
-// the selected time window (week → 7 days) while kb_docs stays the point-in-
-// time total.
+// the selected time window's natural boundary (week → this week's Monday 00:00
+// in the caller timezone), while kb_docs stays the point-in-time total.
 func TestDashboardGet_WindowFollowsGranularity(t *testing.T) {
 	kb := kmocks.NewKnowledgeService(t)
 	kb.On("ListAllDocs", 1, 1).Maybe().Return(nil, int64(42), nil)
@@ -96,12 +98,28 @@ func TestDashboardGet_WindowFollowsGranularity(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.False(t, cr.since.IsZero(), "since should be set")
 	require.False(t, cr.until.IsZero(), "until should be set")
-	assert.InDelta(t, float64(7*24*time.Hour), float64(cr.until.Sub(cr.since)), float64(time.Second))
+
+	// Default window starts at this week's Monday 00:00 in Asia/Shanghai
+	// (SPEC-100: natural calendar boundary, not a fixed 7-day span).
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	wantSince := metrics.BucketStart(time.Now(), metrics.GranularityWeek, loc)
+	assert.True(t, cr.since.Equal(wantSince), "since = %v, want Monday %v", cr.since, wantSince)
+	assert.True(t, cr.until.After(cr.since), "until should be after since")
 
 	var body map[string]interface{}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	// kb_docs is a snapshot total and must not be windowed.
 	assert.Equal(t, float64(42), body["kb_docs"])
+}
+
+func TestDashboardGet_InvalidTimezone(t *testing.T) {
+	h := newDashboardHandler(t, nil, nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/dashboard?timezone=Not/AZone", nil)
+	h.Get(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestDashboardGet_InvalidSince(t *testing.T) {

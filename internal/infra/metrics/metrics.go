@@ -36,7 +36,9 @@ type Reader interface {
 	// Sum returns the total count of a metric over [since, until).
 	Sum(ctx context.Context, m Metric, since, until time.Time) (int64, error)
 	// Series returns the metric bucketed by granularity over [since, until).
-	Series(ctx context.Context, m Metric, since, until time.Time, gran Granularity) ([]Bucket, error)
+	// Calendar bucket boundaries (day/week/month/year) follow loc (the caller's
+	// timezone), while since/until remain absolute instants.
+	Series(ctx context.Context, m Metric, since, until time.Time, gran Granularity, loc *time.Location) ([]Bucket, error)
 }
 
 // Granularity is a time-bucket granularity for trend series.
@@ -65,11 +67,17 @@ func HourBucket(t time.Time) time.Time {
 	return t.UTC().Truncate(time.Hour)
 }
 
-// bucketStart truncates t to the start of the given granularity bucket (UTC).
+// BucketStart returns the start of the granularity bucket containing t in loc
+// (exported wrapper; used by the dashboard handler for default windows).
+func BucketStart(t time.Time, g Granularity, loc *time.Location) time.Time {
+	return bucketStart(t, g, loc)
+}
+
+// bucketStart truncates t to the start of the given granularity bucket in loc.
 // hour→hour, day→day, week→Monday, month→1st, year→Jan 1. It is the
 // pure-function used by the reader's Go-side bucketing.
-func bucketStart(t time.Time, g Granularity) time.Time {
-	t = t.UTC()
+func bucketStart(t time.Time, g Granularity, loc *time.Location) time.Time {
+	t = t.In(loc)
 	switch g {
 	case GranularityHour:
 		return t.Truncate(time.Hour)
@@ -79,13 +87,13 @@ func bucketStart(t time.Time, g Granularity) time.Time {
 		if wd == 0 {
 			wd = 7
 		}
-		return time.Date(t.Year(), t.Month(), t.Day()-wd+1, 0, 0, 0, 0, time.UTC)
+		return time.Date(t.Year(), t.Month(), t.Day()-wd+1, 0, 0, 0, 0, loc)
 	case GranularityMonth:
-		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
 	case GranularityYear:
-		return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
+		return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, loc)
 	default: // day
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 	}
 }
 
@@ -110,8 +118,9 @@ func bucketAdvance(t time.Time, g Granularity) time.Time {
 // by the hour bucket start, it returns one Bucket per granularity step that
 // overlaps [since, until), including the final (possibly partial) bucket that
 // contains `until` — so a query ending mid-day still surfaces today's data.
-func bucketHours(hourSums map[time.Time]int64, since, until time.Time, g Granularity) []Bucket {
-	start := bucketStart(since, g)
+// Calendar boundaries follow loc (the caller's timezone).
+func bucketHours(hourSums map[time.Time]int64, since, until time.Time, g Granularity, loc *time.Location) []Bucket {
+	start := bucketStart(since, g, loc)
 	var out []Bucket
 	for cur := start; cur.Before(until); cur = bucketAdvance(cur, g) {
 		next := bucketAdvance(cur, g)

@@ -156,6 +156,8 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionArtifacts, setSessionArtifacts] = useState<Array<{ id: string; name: string; size_bytes: number }>>([]);
+  // SPEC-100: 会话级 token 消耗（进入会话时点查一次 + 每次流结束刷新）。
+  const [tokenUsage, setTokenUsage] = useState<number | null>(null);
   const router = useRouter();
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -224,7 +226,7 @@ export default function ChatPage() {
     }
   };
 
-  const newSession = () => { setMessages([]); setSessionId(null); setInput(''); setSelectedModel(''); setSessionArtifacts([]); };
+  const newSession = () => { setMessages([]); setSessionId(null); setInput(''); setSelectedModel(''); setSessionArtifacts([]); setTokenUsage(null); };
 
   const loadSessionArtifacts = useCallback(async (sid: string) => {
     if (!auth.token) return;
@@ -251,6 +253,20 @@ export default function ChatPage() {
       console.error('[chat] downloadArtifact failed:', e);
     }
   };
+
+  // SPEC-100: 会话级 token 消耗点查。后端返回 { token_tokens: number }。
+  const loadTokenUsage = useCallback(async (sid: string) => {
+    if (!auth.token) return;
+    try {
+      const res = await apiFetch(`/sessions/${encodeURIComponent(sid)}/token-usage`);
+      if (res.ok) {
+        const data = await res.json();
+        setTokenUsage(typeof data.token_tokens === 'number' ? data.token_tokens : 0);
+      }
+    } catch (e) {
+      console.error('[chat] loadTokenUsage failed:', e);
+    }
+  }, [apiFetch, auth.token]);
 
   const fetchSessions = useCallback(async () => {
     if (!auth.token) return;
@@ -347,6 +363,15 @@ export default function ChatPage() {
     }
     loadSessionArtifacts(sessionId);
   }, [sessionId, auth.hydrated, auth.token, loadSessionArtifacts]);
+
+  // SPEC-100: reload session token usage whenever the active session changes.
+  useEffect(() => {
+    if (!auth.hydrated || !auth.token || !sessionId) {
+      setTokenUsage(null);
+      return;
+    }
+    loadTokenUsage(sessionId);
+  }, [sessionId, auth.hydrated, auth.token, loadTokenUsage]);
 
   const loadSessionMessages = async (id: string, preserveOnError = false) => {
     try {
@@ -693,6 +718,8 @@ export default function ChatPage() {
       // keep the live transcript (which already contains the error message)
       // instead of overwriting it with whatever is in MongoDB.
       if (streamCompleted && !streamErrored) await loadSessionMessages(sid, true);
+      // SPEC-100: refresh session token usage after the stream completes.
+      if (streamCompleted && !streamErrored) loadTokenUsage(sid);
       abortControllerRef.current = null;
       setStreaming(false);
     }
@@ -959,6 +986,15 @@ export default function ChatPage() {
             })}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* SPEC-100: 会话 token 消耗（消息历史最下方、输入框上方） */}
+          {sessionId && tokenUsage !== null && (
+            <div className="flex justify-end mb-2" data-testid="chat-token-usage">
+              <span className="text-xs text-[var(--text-secondary)]">
+                本会话消耗 <span className="font-semibold text-[var(--text-primary)]">{tokenUsage.toLocaleString()}</span> tokens
+              </span>
+            </div>
+          )}
 
           {/* Session artifacts — separate glass box above the prompt input */}
           {sessionId && (

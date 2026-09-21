@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed IANA tzdata so LoadLocation works in the slim container (SPEC-100 D7)
 
 	"github.com/gin-gonic/gin"
 	"github.com/luoxiaojun1992/data-agent/cmd/server/migration"
@@ -112,6 +113,7 @@ type serverDependencies struct {
 	llmCache       *llmcache.Cache
 	metricsCounter *metrics.MongoCounter // SPEC-072: unified埋点 counter (buffered)
 	metricsReader  *metrics.MongoReader  // SPEC-072: dashboard reader
+	sessionStats   llmstats.SessionStatStore // SPEC-100: per-session token counter
 	taskStream     *queue.Stream
 	orchestrator   *agentlogic.Orchestrator
 	enhanceService *enhancesvc.Service

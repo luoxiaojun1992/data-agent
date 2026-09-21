@@ -7,18 +7,18 @@ import (
 )
 
 func TestCurrentTime_FieldsAndTimezone(t *testing.T) {
-	// 固定 UTC 时刻：06:21:24 UTC == 14:21:24 Asia/Shanghai（+08:00）。
+	// 固定 UTC 时刻：06:21:24 UTC（SPEC-100 D7 后工具按 UTC 返回）。
 	now := time.Date(2026, 9, 6, 6, 21, 24, 0, time.UTC)
 	got := currentTime(now)
 
-	if got.Timezone != "Asia/Shanghai" {
-		t.Errorf("timezone = %q, want Asia/Shanghai", got.Timezone)
+	if got.Timezone != "UTC" {
+		t.Errorf("timezone = %q, want UTC", got.Timezone)
 	}
 	if got.Date != "2026-09-06" {
 		t.Errorf("date = %q, want 2026-09-06", got.Date)
 	}
-	if got.Time != "2026-09-06T14:21:24+08:00" {
-		t.Errorf("time = %q, want 2026-09-06T14:21:24+08:00", got.Time)
+	if got.Time != "2026-09-06T06:21:24Z" {
+		t.Errorf("time = %q, want 2026-09-06T06:21:24Z", got.Time)
 	}
 	if got.Unix != now.Unix() {
 		t.Errorf("unix = %d, want %d", got.Unix, now.Unix())
@@ -47,19 +47,19 @@ func TestCurrentTime_WeekdayMapping(t *testing.T) {
 }
 
 func TestCurrentTime_TimezoneNeverDrifts(t *testing.T) {
-	// 无论服务器本地时区如何，工具结果都必须是 Asia/Shanghai。用两个
-	// 跨时区差异较大的 UTC 时刻验证输出始终带 +08:00 且日期随上海时区翻转。
-	beforeMidnight := time.Date(2026, 1, 1, 15, 0, 0, 0, time.UTC) // 上海 23:00
-	afterMidnight := time.Date(2026, 1, 1, 16, 0, 0, 0, time.UTC)  // 上海次日 00:00
+	// 无论服务器本地时区如何，工具结果都必须是 UTC。用两个跨 UTC 午夜的
+	// 时刻验证输出始终带 Z 且日期随 UTC 翻转。
+	beforeMidnight := time.Date(2026, 1, 1, 23, 0, 0, 0, time.UTC)
+	afterMidnight := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 
 	got1 := currentTime(beforeMidnight)
 	got2 := currentTime(afterMidnight)
 
-	if !strings.HasSuffix(got1.Time, "+08:00") || !strings.HasSuffix(got2.Time, "+08:00") {
-		t.Errorf("expected +08:00 offset, got %q and %q", got1.Time, got2.Time)
+	if !strings.HasSuffix(got1.Time, "Z") || !strings.HasSuffix(got2.Time, "Z") {
+		t.Errorf("expected UTC (Z) suffix, got %q and %q", got1.Time, got2.Time)
 	}
 	if got1.Date == got2.Date {
-		t.Errorf("date should roll over at Shanghai midnight, got %q == %q", got1.Date, got2.Date)
+		t.Errorf("date should roll over at UTC midnight, got %q == %q", got1.Date, got2.Date)
 	}
 }
 
@@ -72,8 +72,8 @@ func TestGetCurrentTimeTool(t *testing.T) {
 	if res.Time == "" || res.Date == "" || res.Weekday == "" {
 		t.Errorf("result fields empty: %+v", res)
 	}
-	if res.Timezone != "Asia/Shanghai" {
-		t.Errorf("timezone = %q, want Asia/Shanghai", res.Timezone)
+	if res.Timezone != "UTC" {
+		t.Errorf("timezone = %q, want UTC", res.Timezone)
 	}
 	if res.Unix <= 0 {
 		t.Errorf("unix = %d, want > 0", res.Unix)

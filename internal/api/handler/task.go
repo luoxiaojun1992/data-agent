@@ -10,19 +10,27 @@ import (
 	"github.com/gin-gonic/gin"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	"github.com/luoxiaojun1992/data-agent/internal/service/task"
 )
 
 // TaskHandler provides HTTP handlers for task definition + run operations.
 type TaskHandler struct {
-	svc    task.TaskService
-	runSvc task.TaskRunService
+	svc          task.TaskService
+	runSvc       task.TaskRunService
+	sessionStats llmstats.SessionStatStore
 }
 
 // NewTaskHandler creates a task handler. Both services may be backed by the
 // same concrete Service implementation.
 func NewTaskHandler(svc task.TaskService, runSvc task.TaskRunService) *TaskHandler {
 	return &TaskHandler{svc: svc, runSvc: runSvc}
+}
+
+// SetSessionStatStore attaches the session-scoped token counter so GetRun can
+// embed token_tokens (SPEC-100 D1). Nil-safe.
+func (h *TaskHandler) SetSessionStatStore(store llmstats.SessionStatStore) {
+	h.sessionStats = store
 }
 
 // CreateTask creates a task definition and its first run, enqueues the run.
@@ -198,6 +206,11 @@ func (h *TaskHandler) GetRun(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
+	}
+	// SPEC-100 D1: embed the run's session token usage (run.SessionID → 0 when
+	// absent or no counter document).
+	if h.sessionStats != nil && run.SessionID != "" {
+		run.TokenTokens, _ = h.sessionStats.GetBySession(c.Request.Context(), run.SessionID)
 	}
 	c.JSON(http.StatusOK, run)
 }

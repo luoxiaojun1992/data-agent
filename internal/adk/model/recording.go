@@ -5,6 +5,7 @@ import (
 	"iter"
 	"strings"
 
+	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
 
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
@@ -37,6 +38,7 @@ func (r *recordingLLM) Name() string { return r.inner.Name() }
 // request prompt and the accumulated response text.
 func (r *recordingLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	estPrompt := estimatePromptTokens(req)
+	sessionID := sessionIDFromContext(ctx)
 	return func(yield func(*model.LLMResponse, error) bool) {
 		var completion strings.Builder
 		recorded := false
@@ -48,6 +50,7 @@ func (r *recordingLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 						PromptTokens:     int(um.PromptTokenCount),
 						CompletionTokens: int(um.CandidatesTokenCount),
 						Multiplier:       1.0,
+						SessionID:        sessionID,
 					})
 					recorded = true
 				}
@@ -72,9 +75,35 @@ func (r *recordingLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 				CompletionTokens: llmstats.EstimateTokens(completion.String()),
 				Multiplier:       1.0,
 				Estimated:        true,
+				SessionID:        sessionID,
 			})
 		}
 	}
+}
+
+// sessionIDFromContext resolves the session a call belongs to (SPEC-100 D4).
+// The runtime invokes the LLM with an agent.InvocationContext whose session
+// state carries state["session_id"] — the parent session for both main
+// chat/task (self) and sub-agents (parent binding, subagent/tool.go). It falls
+// back to the session's own ID and, on any failure to resolve, returns "" so
+// recording degrades to global-only accounting.
+func sessionIDFromContext(ctx context.Context) string {
+	ic, ok := ctx.(agent.InvocationContext)
+	if !ok {
+		return ""
+	}
+	sess := ic.Session()
+	if sess == nil {
+		return ""
+	}
+	if st := sess.State(); st != nil {
+		if v, err := st.Get("session_id"); err == nil {
+			if sid, ok := v.(string); ok && sid != "" {
+				return sid
+			}
+		}
+	}
+	return sess.ID()
 }
 
 // estimatePromptTokens estimates the prompt token count from the request

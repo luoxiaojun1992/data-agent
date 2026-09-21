@@ -54,6 +54,34 @@ func (f *fakeCounter) Incr(_ context.Context, m metrics.Metric, at time.Time, de
 
 func (f *fakeCounter) Stop() {}
 
+// fakeSessionStatStore captures Incr calls for asserting the session dimension
+// double-write (SPEC-100).
+type fakeSessionStatStore struct {
+	incrs []struct {
+		sessionID        string
+		promptTokens     int
+		completionTokens int
+		billedTokens     int64
+		at               time.Time
+	}
+}
+
+func (f *fakeSessionStatStore) Incr(_ context.Context, sessionID string, promptTokens, completionTokens int, billedTokens int64, at time.Time) error {
+	f.incrs = append(f.incrs, struct {
+		sessionID        string
+		promptTokens     int
+		completionTokens int
+		billedTokens     int64
+		at               time.Time
+	}{sessionID, promptTokens, completionTokens, billedTokens, at})
+	return nil
+}
+
+func (f *fakeSessionStatStore) DeleteBySession(_ context.Context, _ string) error { return nil }
+func (f *fakeSessionStatStore) GetBySession(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
 func TestRecorder_Record(t *testing.T) {
 	fc := &fakeCounter{}
 	r := NewRecorder(fc)
@@ -103,5 +131,68 @@ func TestRecorder_DefaultCreatedAt(t *testing.T) {
 	_ = r.Record(context.Background(), Record{PromptTokens: 2})
 	if fc.incrs[0].at.IsZero() {
 		t.Error("CreatedAt should default to now")
+	}
+}
+
+// ── SPEC-100: session dimension double-write ──
+
+func TestRecorder_Record_DoubleWritesSessionStats(t *testing.T) {
+	fc := &fakeCounter{}
+	ss := &fakeSessionStatStore{}
+	r := NewRecorder(fc).SetSessionStats(ss)
+	at := time.Date(2026, 8, 31, 13, 20, 0, 0, time.UTC)
+	err := r.Record(context.Background(), Record{
+		SessionID: "sess-1",
+		PromptTokens: 100, CompletionTokens: 50, Multiplier: 2.0,
+		CreatedAt: at,
+	})
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	// Global counter still incremented (2 calls).
+	if len(fc.incrs) != 2 {
+		t.Fatalf("global incr count = %d, want 2", len(fc.incrs))
+	}
+	// Session store got exactly one call with the right args.
+	if len(ss.incrs) != 1 {
+		t.Fatalf("session incr count = %d, want 1", len(ss.incrs))
+	}
+	c := ss.incrs[0]
+	if c.sessionID != "sess-1" {
+		t.Errorf("sessionID = %q, want sess-1", c.sessionID)
+	}
+	if c.promptTokens != 100 || c.completionTokens != 50 {
+		t.Errorf("tokens = %d/%d, want 100/50", c.promptTokens, c.completionTokens)
+	}
+	if c.billedTokens != 300 {
+		t.Errorf("billedTokens = %d, want 300", c.billedTokens)
+	}
+	if !c.at.Equal(at) {
+		t.Errorf("at = %v, want %v", c.at, at)
+	}
+}
+
+func TestRecorder_Record_SkipsSessionWhenEmptyID(t *testing.T) {
+	fc := &fakeCounter{}
+	ss := &fakeSessionStatStore{}
+	r := NewRecorder(fc).SetSessionStats(ss)
+	_ = r.Record(context.Background(), Record{PromptTokens: 10, CompletionTokens: 5})
+	if len(ss.incrs) != 0 {
+		t.Errorf("session store should not be written when SessionID is empty, got %d calls", len(ss.incrs))
+	}
+	if len(fc.incrs) != 2 {
+		t.Errorf("global counter should still record, got %d calls", len(fc.incrs))
+	}
+}
+
+func TestRecorder_Record_SkipsSessionWhenNoStore(t *testing.T) {
+	fc := &fakeCounter{}
+	r := NewRecorder(fc) // no session store attached
+	err := r.Record(context.Background(), Record{SessionID: "sess-1", PromptTokens: 10})
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if len(fc.incrs) != 2 {
+		t.Errorf("global counter should record, got %d calls", len(fc.incrs))
 	}
 }

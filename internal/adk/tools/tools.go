@@ -194,21 +194,17 @@ type CurrentTimeResult struct {
 	Unix     int64  `json:"unix"`
 }
 
-// currentTime builds the current-time result from an arbitrary instant in
-// Asia/Shanghai (pure — timezone is explicit, never the server default TZ).
+// currentTime builds the current-time result in UTC (SPEC-100 D7). Returning
+// UTC aligns the tool's "now" with the system's UTC timestamps (session
+// created_at, task scheduled_at, etc.) so the LLM can compare directly; the
+// timezone field is explicitly labelled "UTC".
 func currentTime(now time.Time) CurrentTimeResult {
-	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		// LoadLocation only fails when the tzdata is missing; fall back to a
-		// fixed +08:00 offset so the tool never depends on host tzdata.
-		loc = time.FixedZone("Asia/Shanghai", 8*3600)
-	}
-	t := now.In(loc)
+	t := now.UTC()
 	return CurrentTimeResult{
 		Time:     t.Format(time.RFC3339),
 		Date:     t.Format("2006-01-02"),
 		Weekday:  weekdayCN(t.Weekday()),
-		Timezone: "Asia/Shanghai",
+		Timezone: "UTC",
 		Unix:     t.Unix(),
 	}
 }
@@ -899,9 +895,9 @@ func specs(deps *Deps) []toolSpec {
 		},
 		{
 			name:        "get_current_time",
-			description: "Returns the server's current date and time in Asia/Shanghai timezone, for answering questions about 'now' (today's date, current time, this week's day). Takes no arguments.",
+			description: "Returns the server's current date and time in UTC, for answering questions about 'now' (today's date, current time, this week's day). Takes no arguments.",
 			build: func() (tool.Tool, error) {
-				return functiontool.New(functiontool.Config{Name: "get_current_time", Description: "Returns the server's current date and time in Asia/Shanghai timezone, for answering questions about 'now' (today's date, current time, this week's day). Takes no arguments."}, getCurrentTime())
+				return functiontool.New(functiontool.Config{Name: "get_current_time", Description: "Returns the server's current date and time in UTC, for answering questions about 'now' (today's date, current time, this week's day). Takes no arguments."}, getCurrentTime())
 			},
 		},
 		{

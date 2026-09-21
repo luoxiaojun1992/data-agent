@@ -11,15 +11,17 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/api/middleware"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/model"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	"github.com/luoxiaojun1992/data-agent/internal/service/chat"
 	rbacsvc "github.com/luoxiaojun1992/data-agent/internal/service/rbac"
 	"google.golang.org/adk/session"
 )
 
 type SessionHandler struct {
-	mgr         chat.SessionService
-	adkSessions session.Service
-	appName     string
+	mgr          chat.SessionService
+	adkSessions  session.Service
+	sessionStats llmstats.SessionStatStore
+	appName      string
 }
 
 func NewSessionHandler(mgr chat.SessionService, adkSessions ...session.Service) *SessionHandler {
@@ -30,12 +32,20 @@ func NewSessionHandler(mgr chat.SessionService, adkSessions ...session.Service) 
 	return &SessionHandler{mgr: mgr, adkSessions: service, appName: "data-agent"}
 }
 
+// SetSessionStatStore attaches the session-scoped token counter for the
+// token-usage point lookup (SPEC-100). Nil-safe: when unset the endpoint
+// returns 0.
+func (h *SessionHandler) SetSessionStatStore(store llmstats.SessionStatStore) {
+	h.sessionStats = store
+}
+
 func RegisterSessionRoutes(rg *gin.RouterGroup, h *SessionHandler, rbacSvc *rbacsvc.Service) {
 	rg.GET("", middleware.RequirePermission(rbacSvc, model.PermChatView), h.List)
 	rg.POST("", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Create)
 	rg.GET("/deleted", middleware.RequirePermission(rbacSvc, model.PermChatView), h.ListDeleted)
 	rg.GET("/:id", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Get)
 	rg.GET("/:id/messages", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Messages)
+	rg.GET("/:id/token-usage", middleware.RequirePermission(rbacSvc, model.PermChatView), h.TokenUsage)
 	rg.PUT("/:id", middleware.RequirePermission(rbacSvc, model.PermChatView), h.Renew)
 	rg.DELETE("/:id", middleware.RequirePermission(rbacSvc, model.PermChatDelete), h.Delete)
 	rg.DELETE("/:id/history", middleware.RequirePermission(rbacSvc, model.PermChatDelete), h.ClearHistory)
@@ -97,6 +107,28 @@ func (h *SessionHandler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"session": s})
+}
+
+// TokenUsage returns the session's accumulated billed tokens (SPEC-100 D1).
+// Ownership-checked like Get; a missing counter document yields 0.
+func (h *SessionHandler) TokenUsage(c *gin.Context) {
+	id := c.Param("id")
+	s, err := h.mgr.Get(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if !h.verifyOwnership(c, s) {
+		return
+	}
+	var tokens int64
+	if h.sessionStats != nil {
+		if tokens, err = h.sessionStats.GetBySession(c.Request.Context(), id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"token_tokens": tokens})
 }
 
 func (h *SessionHandler) Renew(c *gin.Context) {

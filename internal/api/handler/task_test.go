@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -346,6 +347,72 @@ func TestCancelRun_NotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+// ── SPEC-100: GetRun embeds session token usage ──
+
+func TestGetRun_EmbedsTokenUsage(t *testing.T) {
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	runSvc.On("GetRun", "run_1", "", false).Return(&task.TaskRun{
+		ID: "run_1", SessionID: "sess-1",
+	}, nil)
+	h := NewTaskHandler(nil, runSvc)
+	h.SetSessionStatStore(&fakeSessionStatStore{tokens: 999})
+
+	c, w := newGinContext("GET", "/tasks/t1/runs/run_1", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.GetRun(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["token_tokens"] != float64(999) {
+		t.Errorf("token_tokens = %v, want 999", body["token_tokens"])
+	}
+}
+
+func TestGetRun_NoSessionStatsStore(t *testing.T) {
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	runSvc.On("GetRun", "run_1", "", false).Return(&task.TaskRun{
+		ID: "run_1", SessionID: "sess-1",
+	}, nil)
+	h := NewTaskHandler(nil, runSvc) // no session stats store
+
+	c, w := newGinContext("GET", "/tasks/t1/runs/run_1", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.GetRun(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	// omitempty → no token_tokens key when the store is unset.
+	if strings.Contains(w.Body.String(), "token_tokens") {
+		t.Errorf("body should not contain token_tokens when store unset: %s", w.Body.String())
+	}
+}
+
+func TestGetRun_EmptySessionID(t *testing.T) {
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	runSvc.On("GetRun", "run_1", "", false).Return(&task.TaskRun{
+		ID: "run_1", SessionID: "",
+	}, nil)
+	h := NewTaskHandler(nil, runSvc)
+	h.SetSessionStatStore(&fakeSessionStatStore{tokens: 42})
+
+	c, w := newGinContext("GET", "/tasks/t1/runs/run_1", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.GetRun(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "token_tokens") {
+		t.Errorf("body should not contain token_tokens when SessionID empty: %s", w.Body.String())
 	}
 }
 

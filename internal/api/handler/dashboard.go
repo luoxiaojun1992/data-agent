@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -59,15 +60,19 @@ type summary struct {
 func (h *DashboardHandler) Get(c *gin.Context) {
 	ctx := c.Request.Context()
 	gran := parseGranularity(c.Query("granularity"))
-	spec := windowFor(gran)
+	loc, err := parseTimezone(c.Query("timezone"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	since, until, err := parseRange(c.Query("since"), c.Query("until"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	now := time.Now().UTC()
+	now := time.Now()
 	if since.IsZero() {
-		since = now.Add(-spec.window)
+		since = metrics.BucketStart(now, gran, loc)
 	}
 	if until.IsZero() {
 		until = now
@@ -143,15 +148,20 @@ func windowFor(g metrics.Granularity) windowSpec {
 func (h *DashboardHandler) GetTrends(c *gin.Context) {
 	ctx := c.Request.Context()
 	gran := parseGranularity(c.Query("granularity"))
+	loc, err := parseTimezone(c.Query("timezone"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	spec := windowFor(gran)
 	since, until, err := parseRange(c.Query("since"), c.Query("until"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	now := time.Now().UTC()
+	now := time.Now()
 	if since.IsZero() {
-		since = now.Add(-spec.window)
+		since = metrics.BucketStart(now, gran, loc)
 	}
 	if until.IsZero() {
 		until = now
@@ -163,19 +173,19 @@ func (h *DashboardHandler) GetTrends(c *gin.Context) {
 		return
 	}
 
-	resp.TokenTokens = series(h.reader, ctx, metrics.MetricTokenTokens, since, until, spec.bucket)
-	resp.LLMCalls = series(h.reader, ctx, metrics.MetricLLMCalls, since, until, spec.bucket)
-	resp.APICalls = series(h.reader, ctx, metrics.MetricAPICalls, since, until, spec.bucket)
-	resp.ArtifactCreated = series(h.reader, ctx, metrics.MetricArtifact, since, until, spec.bucket)
-	resp.TaskCompleted = series(h.reader, ctx, metrics.MetricTaskCompleted, since, until, spec.bucket)
+	resp.TokenTokens = series(h.reader, ctx, metrics.MetricTokenTokens, since, until, spec.bucket, loc)
+	resp.LLMCalls = series(h.reader, ctx, metrics.MetricLLMCalls, since, until, spec.bucket, loc)
+	resp.APICalls = series(h.reader, ctx, metrics.MetricAPICalls, since, until, spec.bucket, loc)
+	resp.ArtifactCreated = series(h.reader, ctx, metrics.MetricArtifact, since, until, spec.bucket, loc)
+	resp.TaskCompleted = series(h.reader, ctx, metrics.MetricTaskCompleted, since, until, spec.bucket, loc)
 	resp.ROI = roiSeries(resp.ArtifactCreated, resp.TaskCompleted, resp.TokenTokens)
 
 	c.JSON(http.StatusOK, resp)
 }
 
 // series fetches one metric's buckets and converts them to trend points.
-func series(r metrics.Reader, ctx context.Context, m metrics.Metric, since, until time.Time, gran metrics.Granularity) []trendPoint {
-	buckets, err := r.Series(ctx, m, since, until, gran)
+func series(r metrics.Reader, ctx context.Context, m metrics.Metric, since, until time.Time, gran metrics.Granularity, loc *time.Location) []trendPoint {
+	buckets, err := r.Series(ctx, m, since, until, gran, loc)
 	if err != nil {
 		return nil
 	}
@@ -230,4 +240,17 @@ func parseRange(sinceRaw, untilRaw string) (time.Time, time.Time, error) {
 		}
 	}
 	return since, until, nil
+}
+
+// parseTimezone resolves the browser timezone query param (SPEC-100 D7).
+// Empty defaults to Asia/Shanghai; an unknown IANA zone yields an error (→400).
+func parseTimezone(raw string) (*time.Location, error) {
+	if raw == "" {
+		raw = "Asia/Shanghai"
+	}
+	loc, err := time.LoadLocation(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timezone: %s", raw)
+	}
+	return loc, nil
 }

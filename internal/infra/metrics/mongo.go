@@ -177,7 +177,8 @@ func (r *MongoReader) Sum(ctx context.Context, m Metric, since, until time.Time)
 
 // Series returns the metric bucketed by granularity over [since, until). Hourly
 // documents are fetched and bucketed in Go; empty buckets are preserved.
-func (r *MongoReader) Series(ctx context.Context, m Metric, since, until time.Time, g Granularity) ([]Bucket, error) {
+// Calendar bucket boundaries follow loc (the caller's timezone).
+func (r *MongoReader) Series(ctx context.Context, m Metric, since, until time.Time, g Granularity, loc *time.Location) ([]Bucket, error) {
 	since, until = clampRange(since, until)
 	filter := bson.D{
 		{Key: "metric", Value: string(m)},
@@ -200,7 +201,7 @@ func (r *MongoReader) Series(ctx context.Context, m Metric, since, until time.Ti
 	if err := cur.Err(); err != nil {
 		return nil, err
 	}
-	return bucketHours(hourSums, since, until, g), nil
+	return bucketHours(hourSums, since, until, g, loc), nil
 }
 
 // clampRange bounds the query window to [now-MaxRange, now] and fills zero

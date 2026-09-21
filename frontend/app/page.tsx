@@ -87,26 +87,30 @@ export default function MainPage() {
   const [granularity, setGranularity] = useState('day');
   const [summary, setSummary] = useState<any>(null);
   const [trends, setTrends] = useState<any>(null);
+  // SPEC-100: 传递浏览器时区，后端按调用方时区做日历分桶。
+  const timezone = typeof Intl !== 'undefined'
+    ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
+    : 'Asia/Shanghai';
 
   useEffect(() => {
     if (!auth.token) return;
     (async () => {
       try {
-        const sr = await apiFetch(`/dashboard?granularity=${granularity}`);
+        const sr = await apiFetch(`/dashboard?granularity=${granularity}&timezone=${encodeURIComponent(timezone)}`);
         setSummary(await sr.json());
       } catch { /* ignore */ }
     })();
-  }, [auth.token, granularity]);
+  }, [auth.token, granularity, timezone]);
 
   useEffect(() => {
     if (!auth.token) return;
     (async () => {
       try {
-        const tr = await apiFetch(`/dashboard/trends?granularity=${granularity}`);
+        const tr = await apiFetch(`/dashboard/trends?granularity=${granularity}&timezone=${encodeURIComponent(timezone)}`);
         setTrends(await tr.json());
       } catch { /* ignore */ }
     })();
-  }, [auth.token, granularity]);
+  }, [auth.token, granularity, timezone]);
 
   const num = (v: any) => (typeof v === 'number' ? v : 0);
 

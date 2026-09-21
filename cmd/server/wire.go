@@ -239,7 +239,10 @@ func buildEmbedFn(deps *serverDependencies) func(ctx context.Context, text strin
 func initMetrics(deps *serverDependencies, mongoClient *mongoinfra.Client) {
 	deps.metricsCounter = metrics.NewCounter(mongoClient.DB(), 5*time.Second)
 	deps.metricsReader = metrics.NewReader(mongoClient.DB())
-	deps.llmRecorder = llmstats.NewRecorder(deps.metricsCounter)
+	// SPEC-100: per-session token counter, double-written by the recorder and
+	// cascaded by the session manager on hard delete.
+	deps.sessionStats = llmstats.NewSessionStatStore(mongoClient.DB())
+	deps.llmRecorder = llmstats.NewRecorder(deps.metricsCounter).SetSessionStats(deps.sessionStats)
 }
 
 // initRedis connects to Redis and builds the LLM cache. Runs BEFORE
@@ -303,7 +306,9 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 
 	// SPEC-090: inject the narrow ADK history store so the session manager can
 	// hard-delete / clear chat history without depending on the full ADK type.
-	deps.sessionManager = chat.NewManager(deps.sessionRepo, 24*time.Hour, adksession.NewHistoryStore(deps.adkSessions))
+	// SPEC-100: also attach the session token counter for hard-delete cascade.
+	deps.sessionManager = chat.NewManager(deps.sessionRepo, 24*time.Hour, adksession.NewHistoryStore(deps.adkSessions)).
+		WithSessionStatStore(deps.sessionStats)
 
 	initMemoryBackend(deps, mongoClient, compactionLLM, logger)
 
@@ -671,6 +676,8 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 		deps.taskService.SetQueueRepo(deps.queueRepo)
 	}
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService)
+	// SPEC-100: GetRun embeds token_tokens from session_stats.
+	deps.taskHandler.SetSessionStatStore(deps.sessionStats)
 	if deps.kbHandler != nil && deps.queueRepo != nil {
 		deps.kbHandler.SetQueueRepo(deps.queueRepo)
 	}
@@ -745,6 +752,10 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		imBindHandler = handler.NewIMBindHandler(im.NewBindService(mongoinfra.NewIMBindRepository(deps.mongoClient.DB(), deps.vaultClient)))
 	}
 
+	sessionHandler := handler.NewSessionHandler(deps.sessionManager, deps.adkSessions)
+	// SPEC-100: token-usage point lookup.
+	sessionHandler.SetSessionStatStore(deps.sessionStats)
+
 	return &handler.RouteDeps{
 		JWTManager:     deps.jwtManager,
 		AuditLogger:    deps.auditLogger,
@@ -760,7 +771,7 @@ func buildRouteDeps(deps *serverDependencies, cfg *config.Config, logger *zap.Lo
 		Enhance:        handler.NewEnhanceHandler(deps.enhanceService),
 		Redact:         handler.NewRedactHandler(deps.piiRedactor),
 		Voice:          handler.NewVoiceHandler(deps.voiceService),
-		Session:        handler.NewSessionHandler(deps.sessionManager, deps.adkSessions),
+		Session:        sessionHandler,
 		Artifact:       deps.artifactHandler,
 		Knowledge:      deps.kbHandler,
 		Audit:          deps.auditHandler,

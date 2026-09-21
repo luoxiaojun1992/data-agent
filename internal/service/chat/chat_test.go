@@ -539,6 +539,85 @@ func TestManager_HardDelete_RepoError(t *testing.T) {
 	history.AssertNotCalled(t, "Delete", mock.Anything, "s1")
 }
 
+// fakeSessionStatStore records DeleteBySession calls (with optional shared
+// ordering log) to verify the SPEC-100 cascade runs before the main record
+// delete.
+type fakeSessionStatStore struct {
+	deleted []string
+	err     error
+	order   *[]string
+}
+
+func (f *fakeSessionStatStore) Incr(_ context.Context, _ string, _, _ int, _ int64, _ time.Time) error {
+	return nil
+}
+
+func (f *fakeSessionStatStore) DeleteBySession(_ context.Context, sessionID string) error {
+	f.deleted = append(f.deleted, sessionID)
+	if f.order != nil {
+		*f.order = append(*f.order, "stats")
+	}
+	return f.err
+}
+
+func (f *fakeSessionStatStore) GetBySession(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
+// TestManager_HardDelete_CascadesSessionStats verifies the session-scoped
+// token counter is deleted BEFORE the main session record (SPEC-100 D6).
+func TestManager_HardDelete_CascadesSessionStats(t *testing.T) {
+	repo := mockrepo.NewSessionRepository(t)
+	history := chatmocks.NewSessionHistoryStore(t)
+	var order []string
+	stats := &fakeSessionStatStore{order: &order}
+	m := &Manager{repo: repo, ttl: 24 * time.Hour, historyStore: history, sessionStatStore: stats}
+
+	repo.On("HardDelete", mock.Anything, "s1").Run(func(args mock.Arguments) {
+		order = append(order, "repo")
+	}).Return(nil)
+	history.On("Delete", mock.Anything, "s1").Return(nil)
+
+	if err := m.HardDelete("s1"); err != nil {
+		t.Fatalf("HardDelete failed: %v", err)
+	}
+	if len(stats.deleted) != 1 || stats.deleted[0] != "s1" {
+		t.Fatalf("DeleteBySession calls = %v, want [s1]", stats.deleted)
+	}
+	// The cascade must run first: stats before repo.
+	if len(order) != 2 || order[0] != "stats" || order[1] != "repo" {
+		t.Fatalf("cascade order = %v, want [stats repo]", order)
+	}
+	repo.AssertExpectations(t)
+	history.AssertExpectations(t)
+}
+
+// TestManager_HardDelete_SessionStatsError verifies a real DB error deleting
+// the counter aborts the whole cascade before touching the main record.
+func TestManager_HardDelete_SessionStatsError(t *testing.T) {
+	repo := mockrepo.NewSessionRepository(t)
+	stats := &fakeSessionStatStore{err: fmt.Errorf("db down")}
+	m := &Manager{repo: repo, ttl: 24 * time.Hour, sessionStatStore: stats}
+
+	if err := m.HardDelete("s1"); err == nil {
+		t.Error("expected session stats error to propagate")
+	}
+	repo.AssertNotCalled(t, "HardDelete", mock.Anything, "s1")
+}
+
+// TestManager_HardDelete_NoSessionStatsStore verifies a manager without a
+// session store still hard-deletes (cascade is a no-op).
+func TestManager_HardDelete_NoSessionStatsStore(t *testing.T) {
+	repo := mockrepo.NewSessionRepository(t)
+	m := &Manager{repo: repo, ttl: 24 * time.Hour} // historyStore + sessionStatStore both nil
+
+	repo.On("HardDelete", mock.Anything, "s1").Return(nil)
+	if err := m.HardDelete("s1"); err != nil {
+		t.Fatalf("HardDelete failed: %v", err)
+	}
+	repo.AssertExpectations(t)
+}
+
 func TestManager_ClearHistory(t *testing.T) {
 	repo := mockrepo.NewSessionRepository(t)
 	history := chatmocks.NewSessionHistoryStore(t)

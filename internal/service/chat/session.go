@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
@@ -35,9 +36,10 @@ func removeWorkspace(sessionID string) {
 
 // Manager handles session lifecycle. It implements domain/chat.SessionService.
 type Manager struct {
-	repo         repository.SessionRepository
-	ttl          time.Duration
-	historyStore domainchat.SessionHistoryStore
+	repo            repository.SessionRepository
+	ttl             time.Duration
+	historyStore    domainchat.SessionHistoryStore
+	sessionStatStore llmstats.SessionStatStore
 }
 
 // NewManager creates a session manager. historyStore backs HardDelete and
@@ -45,6 +47,13 @@ type Manager struct {
 // operations are not exercised.
 func NewManager(repo repository.SessionRepository, ttl time.Duration, historyStore domainchat.SessionHistoryStore) *Manager {
 	return &Manager{repo: repo, ttl: ttl, historyStore: historyStore}
+}
+
+// WithSessionStatStore attaches the session-scoped token counter (SPEC-100).
+// Nil-safe: when unset, HardDelete simply skips the cascade.
+func (m *Manager) WithSessionStatStore(store llmstats.SessionStatStore) *Manager {
+	m.sessionStatStore = store
+	return m
 }
 
 // ensure Manager satisfies the domain SessionService contract.
@@ -194,8 +203,16 @@ func (m *Manager) Delete(id string) error {
 // HardDelete permanently removes a session: the sessions record, its workspace
 // directory, and its ADK-side chat history (compacted events + raw event stream
 // + any sub-agent sessions). artifact/memory are permanent products and are
-// never cascaded (SPEC-090).
+// never cascaded (SPEC-090). The session-scoped token counter is deleted FIRST
+// (SPEC-100 D6): deleting before the main record means a later re-creation
+// re-accumulates instead of leaving an orphan; a missing counter document is
+// treated as success (idempotent), only a real DB error aborts.
 func (m *Manager) HardDelete(id string) error {
+	if m.sessionStatStore != nil {
+		if err := m.sessionStatStore.DeleteBySession(context.Background(), id); err != nil {
+			return err
+		}
+	}
 	if err := m.repo.HardDelete(context.Background(), id); err != nil {
 		return err
 	}
