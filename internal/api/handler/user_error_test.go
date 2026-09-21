@@ -265,7 +265,8 @@ func TestRegisterUserRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	svc := usermocks.NewService(t)
-	svc.On("List", mock.Anything, "", int64(0), int64(20), "created_at", "desc").
+	// 中间件注入 role=admin，List 走 SPEC-084 数据隔离分支，强制 role=user。
+	svc.On("List", mock.Anything, string(model.RoleUser), int64(0), int64(20), "created_at", "desc").
 		Return([]model.User{{ID: "u1"}}, int64(1), nil)
 	svc.On("Get", mock.Anything, "u1").Return(&model.User{ID: "u1", Username: "alice"}, nil)
 	h := NewUserHandler(svc)
