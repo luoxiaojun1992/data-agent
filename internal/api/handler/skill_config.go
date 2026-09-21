@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 	"github.com/gin-gonic/gin"
+	skillsvc "github.com/luoxiaojun1992/data-agent/internal/service/skill"
 )
 
 // SkillConfigHandler serves the admin skill configuration API.
@@ -54,9 +54,9 @@ func (h *SkillConfigHandler) Get(c *gin.Context) {
 func (h *SkillConfigHandler) Upsert(c *gin.Context) {
 	name := c.Param("name")
 	var req struct {
-		Enabled           bool   `json:"enabled"`
-		ConfigJSON        string `json:"config_json"`
-		RequiresApproval  bool   `json:"requires_approval"`
+		Enabled          bool   `json:"enabled"`
+		ConfigJSON       string `json:"config_json"`
+		RequiresApproval bool   `json:"requires_approval"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

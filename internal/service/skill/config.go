@@ -42,7 +42,7 @@ func predefinedSkills() []skill.SkillConfig {
 		{
 			Name:        "get_current_time",
 			DisplayName: "获取当前时间",
-			Description: "获取服务器当前的真实日期和时间（Asia/Shanghai 时区），用于回答与「现在」相关的问题",
+			Description: "获取服务器当前的真实日期和时间（UTC），用于回答与「现在」相关的问题",
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
@@ -78,7 +78,7 @@ func predefinedSkills() []skill.SkillConfig {
 		{
 			Name:        "external_api_call",
 			DisplayName: "外部 API 调用",
-			Description: "调用外部 API 方法透（参数",
+			Description: "调用外部 API 方法透传参数",
 			Enabled:     true,
 			ConfigJSON:  "{}",
 		},
