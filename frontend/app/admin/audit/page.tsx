@@ -195,7 +195,7 @@ export default function AuditPage() {
                 <th style={thStyle}>时间</th>
                 <th style={thStyle}>操作人</th>
                 <th style={thStyle}>操作类型</th>
-                <th style={thStyle}>详情</th>
+                <th style={thStyle}>查询参数</th>
                 <th style={thStyle}>IP</th>
               </tr>
             </thead>
