@@ -4,6 +4,7 @@ package mocks
 
 import (
 	audit "github.com/luoxiaojun1992/data-agent/internal/service/audit"
+	model "github.com/luoxiaojun1992/data-agent/internal/domain/model"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -34,6 +35,36 @@ func (_m *AuditService) List(p audit.ListParams) (*audit.ListResult, error) {
 	}
 
 	if rf, ok := ret.Get(1).(func(audit.ListParams) error); ok {
+		r1 = rf(p)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Export provides a mock function with given fields: p
+func (_m *AuditService) Export(p audit.ExportParams) ([]model.AuditLog, error) {
+	ret := _m.Called(p)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Export")
+	}
+
+	var r0 []model.AuditLog
+	var r1 error
+	if rf, ok := ret.Get(0).(func(audit.ExportParams) ([]model.AuditLog, error)); ok {
+		return rf(p)
+	}
+	if rf, ok := ret.Get(0).(func(audit.ExportParams) []model.AuditLog); ok {
+		r0 = rf(p)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.AuditLog)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(audit.ExportParams) error); ok {
 		r1 = rf(p)
 	} else {
 		r1 = ret.Error(1)

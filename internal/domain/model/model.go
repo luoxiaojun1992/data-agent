@@ -125,6 +125,7 @@ func GetDefaultPermissions(role UserRole) []string {
 type AuditLog struct {
 	ID         string    `json:"id"`
 	Action     string    `json:"action"`
+	ActionDesc string    `json:"action_desc,omitempty"`
 	UserID     string    `json:"user_id"`
 	Resource   string    `json:"resource"`
 	Details    string    `json:"details"`

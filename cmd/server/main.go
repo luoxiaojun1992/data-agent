@@ -180,6 +180,10 @@ func initServer() (*config.Config, *zap.Logger, *mongoinfra.Client, serverDepend
 		if err := migration.SeedStats(ctx, mongoClient.DB()); err != nil {
 			logger.Warn("Failed to seed stats_hourly indexes", zap.Error(err))
 		}
+		// SPEC-102: migrate audit_logs TTL index to one-year retention.
+		if err := migration.SeedAudit(ctx, mongoClient.DB()); err != nil {
+			logger.Warn("Failed to seed audit_logs indexes", zap.Error(err))
+		}
 		deps.userRepo = mongoinfra.NewUserRepository(mongoClient.DB())
 		if err := ensureSystemAdmin(ctx, deps.userRepo, logger); err != nil {
 			logger.Warn("Failed to ensure system admin", zap.Error(err))

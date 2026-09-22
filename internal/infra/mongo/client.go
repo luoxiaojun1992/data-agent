@@ -99,7 +99,6 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 		"audit_logs": {
 			{Keys: bson.D{{Key: "user_id", Value: 1}}},
 			{Keys: bson.D{{Key: "created_at", Value: -1}}},
-			{Keys: bson.D{{Key: "created_at", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(90 * 86400)}, // TTL 90 days
 		},
 		"notifications": {
 			{Keys: bson.D{{Key: "created_at", Value: -1}}},

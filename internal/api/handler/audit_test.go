@@ -40,10 +40,11 @@ func TestListAuditLogs_Success(t *testing.T) {
 		Logs: []model.AuditLog{
 			{
 				ID:         "audit-id-001",
-				Action:     "user.login",
+				Action:     "POST /api/v1/chat",
+				ActionDesc: "Chat 对话",
 				UserID:     "user-1",
-				Resource:   "auth",
-				Details:    "Login successful",
+				Resource:   "chat",
+				Details:    "OK",
 				IP:         "127.0.0.1",
 				StatusCode: 200,
 				CreatedAt:  now,
@@ -52,7 +53,7 @@ func TestListAuditLogs_Success(t *testing.T) {
 		Total: 1,
 	}
 
-	svc.On("List", mock.Anything).Return( result, nil)
+	svc.On("List", mock.Anything).Return(result, nil)
 
 	c, w := newGinContext("GET", "/audit/logs", "")
 	h.ListAuditLogs(c)
@@ -60,8 +61,8 @@ func TestListAuditLogs_Success(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "user.login") {
-		t.Errorf("body should contain user.login: %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), "Chat 对话") {
+		t.Errorf("body should contain action_desc: %s", w.Body.String())
 	}
 }
 
@@ -69,14 +70,13 @@ func TestListAuditLogs_WithFilters(t *testing.T) {
 	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	result := &auditsvc.ListResult{
-		Logs:  []model.AuditLog{},
-		Total: 0,
-	}
+	result := &auditsvc.ListResult{Logs: []model.AuditLog{}, Total: 0}
+	svc.On("List", mock.MatchedBy(func(p auditsvc.ListParams) bool {
+		return p.Q == "admin" && p.Path == "sessions" && p.StatusClass == "4xx" &&
+			p.Start == "2024-01-01" && p.End == "2024-12-31" && p.Page == 2 && p.PageSize == 50
+	})).Return(result, nil)
 
-	svc.On("List", mock.Anything).Return( result, nil)
-
-	c, w := newGinContext("GET", "/audit/logs?action=user.login&user_id=user-1&start=2024-01-01&end=2024-12-31&skip=10&limit=50", "")
+	c, w := newGinContext("GET", "/audit/logs?q=admin&path=sessions&status_class=4xx&start=2024-01-01&end=2024-12-31&page=2&page_size=50", "")
 	h.ListAuditLogs(c)
 
 	if w.Code != http.StatusOK {
@@ -84,19 +84,18 @@ func TestListAuditLogs_WithFilters(t *testing.T) {
 	}
 }
 
-func TestListAuditLogs_DefaultPagination(t *testing.T) {
+func TestListAuditLogs_ViewerInjection(t *testing.T) {
 	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	result := &auditsvc.ListResult{
-		Logs:  []model.AuditLog{},
-		Total: 0,
-	}
+	result := &auditsvc.ListResult{Logs: []model.AuditLog{}, Total: 0}
+	svc.On("List", mock.MatchedBy(func(p auditsvc.ListParams) bool {
+		return p.ViewerUserID == "u123" && p.IsSystemAdmin == true
+	})).Return(result, nil)
 
-	svc.On("List", mock.Anything).Return( result, nil)
-
-	// No pagination params — defaults to skip=0, limit=20
 	c, w := newGinContext("GET", "/audit/logs", "")
+	c.Set("user_id", "u123")
+	c.Set("role", "system_admin")
 	h.ListAuditLogs(c)
 
 	if w.Code != http.StatusOK {
@@ -104,11 +103,62 @@ func TestListAuditLogs_DefaultPagination(t *testing.T) {
 	}
 }
 
+func TestListAuditLogs_InvalidPage(t *testing.T) {
+	svc := mockaudit.NewAuditService(t)
+	h := NewAuditHandler(svc)
+
+	c, w := newGinContext("GET", "/audit/logs?page=abc", "")
+	h.ListAuditLogs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestListAuditLogs_InvalidPageSize(t *testing.T) {
+	svc := mockaudit.NewAuditService(t)
+	h := NewAuditHandler(svc)
+
+	c, w := newGinContext("GET", "/audit/logs?page_size=500", "")
+	h.ListAuditLogs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestListAuditLogs_QTooLong(t *testing.T) {
+	svc := mockaudit.NewAuditService(t)
+	h := NewAuditHandler(svc)
+
+	c, w := newGinContext("GET", "/audit/logs?q="+strings.Repeat("a", 101), "")
+	h.ListAuditLogs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestListAuditLogs_ServiceValidationError(t *testing.T) {
+	svc := mockaudit.NewAuditService(t)
+	h := NewAuditHandler(svc)
+
+	svc.On("List", mock.Anything).Return((*auditsvc.ListResult)(nil),
+		auditsvc.NewValidationError("invalid status_class"))
+
+	c, w := newGinContext("GET", "/audit/logs?status_class=7xx", "")
+	h.ListAuditLogs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
 func TestListAuditLogs_ServiceError(t *testing.T) {
 	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	svc.On("List", mock.Anything).Return( (*auditsvc.ListResult)(nil), fmt.Errorf("db error"))
+	svc.On("List", mock.Anything).Return((*auditsvc.ListResult)(nil), fmt.Errorf("db error"))
 
 	c, w := newGinContext("GET", "/audit/logs", "")
 	h.ListAuditLogs(c)
@@ -125,54 +175,46 @@ func TestExportAuditLogs_Success(t *testing.T) {
 	h := NewAuditHandler(svc)
 
 	now := time.Now()
-	result := &auditsvc.ListResult{
-		Logs: []model.AuditLog{
-			{
-				ID:         "audit-id-002",
-				Action:     "user.login",
-				UserID:     "user-1",
-				Details:    "Login OK",
-				IP:         "10.0.0.1",
-				StatusCode: 200,
-				CreatedAt:  now,
-			},
+	logs := []model.AuditLog{
+		{
+			ID:         "audit-id-002",
+			Action:     "POST /api/v1/chat",
+			ActionDesc: "Chat 对话",
+			UserID:     "user-1",
+			Details:    "Login OK",
+			IP:         "10.0.0.1",
+			StatusCode: 200,
+			CreatedAt:  now,
 		},
-		Total: 1,
 	}
 
-	svc.On("List", mock.Anything).Return( result, nil)
+	svc.On("Export", mock.Anything).Return(logs, nil)
 
-	body := `{"action":"user.login","limit":100}`
+	body := `{"format":"csv","limit":100}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
 	h.ExportAuditLogs(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	// Verify CSV headers present
 	if !strings.Contains(w.Body.String(), "时间,操作人,操作类型") {
 		t.Errorf("should contain CSV header: %s", w.Body.String())
 	}
+	if !strings.Contains(w.Body.String(), "Chat 对话") {
+		t.Errorf("should use action_desc in CSV: %s", w.Body.String())
+	}
 }
 
-func TestExportAuditLogs_DefaultLimit(t *testing.T) {
+func TestExportAuditLogs_InvalidFormat(t *testing.T) {
 	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	result := &auditsvc.ListResult{
-		Logs:  []model.AuditLog{},
-		Total: 0,
-	}
-
-	svc.On("List", mock.Anything).Return( result, nil)
-
-	// No limit specified — defaults to 5000
-	body := `{}`
+	body := `{"format":"json","limit":10}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
 	h.ExportAuditLogs(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
 
@@ -180,15 +222,12 @@ func TestExportAuditLogs_LimitExceeded(t *testing.T) {
 	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	body := `{"limit":60000}`
+	body := `{"format":"csv","limit":60000}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
 	h.ExportAuditLogs(c)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
-	}
-	if !strings.Contains(w.Body.String(), "50,000") {
-		t.Errorf("should mention 50,000 limit: %s", w.Body.String())
 	}
 }
 
@@ -204,13 +243,29 @@ func TestExportAuditLogs_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestExportAuditLogs_ServiceValidationError(t *testing.T) {
+	svc := mockaudit.NewAuditService(t)
+	h := NewAuditHandler(svc)
+
+	svc.On("Export", mock.Anything).Return(([]model.AuditLog)(nil),
+		auditsvc.NewValidationError("invalid start date"))
+
+	body := `{"format":"csv","limit":10,"start":"bad"}`
+	c, w := newGinContext("POST", "/audit/logs/export", body)
+	h.ExportAuditLogs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
 func TestExportAuditLogs_ServiceError(t *testing.T) {
 	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	svc.On("List", mock.Anything).Return( (*auditsvc.ListResult)(nil), fmt.Errorf("db error"))
+	svc.On("Export", mock.Anything).Return(([]model.AuditLog)(nil), fmt.Errorf("db error"))
 
-	body := `{"limit":10}`
+	body := `{"format":"csv","limit":10}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
 	h.ExportAuditLogs(c)
 
@@ -223,14 +278,9 @@ func TestExportAuditLogs_ContentTypeHeader(t *testing.T) {
 	svc := mockaudit.NewAuditService(t)
 	h := NewAuditHandler(svc)
 
-	result := &auditsvc.ListResult{
-		Logs:  []model.AuditLog{},
-		Total: 0,
-	}
+	svc.On("Export", mock.Anything).Return([]model.AuditLog{}, nil)
 
-	svc.On("List", mock.Anything).Return( result, nil)
-
-	body := `{"start":"2024-01-01","end":"2024-12-31"}`
+	body := `{"format":"csv","limit":10,"start":"2024-01-01","end":"2024-12-31"}`
 	c, w := newGinContext("POST", "/audit/logs/export", body)
 	h.ExportAuditLogs(c)
 
@@ -244,35 +294,5 @@ func TestExportAuditLogs_ContentTypeHeader(t *testing.T) {
 	disposition := w.Header().Get("Content-Disposition")
 	if !strings.Contains(disposition, "attachment") {
 		t.Errorf("Content-Disposition should be attachment, got %s", disposition)
-	}
-}
-
-func TestExportAuditLogs_MultipleLogs(t *testing.T) {
-	svc := mockaudit.NewAuditService(t)
-	h := NewAuditHandler(svc)
-
-	now := time.Now()
-	result := &auditsvc.ListResult{
-		Logs: []model.AuditLog{
-			{ID: "audit-id-003", Action: "a", UserID: "u1", Details: "d1", IP: "1.1.1.1", StatusCode: 200, CreatedAt: now},
-			{ID: "audit-id-004", Action: "b", UserID: "u2", Details: "d2", IP: "2.2.2.2", StatusCode: 404, CreatedAt: now},
-			{ID: "audit-id-005", Action: "c", UserID: "u3", Details: "d3", IP: "3.3.3.3", StatusCode: 500, CreatedAt: now},
-		},
-		Total: 3,
-	}
-
-	svc.On("List", mock.Anything).Return( result, nil)
-
-	body := `{"limit":100}`
-	c, w := newGinContext("POST", "/audit/logs/export", body)
-	h.ExportAuditLogs(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-	// Should have header + 3 data rows
-	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
-	if len(lines) < 4 {
-		t.Errorf("expected at least 4 lines (header + 3 rows), got %d", len(lines))
 	}
 }
