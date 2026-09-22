@@ -115,7 +115,7 @@
 | SPEC-099 | 后端语音转写服务（whisper tiny 纯 CPU，分片上传 + 结束一次性转写，替代 SPEC-095 wasm 方案） | **P15** | [spec-099-backend-voice-service.md](spec-099-backend-voice-service.md) | ✅ 已完成（2026-09-16 实现并部署验证） |
 | SPEC-100 | 优化 Token 用量埋点（session 独立统计表 + 删除级联 + session token 展示 + 时区口径修正） | **P15** | [spec-100-token-metrics-session-and-time-redundancy.md](spec-100-token-metrics-session-and-time-redundancy.md) | ✅ 已实现（2026-09-21 部署验证） |
 | SPEC-101 | Tool 用户批准执行开关（requires_approval DB 化，独立字段不入 config JSON） | **P15** | [spec-101-tool-approval-switch.md](spec-101-tool-approval-switch.md) | ✅ 已实现（2026-09-21 部署验证） |
-| SPEC-102 | 审计日志页面功能优化（搜索分页统一 + action 描述 mapping + 参数校验 + 可见性过滤） | **P15** | [spec-102-audit-log-page-optimization.md](spec-102-audit-log-page-optimization.md) | ✅ 设计定稿（D1~D9 全定稿；暂不实现） |
+| SPEC-102 | 审计日志页面功能优化（搜索分页统一 + action 描述 mapping + 参数校验 + 可见性过滤） | **P15** | [spec-102-audit-log-page-optimization.md](spec-102-audit-log-page-optimization.md) | ✅ 已实现（2026-09-22 部署验证） |
 | SPEC-103 | 纯前端国际化（i18n 翻译 + 语言切换） | **P15** | [spec-103-frontend-i18n-language-switch.md](spec-103-frontend-i18n-language-switch.md) | ✅ 设计定稿（D1~D5 全定稿；暂不实现） |
 
 ## Phase 对应与依赖
