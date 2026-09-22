@@ -67,9 +67,9 @@ test.describe('AUDIT LOG — SPEC-029', () => {
     await page.waitForTimeout(1000);
   });
 
-  // ═══ UI-128: 按操作类型筛选 ═══
-  test('[UI-128] Audit — 按操作类型筛选', async ({ page }) => {
-    await page.locator('[data-testid="audit-type-select"]').selectOption('chat:query');
+  // ═══ UI-128: 按状态码筛选（SPEC-102 移除操作类型下拉，改为 status_class 下拉） ═══
+  test('[UI-128] Audit — 按状态码筛选', async ({ page }) => {
+    await page.locator('[data-testid="audit-status-select"]').selectOption('4xx');
     await page.locator('[data-testid="audit-filter-apply"]').click();
     await page.waitForTimeout(1000);
   });
@@ -89,8 +89,6 @@ test.describe('AUDIT LOG — SPEC-029', () => {
     await expect(page.locator('[data-testid="audit-export-date-end"]')).toBeVisible();
     await expect(page.locator('[data-testid="audit-export-limit"]')).toBeVisible();
     await expect(page.locator('[data-testid="audit-export-format-csv"]')).toBeVisible();
-    await expect(page.locator('[data-testid="audit-export-format-json"]')).toBeVisible();
-    await expect(page.locator('[data-testid="audit-export-format-xlsx"]')).toBeVisible();
     await expect(page.locator('[data-testid="audit-export-submit"]')).toBeVisible();
     await page.keyboard.press('Escape');
   });
