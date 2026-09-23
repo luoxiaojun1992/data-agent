@@ -151,7 +151,7 @@
 
 ### 12.3 部署与 E2E 验证
 
-- 服务器 120.26.179.218：git pull → `docker compose build frontend`（26 页编译通过）→ `up -d frontend` → restart nginx。
+- 测试服务器：git pull → `docker compose build frontend`（26 页编译通过）→ `up -d frontend` → restart nginx。
 - SSR 验证：默认 cookie 渲染中文（19 处「登录」）；`Cookie: NEXT_LOCALE=en` 渲染英文（12 处 Email / 4 处 Sign in）——cookie 驱动 SSR 生效。
 - E2E（本地 ssh 隧道 + 系统 Chrome）：3/3 passed（9.0s）。
 

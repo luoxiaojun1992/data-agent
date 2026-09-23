@@ -13,7 +13,7 @@ SPEC-095（Chat 语音输入）用 whisper.wasm 浏览器本地转写，实测�
 
 | 根因 | 证据 |
 |---|---|
-| COOP/COEP 响应头只在**可信 origin**（HTTPS / localhost）生效 | `http://120.26.179.218` 下 `SharedArrayBuffer` = undefined |
+| COOP/COEP 响应头只在**可信 origin**（HTTPS / localhost）生效 | 纯 HTTP 公网部署下 `SharedArrayBuffer` = undefined |
 | whisper.wasm 的 pthread（std::thread）需要 SharedArrayBuffer | worker 共享内存握手失败，runtime 静默挂死（30s 无报错） |
 | 之前测试全走 ssh 隧道 localhost（可信 origin）掩盖盲区 | localhost 250ms 初始化成功 vs 线上挂死 |
 
