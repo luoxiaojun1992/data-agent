@@ -1,7 +1,7 @@
 # SPEC-103 纯前端国际化（i18n 翻译 + 语言切换）
 
-> **SPEC-103** | Status: ✅ 设计定稿（D1~D5 全定稿；暂不实现）
-> 日期：2026-09-18 立项 → 2026-09-18 设计定稿
+> **SPEC-103** | Status: ✅ 已实现（2026-09-23 实现并部署验证，commit 87c525e）
+> 日期：2026-09-18 立项 → 2026-09-18 设计定稿 → 2026-09-23 实现+部署+E2E 验证
 
 ## 1. 目标
 
@@ -129,3 +129,41 @@
 - **只翻译纯文字**：不翻译 HTML/JS 代码、代码块、markdown 源码、className、data-testid、API 路径、日期格式串等有功能语义的内容。
 - **不影响样式/结构/显示效果**：仅替换文本内容；DOM 结构、className、testid、样式规则不变。
 - **长度变化自适应**：中↔英文字长度差异大，按钮/标签/表头/弹窗/表格不得写死宽度，长英文单词允许换行（word-break），布局用 flex/min-width 保证切换后不错位、不溢出。
+
+## 12. 实现记录（2026-09-23，commit 87c525e）
+
+### 12.1 交付内容
+
+| 项 | 内容 |
+|----|------|
+| 依赖 | next-intl ^3.26.5（MIT），`createNextIntlPlugin('./lib/i18n/request.ts')` 接线 next.config.js，`output: 'standalone'` 不变 |
+| i18n 基础设施 | `lib/i18n/config.ts`（LOCALE_COOKIE='NEXT_LOCALE' / LOCALE_STORAGE_KEY='data-agent-locale' / Locale='zh'\|'en' / DEFAULT_LOCALE='zh'）+ `lib/i18n/request.ts`（getRequestConfig 读 cookie）+ `lib/i18n/messages/{zh,en}.json`（40 个命名空间，key 完全对齐 0 错位） |
+| 布局接线 | `app/layout.tsx` 改 async：`getLocale()`+`getMessages()` → `NextIntlClientProvider` 包裹；防闪烁 inline script 水合前对齐 `<html lang>`；SSR `lang={locale==='en'?'en':'zh-CN'}` + suppressHydrationWarning |
+| 切换组件 | `app/components/LanguageToggle.tsx`：写 cookie（max-age=31536000, SameSite=Lax）+ localStorage 镜像 → `startTransition(() => router.refresh())`；按钮固定显示「目标语言」（zh 显 EN / en 显 中文），置于 providers.tsx 主题切换之后 |
+| 全站翻译 | 40+ 页面/组件硬编码中文抽离为 `t()` 调用（chat/dashboard/knowledge/memory/feishu/agent×3/admin×12 等）；模块级中文常量（STATUS_LABELS 等）移入组件或改 t() 映射 |
+| E2E | `tests/ui/i18n.spec.ts` 3 用例（UI-i18n-1 默认中文 / UI-i18n-2 切换即时生效 / UI-i18n-3 cookie 持久化）——**3 passed** |
+
+### 12.2 翻译边界落实（D3/D5 审查结论）
+
+- 全站 JSX 用户可见中文清零；剩余中文均为注释（允许）。
+- 两处有意保留的非 UI 中文：`agent/page.tsx` LLM 模板提示词 `params.message`（发给后端执行，非 UI）；`admin/settings` `(使用默认值)`（后端配置比较值）。
+- 依赖中文字符串判断的逻辑改为结构化判断（如 `toast.includes('失败')` → `toast.type === 'error'`）。
+
+### 12.3 部署与 E2E 验证
+
+- 服务器 120.26.179.218：git pull → `docker compose build frontend`（26 页编译通过）→ `up -d frontend` → restart nginx。
+- SSR 验证：默认 cookie 渲染中文（19 处「登录」）；`Cookie: NEXT_LOCALE=en` 渲染英文（12 处 Email / 4 处 Sign in）——cookie 驱动 SSR 生效。
+- E2E（本地 ssh 隧道 + 系统 Chrome）：3/3 passed（9.0s）。
+
+### 12.4 E2E 环境踩坑与测试基建增强（playwright.config.ts）
+
+1. **本地浏览器版本缺失**：@playwright/test 1.61.1 需 chromium-1228，本机缓存无此版本且 CDN 下载极慢 → config 支持 `PW_CHANNEL=chrome` 复用系统 Chrome（CI 不设该变量，行为不变）。
+2. **本地代理劫持**：环境注入 `HTTP_PROXY/HTTPS_PROXY=127.0.0.1:57022`（WorkBuddy 沙箱代理），浏览器内 API 请求被代理接管 → 全部失败（「服务离线」+ 登录失败被前端 catch 误报为「邮箱或密码错误」；curl 直连不受影响）。config 支持 `PW_NO_PROXY=1` 注入 `--no-proxy-server` 强制直连。
+3. **API base 覆盖**：spec 硬编码 `API_BASE='http://data-agent:8080/api/v1'`（CI docker 网络内），支持 `API_BASE` env 覆盖供本地 ssh 隧道使用（默认值不变，CI 零影响）。
+4. **SPEC-084 遗留**：自注册已禁用（邀请制），spec 的 beforeAll 改为「校验预置用户可登录」（MongoDB 预置 `e2e-i18n@test.local`，bcrypt $2a$ cost 10，role=admin），支持 `E2E_USERNAME/E2E_PASSWORD` 覆盖。
+5. **RBAC 导航过滤**：`nav-*` 侧边栏项受 `sidebar:*` 权限过滤，预置用户无 RBAC 角色时不渲染——断言锚点改用不受权限影响的 `page-title` / `dashboard-stat-kb` / `language-toggle`。
+
+### 12.5 既有测试债务（非本 spec 范围，待专项处理）
+
+- 整个 E2E 套件（auth/invite/chat 等）仍调用 SPEC-084 已删除的 `POST /auth/register`（现 404）——CI ui-tests 的存量用例依赖需统一迁移到邀请制/预置用户模式。
+- 本地跑 E2E 时 3000 隧道须指向 nginx :80（`/api/v1` 反代在 nginx），非 frontend :3000。
