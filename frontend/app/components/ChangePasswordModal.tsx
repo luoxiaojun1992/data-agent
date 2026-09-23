@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '../../lib/api';
 import {
   modalOverlayStyle,
@@ -27,6 +28,8 @@ export default function ChangePasswordModal({
   notice?: string;
 }) {
   const { apiFetch } = useAuth();
+  const t = useTranslations('pwd');
+  const tc = useTranslations('common');
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -39,7 +42,7 @@ export default function ChangePasswordModal({
     setConfirmError('');
 
     if (newPwd !== confirmPwd) {
-      setConfirmError('两次输入的密码不一致');
+      setConfirmError(t('mismatch'));
       return;
     }
 
@@ -53,10 +56,10 @@ export default function ChangePasswordModal({
         onSuccess();
       } else {
         const d = await res.json().catch(() => ({}));
-        setError(d.error || '修改失败');
+        setError(d.error || t('changeFailed'));
       }
     } catch {
-      setError('修改失败');
+      setError(t('changeFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -65,7 +68,7 @@ export default function ChangePasswordModal({
   return (
     <div style={modalOverlayStyle} data-testid="pwd-modal" onClick={onClose}>
       <div style={modalPanelStyle} onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">修改密码</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">{t('title')}</h3>
         {notice && (
           <p
             data-testid="pwd-modal-notice"
@@ -77,7 +80,7 @@ export default function ChangePasswordModal({
         )}
 
         <div className="mb-4">
-          <label style={modalLabelStyle} htmlFor="pwd-modal-old-input">旧密码</label>
+          <label style={modalLabelStyle} htmlFor="pwd-modal-old-input">{t('oldPwd')}</label>
           <input
             id="pwd-modal-old-input"
             style={modalInputStyle}
@@ -89,7 +92,7 @@ export default function ChangePasswordModal({
         </div>
 
         <div className="mb-4">
-          <label style={modalLabelStyle} htmlFor="pwd-modal-new-input">新密码</label>
+          <label style={modalLabelStyle} htmlFor="pwd-modal-new-input">{t('newPwd')}</label>
           <input
             id="pwd-modal-new-input"
             style={modalInputStyle}
@@ -101,7 +104,7 @@ export default function ChangePasswordModal({
         </div>
 
         <div className="mb-4">
-          <label style={modalLabelStyle} htmlFor="pwd-modal-confirm-input">确认新密码</label>
+          <label style={modalLabelStyle} htmlFor="pwd-modal-confirm-input">{t('confirmPwd')}</label>
           <input
             id="pwd-modal-confirm-input"
             style={modalInputStyle}
@@ -127,7 +130,7 @@ export default function ChangePasswordModal({
             onClick={onClose}
             disabled={submitting}
           >
-            取消
+            {tc('cancel')}
           </button>
           <button
             type="button"
@@ -136,7 +139,7 @@ export default function ChangePasswordModal({
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? '提交中…' : '确认修改'}
+            {submitting ? t('submitting') : t('submit')}
           </button>
         </div>
       </div>

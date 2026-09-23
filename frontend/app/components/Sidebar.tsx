@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '../../lib/api';
 
 interface SidebarProps {
@@ -15,33 +16,34 @@ interface SidebarProps {
   onCollapseToggle?: () => void;
 }
 
-const navItems: { perm?: string; href: string; label: string; icon: string; testid: string }[] = [
+const navItems: { perm?: string; href: string; labelKey: string; icon: string; testid: string }[] = [
   { perm: 'sidebar:dashboard',
-    href: '/', label: '仪表盘', icon: '◉', testid: 'nav-dashboard' },
+    href: '/', labelKey: 'dashboard', icon: '◉', testid: 'nav-dashboard' },
   { perm: 'sidebar:chat',
-    href: '/chat', label: 'Chat 对话', icon: '💬', testid: 'nav-chat' },
+    href: '/chat', labelKey: 'chat', icon: '💬', testid: 'nav-chat' },
   { perm: 'sidebar:agent',
-    href: '/agent', label: 'Agent 任务', icon: '⚡', testid: 'nav-agent' },
+    href: '/agent', labelKey: 'agent', icon: '⚡', testid: 'nav-agent' },
   { perm: 'sidebar:hermes',
-    href: '/hermes', label: 'Hermes 探索', icon: '🔍', testid: 'nav-hermes' },
+    href: '/hermes', labelKey: 'hermes', icon: '🔍', testid: 'nav-hermes' },
   { perm: 'sidebar:knowledge',
-    href: '/knowledge', label: '知识库', icon: '📚', testid: 'nav-kb-mgmt' },
+    href: '/knowledge', labelKey: 'knowledge', icon: '📚', testid: 'nav-kb-mgmt' },
   { perm: 'sidebar:artifact',
-    href: '/artifacts', label: '产出物', icon: '📦', testid: 'nav-artifacts' },
+    href: '/artifacts', labelKey: 'artifacts', icon: '📦', testid: 'nav-artifacts' },
   { perm: 'sidebar:im',
-    href: '/im', label: 'IM 集成', icon: '🗨️', testid: 'nav-im' },
+    href: '/im', labelKey: 'im', icon: '🗨️', testid: 'nav-im' },
   { perm: 'sidebar:memory',
-    href: '/memory', label: 'Memory 检索', icon: '🧠', testid: 'nav-memory',
+    href: '/memory', labelKey: 'memory', icon: '🧠', testid: 'nav-memory',
   },
   { perm: 'sidebar:admin',
-    href: '/admin', label: '管理后台', icon: '🛠', testid: 'nav-admin' },
+    href: '/admin', labelKey: 'admin', icon: '🛠', testid: 'nav-admin' },
   // 用户中心：对所有登录用户无条件可见（SPEC-083，无 perm 字段）。
-  { href: '/profile', label: '用户中心', icon: '👤', testid: 'nav-profile' },
+  { href: '/profile', labelKey: 'profile', icon: '👤', testid: 'nav-profile' },
 ];
 
 export default function Sidebar({ username, role, onLogout, onToggle, collapsed, onCollapseToggle }: SidebarProps) {
   const pathname = usePathname();
   const { canAccess } = useAuth();
+  const t = useTranslations('nav');
 
   // Items without a perm field (用户中心) are always visible (SPEC-083).
   const visibleItems = navItems.filter(item => !item.perm || canAccess(item.perm));
@@ -55,7 +57,7 @@ export default function Sidebar({ username, role, onLogout, onToggle, collapsed,
           {!collapsed && (
             <div>
               <h1 className="text-base font-semibold text-[var(--text-primary)] whitespace-nowrap" data-testid="sidebar-logo-text">DataAgent</h1>
-              <p className="text-xs text-[var(--text-secondary)] whitespace-nowrap">企业数据分析平台</p>
+              <p className="text-xs text-[var(--text-secondary)] whitespace-nowrap">{t('subtitle')}</p>
             </div>
           )}
         </Link>
@@ -65,8 +67,8 @@ export default function Sidebar({ username, role, onLogout, onToggle, collapsed,
             className={`hidden lg:flex p-1.5 rounded-lg hover:bg-[var(--glass-hover)] text-[var(--text-secondary)] flex-shrink-0 ${collapsed ? '' : ''}`}
             onClick={onCollapseToggle}
             data-testid="sidebar-collapse-toggle"
-            aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
-            title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+            aria-label={collapsed ? t('expand') : t('collapse')}
+            title={collapsed ? t('expand') : t('collapse')}
           >
             {collapsed ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -101,7 +103,7 @@ export default function Sidebar({ username, role, onLogout, onToggle, collapsed,
               key={item.href}
               href={item.href}
               data-testid={item.testid}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? t(item.labelKey) : undefined}
               className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-${collapsed ? '2' : '4'} py-2.5 rounded-xl text-sm no-underline transition-all duration-200 ${
                 isActive
                   ? 'bg-[var(--glass-hover)] text-[var(--accent)] font-medium'
@@ -109,7 +111,7 @@ export default function Sidebar({ username, role, onLogout, onToggle, collapsed,
               }`}
             >
               <span className="text-lg flex-shrink-0">{item.icon}</span>
-              {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
+              {!collapsed && <span className="whitespace-nowrap">{t(item.labelKey)}</span>}
             </Link>
           );
         })}
@@ -124,7 +126,7 @@ export default function Sidebar({ username, role, onLogout, onToggle, collapsed,
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                {username || '未登录'}
+                {username || t('notLoggedIn')}
               </p>
               <p className="text-xs text-[var(--text-secondary)]">{role || '—'}</p>
             </div>
@@ -136,7 +138,7 @@ export default function Sidebar({ username, role, onLogout, onToggle, collapsed,
             className="w-full py-2 text-sm text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
             data-testid="nav-logout-btn"
           >
-            退出登录
+            {t('logout')}
           </button>
         )}
       </div>

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import { useAuth } from '@/lib/api';
 import { fileToAttachment, MAX_ATTACHMENT_IMAGES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_PDF_BYTES, MAX_EXCEL_BYTES, MAX_CHAT_TEXT_BYTES, stripAttachmentBlocks, type Attachment, type PdfAttachment, type ExcelAttachment } from '@/lib/attachment';
@@ -151,6 +152,7 @@ function copyToClipboard(text: string) {
 
 export default function ChatPage() {
   const { auth, apiFetch } = useAuth();
+  const t = useTranslations('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -481,13 +483,13 @@ export default function ChatPage() {
     );
 
     if (images.length > 0 && attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
-      setAttachError(`最多 ${MAX_ATTACHMENT_IMAGES} 张图片`);
+      setAttachError(t('errMaxImages', { n: MAX_ATTACHMENT_IMAGES }));
       setTimeout(() => setAttachError(''), 3000);
       return;
     }
     for (const f of images) {
       if (f.size > MAX_ATTACHMENT_IMAGE_BYTES) {
-        setAttachError(`图片 ${f.name} 超过 2MB 限制`);
+        setAttachError(t('errImageSize', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
         continue;
       }
@@ -495,7 +497,7 @@ export default function ChatPage() {
         const att = await fileToAttachment(f);
         setAttachments((prev) => (prev.length >= MAX_ATTACHMENT_IMAGES ? prev : [...prev, att]));
       } catch {
-        setAttachError('读取图片失败');
+        setAttachError(t('errReadImage'));
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -503,7 +505,7 @@ export default function ChatPage() {
     // PDF 附件：解析文字存 pdfs（发送时前置），解析图走图片附件（合并计数 ≤5）。
     for (const f of pdfFiles) {
       if (f.size > MAX_PDF_BYTES) {
-        setAttachError(`PDF ${f.name} 超过 20MB 限制`);
+        setAttachError(t('errPdfSize', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
         continue;
       }
@@ -521,7 +523,7 @@ export default function ChatPage() {
           );
         }
       } catch {
-        setAttachError(`解析 PDF ${f.name} 失败`);
+        setAttachError(t('errParsePdf', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -529,7 +531,7 @@ export default function ChatPage() {
     // Excel 附件：解析为纯文本存 excels（发送时前置）。无图片（SPEC-096）。
     for (const f of excelFiles) {
       if (f.size > MAX_EXCEL_BYTES) {
-        setAttachError(`Excel ${f.name} 超过 20MB 限制`);
+        setAttachError(t('errExcelSize', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
         continue;
       }
@@ -537,7 +539,7 @@ export default function ChatPage() {
         const { text } = await parseExcel(f);
         setExcels((prev) => [...prev, { name: f.name, text }]);
       } catch {
-        setAttachError(`解析 Excel ${f.name} 失败`);
+        setAttachError(t('errParseExcel', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -582,7 +584,7 @@ export default function ChatPage() {
         finalInput = await autoRedact(input);
       } catch (err) {
         console.error('[redact] 自动脱敏失败:', err);
-        showRedactError('自动脱敏失败，已取消发送');
+        showRedactError(t('errAutoRedact'));
         return;
       }
     }
@@ -594,7 +596,7 @@ export default function ChatPage() {
     const pdfBytes = pdfs.reduce((sum, p) => sum + enc.encode(p.text).length, 0);
     const excelBytes = excels.reduce((sum, e) => sum + enc.encode(e.text).length, 0);
     if (textBytes + pdfBytes + excelBytes > MAX_CHAT_TEXT_BYTES) {
-      setAttachError('消息文字超过 100KB 上限');
+      setAttachError(t('errTextTooLong'));
       setTimeout(() => setAttachError(''), 3000);
       return;
     }
@@ -731,7 +733,7 @@ export default function ChatPage() {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setStreaming(false);
-    setStopNotice('已停止生成');
+    setStopNotice(t('stopped'));
     setTimeout(() => setStopNotice(''), 3000);
   };
 
@@ -762,7 +764,7 @@ export default function ChatPage() {
       setInput(result);
     } catch (err) {
       console.error('[redact] 手动脱敏失败:', err);
-      showRedactError('脱敏失败，请重试');
+      showRedactError(t('errRedact'));
     } finally {
       setRedacting(false);
     }
@@ -812,7 +814,7 @@ export default function ChatPage() {
     } catch (err) {
       console.error('[voice] 语音输入失败:', err);
       setVoicePhase('idle');
-      showVoiceError(err instanceof Error ? err.message : '语音输入失败，请重试');
+      showVoiceError(err instanceof Error ? err.message : t('errVoice'));
     }
   };
 
@@ -828,9 +830,9 @@ export default function ChatPage() {
           {/* Header */}
           <div className="mb-4 flex items-center justify-between" data-testid="chat-header">
             <div>
-              <h2 className="text-2xl font-bold text-[var(--text-primary)]">Chat 对话</h2>
+              <h2 className="text-2xl font-bold text-[var(--text-primary)]">Chat</h2>
               <p className="text-sm text-[var(--text-secondary)] mt-1" data-testid="chat-session-info">
-                {sessionId ? `Session: ${sessionId.slice(0, 8)}...` : '创建新会话'}
+                {sessionId ? `Session: ${sessionId.slice(0, 8)}...` : t('newSession')}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -838,7 +840,7 @@ export default function ChatPage() {
                 onClick={newSession}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="chat-new-session-btn"
-              >新对话</button>
+              >{t('newChat')}</button>
               <ModelSelector
                 value={selectedModel}
                 onChange={setSelectedModel}
@@ -847,7 +849,7 @@ export default function ChatPage() {
               />
               <button onClick={toggleSessions}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                data-testid="chat-session-btn">📋 会话</button>
+                data-testid="chat-session-btn">{t('sessions')}</button>
             </div>
           </div>
 
@@ -857,14 +859,14 @@ export default function ChatPage() {
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                   <span className="text-5xl block mb-4">💬</span>
-                  <p className="text-lg text-[var(--text-primary)]">开始数据分析对话</p>
-                  <p className="text-sm text-[var(--text-secondary)] mt-2">输入你的数据分析需求，AI 将为你提供帮助</p>
+                  <p className="text-lg text-[var(--text-primary)]">{t('emptyTitle')}</p>
+                  <p className="text-sm text-[var(--text-secondary)] mt-2">{t('emptyHint')}</p>
                   <div className="flex flex-wrap justify-center gap-2 mt-4" data-testid="chat-prompt-row">
                     {[
-                      { text: '今日数据概览', id: 'chat-prompt-chip-0' },
-                      { text: '本月销售趋势', id: 'chat-prompt-chip-1' },
-                      { text: '同比环比分析', id: 'chat-prompt-chip-2' },
-                      { text: 'TOP10 产品', id: 'chat-prompt-chip-3' },
+                      { text: t('promptToday'), id: 'chat-prompt-chip-0' },
+                      { text: t('promptMonthly'), id: 'chat-prompt-chip-1' },
+                      { text: t('promptYoy'), id: 'chat-prompt-chip-2' },
+                      { text: t('promptTop10'), id: 'chat-prompt-chip-3' },
                     ].map((hint) => (
                       <button
                         key={hint.id}
@@ -904,7 +906,7 @@ export default function ChatPage() {
                       <span className="text-[var(--accent)]">🔧 {msg.name || 'tool'}</span>
                       {msg.args && Object.keys(msg.args).length > 0 && (
                         <details className="mt-1">
-                          <summary className="cursor-pointer text-[var(--text-secondary)]">参数</summary>
+                          <summary className="cursor-pointer text-[var(--text-secondary)]">{t('params')}</summary>
                           <pre className="mt-1 p-2 rounded text-[10px] bg-[var(--code-bg)] overflow-x-auto max-h-32">
                             {formatPayload(msg.args)}
                           </pre>
@@ -916,7 +918,7 @@ export default function ChatPage() {
                       <span className="text-green-400">✅ {msg.name || 'tool'}</span>
                       {hasPayload(msg.result) && (
                         <details className="mt-1">
-                          <summary className="cursor-pointer text-[var(--text-secondary)]">结果</summary>
+                          <summary className="cursor-pointer text-[var(--text-secondary)]">{t('result')}</summary>
                           <pre className="mt-1 p-2 rounded text-[10px] bg-[var(--code-bg)] overflow-x-auto max-h-32">
                             {formatPayload(msg.result)}
                           </pre>
@@ -961,7 +963,7 @@ export default function ChatPage() {
                             <img
                               key={idx}
                               src={src}
-                              alt={`附件 ${idx + 1}`}
+                              alt={t('attachmentAlt', { n: idx + 1 })}
                               className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-[var(--surface-20)]"
                               data-testid={`chat-msg-image-${i}-${idx}`}
                             />
@@ -975,7 +977,7 @@ export default function ChatPage() {
                     <span className="text-sm text-[var(--text-secondary)]" data-testid="chat-loading-indicator">...</span>
                   )}
                   {streaming && i === messages.length - 1 && (
-                    <span className="text-xs text-[var(--text-secondary)] ml-2" data-testid="chat-loading-text">分析中…</span>
+                    <span className="text-xs text-[var(--text-secondary)] ml-2" data-testid="chat-loading-text">{t('analyzing')}</span>
                   )}
                   <p className="text-xs opacity-60 mt-1">
                     {msg.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
@@ -991,7 +993,7 @@ export default function ChatPage() {
           {sessionId && tokenUsage !== null && (
             <div className="flex justify-end mb-2" data-testid="chat-token-usage">
               <span className="text-xs text-[var(--text-secondary)]">
-                本会话消耗 <span className="font-semibold text-[var(--text-primary)]">{tokenUsage.toLocaleString()}</span> tokens
+                {t('tokenUsagePrefix')} <span className="font-semibold text-[var(--text-primary)]">{tokenUsage.toLocaleString()}</span> {t('tokenUsageSuffix')}
               </span>
             </div>
           )}
@@ -1003,7 +1005,7 @@ export default function ChatPage() {
                 <span className="text-xs text-[var(--text-secondary)] flex-shrink-0">📦</span>
                 <div className="flex-1 flex gap-2 overflow-x-auto">
                   {sessionArtifacts.length === 0 ? (
-                    <span className="text-xs text-[var(--text-secondary)]">暂无产出物</span>
+                    <span className="text-xs text-[var(--text-secondary)]">{t('noArtifacts')}</span>
                   ) : (
                     sessionArtifacts.map((a) => (
                       <button
@@ -1023,7 +1025,7 @@ export default function ChatPage() {
                   onClick={() => router.push(`/artifacts?session_id=${sessionId}`)}
                   className="px-2 py-1 text-xs rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex-shrink-0"
                   data-testid="chat-artifacts-jump"
-                  title="查看全部产出物"
+                  title={t('viewAllArtifacts')}
                 >→</button>
               </div>
             </div>
@@ -1044,41 +1046,41 @@ export default function ChatPage() {
               <button
                 onClick={handleAttachClick}
                 disabled={streaming || attachments.length >= MAX_ATTACHMENT_IMAGES}
-                title={attachments.length >= MAX_ATTACHMENT_IMAGES ? `最多 ${MAX_ATTACHMENT_IMAGES} 张图片` : '添加附件（图片 / PDF / Excel）'}
+                title={attachments.length >= MAX_ATTACHMENT_IMAGES ? t('maxImages', { n: MAX_ATTACHMENT_IMAGES }) : t('addAttachment')}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-attach-btn"
-              >📎 附件</button>
+              >{t('attach')}</button>
               <button
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="prompt-btn"
                 onClick={() => setShowPromptModal(true)}
-              >📋 提示词</button>
+              >{t('prompt')}</button>
               <button
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="chat-enhance-btn"
                 onClick={handleEnhance}
                 disabled={enhancing}
-              >{enhancing ? '⏳ 增强中...' : '✨ 增强'}</button>
+              >{enhancing ? t('enhancing') : t('enhance')}</button>
               {/* SPEC-093: 脱敏按钮 + 自动开关（与增强按钮同行；后端 Presidio API） */}
               <button
                 onClick={handleManualRedact}
                 disabled={redacting || !input.trim()}
                 className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                 data-testid="chat-redact-btn"
-              >🛡️ 脱敏</button>
+              >{t('redact')}</button>
               {/* SPEC-099: 语音输入按钮（服务端分片上传转写；转写结果追加回填、不自动提交）。
                   非安全上下文时禁用，hover 提示原因。 */}
               <button
                 onClick={handleVoiceToggle}
                 disabled={streaming || voicePhase === 'transcribing' || !voiceSupported}
                 title={!voiceSupported
-                  ? '当前页面非安全上下文（需 HTTPS 或 localhost），麦克风不可用'
-                  : voicePhase === 'recording' ? '点击停止并转写' : '语音输入'}
+                  ? t('voiceUnsupported')
+                  : voicePhase === 'recording' ? t('voiceStop') : t('voiceInput')}
                 className={voicePhase === 'recording'
                   ? 'px-3 py-1.5 text-xs rounded-lg border border-[#ef4444] text-[#ef4444] hover:opacity-90 transition-colors disabled:opacity-40'
                   : 'px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed'}
                 data-testid="chat-voice-btn"
-              >{voicePhase === 'recording' ? '⏺️ 录制中' : voicePhase === 'transcribing' ? '⏳ 转写中' : '🎤 语音'}</button>
+              >{voicePhase === 'recording' ? t('recording') : voicePhase === 'transcribing' ? t('transcribing') : t('voice')}</button>
               <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                 <input
                   type="checkbox"
@@ -1086,7 +1088,7 @@ export default function ChatPage() {
                   onChange={toggleRedactAuto}
                   data-testid="chat-redact-auto-toggle"
                 />
-                自动脱敏
+                {t('autoRedact')}
               </label>
             </div>
 
@@ -1102,7 +1104,7 @@ export default function ChatPage() {
                     />
                     <button
                       onClick={() => removeAttachment(idx)}
-                      title="移除图片"
+                      title={t('removeImage')}
                       data-testid={`chat-attachment-remove-${idx}`}
                       className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90"
                     >✕</button>
@@ -1127,7 +1129,7 @@ export default function ChatPage() {
                     >{pdf.name}</span>
                     <button
                       onClick={() => removePdf(idx)}
-                      title="移除 PDF"
+                      title={t('removePdf')}
                       data-testid={`chat-pdf-attachment-remove-${idx}`}
                       className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90"
                     >✕</button>
@@ -1152,7 +1154,7 @@ export default function ChatPage() {
                     >{excel.name}</span>
                     <button
                       onClick={() => removeExcel(idx)}
-                      title="移除 Excel"
+                      title={t('removeExcel')}
                       data-testid={`chat-excel-attachment-remove-${idx}`}
                       className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90"
                     >✕</button>
@@ -1177,7 +1179,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入你的数据分析需求...（支持图片 / PDF / Excel 附件）"
+                placeholder={t('inputPlaceholder')}
                 rows={2}
                 className="flex-1 px-4 py-3 rounded-xl bg-transparent border-0 text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none focus:outline-none"
                 data-testid="chat-input"
@@ -1188,18 +1190,18 @@ export default function ChatPage() {
                   onClick={stopGeneration}
                   className="px-6 py-2 bg-red-500 text-white rounded-xl font-medium hover:opacity-90 transition-all self-end"
                   data-testid="chat-stop-btn"
-                >停止</button>
+                >{t('stop')}</button>
               ) : (
                 <button
                   onClick={sendMessage}
                   disabled={!input.trim() && attachments.length === 0 && pdfs.length === 0 && excels.length === 0}
                   className="px-6 py-2 bg-[var(--accent)] text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all self-end"
                   data-testid="chat-send-btn"
-                >发送</button>
+                >{t('send')}</button>
               )}
             </div>
           </div>
-          <p className="text-center text-[11px] text-[var(--text-secondary)] mt-2" data-testid="chat-ai-tips">内容由 AI 生成，请仔细核实甄别</p>
+          <p className="text-center text-[11px] text-[var(--text-secondary)] mt-2" data-testid="chat-ai-tips">{t('aiTips')}</p>
         </div>
 
         {/* Session Panel */}
@@ -1207,10 +1209,10 @@ export default function ChatPage() {
           <div className="w-72 flex-shrink-0 border-l border-[var(--border-glass)] h-full overflow-y-auto bg-[var(--bg-secondary)]/30" data-testid="session-sidebar">
             <div className="p-3">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-[var(--text-primary)]">历史会话</p>
-                <button onClick={() => setShowSessions(false)} className="text-xs text-[var(--text-secondary)]">关闭</button>
+                <p className="text-xs font-semibold text-[var(--text-primary)]">{t('history')}</p>
+                <button onClick={() => setShowSessions(false)} className="text-xs text-[var(--text-secondary)]">{t('close')}</button>
               </div>
-              <input type="text" placeholder="搜索会话..."
+              <input type="text" placeholder={t('searchSession')}
                 value={sessionSearch} onChange={e => setSessionSearch(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none mb-2"
                 data-testid="session-search" />
@@ -1226,12 +1228,12 @@ export default function ChatPage() {
                       </span>
                       <span className="flex gap-2 flex-shrink-0">
                         <button onClick={e => clearHistory(s.id, e)}
-                          title="清空聊天历史（保留会话）"
+                          title={t('clearHistoryTitle')}
                           className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                          data-testid={`session-clear-history-${s.id}`}>清空</button>
+                          data-testid={`session-clear-history-${s.id}`}>{t('clear')}</button>
                         <button onClick={e => deleteSession(s.id, e)}
                           className="text-[10px] text-red-400 hover:text-red-300"
-                          data-testid={`session-delete-${s.id}`}>归档</button>
+                          data-testid={`session-delete-${s.id}`}>{t('archive')}</button>
                       </span>
                     </div>
                     <span className="text-[var(--text-secondary)] text-[10px]" data-testid="session-item-meta">{new Date(s.created_at).toLocaleDateString()}</span>
@@ -1241,7 +1243,7 @@ export default function ChatPage() {
               {/* Archived sessions (不可点击进入聊天，仅恢复 / 彻底删除，SPEC-090) */}
               {deletedSessions.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-[10px] uppercase text-[var(--text-secondary)] mb-1" data-testid="session-archived-title">已归档</p>
+                  <p className="text-[10px] uppercase text-[var(--text-secondary)] mb-1" data-testid="session-archived-title">{t('archived')}</p>
                   <div data-testid="session-recovery-banner" className="space-y-1">
                     {deletedSessions.map(s => (
                       <div key={s.id}
@@ -1254,14 +1256,14 @@ export default function ChatPage() {
                           <span className="flex gap-2 flex-shrink-0">
                             <button onClick={() => restoreSession(s.id)}
                               className="text-[10px] text-[var(--accent)] hover:underline"
-                              data-testid="session-recovery-restore-btn">恢复</button>
+                              data-testid="session-recovery-restore-btn">{t('restore')}</button>
                             <button onClick={() => hardDeleteSession(s.id)}
                               className="text-[10px] text-red-400 hover:text-red-300"
-                              data-testid={`session-hard-delete-${s.id}`}>彻底删除</button>
+                              data-testid={`session-hard-delete-${s.id}`}>{t('hardDelete')}</button>
                           </span>
                         </div>
                         <span className="text-[var(--text-secondary)] text-[10px]" data-testid={`session-archive-meta-${s.id}`}>
-                          归档于 {s.deleted_at ? new Date(s.deleted_at).toLocaleDateString() : '-'}
+                          {t('archivedAt', { date: s.deleted_at ? new Date(s.deleted_at).toLocaleDateString() : '-' })}
                         </span>
                       </div>
                     ))}
@@ -1282,12 +1284,12 @@ export default function ChatPage() {
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPromptModal(false)} />
             <div className="relative p-6 rounded-2xl max-w-md w-full mx-4 space-y-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[var(--text-primary)]">提示词</h3>
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">{t('promptModalTitle')}</h3>
                 <button onClick={() => setShowPromptModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]" data-testid="prompt-modal-close">✕</button>
               </div>
               <div>
-                <p className="text-xs text-[var(--text-secondary)] mb-2 uppercase">系统预设</p>
-                {['今日数据概览', '本月销售趋势', '同比环比分析', 'TOP10 产品'].map((p, i) => (
+                <p className="text-xs text-[var(--text-secondary)] mb-2 uppercase">{t('systemPresets')}</p>
+                {[t('promptToday'), t('promptMonthly'), t('promptYoy'), t('promptTop10')].map((p, i) => (
                   <button key={i} onClick={() => { setInput(p); setShowPromptModal(false); }}
                     className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-5)] transition-colors"
                     data-testid={`prompt-modal-chip-${i}`}>{p}</button>
@@ -1295,7 +1297,7 @@ export default function ChatPage() {
               </div>
               {customPrompts.length > 0 && (
                 <div>
-                  <p className="text-xs text-[var(--text-secondary)] mb-2 uppercase">我的常用</p>
+                  <p className="text-xs text-[var(--text-secondary)] mb-2 uppercase">{t('myFavorites')}</p>
                   {customPrompts.map((p, i) => (
                     <button key={i} onClick={() => { setInput(p); setShowPromptModal(false); }}
                       className="w-full text-left px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-5)] transition-colors"
@@ -1304,7 +1306,7 @@ export default function ChatPage() {
                 </div>
               )}
               <div className="flex gap-2 pt-2 border-t border-[var(--border-glass)]">
-                <input type="text" placeholder="输入自定义提示词..."
+                <input type="text" placeholder={t('customPromptPlaceholder')}
                   value={newPromptText} onChange={e => setNewPromptText(e.target.value)}
                   className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none"
                   data-testid="prompt-modal-custom-input" />
@@ -1315,7 +1317,7 @@ export default function ChatPage() {
                   localStorage.setItem('customPrompts', JSON.stringify(updated));
                   setNewPromptText('');
                 }} className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-white hover:opacity-90"
-                  data-testid="prompt-modal-save-btn">保存</button>
+                  data-testid="prompt-modal-save-btn">{t('save')}</button>
               </div>
             </div>
           </div>
@@ -1335,6 +1337,7 @@ export default function ChatPage() {
 
 /** Render markdown-like content with SQL/tables inline */
 function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMsg: string | null; setCopyMsg: (v: string | null) => void }) {
+  const t = useTranslations('chat');
   const blocks = parseBlocks(content);
   return (
     <div className="text-sm space-y-3">
@@ -1348,9 +1351,9 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
                 </span>
                 <button
                   className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  onClick={() => { copyToClipboard(block.code!); setCopyMsg('已复制'); setTimeout(() => setCopyMsg(null), 2000); }}
+                  onClick={() => { copyToClipboard(block.code!); setCopyMsg(t('copied')); setTimeout(() => setCopyMsg(null), 2000); }}
                   data-testid="chat-sql-copy-btn"
-                >{copyMsg || '复制'}</button>
+                >{copyMsg || t('copy')}</button>
               </div>
               <pre className="p-3 text-xs font-mono text-[#B1E2FF] overflow-x-auto" data-testid="chat-sql-code"><code>{block.code}</code></pre>
             </div>
@@ -1397,8 +1400,8 @@ function ChatContent({ content, copyMsg, setCopyMsg }: { content: string; copyMs
               </button>
               {expanded && (
                 <div className="px-3 py-2 border-t border-[var(--border-glass)] text-xs space-y-2" data-testid="chat-tool-call-body">
-                  <div><span className="text-[var(--text-secondary)]">输入参数：</span>{block.tool.input}</div>
-                  <div><span className="text-[var(--text-secondary)]">输出结果：</span>{block.tool.output}</div>
+                  <div><span className="text-[var(--text-secondary)]">{t('toolInput')}</span>{block.tool.input}</div>
+                  <div><span className="text-[var(--text-secondary)]">{t('toolOutput')}</span>{block.tool.output}</div>
                 </div>
               )}
             </div>

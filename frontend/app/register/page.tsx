@@ -2,12 +2,15 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { getApiHost } from '../../lib/api-host';
 
 function RegisterForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
   const router = useRouter();
+  const t = useTranslations('register');
+  const tp = useTranslations('pwd');
 
   const [step, setStep] = useState<'loading' | 'invalid' | 'form'>('loading');
   const [prefillEmail, setPrefillEmail] = useState('');
@@ -29,7 +32,7 @@ function RegisterForm() {
   useEffect(() => {
     if (!token) {
       setStep('invalid');
-      setErrorMsg('缺少邀请链接参数。请使用管理员发送的邀请链接访问。');
+      setErrorMsg(t('missingToken'));
       return;
     }
 
@@ -43,14 +46,14 @@ function RegisterForm() {
           setStep('form');
         } else {
           setStep('invalid');
-          setErrorMsg('邀请链接无效、已过期或已被使用。请联系管理员获取新的邀请链接。');
+          setErrorMsg(t('invalidToken'));
         }
       })
       .catch(() => {
         setStep('invalid');
-        setErrorMsg('无法验证邀请链接，请稍后重试。');
+        setErrorMsg(t('verifyFailed'));
       });
-  }, [token]);
+  }, [token, t]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,19 +66,19 @@ function RegisterForm() {
     // Validate
     let valid = true;
     if (!username.trim() || username.trim().length < 2) {
-      setUsernameError('用户名至少 2 个字符');
+      setUsernameError(t('usernameTooShort'));
       valid = false;
     }
     if (!displayName.trim()) {
-      setDisplayNameError('请输入显示名称');
+      setDisplayNameError(t('displayNameRequired'));
       valid = false;
     }
     if (!password || password.length < 6) {
-      setPasswordError('密码至少 6 个字符');
+      setPasswordError(t('passwordTooShort'));
       valid = false;
     }
     if (password !== confirmPassword) {
-      setConfirmError('两次输入的密码不一致');
+      setConfirmError(tp('mismatch'));
       valid = false;
     }
     if (!valid) return;
@@ -96,7 +99,7 @@ function RegisterForm() {
       const data = await res.json();
 
       if (!res.ok) {
-        setSubmitError(data.error || '注册失败，请重试');
+        setSubmitError(data.error || t('registerFailed'));
         return;
       }
 
@@ -111,7 +114,7 @@ function RegisterForm() {
       }
       router.push('/chat');
     } catch {
-      setSubmitError('网络错误，请稍后重试');
+      setSubmitError(t('networkError'));
     } finally {
       setSubmitting(false);
     }
@@ -120,7 +123,7 @@ function RegisterForm() {
   if (step === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black" data-testid="register-loading">
-        <p className="text-white/60">验证邀请链接中...</p>
+        <p className="text-white/60">{t('verifying')}</p>
       </div>
     );
   }
@@ -130,7 +133,7 @@ function RegisterForm() {
       <div className="min-h-screen flex items-center justify-center bg-black" data-testid="register-invalid">
         <div className="glass p-8 w-full max-w-md text-center" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: '16px' }}>
           <div className="text-red-400 text-4xl mb-4" data-testid="register-invalid-icon">⚠</div>
-          <h2 className="text-white text-lg font-semibold mb-2" data-testid="register-invalid-title">邀请链接无效</h2>
+          <h2 className="text-white text-lg font-semibold mb-2" data-testid="register-invalid-title">{t('invalidTitle')}</h2>
           <p className="text-white/60 text-sm mb-6" data-testid="register-invalid-msg">{errorMsg}</p>
           <a
             href="/login"
@@ -138,7 +141,7 @@ function RegisterForm() {
             style={{ background: 'linear-gradient(135deg, #B1E2FF, #9381FF)', color: '#000' }}
             data-testid="register-goto-login-btn"
           >
-            返回登录
+            {t('backToLogin')}
           </a>
         </div>
       </div>
@@ -156,19 +159,19 @@ function RegisterForm() {
           <span className="text-lg font-semibold text-white">DataAgent</span>
         </div>
 
-        <h1 className="text-center mb-2 font-semibold text-white text-xl" data-testid="register-title">完成注册</h1>
+        <h1 className="text-center mb-2 font-semibold text-white text-xl" data-testid="register-title">{t('title')}</h1>
         {prefillEmail && (
-          <p className="text-center mb-6 text-sm text-white/50" data-testid="register-email-display">邀请邮箱: {prefillEmail}</p>
+          <p className="text-center mb-6 text-sm text-white/50" data-testid="register-email-display">{t('invitedEmail', { email: prefillEmail })}</p>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div data-testid="register-username-field">
-            <label className="block mb-1.5 font-semibold text-xs text-white/50">用户名</label>
+            <label className="block mb-1.5 font-semibold text-xs text-white/50">{t('username')}</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="登录时使用的用户名"
+              placeholder={t('usernamePlaceholder')}
               className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-[#B1E2FF] transition-all"
               data-testid="register-username-input"
             />
@@ -176,12 +179,12 @@ function RegisterForm() {
           </div>
 
           <div data-testid="register-displayname-field">
-            <label className="block mb-1.5 font-semibold text-xs text-white/50">显示名称</label>
+            <label className="block mb-1.5 font-semibold text-xs text-white/50">{t('displayName')}</label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="您的姓名"
+              placeholder={t('displayNamePlaceholder')}
               className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-[#B1E2FF] transition-all"
               data-testid="register-displayname-input"
             />
@@ -189,12 +192,12 @@ function RegisterForm() {
           </div>
 
           <div data-testid="register-password-field">
-            <label className="block mb-1.5 font-semibold text-xs text-white/50">密码</label>
+            <label className="block mb-1.5 font-semibold text-xs text-white/50">{t('password')}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="至少 6 个字符"
+              placeholder={t('passwordPlaceholder')}
               className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-[#B1E2FF] transition-all"
               data-testid="register-password-input"
             />
@@ -202,12 +205,12 @@ function RegisterForm() {
           </div>
 
           <div data-testid="register-confirm-field">
-            <label className="block mb-1.5 font-semibold text-xs text-white/50">确认密码</label>
+            <label className="block mb-1.5 font-semibold text-xs text-white/50">{t('confirmPassword')}</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="再次输入密码"
+              placeholder={t('confirmPlaceholder')}
               className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-[#B1E2FF] transition-all"
               data-testid="register-confirm-input"
             />
@@ -227,12 +230,12 @@ function RegisterForm() {
             style={{ background: 'linear-gradient(135deg, #B1E2FF, #9381FF)', color: '#000', fontSize: '15px' }}
             data-testid="register-submit-btn"
           >
-            {submitting ? '注册中...' : '完成注册'}
+            {submitting ? t('submitting') : t('title')}
           </button>
         </form>
 
         <p className="text-center text-xs mt-6 text-white/40">
-          已有账号？<a href="/login" className="text-[#B1E2FF] ml-1" data-testid="register-login-link">返回登录</a>
+          {t('haveAccount')}<a href="/login" className="text-[#B1E2FF] ml-1" data-testid="register-login-link">{t('backToLogin')}</a>
         </p>
       </div>
     </div>
@@ -240,10 +243,11 @@ function RegisterForm() {
 }
 
 export default function RegisterPage() {
+  const tc = useTranslations('common');
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-black">
-        <p className="text-white/60">加载中...</p>
+        <p className="text-white/60">{tc('loading')}</p>
       </div>
     }>
       <RegisterForm />

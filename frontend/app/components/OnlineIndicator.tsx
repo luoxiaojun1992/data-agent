@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { getApiHost } from '../../lib/api-host';
 
 // SPEC-079: 全局在线指示灯。挂在 RootLayout，所有页面（含登录/注册）统一
@@ -38,9 +39,9 @@ const DEP_ORDER = [
 ];
 
 const STATE_LABEL: Record<IndicatorState, string> = {
-  ok: '在线',
-  degraded: '服务降级',
-  down: '服务离线',
+  ok: 'online',
+  degraded: 'degraded',
+  down: 'offline',
 };
 
 const DOT_COLOR: Record<IndicatorState, string> = {
@@ -50,9 +51,9 @@ const DOT_COLOR: Record<IndicatorState, string> = {
 };
 
 const DEP_LABEL: Record<DepStatus, string> = {
-  up: '在线',
-  down: '离线',
-  skipped: '未启用',
+  up: 'online',
+  down: 'offline',
+  skipped: 'skipped',
 };
 
 const DEP_COLOR: Record<DepStatus, string> = {
@@ -62,6 +63,7 @@ const DEP_COLOR: Record<DepStatus, string> = {
 };
 
 export default function OnlineIndicator() {
+  const t = useTranslations('indicator');
   const [state, setState] = useState<IndicatorState>('down');
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [open, setOpen] = useState(false);
@@ -119,7 +121,7 @@ export default function OnlineIndicator() {
           className={`w-2 h-2 rounded-full ${DOT_COLOR[state]} ${state !== 'down' ? 'animate-pulse' : ''}`}
           data-testid="global-online-dot"
         />
-        <span className="text-xs text-[var(--text-secondary)]">{STATE_LABEL[state]}</span>
+        <span className="text-xs text-[var(--text-secondary)]">{t(STATE_LABEL[state])}</span>
 
         {open && (
           <div
@@ -127,7 +129,7 @@ export default function OnlineIndicator() {
             className="absolute top-full right-0 mt-2 z-[70] w-max min-w-[180px] rounded-xl border border-[var(--border-glass)] bg-[var(--bg-secondary)] px-4 py-3 shadow backdrop-blur"
           >
             {state === 'down' ? (
-              <span className="text-xs text-[var(--text-secondary)]">后端服务不可达</span>
+              <span className="text-xs text-[var(--text-secondary)]">{t('unreachable')}</span>
             ) : (
               <>
                 {health?.latency_ms != null && (
@@ -135,7 +137,7 @@ export default function OnlineIndicator() {
                     data-testid="tooltip-api-latency"
                     className="flex items-center justify-between gap-3 text-xs border-b border-[var(--border-glass)] pb-2 mb-2"
                   >
-                    <span className="text-[var(--text-secondary)]">后端 API</span>
+                    <span className="text-[var(--text-secondary)]">{t('api')}</span>
                     <span className="text-[var(--text-primary)]">{health.latency_ms}ms</span>
                   </div>
                 )}
@@ -147,7 +149,7 @@ export default function OnlineIndicator() {
                   >
                     <span className="text-[var(--text-secondary)]">{d.name}</span>
                     <span className="flex items-center gap-1.5">
-                      <span className={DEP_COLOR[d.status]}>{DEP_LABEL[d.status]}</span>
+                      <span className={DEP_COLOR[d.status]}>{t(DEP_LABEL[d.status])}</span>
                       {d.status === 'up' && d.latency_ms != null && (
                         <span className="text-[var(--text-secondary)]">{d.latency_ms}ms</span>
                       )}

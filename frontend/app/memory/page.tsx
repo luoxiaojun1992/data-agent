@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import Pagination from '../components/Pagination';
 import { useAuth } from '../../lib/api';
@@ -9,6 +10,7 @@ const PAGE_SIZE = 20;
 
 export default function MemoryPage() {
   const { auth, apiFetch } = useAuth();
+  const t = useTranslations('memory');
   const [memories, setMemories] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -67,13 +69,13 @@ export default function MemoryPage() {
       fd.append('file', blob, fileName);
       const res = await apiFetch('/knowledge/docs', { method: 'POST', body: fd });
       if (res.ok) {
-        alert('已上传到知识库');
+        alert(t('uploaded'));
       } else {
         const err = await res.json().catch(() => ({ error: 'upload failed' }));
-        alert('上传失败: ' + (err.error || res.status));
+        alert(t('uploadFailed') + (err.error || res.status));
       }
     } catch (e: any) {
-      alert('上传失败: ' + e.message);
+      alert(t('uploadFailed') + e.message);
     } finally {
       setUploading(false);
     }
@@ -85,47 +87,47 @@ export default function MemoryPage() {
       <AppLayout>
         <div className="animate-fade-in max-w-4xl">
           <button onClick={() => setDetailId(null)} className="mb-4 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-            ← 返回列表
+            {t('backToList')}
           </button>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-[var(--text-primary)]">记忆详情</h2>
+            <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('detail')}</h2>
             <button onClick={() => uploadToKnowledge(detail)} disabled={uploading}
               className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/25 disabled:opacity-40">
-              {uploading ? '上传中...' : '📤 上传到知识库'}
+              {uploading ? t('uploading') : t('uploadToKb')}
             </button>
           </div>
           {detail ? (
             <div className="space-y-4">
               <div className="p-4 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)]">
-                <div className="text-xs text-[var(--text-secondary)] mb-1">ID</div>
+                <div className="text-xs text-[var(--text-secondary)] mb-1">{t('id')}</div>
                 <div className="text-sm font-mono text-[var(--text-primary)] break-all">{extractId(detail)}</div>
               </div>
               <div className="p-4 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)]">
-                <div className="text-xs text-[var(--text-secondary)] mb-1">用户</div>
+                <div className="text-xs text-[var(--text-secondary)] mb-1">{t('user')}</div>
                 <div className="text-sm font-mono text-[var(--text-primary)]">{detail.UserEmail || detail.user_email || detail.UserID || detail.user_id}</div>
               </div>
               {detail.SessionID && (
                 <div className="p-4 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)]">
-                  <div className="text-xs text-[var(--text-secondary)] mb-1">关联会话</div>
+                  <div className="text-xs text-[var(--text-secondary)] mb-1">{t('session')}</div>
                   <div className="text-sm">
                     <div className="font-mono text-[var(--text-secondary)] text-xs mb-1">{detail.SessionID}</div>
-                    <div className="text-[var(--text-primary)]">{detail.SessionTitle || detail.session_title || '(无标题)'}</div>
+                    <div className="text-[var(--text-primary)]">{detail.SessionTitle || detail.session_title || t('noTitle')}</div>
                   </div>
                 </div>
               )}
               <div className="p-4 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)]">
-                <div className="text-xs text-[var(--text-secondary)] mb-1">创建时间</div>
+                <div className="text-xs text-[var(--text-secondary)] mb-1">{t('createdAt')}</div>
                 <div className="text-sm text-[var(--text-primary)]">{new Date(detail.CreatedAt || detail.created_at || detail.updated_at).toLocaleString()}</div>
               </div>
               <div className="p-4 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)]">
-                <div className="text-xs text-[var(--text-secondary)] mb-2">内容</div>
+                <div className="text-xs text-[var(--text-secondary)] mb-2">{t('content')}</div>
                 <div className="text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
                   {extractText(detail)}
                 </div>
               </div>
             </div>
           ) : (
-            <p className="text-[var(--text-secondary)] text-sm">记录不存在或已被删除</p>
+            <p className="text-[var(--text-secondary)] text-sm">{t('notFound')}</p>
           )}
         </div>
       </AppLayout>
@@ -135,13 +137,13 @@ export default function MemoryPage() {
   return (
     <AppLayout>
       <div className="animate-fade-in">
-        <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-4">Memory 检索</h2>
+        <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-4">{t('title')}</h2>
 
         <div className="mb-4">
           <input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="搜索记忆内容"
+            placeholder={t('searchPlaceholder')}
             className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[#B1E2FF]/50"
           />
         </div>
@@ -163,7 +165,7 @@ export default function MemoryPage() {
           })}
           {memories.length === 0 && (
             <p className="text-[var(--text-secondary)] text-sm">
-              {searchQuery ? '无匹配结果' : '无记忆数据'}
+              {searchQuery ? t('noMatch') : t('noData')}
             </p>
           )}
         </div>

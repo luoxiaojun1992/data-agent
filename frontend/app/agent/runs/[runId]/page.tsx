@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../../providers';
 import { useAuth } from '@/lib/api';
 import { stripAttachmentBlocks } from '@/lib/attachment';
@@ -27,16 +28,8 @@ interface TaskRun {
   token_tokens?: number;
 }
 
-const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
-  pending: { label: '等待中', cls: 'text-amber-400 bg-amber-400/10' },
-  running: { label: '运行中', cls: 'text-blue-400 bg-blue-400/10' },
-  completed: { label: '已完成', cls: 'text-emerald-400 bg-emerald-400/10' },
-  failed: { label: '失败', cls: 'text-red-400 bg-red-400/10' },
-  cancelled: { label: '已取消', cls: 'text-gray-400 bg-gray-400/10' },
-  queued: { label: '排队中', cls: 'text-amber-400 bg-amber-400/10' },
-};
-
 export default function RunDetailPage() {
+  const t = useTranslations('agentRun');
   const router = useRouter();
   const params = useParams<{ runId: string }>();
   const runId = params.runId;
@@ -65,8 +58,8 @@ export default function RunDetailPage() {
           try {
             const taskRes = await apiFetch(`/tasks/${data.task_id}`);
             if (taskRes.ok) {
-              const t = await taskRes.json();
-              setTask({ title: t.title, description: t.description, type: t.type });
+              const taskData = await taskRes.json();
+              setTask({ title: taskData.title, description: taskData.description, type: taskData.type });
             }
           } catch (e) {
             console.error('[run-detail] task fetch failed:', e);
@@ -138,6 +131,15 @@ export default function RunDetailPage() {
     return out;
   };
 
+  const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+    pending: { label: t('statusPending'), cls: 'text-amber-400 bg-amber-400/10' },
+    running: { label: t('statusRunning'), cls: 'text-blue-400 bg-blue-400/10' },
+    completed: { label: t('statusCompleted'), cls: 'text-emerald-400 bg-emerald-400/10' },
+    failed: { label: t('statusFailed'), cls: 'text-red-400 bg-red-400/10' },
+    cancelled: { label: t('statusCancelled'), cls: 'text-gray-400 bg-gray-400/10' },
+    queued: { label: t('statusQueued'), cls: 'text-amber-400 bg-amber-400/10' },
+  };
+
   const statusPill = (s: string) => {
     const m = STATUS_LABELS[s] || { label: s, cls: 'text-[var(--text-secondary)] bg-[var(--glass-bg)]' };
     return <span className={`text-xs px-2.5 py-1 rounded-full ${m.cls}`}>{m.label}</span>;
@@ -146,7 +148,7 @@ export default function RunDetailPage() {
   if (loading) {
     return (
       <AppLayout>
-        <div className="animate-fade-in text-center py-12 text-[var(--text-secondary)]">加载中...</div>
+        <div className="animate-fade-in text-center py-12 text-[var(--text-secondary)]">{t('loading')}</div>
       </AppLayout>
     );
   }
@@ -155,9 +157,9 @@ export default function RunDetailPage() {
     return (
       <AppLayout>
         <div className="animate-fade-in">
-          <button onClick={() => router.back()} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-4">← 返回</button>
+          <button onClick={() => router.back()} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-4">{t('back')}</button>
           <div className="glass p-12 text-center">
-            <p className="text-lg text-[var(--text-primary)]">Run 不存在或已删除</p>
+            <p className="text-lg text-[var(--text-primary)]">{t('notFound')}</p>
           </div>
         </div>
       </AppLayout>
@@ -170,7 +172,7 @@ export default function RunDetailPage() {
         <div className="mb-4 flex items-center gap-3">
           <button onClick={() => router.push(`/agent/tasks/${run.task_id}`)}
             className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            data-testid="run-back-btn">← 返回 Runs 列表</button>
+            data-testid="run-back-btn">{t('backToRuns')}</button>
         </div>
 
         <div className="mb-6 flex items-center justify-between">
@@ -187,33 +189,33 @@ export default function RunDetailPage() {
         <div className="glass p-4 mb-6" data-testid="run-meta">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
-              <p className="text-xs text-[var(--text-secondary)]">创建时间</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('createdAt')}</p>
               <p className="text-[var(--text-primary)] mt-0.5">{new Date(run.created_at).toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-xs text-[var(--text-secondary)]">完成时间</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('completedAt')}</p>
               <p className="text-[var(--text-primary)] mt-0.5">{run.completed_at ? new Date(run.completed_at).toLocaleString() : '—'}</p>
             </div>
             <div>
-              <p className="text-xs text-[var(--text-secondary)]">耗时</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('duration')}</p>
               <p className="text-[var(--text-primary)] mt-0.5">{computeDuration()}</p>
             </div>
             <div>
-              <p className="text-xs text-[var(--text-secondary)]">重试次数</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('retryCount')}</p>
               <p className="text-[var(--text-primary)] mt-0.5">{run.retry_count} / {run.max_retries}</p>
             </div>
             <div>
-              <p className="text-xs text-[var(--text-secondary)]">会话 ID</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('sessionId')}</p>
               <p className="text-[var(--text-primary)] mt-0.5 font-mono text-xs">
                 {run.session_id ? run.session_id.slice(0, 24) : '—'}
               </p>
             </div>
             <div>
-              <p className="text-xs text-[var(--text-secondary)]">状态</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('status')}</p>
               <p className="text-[var(--text-primary)] mt-0.5">{STATUS_LABELS[run.status]?.label || run.status}</p>
             </div>
             <div>
-              <p className="text-xs text-[var(--text-secondary)]">Token 消耗</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('tokenUsage')}</p>
               <p className="text-[var(--text-primary)] mt-0.5" data-testid="run-token-usage">
                 {typeof run.token_tokens === 'number' ? run.token_tokens.toLocaleString() : '—'}
               </p>
@@ -228,16 +230,16 @@ export default function RunDetailPage() {
           if (!title && !description) return null;
           return (
             <div className="glass p-4 mb-6" data-testid="run-task-detail">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📝 任务详情</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">{t('taskDetail')}</h3>
               {title && (
                 <div className="mb-2">
-                  <p className="text-xs text-[var(--text-secondary)]">标题</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{t('title')}</p>
                   <p className="text-sm text-[var(--text-primary)] mt-0.5">{title}</p>
                 </div>
               )}
               {description && (
                 <div>
-                  <p className="text-xs text-[var(--text-secondary)]">描述</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{t('description')}</p>
                   {(() => {
                     const stripped = stripAttachmentBlocks(description);
                     const pdfs = stripped.pdfs;
@@ -275,7 +277,7 @@ export default function RunDetailPage() {
         {/* Result */}
         {run.result && (
           <div className="glass p-4 mb-6" data-testid="run-result">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">📊 执行结果</h3>
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">{t('result')}</h3>
             <div className="bg-[var(--code-bg-strong)] rounded-lg p-4 max-h-96 overflow-y-auto" data-testid="run-result-content">
               <Markdown>{run.result.content || JSON.stringify(run.result, null, 2)}</Markdown>
             </div>
@@ -285,7 +287,7 @@ export default function RunDetailPage() {
         {/* Error */}
         {run.error && (
           <div className="glass p-4 mb-6 border border-red-400/30" data-testid="run-error">
-            <h3 className="text-sm font-semibold text-red-400 mb-3">⚠ 错误信息</h3>
+            <h3 className="text-sm font-semibold text-red-400 mb-3">{t('errorInfo')}</h3>
             <pre className="text-sm text-red-300 bg-black/30 rounded-lg p-4 max-h-64 overflow-y-auto whitespace-pre-wrap">
               {run.error}
             </pre>
@@ -294,13 +296,13 @@ export default function RunDetailPage() {
 
         {/* Chat history from session */}
         {chatLoading ? (
-          <div className="text-center py-6 text-[var(--text-secondary)]">加载会话记录...</div>
+          <div className="text-center py-6 text-[var(--text-secondary)]">{t('loadingChat')}</div>
         ) : (() => {
           const msgs = normalizeChatMessages(chatMessages);
           if (msgs.length === 0) return null;
           return (
             <div className="glass p-4" data-testid="run-chat">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">💬 执行会话 ({msgs.length} 条消息)</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">{t('chatSession', { count: msgs.length })}</h3>
               <div className="space-y-3 max-h-[600px] overflow-y-auto">
                 {msgs.map((msg, i) => {
                     if (msg.role === 'tool_call' || msg.role === 'tool_result') {
@@ -308,7 +310,7 @@ export default function RunDetailPage() {
                         <div key={i} className="flex justify-start">
                           <div className="max-w-[90%] rounded-lg px-3 py-2 bg-[var(--glass-bg)] border border-amber-400/20">
                             <p className="text-[10px] text-amber-400 mb-1 font-mono">
-                              {msg.role === 'tool_call' ? '🔧 Tool Call' : '📋 Tool Result'} · {msg.text.split('\n')[0]}
+                              {msg.role === 'tool_call' ? t('toolCall') : t('toolResult')} · {msg.text.split('\n')[0]}
                             </p>
                             <pre className="text-xs text-[var(--text-secondary)] max-h-48 overflow-y-auto whitespace-pre-wrap font-mono">
                               {msg.text.includes('\n') ? msg.text.substring(msg.text.indexOf('\n') + 1) : ''}
@@ -326,7 +328,7 @@ export default function RunDetailPage() {
                               : 'bg-[var(--glass-bg)] border border-[var(--border-glass)]'
                           }`}>
                           <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
-                            {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                            {msg.role === 'user' ? t('user') : t('assistant')}
                           </p>
                           <Markdown>{msg.text}</Markdown>
                         </div>

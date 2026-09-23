@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../providers';
 import { useAuth } from '@/lib/api';
 import Pagination from '../../components/Pagination';
@@ -15,6 +16,7 @@ interface ConfigItem {
 const PAGE_SIZE = 8;
 
 export default function SettingsPage() {
+  const t = useTranslations('adminSettings');
   const { auth, apiFetch } = useAuth();
 
   const [items, setItems] = useState<ConfigItem[]>([]);
@@ -78,14 +80,14 @@ export default function SettingsPage() {
         body: JSON.stringify({ key: editingKey, value: editValue, description: current?.description || '' }),
       });
       if (res.ok) {
-        showToast('已保存', 'success');
+        showToast(t('saved'), 'success');
         fetchAll();
       } else {
         const d = await res.json().catch(() => ({}));
-        showToast(d.error || '保存失败', 'error');
+        showToast(d.error || t('saveFailed'), 'error');
       }
     } catch {
-      showToast('保存失败', 'error');
+      showToast(t('saveFailed'), 'error');
     }
     setEditingKey(null);
     setSaving(false);
@@ -106,7 +108,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <AppLayout>
-        <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>加载中…</div>
+        <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>{t('loading')}</div>
       </AppLayout>
     );
   }
@@ -117,9 +119,9 @@ export default function SettingsPage() {
   return (
     <AppLayout>
       <div>
-        <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>系统设置</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>{t('title')}</h2>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-          管理全局配置参数。已保存的值覆盖默认值，默认值不能删除。
+          {t('desc')}
         </p>
 
         <div className="glass" style={{ padding: '0' }}>
@@ -127,10 +129,10 @@ export default function SettingsPage() {
             <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
-                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '320px' }}>配置项</th>
-                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>自定义值</th>
-                  <th style={{ textAlign: 'center', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '90px' }}>来源</th>
-                  <th style={{ textAlign: 'right', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '80px' }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '320px' }}>{t('colKey')}</th>
+                  <th style={{ textAlign: 'left', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colValue')}</th>
+                  <th style={{ textAlign: 'center', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '90px' }}>{t('colSource')}</th>
+                  <th style={{ textAlign: 'right', padding: '12px', color: 'var(--text-secondary)', fontWeight: 500, width: '80px' }}>{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -150,7 +152,7 @@ export default function SettingsPage() {
                             onChange={e => setEditValue(e.target.value)}
                             style={inputStyle}
                             autoFocus
-                            placeholder={c.value === '(使用默认值)' ? '输入新值...' : ''}
+                            placeholder={c.value === '(使用默认值)' ? t('inputPlaceholder') : ''}
                           />
                         ) : (
                           <span style={{ fontFamily: 'monospace', fontSize: '12px', color: c.source === 'stored' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
@@ -164,7 +166,7 @@ export default function SettingsPage() {
                           background: c.source === 'stored' ? 'rgba(92,124,250,0.15)' : 'var(--surface-6)',
                           color: c.source === 'stored' ? '#5c7cfa' : '#7A7A7A',
                         }}>
-                          {c.source === 'stored' ? '已保存' : '默认'}
+                          {c.source === 'stored' ? t('sourceStored') : t('sourceDefault')}
                         </span>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right' }}>
@@ -173,18 +175,18 @@ export default function SettingsPage() {
                             <button onClick={saveEdit} disabled={saving}
                               data-testid={`settings-save-${c.key}`}
                               style={{ padding: '4px 10px', background: 'var(--accent)', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>
-                              {saving ? '…' : '保存'}
+                              {saving ? '…' : t('save')}
                             </button>
                             <button onClick={() => setEditingKey(null)}
                               style={{ padding: '4px 10px', background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', color: '#7A7A7A', fontSize: '12px', cursor: 'pointer' }}>
-                              取消
+                              {t('cancel')}
                             </button>
                           </div>
                         ) : (
                           <button onClick={() => openEdit(c.key, c.value)}
                             data-testid={`settings-edit-${c.key}`}
                             style={{ padding: '4px 10px', background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', color: 'var(--accent)', fontSize: '12px', cursor: 'pointer' }}>
-                            编辑
+                            {t('edit')}
                           </button>
                         )}
                       </td>

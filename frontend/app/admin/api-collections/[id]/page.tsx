@@ -2,16 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../../providers';
 import { useAuth } from '../../../../lib/api';
 
-const STATUS_LABELS: Record<string, { text: string; color: string }> = {
-  pending: { text: '待审核', color: '#f59e0b' },
-  approved: { text: '已通过', color: '#10b981' },
-  rejected: { text: '已拒绝', color: '#ef4444' },
-};
-
 export default function APICollectionDetailPage() {
+  const t = useTranslations('adminApiCollectionDetail');
   const { auth, apiFetch } = useAuth();
   const { id } = useParams() as { id: string };
   const router = useRouter();
@@ -20,6 +16,12 @@ export default function APICollectionDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
+
+  const STATUS_LABELS: Record<string, { text: string; color: string }> = {
+    pending: { text: t('statusPending'), color: '#f59e0b' },
+    approved: { text: t('statusApproved'), color: '#10b981' },
+    rejected: { text: t('statusRejected'), color: '#ef4444' },
+  };
 
   const load = useCallback(async () => {
     if (!auth.hydrated) return;
@@ -56,15 +58,15 @@ export default function APICollectionDetailPage() {
     load();
   };
 
-  if (loading) return <AppLayout><div className="animate-fade-in p-8 text-[var(--text-secondary)]">加载中...</div></AppLayout>;
-  if (!collection) return <AppLayout><div className="animate-fade-in p-8 text-[var(--text-secondary)]">未找到</div></AppLayout>;
+  if (loading) return <AppLayout><div className="animate-fade-in p-8 text-[var(--text-secondary)]">{t('loading')}</div></AppLayout>;
+  if (!collection) return <AppLayout><div className="animate-fade-in p-8 text-[var(--text-secondary)]">{t('notFound')}</div></AppLayout>;
 
   const isSysAdmin = auth.role === 'system_admin';
 
   return (
     <AppLayout>
       <div className="animate-fade-in">
-        <button onClick={() => router.back()} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-4 text-sm">← 返回</button>
+        <button onClick={() => router.back()} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-4 text-sm">{t('back')}</button>
 
         <div className="mb-6">
           {editing ? (
@@ -72,8 +74,8 @@ export default function APICollectionDetailPage() {
               <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-lg font-bold" />
               <input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm" />
               <div className="flex gap-2">
-                <button onClick={handleUpdate} className="px-4 py-1.5 bg-[#B1E2FF] text-black rounded text-sm">保存</button>
-                <button onClick={() => setEditing(false)} className="px-4 py-1.5 bg-[var(--surface-10)] text-[var(--text-secondary)] rounded text-sm">取消</button>
+                <button onClick={handleUpdate} className="px-4 py-1.5 bg-[#B1E2FF] text-black rounded text-sm">{t('save')}</button>
+                <button onClick={() => setEditing(false)} className="px-4 py-1.5 bg-[var(--surface-10)] text-[var(--text-secondary)] rounded text-sm">{t('cancel')}</button>
               </div>
             </div>
           ) : (
@@ -86,14 +88,14 @@ export default function APICollectionDetailPage() {
                 </span>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setEditing(true)} className="px-3 py-1.5 bg-[var(--surface-10)] text-[var(--text-secondary)] rounded text-sm hover:bg-[var(--surface-20)]">编辑</button>
+                <button onClick={() => setEditing(true)} className="px-3 py-1.5 bg-[var(--surface-10)] text-[var(--text-secondary)] rounded text-sm hover:bg-[var(--surface-20)]">{t('edit')}</button>
                 {isSysAdmin && (
                   <div className="flex gap-2">
                     {collection.status !== 'approved' && (
-                      <button onClick={() => handleApprove('approved')} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700">通过</button>
+                      <button onClick={() => handleApprove('approved')} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700">{t('approve')}</button>
                     )}
                     {collection.status !== 'rejected' && (
-                      <button onClick={() => handleApprove('rejected')} className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700">拒绝</button>
+                      <button onClick={() => handleApprove('rejected')} className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700">{t('reject')}</button>
                     )}
                   </div>
                 )}
@@ -103,7 +105,7 @@ export default function APICollectionDetailPage() {
         </div>
 
         <div className="mt-6">
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">API 列表 ({collection.api_count})</h3>
+          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">{t('apiList', { count: collection.api_count })}</h3>
           {collection.openapi_spec?.paths && Object.keys(collection.openapi_spec.paths).length > 0 ? (
             <div className="space-y-2">
               {Object.entries(collection.openapi_spec.paths as Record<string, any>).map(([path, methods]: [string, any]) =>
@@ -117,7 +119,7 @@ export default function APICollectionDetailPage() {
               )}
             </div>
           ) : (
-            <p className="text-sm text-[var(--text-secondary)]">暂无 API 路径</p>
+            <p className="text-sm text-[var(--text-secondary)]">{t('noApiPaths')}</p>
           )}
         </div>
       </div>

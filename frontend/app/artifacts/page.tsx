@@ -2,6 +2,7 @@
 
 import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import Pagination from '../components/Pagination';
 import { useAuth } from '@/lib/api';
@@ -21,11 +22,16 @@ export default function ArtifactsPage() {
   // useSearchParams requires a Suspense boundary for static export.
   return (
     <AppLayout>
-      <Suspense fallback={<div className="text-center py-12 text-[var(--text-secondary)]">加载中...</div>}>
+      <Suspense fallback={<div className="text-center py-12 text-[var(--text-secondary)]"><LoadingFallback /></div>}>
         <ArtifactsContent />
       </Suspense>
     </AppLayout>
   );
+}
+
+function LoadingFallback() {
+  const tc = useTranslations('common');
+  return <>{tc('loading')}</>;
 }
 
 function ArtifactsContent() {
@@ -33,6 +39,9 @@ function ArtifactsContent() {
   const router = useRouter();
   const filterSessionID = searchParams.get('session_id');
   const { auth, apiFetch } = useAuth();
+  const t = useTranslations('artifacts');
+  const tn = useTranslations('nav');
+  const tc = useTranslations('common');
   const [artifacts, setArtifacts] = useState<ArtifactItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -91,11 +100,11 @@ function ArtifactsContent() {
     <div className="animate-fade-in">
       <div className="mb-6 flex items-center justify-between" data-testid="artifacts-header">
           <div>
-            <h2 className="text-2xl font-bold text-[var(--text-primary)]">产出物</h2>
+            <h2 className="text-2xl font-bold text-[var(--text-primary)]">{tn('artifacts')}</h2>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
               {filterSessionID
-                ? <>筛选 Session: <code className="text-xs">{filterSessionID.slice(0, 16)}...</code></>
-                : 'AI 生成的文件和报告'}
+                ? <>{t('filterSession')} <code className="text-xs">{filterSessionID.slice(0, 16)}...</code></>
+                : t('aiGenerated')}
             </p>
           </div>
           {filterSessionID && (
@@ -103,18 +112,18 @@ function ArtifactsContent() {
               onClick={() => router.push('/artifacts')}
               className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               data-testid="artifacts-clear-filter"
-            >← 查看全部</button>
+            >{t('viewAll')}</button>
           )}
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-[var(--text-secondary)]" data-testid="artifacts-loading">加载中...</div>
+          <div className="text-center py-12 text-[var(--text-secondary)]" data-testid="artifacts-loading">{tc('loading')}</div>
         ) : artifacts.length === 0 ? (
           <div className="glass p-12 text-center" data-testid="artifacts-empty">
             <span className="text-5xl block mb-4">📦</span>
-            <p className="text-lg text-[var(--text-primary)] mb-2">暂无产出物</p>
+            <p className="text-lg text-[var(--text-primary)] mb-2">{t('empty')}</p>
             <p className="text-sm text-[var(--text-secondary)]">
-              {filterSessionID ? '该会话内没有产出物' : '通过 Agent 任务或对话中的 PPT 生成 / Artifact 保存功能创建'}
+              {filterSessionID ? t('emptyInSession') : t('emptyHint')}
             </p>
           </div>
         ) : (

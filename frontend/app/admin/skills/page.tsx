@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../providers';
 import { useAuth } from '@/lib/api';
 import Pagination from '../../components/Pagination';
@@ -16,6 +17,7 @@ interface SkillItem {
 }
 
 export default function SkillsAdminPage() {
+  const t = useTranslations('adminSkills');
   const { apiFetch, auth } = useAuth();
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -74,7 +76,7 @@ export default function SkillsAdminPage() {
     try {
       JSON.parse(editConfig);
     } catch {
-      setEditError('JSON 格式错误');
+      setEditError(t('jsonError'));
       return;
     }
     setEditError('');
@@ -86,15 +88,15 @@ export default function SkillsAdminPage() {
         body: JSON.stringify({ enabled: editEnabled, config_json: editConfig, requires_approval: editApproval }),
       });
       if (res.ok) {
-        showToast('已保存', 'success');
+        showToast(t('saved'), 'success');
         closeEdit();
         fetchSkills();
       } else {
         const d = await res.json().catch(() => ({}));
-        setEditError(d.error || '保存失败');
+        setEditError(d.error || t('saveFailed'));
       }
     } catch {
-      setEditError('保存失败');
+      setEditError(t('saveFailed'));
     }
     setSaving(false);
   };
@@ -121,7 +123,7 @@ export default function SkillsAdminPage() {
   if (loading) {
     return (
       <AppLayout>
-        <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>加载中…</div>
+        <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>{t('loading')}</div>
       </AppLayout>
     );
   }
@@ -130,11 +132,11 @@ export default function SkillsAdminPage() {
     <AppLayout>
       <div style={{ padding: '0 0 24px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Skill 管理</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>{t('title')}</h2>
         </div>
 
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-          管理 Agent 可用的技能工具。点击技能名称可编辑其配置（JSON 格式）。
+          {t('desc')}
         </p>
 
         <div className="glass" style={{ padding: 0 }}>
@@ -142,11 +144,11 @@ export default function SkillsAdminPage() {
             <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500, width: '160px' }}>名称</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>显示名</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>描述</th>
-                  <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500, width: '80px' }}>启用</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500, width: '120px' }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500, width: '160px' }}>{t('colName')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colDisplayName')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colDescription')}</th>
+                  <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500, width: '80px' }}>{t('colEnabled')}</th>
+                  <th style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500, width: '120px' }}>{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -156,7 +158,7 @@ export default function SkillsAdminPage() {
                     <td style={{ padding: '10px 12px' }}>
                       <code style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{s.name}</code>
                       {s.requires_approval && (
-                        <span title="执行前需要用户批准" style={{ marginLeft: '6px', fontSize: '12px' }}>🔒</span>
+                        <span title={t('requiresApproval')} style={{ marginLeft: '6px', fontSize: '12px' }}>🔒</span>
                       )}
                     </td>
                     <td style={{ padding: '10px 12px', color: 'var(--text-primary)', fontWeight: 500 }}>{s.display_name}</td>
@@ -196,7 +198,7 @@ export default function SkillsAdminPage() {
                           cursor: 'pointer',
                           fontSize: '12px',
                         }}
-                      >配置</button>
+                      >{t('configure')}</button>
                     </td>
                   </tr>
                 ))}
@@ -223,27 +225,27 @@ export default function SkillsAdminPage() {
               boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
             }} onClick={e => e.stopPropagation()}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 16px 0' }}>
-                配置 <code style={{ color: 'var(--accent)' }}>{editingName}</code>
+                {t('configure')} <code style={{ color: 'var(--accent)' }}>{editingName}</code>
               </h3>
 
-              <Field label="启用状态">
+              <Field label={t('enabledStatus')}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={editEnabled} onChange={e => setEditEnabled(e.target.checked)}
                     style={{ accentColor: 'var(--accent)' }} />
-                  <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>LLM 可调用此工具</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t('llmCanCall')}</span>
                 </label>
               </Field>
 
-              <Field label="执行批准">
+              <Field label={t('approvalField')}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                   <input type="checkbox" data-testid="skill-approval-toggle" checked={editApproval}
                     onChange={e => setEditApproval(e.target.checked)}
                     style={{ accentColor: 'var(--accent)' }} />
-                  <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>执行前需要用户批准</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t('requiresApproval')}</span>
                 </label>
               </Field>
 
-              <Field label="配置 JSON">
+              <Field label={t('configJson')}>
                 <textarea
                   data-testid="skill-edit-config"
                   value={editConfig}
@@ -259,13 +261,13 @@ export default function SkillsAdminPage() {
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
                 <button onClick={closeEdit}
                   style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '6px', padding: '6px 16px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px' }}>
-                  取消</button>
+                  {t('cancel')}</button>
                 <button
                   data-testid="skill-save-btn"
                   onClick={saveConfig}
                   disabled={saving}
                   style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '6px 16px', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: saving ? 0.6 : 1 }}>
-                  {saving ? '保存中…' : '保存'}</button>
+                  {saving ? t('saving') : t('save')}</button>
               </div>
             </div>
           </div>

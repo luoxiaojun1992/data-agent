@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import SearchableSelect, { SearchableOption } from './SearchableSelect';
 import { getApiHost } from '../../lib/api-host';
 
@@ -20,6 +21,7 @@ interface ModelSelectorProps {
  * backend and shown with a "(默认)" suffix.
  */
 export default function ModelSelector({ value, onChange, disabled, token }: ModelSelectorProps) {
+  const t = useTranslations('model');
   // Track the latest bound value so the first-load auto-select (below) sees
   // the current value without re-running on every render.
   const valueRef = useRef(value);
@@ -31,7 +33,7 @@ export default function ModelSelector({ value, onChange, disabled, token }: Mode
     const base = await getApiHost();
     const url = `${base}/models/list?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
     const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('加载模型失败');
+    if (!res.ok) throw new Error(t('loadFailed'));
     const data = await res.json();
     const models: SearchableOption[] = data.models || [];
     // Auto-select the default model on the initial (empty-query) load when
@@ -42,16 +44,16 @@ export default function ModelSelector({ value, onChange, disabled, token }: Mode
       onChange(def ? def.id : models[0].id);
     }
     return models;
-  }, [token, onChange]);
+  }, [token, onChange, t]);
 
   if (disabled) {
     return (
       <span
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)]"
         data-testid="model-selector-locked"
-        title="会话已绑定模型，不可更换"
+        title={t('locked')}
       >
-        🔒 {value || '默认模型'}
+        🔒 {value || t('defaultModel')}
       </span>
     );
   }
@@ -61,13 +63,13 @@ export default function ModelSelector({ value, onChange, disabled, token }: Mode
       fetch={doFetch}
       value={value}
       onChange={onChange}
-      placeholder="选择模型…"
+      placeholder={t('placeholder')}
       dataTestid="model-selector"
       renderLabel={(item) => (
         <span>
           {item.name}
           {Array.isArray(item.is_default_for) && item.is_default_for.length > 0 && (
-            <span style={{ color: 'var(--text-secondary)' }}> (默认)</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{t('defaultSuffix')}</span>
           )}
         </span>
       )}

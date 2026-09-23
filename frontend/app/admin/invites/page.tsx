@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../providers';
 import { useAuth } from '@/lib/api';
 import Pagination from '../../components/Pagination';
@@ -27,6 +28,7 @@ export default function InvitesPage() {
 }
 
 function InvitesContent() {
+  const t = useTranslations('adminInvites');
   const { auth, apiFetch } = useAuth();
 
   const [invites, setInvites] = useState<InviteItem[]>([]);
@@ -83,7 +85,7 @@ function InvitesContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setCreateError(data.error || `创建失败 (${res.status})`);
+        setCreateError(data.error || t('createFailed', { status: res.status }));
         return;
       }
       setGeneratedURL(data.invite_url);
@@ -91,7 +93,7 @@ function InvitesContent() {
       setEmail('');
       loadInvites();
     } catch (e: any) {
-      setCreateError(`请求失败: ${e?.message || e}`);
+      setCreateError(t('requestFailed', { msg: e?.message || e }));
     } finally {
       setCreating(false);
     }
@@ -122,10 +124,10 @@ function InvitesContent() {
 
   const statusLabel = (status: string) => {
     switch (status) {
-      case 'pending': return '待使用';
-      case 'accepted': return '已注册';
-      case 'expired': return '已过期';
-      case 'revoked': return '已撤销';
+      case 'pending': return t('statusPending');
+      case 'accepted': return t('statusAccepted');
+      case 'expired': return t('statusExpired');
+      case 'revoked': return t('statusRevoked');
       default: return status;
     }
   };
@@ -134,22 +136,22 @@ function InvitesContent() {
     <div className="animate-fade-in">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="invites-page-header">邀请管理</h2>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">生成和管理邀请注册链接</p>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="invites-page-header">{t('title')}</h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">{t('desc')}</p>
         </div>
         <button
           onClick={() => { setShowForm(!showForm); setGeneratedURL(''); setCreateError(''); }}
           style={primaryButtonStyle}
           data-testid="invites-create-btn"
         >
-          + 生成邀请
+          {t('generateInvite')}
         </button>
       </div>
 
       {/* Generated URL display */}
       {generatedURL && (
         <div className="mb-6 p-4 rounded-xl bg-[#B1E2FF]/10 border border-[#B1E2FF]/20" data-testid="invites-url-display">
-          <p className="text-sm text-[var(--text-secondary)] mb-2">邀请链接已生成：</p>
+          <p className="text-sm text-[var(--text-secondary)] mb-2">{t('urlGenerated')}</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 px-3 py-2 rounded-lg bg-black/20 text-[#B1E2FF] text-sm break-all" data-testid="invites-url-text">{generatedURL}</code>
             <button
@@ -157,7 +159,7 @@ function InvitesContent() {
               className="px-3 py-2 rounded-lg text-sm font-medium bg-[#B1E2FF]/20 text-[#B1E2FF] hover:bg-[#B1E2FF]/30 transition-all"
               data-testid="invites-copy-btn"
             >
-              复制
+              {t('copy')}
             </button>
           </div>
         </div>
@@ -169,7 +171,7 @@ function InvitesContent() {
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div data-testid="invites-email-field">
-                <label className="block mb-1 text-xs text-[var(--text-secondary)]">邮箱（可选）</label>
+                <label className="block mb-1 text-xs text-[var(--text-secondary)]">{t('emailLabel')}</label>
                 <input
                   type="email"
                   value={email}
@@ -180,29 +182,29 @@ function InvitesContent() {
                 />
               </div>
               <div data-testid="invites-role-field">
-                <label className="block mb-1 text-xs text-[var(--text-secondary)]">角色</label>
+                <label className="block mb-1 text-xs text-[var(--text-secondary)]">{t('roleLabel')}</label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[#B1E2FF]"
                   data-testid="invites-role-select"
                 >
-                  <option value="user">普通用户 (user)</option>
-                  {auth.role === 'system_admin' && <option value="admin">管理员 (admin)</option>}
+                  <option value="user">{t('roleUserOption')}</option>
+                  {auth.role === 'system_admin' && <option value="admin">{t('roleAdminOption')}</option>}
                 </select>
               </div>
               <div data-testid="invites-expire-field">
-                <label className="block mb-1 text-xs text-[var(--text-secondary)]">有效期</label>
+                <label className="block mb-1 text-xs text-[var(--text-secondary)]">{t('expireLabel')}</label>
                 <select
                   value={expireHours}
                   onChange={(e) => setExpireHours(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[#B1E2FF]"
                   data-testid="invites-expire-select"
                 >
-                  <option value={24}>24 小时</option>
-                  <option value={48}>48 小时</option>
-                  <option value={168}>7 天</option>
-                  <option value={720}>30 天</option>
+                  <option value={24}>{t('hours24')}</option>
+                  <option value={48}>{t('hours48')}</option>
+                  <option value={168}>{t('days7')}</option>
+                  <option value={720}>{t('days30')}</option>
                 </select>
               </div>
             </div>
@@ -215,7 +217,7 @@ function InvitesContent() {
                 style={{ background: 'linear-gradient(135deg, #B1E2FF, #9381FF)', color: '#000' }}
                 data-testid="invites-submit-btn"
               >
-                {creating ? '生成中...' : '确认生成'}
+                {creating ? t('generating') : t('confirmGenerate')}
               </button>
               <button
                 type="button"
@@ -223,7 +225,7 @@ function InvitesContent() {
                 className="px-4 py-2 rounded-lg text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 data-testid="invites-cancel-btn"
               >
-                取消
+                {t('cancel')}
               </button>
             </div>
           </form>
@@ -234,19 +236,19 @@ function InvitesContent() {
       {error && <p className="text-red-400 mb-4 text-sm">{error}</p>}
 
       {loading ? (
-        <p className="text-[var(--text-secondary)] text-sm">加载中...</p>
+        <p className="text-[var(--text-secondary)] text-sm">{t('loading')}</p>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="invites-table">
               <thead>
                 <tr className="border-b border-[var(--surface-10)] text-left">
-                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">邮箱</th>
-                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">角色</th>
-                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">状态</th>
-                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">创建时间</th>
-                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">过期时间</th>
-                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">操作</th>
+                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">{t('colEmail')}</th>
+                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">{t('colRole')}</th>
+                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">{t('colStatus')}</th>
+                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">{t('colCreatedAt')}</th>
+                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">{t('colExpiresAt')}</th>
+                  <th className="py-3 px-4 text-[var(--text-secondary)] font-medium">{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,7 +268,7 @@ function InvitesContent() {
                           className="text-red-400 hover:text-red-300 text-xs"
                           data-testid="invites-revoke-btn"
                         >
-                          撤销
+                          {t('revoke')}
                         </button>
                       )}
                     </td>
@@ -274,7 +276,7 @@ function InvitesContent() {
                 ))}
                 {invites.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-[var(--text-secondary)]">暂无邀请记录</td>
+                    <td colSpan={6} className="py-8 text-center text-[var(--text-secondary)]">{t('empty')}</td>
                   </tr>
                 )}
               </tbody>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 
 // SearchableOption is the unified dropdown item shape. Backends return items
 // with `id` plus a display field (`name` for models/permissions,
@@ -28,6 +29,7 @@ export function useDebouncedSearch(
   fetchFn: (q: string, limit: number) => Promise<SearchableOption[]>,
   limit = 20,
 ) {
+  const t = useTranslations('select');
   const [items, setItems] = useState<SearchableOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,13 +49,13 @@ export function useDebouncedSearch(
         setItems(res || []);
         setError(null);
       } catch (e: any) {
-        setError(e?.message || '加载失败');
+        setError(e?.message || t('loadFailed'));
         setItems([]);
       } finally {
         setLoading(false);
       }
     }, delay);
-  }, [limit]);
+  }, [limit, t]);
 
   useEffect(() => {
     run('');
@@ -99,9 +101,10 @@ export default function SearchableSelect({
   disabled,
   dataTestid,
   allowEmpty,
-  emptyLabel = '无',
+  emptyLabel,
   renderLabel,
 }: SearchableSelectProps) {
+  const t = useTranslations('select');
   const [open, setOpen] = useState(false);
   const { items, loading, error, query, onSearch } = useDebouncedSearch(fetch, 20);
   const [selectedCache, setSelectedCache] = useState<SearchableOption | null>(null);
@@ -129,7 +132,7 @@ export default function SearchableSelect({
 
   const label = selectedCache
     ? optionLabel(selectedCache, labelKey)
-    : (value || placeholder || '选择…');
+    : (value || placeholder || t('choose'));
 
   return (
     <div ref={ref} style={{ position: 'relative' }} data-testid={dataTestid}>
@@ -149,7 +152,7 @@ export default function SearchableSelect({
             autoFocus
             value={query}
             onChange={e => onSearch(e.target.value)}
-            placeholder="搜索…"
+            placeholder={t('placeholder')}
             className="w-full px-3 py-2 text-xs bg-transparent border-b border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none placeholder:text-[var(--text-secondary)]"
           />
           <div className="max-h-56 overflow-y-auto">
@@ -159,13 +162,13 @@ export default function SearchableSelect({
                 onClick={() => { onChange(''); setOpen(false); }}
                 className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--glass-hover)]"
               >
-                {emptyLabel}
+                {emptyLabel ?? t('empty')}
               </button>
             )}
-            {loading && <div className="px-3 py-2 text-xs text-[var(--text-secondary)]">加载中…</div>}
+            {loading && <div className="px-3 py-2 text-xs text-[var(--text-secondary)]">{t('loading')}</div>}
             {!loading && error && <div className="px-3 py-2 text-xs text-[#ef4444]">{error}</div>}
             {!loading && !error && items.length === 0 && (
-              <div className="px-3 py-2 text-xs text-[var(--text-secondary)]">无结果</div>
+              <div className="px-3 py-2 text-xs text-[var(--text-secondary)]">{t('noResult')}</div>
             )}
             {!loading && items.map(item => (
               <button

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   modalOverlayStyle,
   modalPanelStyle,
@@ -37,6 +38,7 @@ export default function HumanChannelDialog({
 }) {
   const [selected, setSelected] = useState<string>('');
   const [text, setText] = useState('');
+  const t = useTranslations('humanChannel');
 
   const isConfirm = event.type === 'confirm';
 
@@ -50,7 +52,7 @@ export default function HumanChannelDialog({
     <div style={modalOverlayStyle} data-testid="human-channel-dialog">
       <div style={modalPanelStyle} onClick={(e) => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
-          {isConfirm ? '操作确认' : '需要您的输入'}
+          {isConfirm ? t('confirmTitle') : t('askTitle')}
         </h3>
 
         {isConfirm ? (
@@ -59,7 +61,7 @@ export default function HumanChannelDialog({
               className="text-sm text-[var(--text-secondary)] mb-5 break-words"
               data-testid="human-channel-hint"
             >
-              {event.hint || '确认执行该操作？'}
+              {event.hint || t('confirmHint')}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -68,7 +70,7 @@ export default function HumanChannelDialog({
                 data-testid="human-channel-deny"
                 onClick={() => onReply({ confirmed: false })}
               >
-                拒绝
+                {t('deny')}
               </button>
               <button
                 type="button"
@@ -76,7 +78,7 @@ export default function HumanChannelDialog({
                 data-testid="human-channel-confirm"
                 onClick={() => onReply({ confirmed: true })}
               >
-                确认
+                {t('confirm')}
               </button>
             </div>
           </>
@@ -111,14 +113,14 @@ export default function HumanChannelDialog({
 
             <div className="mb-4">
               <label style={modalLabelStyle} htmlFor="human-channel-input">
-                或直接输入
+                {t('orInput')}
               </label>
               <input
                 id="human-channel-input"
                 style={modalInputStyle}
                 data-testid="human-channel-input"
                 value={text}
-                placeholder="输入你的回答…"
+                placeholder={t('answerPlaceholder')}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -136,7 +138,7 @@ export default function HumanChannelDialog({
                 data-testid="human-channel-submit"
                 onClick={submitAsk}
               >
-                提交
+                {t('submit')}
               </button>
             </div>
           </>

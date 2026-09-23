@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../../../providers';
 import { useAuth } from '../../../../../lib/api';
 import { useDebouncedSearch, SearchableOption } from '../../../../components/SearchableSelect';
@@ -13,31 +14,32 @@ interface RBACRole { id: string; name: string; display_name: string; level: numb
 const PAGE_SIZE = 10;
 
 export default function UserRBACRolesPage() {
+  const t = useTranslations('adminUserRbac');
   const { auth, apiFetch } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [roles, setRoles] = useState<RBACRole[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2000); };
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 2000); };
 
   const fetchRoles = () => {
     apiFetch(`/admin/users/${id}/rbac-roles?page=${page}&page_size=${PAGE_SIZE}`).then(r => r.json()).then(data => {
       setRoles(data.roles || []); setTotal(data.total || 0);
-    }).catch(() => showToast('加载失败'));
+    }).catch(() => showToast(t('loadFailed'), 'error'));
   };
 
   useEffect(() => { if (auth.hydrated) fetchRoles(); }, [id, page, auth.hydrated]);
 
   const add = (roleID: string) => {
     apiFetch(`/admin/users/${id}/rbac-roles`, { method: 'POST', body: JSON.stringify({ role_id: roleID }) })
-      .then(() => { showToast('已添加'); fetchRoles(); }).catch(() => showToast('添加失败'));
+      .then(() => { showToast(t('added')); fetchRoles(); }).catch(() => showToast(t('addFailed'), 'error'));
   };
   const remove = (roleID: string) => {
     apiFetch(`/admin/users/${id}/rbac-roles/${roleID}`, { method: 'DELETE' })
-      .then(() => { showToast('已移除'); fetchRoles(); }).catch(() => showToast('移除失败'));
+      .then(() => { showToast(t('removed')); fetchRoles(); }).catch(() => showToast(t('removeFailed'), 'error'));
   };
 
   const btnSec: React.CSSProperties = { padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 14 };
@@ -46,16 +48,16 @@ export default function UserRBACRolesPage() {
   return (
     <AppLayout>
       <div style={{ maxWidth: 700, margin: '0 auto', padding: 20 }}>
-        <a href="/admin/users" style={{ color: '#5c7cfa', fontSize: 13 }}>← 返回用户管理</a>
-        <h2 style={{ fontSize: 20, fontWeight: 600, margin: '8px 0' }}>RBAC 角色管理</h2>
+        <a href="/admin/users" style={{ color: '#5c7cfa', fontSize: 13 }}>{t('backToUsers')}</a>
+        <h2 style={{ fontSize: 20, fontWeight: 600, margin: '8px 0' }}>{t('title')}</h2>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button data-testid="rbac-user-add-role-btn" onClick={() => setShowAdd(true)}
-            style={primaryButtonStyle}>+ 添加角色（{roles.length}/10）</button>
+            style={primaryButtonStyle}>{t('addRoleCount', { count: roles.length })}</button>
         </div>
 
         {roles.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>暂无关联角色</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{t('noRoles')}</p>
         ) : (
           <div>
             {roles.map((r) => (
@@ -67,7 +69,7 @@ export default function UserRBACRolesPage() {
                     background: r.level === 0 ? '#ef4444' : r.level === 1 ? '#f59e0b' : '#34d399', color: '#fff' }}>L{r.level}</span>
                   <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 8 }}>{r.name}</span>
                 </div>
-                {r.type !== 'builtin' && <button data-testid={`rbac-user-role-remove-${r.id}`} onClick={() => remove(r.id)} style={{ ...btnSm, color: '#ef4444' }}>移除</button>}
+                {r.type !== 'builtin' && <button data-testid={`rbac-user-role-remove-${r.id}`} onClick={() => remove(r.id)} style={{ ...btnSm, color: '#ef4444' }}>{t('remove')}</button>}
               </div>
             ))}
           </div>
@@ -80,7 +82,7 @@ export default function UserRBACRolesPage() {
         )}
 
         {toast && <div style={{ position: 'fixed', bottom: 20, right: 20, padding: '10px 20px', borderRadius: 8,
-          background: toast.includes('失败') ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast}</div>}
+          background: toast.type === 'error' ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast.msg}</div>}
       </div>
     </AppLayout>
   );
@@ -97,9 +99,10 @@ function AddRoleModal({ apiFetch, userId, maxReached, onAdd, onClose }: {
   onAdd: (roleId: string) => void;
   onClose: () => void;
 }) {
+  const tm = useTranslations('adminUserRbac');
   const fetchAvail = async (q: string, limit: number): Promise<SearchableOption[]> => {
     const res = await apiFetch(`/admin/rbac/roles?limit=${limit}&exclude_user_id=${userId}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
-    if (!res.ok) throw new Error('加载失败');
+    if (!res.ok) throw new Error(tm('loadFailed'));
     const data = await res.json();
     return (data.roles || []) as SearchableOption[];
   };
@@ -113,13 +116,13 @@ function AddRoleModal({ apiFetch, userId, maxReached, onAdd, onClose }: {
 
   return (
     <div style={mo} onClick={onClose}><div style={mc} onClick={e => e.stopPropagation()}>
-      <h3 style={{ marginBottom: 12 }}>添加角色</h3>
-      {maxReached && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>已达到上限 10 个</p>}
-      <input style={inp} placeholder="搜索角色..." value={query} onChange={e => onSearch(e.target.value)} />
+      <h3 style={{ marginBottom: 12 }}>{tm('addRoleTitle')}</h3>
+      {maxReached && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{tm('limitReached')}</p>}
+      <input style={inp} placeholder={tm('searchPlaceholder')} value={query} onChange={e => onSearch(e.target.value)} />
       <div style={{ maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
-        {loading && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>加载中...</p>}
+        {loading && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{tm('loading')}</p>}
         {!loading && error && <p style={{ color: '#ef4444', fontSize: 13 }}>{error}</p>}
-        {!loading && !error && items.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>无结果</p>}
+        {!loading && !error && items.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{tm('noResult')}</p>}
         {!loading && items.map((r) => (
           <div key={r.id} data-testid={`rbac-avail-role-${r.id}`}
             style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--surface-6)' }}>
@@ -128,11 +131,11 @@ function AddRoleModal({ apiFetch, userId, maxReached, onAdd, onClose }: {
               <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, marginLeft: 8,
                 background: r.level === 0 ? '#ef4444' : r.level === 1 ? '#f59e0b' : '#34d399', color: '#fff' }}>L{r.level}</span>
             </div>
-            <button data-testid={`rbac-user-add-role-${r.id}`} onClick={() => onAdd(r.id)} style={{ ...btnSm, color: '#5c7cfa' }} disabled={maxReached}>添加</button>
+            <button data-testid={`rbac-user-add-role-${r.id}`} onClick={() => onAdd(r.id)} style={{ ...btnSm, color: '#5c7cfa' }} disabled={maxReached}>{tm('add')}</button>
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 12, textAlign: 'right' }}><button onClick={onClose} style={btnSec}>关闭</button></div>
+      <div style={{ marginTop: 12, textAlign: 'right' }}><button onClick={onClose} style={btnSec}>{tm('close')}</button></div>
     </div></div>
   );
 }

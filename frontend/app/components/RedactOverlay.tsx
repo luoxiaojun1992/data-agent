@@ -1,10 +1,13 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
+
 // RedactOverlay — 脱敏中弹窗动画（SPEC-093 §5.3.1）。
 // 全屏半透明遮罩 + 中央安全盾牌 + 环绕光环 + 「脱敏中…」。
 // 纯 CSS 动画（无额外依赖）；不可手动关闭，由调用方控制渲染。
 
 export default function RedactOverlay() {
+  const t = useTranslations('redact');
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
@@ -70,7 +73,7 @@ export default function RedactOverlay() {
         </div>
 
         <p className="text-sm font-medium" style={{ color: 'var(--text-primary, #fff)' }}>
-          脱敏中…
+          {t('redacting')}
         </p>
       </div>
     </div>

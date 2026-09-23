@@ -1,22 +1,24 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import { useAuth, ADMIN_MENU_PERMS } from '../../lib/api';
 
-const ENTRIES = [
-  { title: '模型配置', desc: '管理 LLM 模型配置与参数', icon: '🤖', href: '/admin/models', perm: ADMIN_MENU_PERMS.models },
-  { title: 'Skill 管理', desc: '管理 Agent 技能工具与配置', icon: '🔧', href: '/admin/skills', perm: ADMIN_MENU_PERMS.skills },
-  { title: 'API 管理', desc: '管理外部 API 集合注册与审批', icon: '🔌', href: '/admin/api-collections', perm: ADMIN_MENU_PERMS.apiCollections },
-  { title: '用户管理', desc: '用户 CRUD 与角色分配', icon: '👥', href: '/admin/users', perm: ADMIN_MENU_PERMS.users },
-  { title: 'RBAC 管理', desc: '角色与权限配置', icon: '🛡️', href: '/admin/rbac', perm: ADMIN_MENU_PERMS.rbac },
-  { title: '邀请管理', desc: '生成和管理邀请注册链接', icon: '📨', href: '/admin/invites', perm: ADMIN_MENU_PERMS.invites },
-  { title: '审计日志', desc: '查看系统操作审计记录', icon: '📋', href: '/admin/audit', perm: ADMIN_MENU_PERMS.audit },
-  { title: '系统设置', desc: '全局配置参数管理', icon: '⚙', href: '/admin/settings', perm: ADMIN_MENU_PERMS.settings },
-];
-
 export default function AdminPage() {
+  const t = useTranslations('admin');
   const { auth } = useAuth();
+
+  const ENTRIES = [
+    { title: t('modelsTitle'), desc: t('modelsDesc'), icon: '🤖', href: '/admin/models', perm: ADMIN_MENU_PERMS.models },
+    { title: t('skillsTitle'), desc: t('skillsDesc'), icon: '🔧', href: '/admin/skills', perm: ADMIN_MENU_PERMS.skills },
+    { title: t('apiTitle'), desc: t('apiDesc'), icon: '🔌', href: '/admin/api-collections', perm: ADMIN_MENU_PERMS.apiCollections },
+    { title: t('usersTitle'), desc: t('usersDesc'), icon: '👥', href: '/admin/users', perm: ADMIN_MENU_PERMS.users },
+    { title: t('rbacTitle'), desc: t('rbacDesc'), icon: '🛡️', href: '/admin/rbac', perm: ADMIN_MENU_PERMS.rbac },
+    { title: t('invitesTitle'), desc: t('invitesDesc'), icon: '📨', href: '/admin/invites', perm: ADMIN_MENU_PERMS.invites },
+    { title: t('auditTitle'), desc: t('auditDesc'), icon: '📋', href: '/admin/audit', perm: ADMIN_MENU_PERMS.audit },
+    { title: t('settingsTitle'), desc: t('settingsDesc'), icon: '⚙', href: '/admin/settings', perm: ADMIN_MENU_PERMS.settings },
+  ];
 
   const visible = ENTRIES.filter(e => auth.permissions.includes(e.perm));
 
@@ -24,8 +26,8 @@ export default function AdminPage() {
     <AppLayout>
       <div className="animate-fade-in">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">管理后台</h2>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">系统配置与用户管理</p>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('title')}</h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">{t('desc')}</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {visible.map((item) => (

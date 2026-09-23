@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import Pagination from '../../components/Pagination';
@@ -10,15 +11,16 @@ import { primaryButtonStyle, modalPanelStyle } from '../../components/ui';
 const MASK = '••••••••••';
 
 // Canonical use cases exposed by backend (per-use-case defaults; one default per use case).
-const USE_CASES: { value: string; label: string }[] = [
-  { value: 'chat', label: 'Chat' },
-  { value: 'task', label: 'Task' },
-  { value: 'enhance', label: 'Enhance 增强' },
-  { value: 'compaction', label: 'Compaction 压缩' },
-  { value: 'kb_chunking', label: 'KB Chunking 索引' },
-  { value: 'kb_image', label: 'KB 图片解析' },
-  { value: 'intent_check', label: 'Intent 意图判断' },
-  { value: 'relevance_check', label: 'Relevance 相关性检查' },
+// Labels are resolved via i18n inside UseCaseChips (uc_<value> keys).
+const USE_CASE_VALUES: string[] = [
+  'chat',
+  'task',
+  'enhance',
+  'compaction',
+  'kb_chunking',
+  'kb_image',
+  'intent_check',
+  'relevance_check',
 ];
 
 type ModelEntry = {
@@ -62,6 +64,7 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 export default function ModelsPage() {
+  const t = useTranslations('adminModels');
   const { auth, apiFetch } = useAuth();
 
   // List + UI state
@@ -139,12 +142,12 @@ export default function ModelsPage() {
 
   // 搜索防抖（SPEC-075：后端化）。
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setDebouncedSearch(search);
       setLLMPage(1);
       setEmbeddingPage(1);
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [search]);
 
   useEffect(() => {
@@ -158,12 +161,12 @@ export default function ModelsPage() {
 
   const deleteModel = async (id: string | undefined) => {
     if (!id) return;
-    if (!confirm('确定删除该模型？')) return;
+    if (!confirm(t('deleteConfirm'))) return;
     try {
       const res = await apiFetch(`/admin/models/${id}`, { method: 'DELETE' });
-      if (res.ok) { showToast('已删除', 'success'); fetchLLMList(); fetchEmbeddingList(); }
-      else showToast('删除失败', 'error');
-    } catch { showToast('删除失败', 'error'); }
+      if (res.ok) { showToast(t('deleted'), 'success'); fetchLLMList(); fetchEmbeddingList(); }
+      else showToast(t('deleteFailed'), 'error');
+    } catch { showToast(t('deleteFailed'), 'error'); }
   };
 
   const setDefaultModel = async (id: string, useCases: string[] = []) => {
@@ -174,13 +177,13 @@ export default function ModelsPage() {
         body: JSON.stringify({ use_cases: useCases }),
       });
       if (res.ok) {
-        const msg = useCases.length ? `已设为默认 (${useCases.join('/')})` : '已设为默认';
+        const msg = useCases.length ? t('setDefaultWith', { useCases: useCases.join('/') }) : t('setDefault');
         showToast(msg, 'success');
         fetchLLMList();
         fetchEmbeddingList();
       }
-      else showToast('设置失败', 'error');
-    } catch { showToast('设置失败', 'error'); }
+      else showToast(t('setFailed'), 'error');
+    } catch { showToast(t('setFailed'), 'error'); }
   };
 
   const unsetDefault = async (useCases: string[]) => {
@@ -191,12 +194,12 @@ export default function ModelsPage() {
         body: JSON.stringify({ use_cases: useCases }),
       });
       if (res.ok) {
-        showToast('已取消默认', 'success');
+        showToast(t('unsetDefault'), 'success');
         fetchLLMList();
         fetchEmbeddingList();
       }
-      else showToast('取消失败', 'error');
-    } catch { showToast('取消失败', 'error'); }
+      else showToast(t('unsetFailed'), 'error');
+    } catch { showToast(t('unsetFailed'), 'error'); }
   };
 
   const openEdit = async (m: ModelEntry) => {
@@ -235,7 +238,7 @@ export default function ModelsPage() {
 
   const saveEdit = async () => {
     if (!editForm) return;
-    if (!editForm.name.trim()) { showToast('名称必填', 'error'); return; }
+    if (!editForm.name.trim()) { showToast(t('nameRequired'), 'error'); return; }
     try {
       const body: any = {
         name: editForm.name,
@@ -255,13 +258,13 @@ export default function ModelsPage() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        showToast('已保存', 'success');
+        showToast(t('saved'), 'success');
         closeEdit();
         fetchLLMList();
         fetchEmbeddingList();
       }
-      else { const d = await res.json().catch(() => ({})); showToast(d.error || '保存失败', 'error'); }
-    } catch { showToast('保存失败', 'error'); }
+      else { const d = await res.json().catch(() => ({})); showToast(d.error || t('saveFailed'), 'error'); }
+    } catch { showToast(t('saveFailed'), 'error'); }
   };
 
   const closeAdd = () => {
@@ -292,7 +295,7 @@ export default function ModelsPage() {
   };
 
   const addModel = async () => {
-    if (!editForm || !editForm.name.trim()) { showToast('名称必填', 'error'); return; }
+    if (!editForm || !editForm.name.trim()) { showToast(t('nameRequired'), 'error'); return; }
     try {
       const body: any = {
         name: editForm.name,
@@ -312,12 +315,12 @@ export default function ModelsPage() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        showToast('已添加', 'success');
+        showToast(t('added'), 'success');
         closeAdd();
         fetchLLMList();
         fetchEmbeddingList();
-      } else { const d = await res.json().catch(() => ({})); showToast(d.error || '添加失败', 'error'); }
-    } catch { showToast('添加失败', 'error'); }
+      } else { const d = await res.json().catch(() => ({})); showToast(d.error || t('addFailed'), 'error'); }
+    } catch { showToast(t('addFailed'), 'error'); }
   };
 
   const saveHermes = async () => {
@@ -334,24 +337,24 @@ export default function ModelsPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(f),
         });
-        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `保存 ${f.key} 失败`); }
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || t('saveKeyFailed', { key: f.key })); }
       }
-      showToast('Hermes 配置已保存', 'success');
+      showToast(t('hermesSaved'), 'success');
       setHermesApiKey('');
       setHermesKeyVisible(false);
-    } catch (e: any) { showToast(e?.message || '保存失败', 'error'); }
+    } catch (e: any) { showToast(e?.message || t('saveFailed'), 'error'); }
   };
 
   return (
     <AppLayout>
       <div className="animate-fade-in">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">模型配置</h2>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('title')}</h2>
           <button
             data-testid="model-add-btn"
             onClick={openAdd}
             style={primaryButtonStyle}
-          >+ 新增模型</button>
+          >{t('addModel')}</button>
         </div>
 
         {/* Toast */}
@@ -365,7 +368,7 @@ export default function ModelsPage() {
         {/* Search */}
         <input
           type="text"
-          placeholder="搜索模型..."
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full mb-3 px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none"
@@ -373,33 +376,33 @@ export default function ModelsPage() {
         />
 
         {/* LLM Model List Table */}
-        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 mt-4">LLM 模型</h3>
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 mt-4">{t('llmModels')}</h3>
         <div className="glass mb-6" style={{ padding: 0 }} data-testid="model-list-card">
           <div style={{ overflowX: 'auto' }} data-testid="model-list-table">
             <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>模型</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>接口地址</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>密钥</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>系统提示词</th>
-                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>上下文</th>
-                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>最大输出</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>默认 Use Case</th>
-                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colModel')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colBaseUrl')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colApiKey')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colInstruction')}</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colContext')}</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colMaxTokens')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colDefaultUseCase')}</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {llmList.length === 0 && (
                   <tr><td colSpan={8} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }} data-testid="model-list-empty">
-                    暂无模型 — 点击右上角「+ 新增模型」创建
+                    {t('llmEmpty')}
                   </td></tr>
                 )}
                 {llmList.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
                   const isRevealed = revealedKeys.has(rowId);
-                  const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
+                  const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : t('notSet');
                   return (
                     <tr key={rowId} style={{ borderBottom: '1px solid var(--surface-5)' }} data-testid={`model-list-row-${i}`}>
                       <td style={{ padding: '6px 8px' }}>
@@ -423,7 +426,7 @@ export default function ModelsPage() {
                                 else next.add(rowId);
                                 return next;
                               })}
-                              title={isRevealed ? '隐藏' : '查看明文'}
+                              title={isRevealed ? t('hide') : t('showPlaintext')}
                               style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
                             ><EyeIcon open={isRevealed} /></button>
                           )}
@@ -441,7 +444,7 @@ export default function ModelsPage() {
                           current={(m.is_default_for || []) as string[]}
                           isGlobal={!!m.is_default}
                           modelId={rowId}
-                          onClear={() => setDefaultModel(rowId, USE_CASES.map(u => u.value))}
+                          onClear={() => setDefaultModel(rowId, USE_CASE_VALUES)}
                           onToggle={(uc) => {
                             const set = new Set<string>(m.is_default_for || []);
                             if (set.has(uc)) set.delete(uc); else set.add(uc);
@@ -454,12 +457,12 @@ export default function ModelsPage() {
                           data-testid={`model-list-edit-${i}`}
                           onClick={() => openEdit(m)}
                           style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', marginRight: '6px', padding: 0 }}
-                        >编辑</button>
+                        >{t('edit')}</button>
                         <button
                           data-testid={`model-list-delete-${i}`}
                           onClick={() => deleteModel(m.id)}
                           style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: 0 }}
-                        >删除</button>
+                        >{t('delete')}</button>
                       </td>
                     </tr>
                   );
@@ -474,28 +477,28 @@ export default function ModelsPage() {
         )}
 
         {/* Embedding Model List */}
-        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 mt-6">Embedding 模型</h3>
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 mt-6">{t('embeddingModels')}</h3>
         <div className="glass mb-6" style={{ padding: 0 }} data-testid="embedding-list-card">
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>模型</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>接口地址</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>密钥</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>默认</th>
-                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colModel')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colBaseUrl')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colApiKey')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colDefault')}</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {embeddingList.length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }} data-testid="embedding-list-empty">暂无 embedding 模型 — 新增模型时选 Embedding 类型</td></tr>
+                  <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }} data-testid="embedding-list-empty">{t('embeddingEmpty')}</td></tr>
                 )}
                 {embeddingList.map((m, i) => {
                   if (!m.id) return null;
                   const rowId = m.id;
                   const isRevealed = revealedKeys.has(rowId);
-                  const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : '未设置';
+                  const keyDisplay = m.api_key ? (isRevealed ? m.api_key : MASK) : t('notSet');
                   // Backend ModelEntry only exposes IsDefaultFor ([]string), not a
                   // legacy IsDefault bool. For embedding entries the single
                   // "default" concept maps to membership of "embedding" in that
@@ -522,7 +525,7 @@ export default function ModelsPage() {
                                 else next.add(rowId);
                                 return next;
                               })}
-                              title={isRevealed ? '隐藏' : '查看明文'}
+                              title={isRevealed ? t('hide') : t('showPlaintext')}
                               style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
                             ><EyeIcon open={isRevealed} /></button>
                           )}
@@ -538,27 +541,27 @@ export default function ModelsPage() {
                                 onChange={e => { if (e.target.value) setDefaultModel(e.target.value); e.target.value = ''; }}
                                 style={{ background: 'transparent', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '4px', padding: '2px 6px', color: '#10b981', fontSize: '11px', cursor: 'pointer' }}
                               >
-                                <option value="" style={{ color: '#000' }}>✓ 默认 · 切换</option>
+                                <option value="" style={{ color: '#000' }}>{t('defaultSwitch')}</option>
                                 {embeddingList.filter(o => o.id !== rowId).map(o => (
                                   <option key={o.id} value={o.id!} style={{ color: '#000' }}>{o.name || o.id}</option>
                                 ))}
                               </select>
                             ) : (
-                              <span style={{ color: '#10b981', fontSize: '11px' }}>✓ 默认</span>
+                              <span style={{ color: '#10b981', fontSize: '11px' }}>{t('defaultMark')}</span>
                             )}
                             <button
                               data-testid={`embedding-list-unset-default-${i}`}
                               onClick={() => unsetDefault(['embedding'])}
-                              title="取消默认"
+                              title={t('unsetDefaultTitle')}
                               style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px 6px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}
-                            >取消</button>
+                            >{t('cancel')}</button>
                           </div>
                         ) : (
                           <button
                           data-testid={`embedding-list-set-default-${i}`}
                             onClick={() => setDefaultModel(rowId)}
                           style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '4px', padding: '2px 8px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px' }}
-                          >设为默认</button>
+                          >{t('setAsDefault')}</button>
                         )}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -566,12 +569,12 @@ export default function ModelsPage() {
                           data-testid={`embedding-list-edit-${i}`}
                           onClick={() => openEdit(m)}
                           style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', marginRight: '6px', padding: 0 }}
-                        >编辑</button>
+                        >{t('edit')}</button>
                         <button
                           data-testid={`embedding-list-delete-${i}`}
                           onClick={() => deleteModel(m.id)}
                           style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: 0 }}
-                        >删除</button>
+                        >{t('delete')}</button>
                       </td>
                     </tr>
                   );
@@ -588,7 +591,7 @@ export default function ModelsPage() {
         {/* Hermes 独立配置卡片 */}
         <div className="glass" style={{ padding: '24px', marginTop: '20px' }} data-testid="hermes-config-card">
           <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
-            Hermes 配置
+            {t('hermesConfig')}
           </h3>
 
           <Field label="Hermes URL">
@@ -602,13 +605,13 @@ export default function ModelsPage() {
                 type={hermesKeyVisible ? 'text' : 'password'}
                 value={hermesApiKey}
                 onChange={e => setHermesApiKey(e.target.value)}
-                placeholder="输入 Hermes API Key"
+                placeholder={t('hermesApiKeyPlaceholder')}
                 style={{ ...inputStyle, flex: 1 }}
               />
               <button
                 data-testid="hermes-api-key-eye-toggle"
                 onClick={toggleHermesVisibility}
-                title={hermesKeyVisible ? '隐藏' : '查看明文'}
+                title={hermesKeyVisible ? t('hide') : t('showPlaintext')}
                 style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
               ><EyeIcon open={hermesKeyVisible} /></button>
             </div>
@@ -619,7 +622,7 @@ export default function ModelsPage() {
               data-testid="hermes-save-btn"
               onClick={saveHermes}
               className="px-4 py-2 text-sm rounded-lg bg-[var(--accent)] text-white hover:opacity-90"
-            >保存</button>
+            >{t('save')}</button>
           </div>
         </div>
 
@@ -629,14 +632,14 @@ export default function ModelsPage() {
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeEdit} />
             <div className="relative max-w-lg w-full mx-4 space-y-3" style={{ ...modalPanelStyle, maxHeight: '90vh', overflowY: 'auto' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                {editingId !== null ? '编辑模型' : '新增模型'}
+                {editingId !== null ? t('editModel') : t('addModelTitle')}
               </h3>
 
-              <Field label="名称">
-                <input data-testid="model-edit-name" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} placeholder="如 gpt-4o / deepseek-v4-pro" style={inputStyle} />
+              <Field label={t('nameLabel')}>
+                <input data-testid="model-edit-name" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} placeholder={t('namePlaceholder')} style={inputStyle} />
               </Field>
 
-              <Field label="模型类型">
+              <Field label={t('modelTypeLabel')}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {([
                     { value: 'llm', label: 'LLM' },
@@ -673,11 +676,11 @@ export default function ModelsPage() {
                 </div>
               </Field>
 
-              <Field label="接口地址 (OpenAI 兼容)">
+              <Field label={t('baseUrlLabel')}>
                 <input data-testid="model-edit-base-url" value={editForm.base_url} onChange={e => setEditForm({ ...editForm, base_url: e.target.value })} placeholder="https://api.openai.com/v1" style={inputStyle} />
               </Field>
 
-              <Field label="密钥">
+              <Field label={t('apiKeyLabel')}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
                     data-testid="model-edit-api-key"
@@ -695,39 +698,39 @@ export default function ModelsPage() {
                       // we never silently re-save the old key.
                       if (editActualKey !== null) setEditActualKey(null);
                     }}
-                    placeholder="留空保持原值"
+                    placeholder={t('apiKeyPlaceholder')}
                     style={{ ...inputStyle, flex: 1, fontFamily: showEditKey ? 'monospace' : 'inherit' }}
                   />
                   <button
                     data-testid="model-edit-api-key-eye"
                     onClick={() => setShowEditKey(!showEditKey)}
-                    title={showEditKey ? '隐藏' : '显示明文'}
+                    title={showEditKey ? t('hide') : t('showPlaintext')}
                     disabled={!editKeyLoaded}
                     style={{ background: 'transparent', border: '1px solid var(--surface-10)', borderRadius: '6px', padding: '6px 10px', cursor: editKeyLoaded ? 'pointer' : 'not-allowed', color: editKeyLoaded ? 'var(--text-secondary)' : 'var(--surface-20)', display: 'inline-flex', alignItems: 'center', opacity: editKeyLoaded ? 1 : 0.5 }}
                   ><EyeIcon open={showEditKey} /></button>
                 </div>
                 {!editKeyLoaded && (
-                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">加载中…</p>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">{t('loading')}</p>
                 )}
               </Field>
 
               {editForm.type === 'embedding' && (
-                <Field label="向量维度">
+                <Field label={t('embeddingDimLabel')}>
                   <input data-testid="model-edit-embedding-dim" type="number" step="128" min="1" value={editForm.embedding_dim} onChange={e => setEditForm({ ...editForm, embedding_dim: e.target.value })} placeholder="768" style={inputStyle} />
                 </Field>
               )}
 
               {editForm.type !== 'embedding' && (
                 <>
-                  <Field label="系统提示词">
-                    <textarea data-testid="model-edit-instruction" value={editForm.instruction} onChange={e => setEditForm({ ...editForm, instruction: e.target.value })} placeholder="系统提示词（可选）" style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} />
+                  <Field label={t('instructionLabel')}>
+                    <textarea data-testid="model-edit-instruction" value={editForm.instruction} onChange={e => setEditForm({ ...editForm, instruction: e.target.value })} placeholder={t('instructionPlaceholder')} style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} />
                   </Field>
 
                   <div className="grid grid-cols-3 gap-3">
-                    <Field label="上下文长度">
+                    <Field label={t('contextLenLabel')}>
                       <input data-testid="model-edit-context-len" type="number" step="1000" min="1" value={editForm.context_len} onChange={e => setEditForm({ ...editForm, context_len: e.target.value })} style={inputStyle} />
                     </Field>
-                    <Field label="最大输出">
+                    <Field label={t('maxTokensLabel')}>
                       <input data-testid="model-edit-max-tokens" type="number" step="1000" min="1" value={editForm.max_tokens} onChange={e => setEditForm({ ...editForm, max_tokens: e.target.value })} style={inputStyle} />
                     </Field>
                     <Field label="Temperature">
@@ -738,12 +741,12 @@ export default function ModelsPage() {
               )}
 
               <div className="flex gap-3 justify-end pt-2">
-                <button onClick={closeEdit} className="px-4 py-2 text-sm rounded-lg border border-[var(--border-glass)] text-[var(--text-primary)] hover:bg-[var(--surface-5)]">取消</button>
+                <button onClick={closeEdit} className="px-4 py-2 text-sm rounded-lg border border-[var(--border-glass)] text-[var(--text-primary)] hover:bg-[var(--surface-5)]">{t('cancel')}</button>
                 <button
                   data-testid="model-edit-save-btn"
                   onClick={editingId !== null ? saveEdit : addModel}
                   className="px-4 py-2 text-sm rounded-lg bg-[var(--accent)] text-white hover:opacity-90"
-                >保存</button>
+                >{t('save')}</button>
               </div>
             </div>
           </div>
@@ -788,13 +791,15 @@ function UseCaseChips({
   onToggle: (uc: string) => void;
   onClear: () => void;
 }) {
+  const tc = useTranslations('adminModels');
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const [mounted, setMounted] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const selected = new Set(current || []);
-  const count = isGlobal ? USE_CASES.length : selected.size;
+  const count = isGlobal ? USE_CASE_VALUES.length : selected.size;
+  const useCases = USE_CASE_VALUES.map((v) => ({ value: v, label: tc('uc_' + v) }));
 
   // Mount flag — only render portal after hydration to avoid SSR mismatch.
   useEffect(() => { setMounted(true); }, []);
@@ -819,9 +824,9 @@ function UseCaseChips({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (wrapRef.current && wrapRef.current.contains(t)) return;
-      if (panelRef.current && panelRef.current.contains(t)) return;
+      const target = e.target as Node;
+      if (wrapRef.current && wrapRef.current.contains(target)) return;
+      if (panelRef.current && panelRef.current.contains(target)) return;
       setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
@@ -846,7 +851,7 @@ function UseCaseChips({
       flexDirection: 'column',
       gap: '2px',
     }}>
-      {USE_CASES.map((uc) => {
+      {useCases.map((uc) => {
         const active = selected.has(uc.value);
         return (
           <label
@@ -879,8 +884,8 @@ function UseCaseChips({
           data-testid={`model-list-uc-clear-${modelId || ''}`}
           onClick={onClear}
           style={{ marginTop: '4px', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', background: 'transparent', border: '1px dashed var(--surface-20)', color: 'var(--text-secondary)', cursor: 'pointer' }}
-          title="全选全部 use case"
-        >全选</button>
+          title={tc('selectAllUcTitle')}
+        >{tc('selectAll')}</button>
       )}
     </div>
   ) : null;
@@ -896,7 +901,7 @@ function UseCaseChips({
           }
           setOpen(o => !o);
         }}
-        title="选择默认 Use Case"
+        title={tc('selectDefaultUcTitle')}
         style={{
           fontSize: '10px',
           padding: '2px 6px',
@@ -913,7 +918,7 @@ function UseCaseChips({
           lineHeight: 1.4,
         }}
       >
-        Use Case{count > 0 ? ` (${count})` : ''}
+        {tc('useCase')}{count > 0 ? ` (${count})` : ''}
         <span style={{ fontSize: '8px' }}>▾</span>
       </button>
       {mounted && panel ? createPortal(panel, document.body) : null}

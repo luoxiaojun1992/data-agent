@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '@/lib/api';
 
 const DEFAULT_IDLE_TIMEOUT = 1800; // 30 minutes
@@ -8,6 +9,7 @@ const DEFAULT_COUNTDOWN = 60;
 
 export default function IdleTimer() {
   const { auth, logout } = useAuth();
+  const t = useTranslations('idle');
   const [showWarning, setShowWarning] = useState(false);
   const [countdown, setCountdown] = useState(DEFAULT_COUNTDOWN);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -106,10 +108,10 @@ export default function IdleTimer() {
     >
       <div className="glass p-8 rounded-2xl max-w-md w-full mx-4 text-center">
         <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">
-          会话即将过期
+          {t('title')}
         </h3>
         <p className="text-sm text-[var(--text-secondary)] mb-4">
-          您已长时间未操作，会话将在 {countdown} 秒后过期。
+          {t('message', { countdown })}
         </p>
         <div className="flex gap-3 justify-center">
           <button
@@ -117,14 +119,14 @@ export default function IdleTimer() {
             onClick={handleContinue}
             data-testid="session-timeout-continue-btn"
           >
-            继续使用
+            {t('continue')}
           </button>
           <button
             className="px-6 py-2 border border-[var(--border-glass)] text-[var(--text-secondary)] rounded-xl hover:bg-[var(--surface-10)] transition-all"
             onClick={handleLogout}
             data-testid="session-timeout-logout-btn"
           >
-            退出登录
+            {t('logout')}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import Pagination from '../../components/Pagination';
@@ -15,6 +16,7 @@ interface User {
 }
 
 export default function UsersPage() {
+  const t = useTranslations('adminUsers');
   const { auth, apiFetch } = useAuth();
 
   const [users, setUsers] = useState<User[]>([]);
@@ -74,12 +76,12 @@ export default function UsersPage() {
   const handleAdd = async () => {
     setFormError('');
     if (!formName || !formEmail || !formPassword) {
-      setFormError('请填写所有必填字段');
+      setFormError(t('requiredFields'));
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formEmail)) {
-      setFormError('邮箱格式不正确');
+      setFormError(t('invalidEmail'));
       return;
     }
     setFormSubmitting(true);
@@ -95,15 +97,15 @@ export default function UsersPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setFormError(data.error || '创建失败');
+        setFormError(data.error || t('createFailed'));
         return;
       }
-      showToast('用户创建成功', 'success');
+      showToast(t('userCreated'), 'success');
       setShowAddModal(false);
       resetForm();
       fetchUsers();
     } catch {
-      setFormError('创建失败');
+      setFormError(t('createFailed'));
     } finally {
       setFormSubmitting(false);
     }
@@ -120,15 +122,15 @@ export default function UsersPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        setFormError(data.error || '更新失败');
+        setFormError(data.error || t('updateFailed'));
         return;
       }
-      showToast('角色已更新', 'success');
+      showToast(t('roleUpdated'), 'success');
       setShowEditModal(false);
       resetForm();
       fetchUsers();
     } catch {
-      setFormError('更新失败');
+      setFormError(t('updateFailed'));
     } finally {
       setFormSubmitting(false);
     }
@@ -146,15 +148,15 @@ export default function UsersPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        showToast(data.error || '操作失败', 'error');
+        showToast(data.error || t('opFailed'), 'error');
         setShowToggleModal(false);
         return;
       }
-      showToast(newStatus === 'enabled' ? '用户已启用' : '用户已停用', 'success');
+      showToast(newStatus === 'enabled' ? t('userEnabled') : t('userDisabled'), 'success');
       setShowToggleModal(false);
       fetchUsers();
     } catch {
-      showToast('操作失败', 'error');
+      showToast(t('opFailed'), 'error');
     } finally {
       setFormSubmitting(false);
     }
@@ -168,15 +170,15 @@ export default function UsersPage() {
       const res = await apiFetch(`/users/${selectedUser.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json();
-        showToast(data.error || '删除失败', 'error');
+        showToast(data.error || t('deleteFailed'), 'error');
         setShowDeleteModal(false);
         return;
       }
-      showToast('用户已删除', 'success');
+      showToast(t('userDeleted'), 'success');
       setShowDeleteModal(false);
       fetchUsers();
     } catch {
-      showToast('删除失败', 'error');
+      showToast(t('deleteFailed'), 'error');
     } finally {
       setFormSubmitting(false);
     }
@@ -211,9 +213,9 @@ export default function UsersPage() {
 
   const roleLabel = (role: string) => {
     switch (role) {
-      case 'system_admin': return '系统管理员';
-      case 'admin': return '管理员';
-      case 'user': return '普通用户';
+      case 'system_admin': return t('roleSystemAdmin');
+      case 'admin': return t('roleAdmin');
+      case 'user': return t('roleUser');
       default: return role;
     }
   };
@@ -249,15 +251,15 @@ export default function UsersPage() {
         <div className="mb-8" data-testid="admin-users-header">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="admin-users-title">用户管理</h2>
-              <p className="text-sm text-[var(--text-secondary)] mt-1">用户数据管理</p>
+              <h2 className="text-2xl font-bold text-[var(--text-primary)]" data-testid="admin-users-title">{t('title')}</h2>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">{t('desc')}</p>
             </div>
             <button
               data-testid="user-add-btn"
               onClick={() => { resetForm(); setShowAddModal(true); }}
               style={{ ...primaryButtonStyle, display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              <span>+</span> 添加用户
+              <span>+</span> {t('addUser')}
             </button>
           </div>
         </div>
@@ -290,16 +292,16 @@ export default function UsersPage() {
                   </th>
                   <th data-testid="user-table-header-name" style={{ ...thStyle, cursor: 'pointer' }}
                     onClick={() => handleSort('username')}>
-                    姓名<span data-testid="user-sort-name">{sortIndicator('username')}</span>
+                    {t('colName')}<span data-testid="user-sort-name">{sortIndicator('username')}</span>
                   </th>
-                  <th data-testid="user-table-header-email" style={thStyle}>邮箱</th>
-                  <th data-testid="user-table-header-role" style={thStyle}>角色</th>
-                  <th data-testid="user-table-header-status" style={thStyle}>状态</th>
+                  <th data-testid="user-table-header-email" style={thStyle}>{t('colEmail')}</th>
+                  <th data-testid="user-table-header-role" style={thStyle}>{t('colRole')}</th>
+                  <th data-testid="user-table-header-status" style={thStyle}>{t('colStatus')}</th>
                   <th data-testid="user-table-header-created" style={{ ...thStyle, cursor: 'pointer' }}
                     onClick={() => handleSort('created_at')}>
-                    创建时间<span data-testid="user-sort-created">{sortIndicator('created_at')}</span>
+                    {t('colCreatedAt')}<span data-testid="user-sort-created">{sortIndicator('created_at')}</span>
                   </th>
-                  <th data-testid="user-table-header-actions" style={thStyle}>操作</th>
+                  <th data-testid="user-table-header-actions" style={thStyle}>{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -334,7 +336,7 @@ export default function UsersPage() {
                           color: user.status === 'enabled' ? '#10b981' : '#f472b6',
                         }}
                       >
-                        {user.status === 'enabled' ? '🟢 启用' : '🔴 停用'}
+                        {user.status === 'enabled' ? t('statusEnabled') : t('statusDisabled')}
                       </span>
                     </td>
                     <td style={{ ...tdStyle, minWidth: '120px', padding: '4px 8px' }}>
@@ -343,7 +345,7 @@ export default function UsersPage() {
                           href={`/admin/users/${user.id}/rbac-roles`}
                           data-testid={`user-rbac-btn-${user.id}`}
                           style={{ ...iconBtnStyle, color: '#a855f7', textDecoration: 'none' }}
-                          title="RBAC 角色"
+                          title={t('rbacRoles')}
                         >
                           🛡️
                         </a>
@@ -352,7 +354,7 @@ export default function UsersPage() {
                           data-testid={`user-edit-btn-${user.id}`}
                           onClick={() => openEdit(user)}
                           style={{ ...iconBtnStyle, color: '#5c7cfa' }}
-                          title="编辑"
+                          title={t('edit')}
                         >
                           ✏️
                         </button>
@@ -362,7 +364,7 @@ export default function UsersPage() {
                             data-testid={`user-toggle-btn-${user.id}`}
                             onClick={() => openToggle(user)}
                             style={{ ...iconBtnStyle, color: user.status === 'enabled' ? '#f59e0b' : '#10b981' }}
-                            title={user.status === 'enabled' ? '停用' : '启用'}
+                            title={user.status === 'enabled' ? t('disable') : t('enable')}
                           >
                             {user.status === 'enabled' ? '⏸' : '▶'}
                           </button>
@@ -372,7 +374,7 @@ export default function UsersPage() {
                             data-testid={`user-delete-btn-${user.id}`}
                             onClick={() => openDelete(user)}
                             style={{ ...iconBtnStyle, color: '#ef4444' }}
-                            title="删除"
+                            title={t('delete')}
                           >
                             🗑
                           </button>
@@ -389,15 +391,15 @@ export default function UsersPage() {
         {/* Empty state */}
         {!loading && users.length === 0 && (
           <div className="glass p-12 text-center" data-testid="admin-users-empty">
-            <p className="text-lg text-[var(--text-primary)] mb-2">用户管理</p>
-            <p className="text-sm text-[var(--text-secondary)]">暂无用户数据，点击右上角按钮添加</p>
+            <p className="text-lg text-[var(--text-primary)] mb-2">{t('title')}</p>
+            <p className="text-sm text-[var(--text-secondary)]">{t('emptyHint')}</p>
           </div>
         )}
 
         {/* Loading */}
         {loading && (
           <div className="glass p-12 text-center">
-            <p className="text-sm text-[var(--text-secondary)]">加载中...</p>
+            <p className="text-sm text-[var(--text-secondary)]">{t('loading')}</p>
           </div>
         )}
 
@@ -407,7 +409,7 @@ export default function UsersPage() {
             {selected.size > 0 && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
                 <span data-testid="user-select-count" style={{ color: '#5c7cfa', fontSize: '13px' }}>
-                  已选 {selected.size} 项
+                  {t('selectedCount', { count: selected.size })}
                 </span>
               </div>
             )}
@@ -426,24 +428,24 @@ export default function UsersPage() {
         {showAddModal && (
           <ModalOverlay onClose={() => setShowAddModal(false)}>
             <div data-testid="user-add-modal" style={modalStyle} onClick={(e) => e.stopPropagation()}>
-              <h3 style={modalTitleStyle}>添加用户</h3>
+              <h3 style={modalTitleStyle}>{t('addUserTitle')}</h3>
               {formError && (
                 <p data-testid="user-add-email-error" style={{ color: '#ef4444', fontSize: '13px', marginBottom: '12px' }}>
                   {formError}
                 </p>
               )}
               <div style={fieldStyle}>
-                <label style={labelStyle}>姓名 *</label>
+                <label style={labelStyle}>{t('nameLabel')}</label>
                 <input
                   data-testid="user-add-name"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="输入姓名"
+                  placeholder={t('namePlaceholder')}
                   style={inputStyle}
                 />
               </div>
               <div style={fieldStyle}>
-                <label style={labelStyle}>邮箱 *</label>
+                <label style={labelStyle}>{t('emailLabel')}</label>
                 <input
                   data-testid="user-add-email"
                   value={formEmail}
@@ -454,26 +456,26 @@ export default function UsersPage() {
                 />
               </div>
               <div style={fieldStyle}>
-                <label style={labelStyle}>密码 *</label>
+                <label style={labelStyle}>{t('passwordLabel')}</label>
                 <input
                   data-testid="user-add-password"
                   value={formPassword}
                   onChange={(e) => setFormPassword(e.target.value)}
-                  placeholder="输入密码"
+                  placeholder={t('passwordPlaceholder')}
                   type="password"
                   style={inputStyle}
                 />
               </div>
               <div style={fieldStyle}>
-                <label style={labelStyle}>角色</label>
+                <label style={labelStyle}>{t('roleLabel')}</label>
                 <select
                   data-testid="user-add-role"
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
+                  <option value="user">{t('roleUser')}</option>
+                  <option value="admin">{t('roleAdmin')}</option>
                 </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
@@ -481,7 +483,7 @@ export default function UsersPage() {
                   onClick={() => setShowAddModal(false)}
                   style={cancelBtnStyle}
                 >
-                  取消
+                  {t('cancel')}
                 </button>
                 <button
                   data-testid="user-add-submit"
@@ -492,7 +494,7 @@ export default function UsersPage() {
                     opacity: formSubmitting ? 0.6 : 1,
                   }}
                 >
-                  确认添加
+                  {t('confirmAdd')}
                 </button>
               </div>
             </div>
@@ -503,7 +505,7 @@ export default function UsersPage() {
         {showEditModal && selectedUser && (
           <ModalOverlay onClose={() => setShowEditModal(false)}>
             <div data-testid="user-edit-modal" style={modalStyle} onClick={(e) => e.stopPropagation()}>
-              <h3 style={modalTitleStyle}>编辑用户角色</h3>
+              <h3 style={modalTitleStyle}>{t('editUserRoleTitle')}</h3>
               {formError && (
                 <p style={{ color: '#ef4444', fontSize: '13px', marginBottom: '12px' }}>{formError}</p>
               )}
@@ -511,26 +513,26 @@ export default function UsersPage() {
                 {selectedUser.username}
               </p>
               <div style={fieldStyle}>
-                <label style={labelStyle}>角色</label>
+                <label style={labelStyle}>{t('roleLabel')}</label>
                 <select
                   data-testid="user-edit-role"
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
+                  <option value="user">{t('roleUser')}</option>
+                  <option value="admin">{t('roleAdmin')}</option>
                 </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                <button onClick={() => setShowEditModal(false)} style={cancelBtnStyle}>取消</button>
+                <button onClick={() => setShowEditModal(false)} style={cancelBtnStyle}>{t('cancel')}</button>
                 <button
                   data-testid="user-edit-submit"
                   onClick={handleEdit}
                   disabled={formSubmitting}
                   style={{ ...submitBtnStyle, opacity: formSubmitting ? 0.6 : 1 }}
                 >
-                  保存
+                  {t('save')}
                 </button>
               </div>
             </div>
@@ -542,20 +544,22 @@ export default function UsersPage() {
           <ModalOverlay onClose={() => setShowToggleModal(false)}>
             <div data-testid="user-toggle-confirm-modal" style={modalStyle} onClick={(e) => e.stopPropagation()}>
               <h3 style={modalTitleStyle}>
-                {selectedUser.status === 'enabled' ? '停用用户' : '启用用户'}
+                {selectedUser.status === 'enabled' ? t('disableUserTitle') : t('enableUserTitle')}
               </h3>
               <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                确定要{selectedUser.status === 'enabled' ? '停用' : '启用'}用户 {selectedUser.username} 吗？
-                {selectedUser.status === 'enabled' && '停用后该用户将无法登录。'}
+                {selectedUser.status === 'enabled'
+                  ? t('disableConfirm', { username: selectedUser.username })
+                  : t('enableConfirm', { username: selectedUser.username })}
+                {selectedUser.status === 'enabled' && t('disableHint')}
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button onClick={() => setShowToggleModal(false)} style={cancelBtnStyle}>取消</button>
+                <button onClick={() => setShowToggleModal(false)} style={cancelBtnStyle}>{t('cancel')}</button>
                 <button
                   onClick={handleToggle}
                   disabled={formSubmitting}
                   style={{ ...submitBtnStyle, opacity: formSubmitting ? 0.6 : 1 }}
                 >
-                  确认
+                  {t('confirm')}
                 </button>
               </div>
             </div>
@@ -566,9 +570,9 @@ export default function UsersPage() {
         {showDeleteModal && selectedUser && (
           <ModalOverlay onClose={() => setShowDeleteModal(false)}>
             <div data-testid="user-delete-confirm-modal" style={modalStyle} onClick={(e) => e.stopPropagation()}>
-              <h3 style={modalTitleStyle}>删除用户</h3>
+              <h3 style={modalTitleStyle}>{t('deleteUserTitle')}</h3>
               <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                确定要删除用户 {selectedUser.username} 吗？此操作不可撤销。
+                {t('deleteConfirm', { username: selectedUser.username })}
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button
@@ -576,7 +580,7 @@ export default function UsersPage() {
                   style={cancelBtnStyle}
                   autoFocus
                 >
-                  取消
+                  {t('cancel')}
                 </button>
                 <button
                   data-testid="user-delete-confirm-btn"
@@ -588,7 +592,7 @@ export default function UsersPage() {
                     opacity: formSubmitting ? 0.6 : 1,
                   }}
                 >
-                  确认删除
+                  {t('confirmDelete')}
                 </button>
               </div>
             </div>

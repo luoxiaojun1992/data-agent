@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
 import AppLayout from './providers';
 import { useAuth } from '@/lib/api';
 
-function getGreeting() {
+function getGreetingKey() {
   const h = new Date().getHours();
-  if (h < 12) return '早上好';
-  if (h < 18) return '下午好';
-  return '晚上好';
+  if (h < 12) return 'morning';
+  if (h < 18) return 'afternoon';
+  return 'evening';
 }
 
 type ChartProps = { testid: string; title: string; children: React.ReactNode };
@@ -32,11 +33,12 @@ function formatLabel(time: string, gran: string): string {
 }
 
 function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
+  const tc = useTranslations('common');
   const hasData = data.some(d => d.value > 0);
   if (!hasData) {
     return (
       <div className="flex items-center justify-center h-[100px] text-xs text-[var(--text-secondary)]">
-        暂无数据
+        {tc('noData')}
       </div>
     );
   }
@@ -76,14 +78,17 @@ function TrendChart({ data, gran }: { data: Point[]; gran: string }) {
 }
 
 const GRANS = [
-  { key: 'day', label: '日' },
-  { key: 'week', label: '周' },
-  { key: 'month', label: '月' },
-  { key: 'year', label: '年' },
+  { key: 'day', labelKey: 'day' },
+  { key: 'week', labelKey: 'week' },
+  { key: 'month', labelKey: 'month' },
+  { key: 'year', labelKey: 'year' },
 ];
 
 export default function MainPage() {
   const { apiFetch, auth } = useAuth();
+  const t = useTranslations('dashboard');
+  const tn = useTranslations('nav');
+  const locale = useLocale();
   const [granularity, setGranularity] = useState('day');
   const [summary, setSummary] = useState<any>(null);
   const [trends, setTrends] = useState<any>(null);
@@ -115,22 +120,22 @@ export default function MainPage() {
   const num = (v: any) => (typeof v === 'number' ? v : 0);
 
   const kpis = [
-    { label: '知识库文档', value: num(summary?.kb_docs), icon: '📚', testid: 'dashboard-stat-kb' },
-    { label: 'Token 消耗', value: num(summary?.token_tokens), icon: '🪙', testid: 'dashboard-stat-token' },
-    { label: 'LLM 调用', value: num(summary?.llm_calls), icon: '🤖', testid: 'dashboard-stat-llm' },
-    { label: 'API 调用', value: num(summary?.api_calls), icon: '🔌', testid: 'dashboard-stat-api' },
-    { label: '产出物', value: num(summary?.artifact_created), icon: '📦', testid: 'dashboard-stat-artifact' },
-    { label: '完成任务', value: num(summary?.task_completed), icon: '✅', testid: 'dashboard-stat-task' },
-    { label: 'ROI（每万Token产出）', value: num(summary?.roi).toFixed(2), icon: '📈', testid: 'dashboard-stat-roi' },
+    { labelKey: 'kbDocs', value: num(summary?.kb_docs), icon: '📚', testid: 'dashboard-stat-kb' },
+    { labelKey: 'tokenUsage', value: num(summary?.token_tokens), icon: '🪙', testid: 'dashboard-stat-token' },
+    { labelKey: 'llmCalls', value: num(summary?.llm_calls), icon: '🤖', testid: 'dashboard-stat-llm' },
+    { labelKey: 'apiCalls', value: num(summary?.api_calls), icon: '🔌', testid: 'dashboard-stat-api' },
+    { labelKey: 'artifacts', value: num(summary?.artifact_created), icon: '📦', testid: 'dashboard-stat-artifact' },
+    { labelKey: 'tasksDone', value: num(summary?.task_completed), icon: '✅', testid: 'dashboard-stat-task' },
+    { labelKey: 'roi', value: num(summary?.roi).toFixed(2), icon: '📈', testid: 'dashboard-stat-roi' },
   ];
 
-  const series: { key: string; title: string; testid: string }[] = [
-    { key: 'token_tokens', title: 'Token 消耗趋势', testid: 'chart-token' },
-    { key: 'llm_calls', title: 'LLM 调用趋势', testid: 'chart-llm' },
-    { key: 'api_calls', title: 'API 调用趋势', testid: 'chart-api' },
-    { key: 'artifact_created', title: '产出物趋势', testid: 'chart-artifact' },
-    { key: 'task_completed', title: '任务完成趋势', testid: 'chart-task' },
-    { key: 'roi', title: 'ROI 趋势（每万Token产出）', testid: 'chart-roi' },
+  const series: { key: string; titleKey: string; testid: string }[] = [
+    { key: 'token_tokens', titleKey: 'tokenTrend', testid: 'chart-token' },
+    { key: 'llm_calls', titleKey: 'llmTrend', testid: 'chart-llm' },
+    { key: 'api_calls', titleKey: 'apiTrend', testid: 'chart-api' },
+    { key: 'artifact_created', titleKey: 'artifactTrend', testid: 'chart-artifact' },
+    { key: 'task_completed', titleKey: 'taskTrend', testid: 'chart-task' },
+    { key: 'roi', titleKey: 'roiTrend', testid: 'chart-roi' },
   ];
 
   return (
@@ -138,10 +143,10 @@ export default function MainPage() {
       <div className="animate-fade-in">
         <div className="mb-6 flex items-center justify-between" data-testid="page-header">
           <div>
-            <p className="text-lg font-semibold text-[var(--text-primary)]" data-testid="page-title">仪表盘</p>
-            <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-greeting">{getGreeting()}，欢迎回来 👋</p>
+            <p className="text-lg font-semibold text-[var(--text-primary)]" data-testid="page-title">{tn('dashboard')}</p>
+            <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-greeting">{t(getGreetingKey())}{t('welcome')}</p>
             <p className="text-xs text-[var(--text-secondary)] mt-1" data-testid="dashboard-date">
-              {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+              {new Date().toLocaleDateString(locale === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
             </p>
           </div>
           <div className="flex items-center gap-2" data-testid="dashboard-time-filter">
@@ -151,7 +156,7 @@ export default function MainPage() {
                 className={`px-3 py-1 text-xs rounded-full transition-colors ${
                   granularity === g.key ? 'bg-[var(--accent)]/20 text-[var(--accent)]' : 'text-[var(--text-secondary)]'
                 }`}
-              >{g.label}</button>
+              >{t(g.labelKey)}</button>
             ))}
           </div>
         </div>
@@ -159,12 +164,12 @@ export default function MainPage() {
         {/* KPI cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {kpis.map((kpi) => (
-            <div key={kpi.label} className="glass p-5 glass-hover" data-testid={kpi.testid}>
+            <div key={kpi.testid} className="glass p-5 glass-hover" data-testid={kpi.testid}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-2xl">{kpi.icon}</span>
               </div>
               <p className="text-2xl font-bold text-[var(--text-primary)]">{kpi.value}</p>
-              <p className="text-sm text-[var(--text-secondary)] mt-1">{kpi.label}</p>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">{t(kpi.labelKey)}</p>
             </div>
           ))}
         </div>
@@ -172,7 +177,7 @@ export default function MainPage() {
         {/* Trend charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           {series.map(s => (
-            <Chart key={s.key} testid={s.testid} title={s.title}>
+            <Chart key={s.key} testid={s.testid} title={t(s.titleKey)}>
               <TrendChart data={(trends?.[s.key] || []) as Point[]} gran={granularity} />
             </Chart>
           ))}

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import ModelSelector from '../components/ModelSelector';
 import Pagination from '../components/Pagination';
@@ -29,6 +30,7 @@ interface AgentTask {
 }
 
 export default function AgentPage() {
+  const t = useTranslations('agent');
   const router = useRouter();
   const { apiFetch, auth } = useAuth();
   const [tasks, setTasks] = useState<AgentTask[]>([]);
@@ -46,7 +48,7 @@ export default function AgentPage() {
   // SPEC-086: 「常用模版」入口（独立于「新建任务」弹窗）+ 日常总结确认弹窗。
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const [showDailySummaryModal, setShowDailySummaryModal] = useState(false);
-  const [dailySummaryTitle, setDailySummaryTitle] = useState('日常总结');
+  const [dailySummaryTitle, setDailySummaryTitle] = useState(() => t('dailySummaryTitle'));
 
   // Wait for auth hydration before loading — otherwise loadTasks fires with
   // auth.token=null and the request misses the Authorization header.
@@ -55,14 +57,14 @@ export default function AgentPage() {
     loadTasks(page);
   }, [page, auth.hydrated, auth.token]);
 
-  const toggleScheduledEnabled = async (t: AgentTask) => {
-    const enabled = t.scheduled_enabled === false;
-    const res = await apiFetch('/tasks/' + t.task_id + '/enabled', {
+  const toggleScheduledEnabled = async (task: AgentTask) => {
+    const enabled = task.scheduled_enabled === false;
+    const res = await apiFetch('/tasks/' + task.task_id + '/enabled', {
       method: 'PATCH',
       body: JSON.stringify({ enabled }),
     });
     if (res.ok) {
-      setTasks(prev => prev.map(x => x.task_id === t.task_id ? { ...x, scheduled_enabled: enabled } : x));
+      setTasks(prev => prev.map(x => x.task_id === task.task_id ? { ...x, scheduled_enabled: enabled } : x));
     }
   };
 
@@ -72,7 +74,7 @@ export default function AgentPage() {
       const res = await apiFetch(`/tasks?page=${p}&page_size=${pageSize}`);
       const data = await res.json();
       const rawTasks: AgentTask[] = Array.isArray(data) ? data : (data.tasks || []);
-      setTasks(rawTasks.map((t: AgentTask) => ({ ...t, title: t.title || t.type || '' })));
+      setTasks(rawTasks.map((task: AgentTask) => ({ ...task, title: task.title || task.type || '' })));
       setTotal(typeof data.total === 'number' ? data.total : rawTasks.length);
     } catch (e) { console.error('[agent] loadTasks failed:', e); }
     finally { setLoading(false); }
@@ -87,13 +89,13 @@ export default function AgentPage() {
     );
     const excelFiles = files.filter((f) => isExcelFile(f.name));
     if (images.length > 0 && attachments.length + images.length > MAX_ATTACHMENT_IMAGES) {
-      setAttachError(`最多 ${MAX_ATTACHMENT_IMAGES} 张图片`);
+      setAttachError(t('errMaxImages', { n: MAX_ATTACHMENT_IMAGES }));
       setTimeout(() => setAttachError(''), 3000);
       return;
     }
     for (const f of images) {
       if (f.size > MAX_ATTACHMENT_IMAGE_BYTES) {
-        setAttachError(`图片 ${f.name} 超过 2MB 限制`);
+        setAttachError(t('errImageSize', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
         continue;
       }
@@ -101,7 +103,7 @@ export default function AgentPage() {
         const att = await fileToAttachment(f);
         setAttachments((prev) => (prev.length >= MAX_ATTACHMENT_IMAGES ? prev : [...prev, att]));
       } catch {
-        setAttachError('读取图片失败');
+        setAttachError(t('errReadImage'));
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -109,7 +111,7 @@ export default function AgentPage() {
     // PDF 附件：解析文字存 pdfs，解析图并入图片附件（合并计数 ≤5，SPEC-096 R1）。
     for (const f of pdfFiles) {
       if (f.size > MAX_PDF_BYTES) {
-        setAttachError(`PDF ${f.name} 超过 20MB 限制`);
+        setAttachError(t('errPdfSize', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
         continue;
       }
@@ -126,7 +128,7 @@ export default function AgentPage() {
           );
         }
       } catch {
-        setAttachError(`解析 PDF ${f.name} 失败`);
+        setAttachError(t('errParsePdf', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -134,7 +136,7 @@ export default function AgentPage() {
     // Excel 附件：解析为纯文本存 excels（无图片，SPEC-096 R3）。
     for (const f of excelFiles) {
       if (f.size > MAX_EXCEL_BYTES) {
-        setAttachError(`Excel ${f.name} 超过 20MB 限制`);
+        setAttachError(t('errExcelSize', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
         continue;
       }
@@ -142,7 +144,7 @@ export default function AgentPage() {
         const { text } = await parseExcel(f);
         setExcels((prev) => [...prev, { name: f.name, text }]);
       } catch {
-        setAttachError(`解析 Excel ${f.name} 失败`);
+        setAttachError(t('errParseExcel', { name: f.name }));
         setTimeout(() => setAttachError(''), 3000);
       }
     }
@@ -177,7 +179,7 @@ export default function AgentPage() {
 
   const createTask = async () => {
     if (!newTask.title.trim()) return;
-    if (newTask.cronEnabled && ((newTask.scheduleMode === "recurring" && !newTask.cron) || (newTask.scheduleMode === "one_time" && !newTask.scheduledAt))) { alert("请填写完整的定时信息"); return; }
+    if (newTask.cronEnabled && ((newTask.scheduleMode === "recurring" && !newTask.cron) || (newTask.scheduleMode === "one_time" && !newTask.scheduledAt))) { alert(t('errScheduleIncomplete')); return; }
     // If cron is enabled, a schedule must be chosen.
     if (newTask.cronEnabled && !newTask.cron && !newTask.scheduledAt) return;
     try {
@@ -220,7 +222,7 @@ export default function AgentPage() {
   // SPEC-082 §5.8: "delete" ≠ "cancel" — DELETE /tasks/:id physically removes
   // the task definition (irreversible); historical run records are kept.
   const deleteTask = async (taskId: string) => {
-    if (!window.confirm('确定删除该任务吗？删除后不可恢复（历史运行记录保留）')) return;
+    if (!window.confirm(t('deleteConfirm'))) return;
     await apiFetch(`/tasks/${taskId}`, { method: 'DELETE' });
     await loadTasks(page);
   };
@@ -244,7 +246,7 @@ export default function AgentPage() {
       if (res.ok) {
         await loadTasks(page);
         setShowDailySummaryModal(false);
-        setDailySummaryTitle('日常总结');
+        setDailySummaryTitle(t('dailySummaryTitle'));
       }
     } catch (e) { console.error('[agent] daily summary template create failed:', e); }
   };
@@ -255,11 +257,11 @@ export default function AgentPage() {
 
   const statusPill = (s: string) => {
     const map: Record<string, { label: string; cls: string }> = {
-      pending: { label: '等待中', cls: 'text-amber-400 bg-amber-400/10' },
-      running: { label: '运行中', cls: 'text-blue-400 bg-blue-400/10' },
-      completed: { label: '已完成', cls: 'text-emerald-400 bg-emerald-400/10' },
-      failed: { label: '失败', cls: 'text-red-400 bg-red-400/10' },
-      cancelled: { label: '已取消', cls: 'text-gray-400 bg-gray-400/10' },
+      pending: { label: t('statusPending'), cls: 'text-amber-400 bg-amber-400/10' },
+      running: { label: t('statusRunning'), cls: 'text-blue-400 bg-blue-400/10' },
+      completed: { label: t('statusCompleted'), cls: 'text-emerald-400 bg-emerald-400/10' },
+      failed: { label: t('statusFailed'), cls: 'text-red-400 bg-red-400/10' },
+      cancelled: { label: t('statusCancelled'), cls: 'text-gray-400 bg-gray-400/10' },
     };
     const m = map[s] || { label: s, cls: 'text-[var(--text-secondary)] bg-[var(--glass-bg)]' };
     return <span className={`text-xs px-2.5 py-1 rounded-full ${m.cls}`} data-testid={`task-status-${s}`}>{m.label}</span>;
@@ -273,16 +275,16 @@ export default function AgentPage() {
         {/* Header */}
         <div className="mb-6 flex items-center justify-between" data-testid="agent-page-header">
           <div>
-            <h2 className="text-2xl font-bold text-[var(--text-primary)]">Agent 任务</h2>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">批量数据分析任务管理与执行</p>
+            <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('title')}</h2>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">{t('desc')}</p>
           </div>
           <div className="flex items-center gap-2 relative">
             <button onClick={() => setShowTemplateMenu(v => !v)}
               className="px-4 py-2 rounded-xl text-sm font-medium border border-[var(--border-glass)] text-[var(--text-primary)] hover:border-[var(--accent)]/40"
-              data-testid="agent-template-btn">⚡ 常用模版</button>
+              data-testid="agent-template-btn">{t('templateMenu')}</button>
             <button onClick={() => setShowModal(true)}
               className="px-4 py-2 bg-[var(--accent)] text-white rounded-xl text-sm font-medium hover:opacity-90"
-              data-testid="agent-create-task-btn">+ 新建任务</button>
+              data-testid="agent-create-task-btn">{t('createTask')}</button>
 
             {/* Template menu (SPEC-086) */}
             {showTemplateMenu && (
@@ -290,8 +292,8 @@ export default function AgentPage() {
                 <button onClick={() => { setShowDailySummaryModal(true); setShowTemplateMenu(false); }}
                   className="w-full text-left p-3 rounded-lg hover:bg-[var(--surface-5)] transition-colors"
                   data-testid="agent-template-daily-summary">
-                  <p className="text-sm font-medium text-[var(--text-primary)]">日常总结</p>
-                  <p className="text-xs text-[var(--text-secondary)] mt-0.5">每天 01:00 自动总结当天记忆，写入知识库</p>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{t('dailySummary')}</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-0.5">{t('dailySummaryDesc')}</p>
                 </button>
               </div>
             )}
@@ -301,12 +303,12 @@ export default function AgentPage() {
 
         {/* Task list */}
         {loading ? (
-          <div className="text-center py-12 text-[var(--text-secondary)]" data-testid="agent-loading">加载中...</div>
+          <div className="text-center py-12 text-[var(--text-secondary)]" data-testid="agent-loading">{t('loading')}</div>
         ) : filtered.length === 0 ? (
           <div className="glass p-12 text-center" data-testid="agent-empty">
             <span className="text-5xl block mb-4">⚡</span>
-            <p className="text-lg text-[var(--text-primary)] mb-2">暂无任务</p>
-            <p className="text-sm text-[var(--text-secondary)]">点击「+ 新建任务」创建 Agent 分析任务</p>
+            <p className="text-lg text-[var(--text-primary)] mb-2">{t('empty')}</p>
+            <p className="text-sm text-[var(--text-secondary)]">{t('emptyHint')}</p>
           </div>
         ) : (
           <div className="space-y-3" data-testid="agent-task-table">
@@ -324,7 +326,7 @@ export default function AgentPage() {
                         background: task.type === 'scheduled_exec' ? 'rgba(96,165,250,0.15)' : 'rgba(148,163,184,0.15)',
                         color: task.type === 'scheduled_exec' ? '#60a5fa' : '#94a3b8',
                       }}>
-                        {task.type === 'scheduled_exec' ? '⏰ 定时' : '▶ 实时'}
+                        {task.type === 'scheduled_exec' ? t('typeScheduled') : t('typeRealtime')}
                       </span>
                       {task.type === 'scheduled_exec' && (
                         <button onClick={(e) => { e.stopPropagation(); toggleScheduledEnabled(task); }}
@@ -340,11 +342,11 @@ export default function AgentPage() {
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-secondary)]">
                       <span data-testid={`agent-task-run-count-${idx}`}>
-                        🔁 {(task.run_count ?? 0)} 次运行
+                        🔁 {(task.run_count ?? 0)} {t('runTimes')}
                       </span>
                       {task.last_run_at && (
                         <span data-testid={`agent-task-last-run-${idx}`}>
-                          · 上次: {new Date(task.last_run_at).toLocaleString()}
+                          · {t('lastRun')}: {new Date(task.last_run_at).toLocaleString()}
                         </span>
                       )}
                       {task.type === 'scheduled_exec' && task.schedule_mode === 'recurring' && task.cron_expr && (
@@ -358,7 +360,7 @@ export default function AgentPage() {
                   <div className="flex items-center gap-2">
                     <button onClick={(e) => { e.stopPropagation(); deleteTask(task.task_id); }}
                       className="text-[10px] text-red-400 hover:text-red-300"
-                      data-testid={`agent-task-delete-${task.task_id}`}>删除</button>
+                      data-testid={`agent-task-delete-${task.task_id}`}>{t('delete')}</button>
                     <div className="text-[var(--text-secondary)] text-sm">▶</div>
                   </div>
                 </button>
@@ -377,24 +379,24 @@ export default function AgentPage() {
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
           <div className="relative glass p-6 rounded-2xl max-w-lg w-full mx-4" onPaste={handlePaste}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">新建分析任务</h3>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">{t('newTaskTitle')}</h3>
               <button onClick={() => setShowModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">任务标题</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('taskTitleLabel')}</label>
                 <input type="text" value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                  data-testid="agent-task-title-input" placeholder="例如：销售趋势分析" />
+                  data-testid="agent-task-title-input" placeholder={t('taskTitlePlaceholder')} />
               </div>
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">描述（可选）</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('descriptionLabel')}</label>
                 <textarea value={newTask.description} onChange={e => setNewTask(p => ({ ...p, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-none"
-                  data-testid="agent-task-desc-input" rows={2} placeholder="描述分析目标..." />
+                  data-testid="agent-task-desc-input" rows={2} placeholder={t('descriptionPlaceholder')} />
               </div>
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">附件（可选：图片 / PDF / Excel，可粘贴）</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('attachmentLabel')}</label>
                 <input
                   ref={attachmentInputRef}
                   type="file"
@@ -409,7 +411,7 @@ export default function AgentPage() {
                     {attachments.map((att, idx) => (
                       <div key={idx} className="relative" data-testid={`agent-task-attachment-${idx}`}>
                         <img src={att.dataUrl} alt={att.name} className="w-14 h-14 rounded-lg object-cover border border-[var(--surface-20)]" />
-                        <button onClick={() => removeAttachment(idx)} title="移除图片"
+                        <button onClick={() => removeAttachment(idx)} title={t('removeImage')}
                           data-testid={`agent-task-attachment-remove-${idx}`}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90">✕</button>
                       </div>
@@ -422,7 +424,7 @@ export default function AgentPage() {
                       <div key={idx} className="relative flex items-center gap-2 pl-3 pr-8 py-1.5 rounded-lg border border-[var(--surface-20)] bg-[var(--glass-bg)]" data-testid={`agent-task-pdf-attachment-${idx}`}>
                         <span className="text-sm leading-none">📄</span>
                         <span className="text-xs max-w-[140px] truncate" title={pdf.name}>{pdf.name}</span>
-                        <button onClick={() => removePdf(idx)} title="移除 PDF"
+                        <button onClick={() => removePdf(idx)} title={t('removePdf')}
                           data-testid={`agent-task-pdf-attachment-remove-${idx}`}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90">✕</button>
                       </div>
@@ -435,7 +437,7 @@ export default function AgentPage() {
                       <div key={idx} className="relative flex items-center gap-2 pl-3 pr-8 py-1.5 rounded-lg border border-[var(--surface-20)] bg-[var(--glass-bg)]" data-testid={`agent-task-excel-attachment-${idx}`}>
                         <span className="text-sm leading-none">📊</span>
                         <span className="text-xs max-w-[140px] truncate" title={excel.name}>{excel.name}</span>
-                        <button onClick={() => removeExcel(idx)} title="移除 Excel"
+                        <button onClick={() => removeExcel(idx)} title={t('removeExcel')}
                           data-testid={`agent-task-excel-attachment-remove-${idx}`}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs leading-none flex items-center justify-center hover:bg-black/90">✕</button>
                       </div>
@@ -446,10 +448,10 @@ export default function AgentPage() {
                 <button onClick={handleAttachClick}
                   disabled={attachments.length >= MAX_ATTACHMENT_IMAGES}
                   className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
-                  data-testid="agent-task-attach-btn">📎 添加附件</button>
+                  data-testid="agent-task-attach-btn">{t('addAttachment')}</button>
               </div>
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">模型</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('modelLabel')}</label>
                 <ModelSelector
                   value={newTask.modelId}
                   onChange={(id) => setNewTask(p => ({ ...p, modelId: id }))}
@@ -459,13 +461,13 @@ export default function AgentPage() {
               <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
                 <input type="checkbox" checked={newTask.cronEnabled} onChange={e => setNewTask(p => ({ ...p, cronEnabled: e.target.checked }))}
                   data-testid="agent-task-cron-toggle" className="rounded" />
-                设为定时任务
+                {t('setScheduled')}
               </label>
               {newTask.cronEnabled && (
                 <div data-testid="agent-task-cron-config" className="space-y-3">
                   {/* Mode toggle */ }
                   <div>
-                    <label className="block text-xs text-[var(--text-secondary)] mb-1">调度方式</label>
+                    <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('scheduleModeLabel')}</label>
                     <div className="flex gap-2">
                       {(['recurring', 'one_time'] as const).map(mode => (
                         <button key={mode} type="button"
@@ -475,7 +477,7 @@ export default function AgentPage() {
                               ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
                               : 'bg-[var(--glass-bg)] border-[var(--border-glass)] text-[var(--text-secondary)]'
                           }`}>
-                          {mode === 'recurring' ? '🔄 重复执行' : '📅 一次性'}
+                          {mode === 'recurring' ? t('recurring') : t('oneTime')}
                         </button>
                       ))}
                     </div>
@@ -483,16 +485,16 @@ export default function AgentPage() {
 
                   {newTask.scheduleMode === 'recurring' ? (
                     <div>
-                      <label className="block text-xs text-[var(--text-secondary)] mb-1">计划选项</label>
+                      <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('scheduleOptionsLabel')}</label>
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { label: '每小时', value: '0 * * * *' },
-                          { label: '每天 0:00', value: '0 0 * * *' },
-                          { label: '每天 6:00', value: '0 6 * * *' },
-                          { label: '每天 8:00', value: '0 8 * * *' },
-                          { label: '每周一 9:00', value: '0 9 * * 1' },
-                          { label: '每月1号 0:00', value: '0 0 1 * *' },
-                          { label: '每年1月1日', value: '0 0 1 1 *' },
+                          { label: t('cronHourly'), value: '0 * * * *' },
+                          { label: t('cronDaily0'), value: '0 0 * * *' },
+                          { label: t('cronDaily6'), value: '0 6 * * *' },
+                          { label: t('cronDaily8'), value: '0 8 * * *' },
+                          { label: t('cronWeeklyMon9'), value: '0 9 * * 1' },
+                          { label: t('cronMonthly1'), value: '0 0 1 * *' },
+                          { label: t('cronYearly'), value: '0 0 1 1 *' },
                         ].map(p => (
                           <button key={p.value} type="button"
                             onClick={() => setNewTask(prev => ({ ...prev, cron: p.value }))}
@@ -507,11 +509,11 @@ export default function AgentPage() {
                       </div>
                       <input value={newTask.cron} onChange={e => setNewTask(p => ({ ...p, cron: e.target.value }))}
                         className="w-full mt-2 px-3 py-2 text-xs rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] font-mono"
-                        placeholder="自定义 cron: 分 时 日 月 周" />
+                        placeholder={t('cronPlaceholder')} />
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-xs text-[var(--text-secondary)] mb-1">执行时间</label>
+                      <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('execTimeLabel')}</label>
                       <input type="datetime-local" value={newTask.scheduledAt}
                         min={new Date().toISOString().slice(0, 16)}
                         onChange={e => setNewTask(p => ({ ...p, scheduledAt: e.target.value }))}
@@ -523,12 +525,12 @@ export default function AgentPage() {
               )}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">取消</button>
+                  className="flex-1 px-4 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{t('cancel')}</button>
                 <button onClick={createTask}
                   className="flex-1 px-4 py-2 text-sm rounded-xl bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40"
-                  data-testid="agent-task-create-btn" disabled={!newTask.title.trim() || (newTask.cronEnabled && !(newTask.cron || newTask.scheduledAt))}>创建任务</button>
+                  data-testid="agent-task-create-btn" disabled={!newTask.title.trim() || (newTask.cronEnabled && !(newTask.cron || newTask.scheduledAt))}>{t('createTaskBtn')}</button>
               </div>
-              <p className="text-center text-[11px] text-[var(--text-secondary)]" data-testid="agent-task-ai-tips">内容由 AI 生成，请仔细核实甄别</p>
+              <p className="text-center text-[11px] text-[var(--text-secondary)]" data-testid="agent-task-ai-tips">{t('aiTips')}</p>
             </div>
           </div>
         </div>
@@ -540,29 +542,29 @@ export default function AgentPage() {
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowDailySummaryModal(false)} />
           <div className="relative glass p-6 rounded-2xl max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">日常总结模版</h3>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">{t('dailySummaryModalTitle')}</h3>
               <button onClick={() => setShowDailySummaryModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">任务标题</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('taskTitleLabel')}</label>
                 <input type="text" value={dailySummaryTitle} onChange={e => setDailySummaryTitle(e.target.value)}
                   className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                  data-testid="agent-template-daily-summary-title" placeholder="日常总结" />
+                  data-testid="agent-template-daily-summary-title" placeholder={t('dailySummaryTitle')} />
               </div>
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">调度</label>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('scheduleLabel')}</label>
                 <div className="px-3 py-2 text-sm rounded-lg bg-[var(--glass-bg)] border border-[var(--border-glass)] text-[var(--text-secondary)]">
-                  ⏰ 每天 01:00
+                  {t('dailyAt0100')}
                 </div>
               </div>
-              <p className="text-xs text-[var(--text-secondary)]">创建后，系统将在每天凌晨 01:00 自动读取当天记忆并总结写入知识库。</p>
+              <p className="text-xs text-[var(--text-secondary)]">{t('dailySummaryHint')}</p>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowDailySummaryModal(false)}
-                  className="flex-1 px-4 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">取消</button>
+                  className="flex-1 px-4 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{t('cancel')}</button>
                 <button onClick={createDailySummaryTask}
                   className="flex-1 px-4 py-2 text-sm rounded-xl bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40"
-                  data-testid="agent-template-create-btn" disabled={!dailySummaryTitle.trim()}>创建模版任务</button>
+                  data-testid="agent-template-create-btn" disabled={!dailySummaryTitle.trim()}>{t('createTemplateTask')}</button>
               </div>
             </div>
           </div>

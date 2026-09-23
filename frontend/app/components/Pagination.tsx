@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 
 interface PaginationProps {
   // 语义 A（既有，保留）: 当前页 + 总页数
@@ -29,6 +30,7 @@ export default function Pagination({
   className = '', testIdPrefix,
 }: PaginationProps) {
   const hasTotal = total !== undefined;
+  const t = useTranslations();
   const cur = page ?? current ?? 1;
   const tp = totalPages !== undefined
     ? totalPages
@@ -72,7 +74,7 @@ export default function Pagination({
   return (
     <div data-testid={tid('pagination')} className={`flex items-center justify-center gap-2 mt-4 flex-wrap ${className}`}>
       {hasTotal && (
-        <span className="text-[13px] text-[var(--text-secondary)] mr-1">共{total}条</span>
+        <span className="text-[13px] text-[var(--text-secondary)] mr-1">{t('pagination.total', { total })}</span>
       )}
       {onPageSizeChange && (
         <select
@@ -92,7 +94,7 @@ export default function Pagination({
         disabled={cur <= 1}
         className={`${btn} ${cur <= 1 ? disabled : inactive}`}
       >
-        上一页
+        {t('common.prevPage')}
       </button>
       {getPages().map((p, i) =>
         p === '...' ? (
@@ -114,7 +116,7 @@ export default function Pagination({
         disabled={cur >= tp}
         className={`${btn} ${cur >= tp ? disabled : inactive}`}
       >
-        下一页
+        {t('common.nextPage')}
       </button>
     </div>
   );

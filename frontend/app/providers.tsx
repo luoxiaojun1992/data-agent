@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import Sidebar from './components/Sidebar';
 import NotificationBell from './components/NotificationBell';
 import ThemeToggle from './components/ThemeToggle';
+import LanguageToggle from './components/LanguageToggle';
 import IdleTimer from './components/IdleTimer';
 import ScrollToTop from './components/ScrollToTop';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -12,6 +14,7 @@ import { useAuth } from '@/lib/api';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { auth, logout } = useAuth();
+  const t = useTranslations('common');
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -71,6 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
           <div style={{ flex: 1 }} />
           <ThemeToggle />
+          <LanguageToggle />
           <NotificationBell />
           <IdleTimer />
         </div>
@@ -84,7 +88,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               data-testid="change-password-banner"
             >
               <span className="text-sm" style={{ color: '#fbbf24' }}>
-                为保障账号安全，请尽快修改初始密码
+                {t('changePasswordBanner')}
               </span>
               <button
                 type="button"
@@ -93,7 +97,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 style={{ background: 'rgba(245,158,11,0.20)', color: '#fbbf24' }}
                 data-testid="change-password-banner-btn"
               >
-                去修改
+                {t('goChange')}
               </button>
             </div>
           )}
@@ -103,7 +107,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <ScrollToTop />
       {showForcePwd && (
         <ChangePasswordModal
-          notice="为保障账号安全，请修改初始密码"
+          notice={t('changePasswordNotice')}
           onClose={() => setShowForcePwd(false)}
           onSuccess={() => {
             setShowForcePwd(false);

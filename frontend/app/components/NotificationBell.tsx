@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { useAuth, NOTIFICATION_PERMS } from '@/lib/api';
 
 interface Notif {
@@ -16,6 +17,8 @@ type SendMode = 'direct' | 'broadcast';
 
 export default function NotificationBell() {
   const { auth, apiFetch, canAccess } = useAuth();
+  const t = useTranslations('notif');
+  const tc = useTranslations('common');
   const [unread, setUnread] = useState(0);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [open, setOpen] = useState(false);
@@ -127,30 +130,30 @@ export default function NotificationBell() {
           border: '1px solid var(--surface-10)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
           <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             borderBottom: '1px solid var(--surface-6)' }}>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>通知</span>
+            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('title')}</span>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {unread > 0 && (
                 <button data-testid="notif-mark-all-read" onClick={handleMarkAllRead}
                   style={{ fontSize: '12px', color: '#5c7cfa', background: 'none', border: 'none', cursor: 'pointer' }}>
-                  全部已读
+                  {t('markAllRead')}
                 </button>
               )}
               {canSend && (
                 <button data-testid="notif-send-direct-btn" onClick={() => openSend('direct')}
                   style={{ fontSize: '12px', color: '#34D399', background: 'none', border: 'none', cursor: 'pointer' }}>
-                  定向发送
+                  {t('directSend')}
                 </button>
               )}
               {canBroadcast && (
                 <button data-testid="notif-broadcast-btn" onClick={() => openSend('broadcast')}
                   style={{ fontSize: '12px', color: '#F59E0B', background: 'none', border: 'none', cursor: 'pointer' }}>
-                  广播
+                  {t('broadcast')}
                 </button>
               )}
             </div>
           </div>
           {notifs.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>暂无通知</div>
+            <div style={{ padding: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>{t('noNotif')}</div>
           ) : (
             notifs.map((n) => (
               <div key={n.id} data-testid={`notif-item-${n.id}`}
@@ -180,22 +183,22 @@ export default function NotificationBell() {
           onClick={(e) => { if (e.target === e.currentTarget) setSendMode(null); }}>
           <div className="glass" style={{ padding: '24px', maxWidth: '440px', width: '90%' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px' }}>
-              {sendMode === 'broadcast' ? '广播通知' : '定向发送站内信'}
+              {sendMode === 'broadcast' ? t('broadcastTitle') : t('directTitle')}
             </h3>
             {sendMode === 'direct' && (
-              <input data-testid="notif-send-recipient" placeholder="接收人 ID" value={sendForm.target}
+              <input data-testid="notif-send-recipient" placeholder={t('recipientId')} value={sendForm.target}
                 onChange={(e) => setSendForm({ ...sendForm, target: e.target.value })}
                 style={inputStyle} />
             )}
-            <input data-testid="notif-send-subject" placeholder="标题" value={sendForm.title}
+            <input data-testid="notif-send-subject" placeholder={t('subject')} value={sendForm.title}
               onChange={(e) => setSendForm({ ...sendForm, title: e.target.value })}
               style={{ ...inputStyle, marginTop: '8px' }} />
-            <textarea data-testid="notif-send-body" placeholder="内容" value={sendForm.content}
+            <textarea data-testid="notif-send-body" placeholder={t('content')} value={sendForm.content}
               onChange={(e) => setSendForm({ ...sendForm, content: e.target.value })}
               style={{ ...inputStyle, marginTop: '8px', height: '80px', resize: 'vertical' }} />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-              <button onClick={() => setSendMode(null)} style={secondaryBtn}>取消</button>
-              <button data-testid="notif-send-submit" onClick={handleSend} style={primaryBtn}>发送</button>
+              <button onClick={() => setSendMode(null)} style={secondaryBtn}>{tc('cancel')}</button>
+              <button data-testid="notif-send-submit" onClick={handleSend} style={primaryBtn}>{tc('send')}</button>
             </div>
           </div>
         </div>

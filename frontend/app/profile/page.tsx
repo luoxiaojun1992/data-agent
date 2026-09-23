@@ -2,28 +2,33 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { useAuth } from '../../lib/api';
 
-// 角色展示名映射（与侧边栏角色展示一致）。
-const roleLabel = (role?: string | null): string => {
-  switch (role) {
-    case 'system_admin': return '系统管理员';
-    case 'admin': return '普通管理员';
-    case 'user': return '普通用户';
-    default: return role || '—';
-  }
-};
-
 export default function ProfilePage() {
   const { auth, logout } = useAuth();
+  const t = useTranslations('profile');
+  const ta = useTranslations('auth');
+  const tr = useTranslations('role');
+  const tn = useTranslations('nav');
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
+  // 角色展示名映射（与侧边栏角色展示一致）。
+  const roleText = (role?: string | null): string => {
+    switch (role) {
+      case 'system_admin': return tr('systemAdmin');
+      case 'admin': return tr('admin');
+      case 'user': return tr('user');
+      default: return role || '—';
+    }
+  };
+
   const handleSuccess = () => {
-    setSuccessMsg('密码修改成功，请使用新密码重新登录');
+    setSuccessMsg(ta('pwdChanged'));
     setTimeout(() => {
       logout();
       router.push('/login');
@@ -34,8 +39,8 @@ export default function ProfilePage() {
     <AppLayout>
       <div className="animate-fade-in" data-testid="profile-page">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">用户中心</h2>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">查看个人信息与账号安全设置</p>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('title')}</h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">{t('desc')}</p>
         </div>
 
         {successMsg && (
@@ -63,10 +68,10 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="text-base font-semibold text-[var(--text-primary)]" data-testid="profile-username">
-                {auth.username || '未登录'}
+                {auth.username || tn('notLoggedIn')}
               </p>
               <p className="text-sm text-[var(--text-secondary)] mt-0.5" data-testid="profile-role">
-                {roleLabel(auth.role)}
+                {roleText(auth.role)}
               </p>
             </div>
           </div>
@@ -78,8 +83,8 @@ export default function ProfilePage() {
             onClick={() => setShowModal(true)}
           >
             <div>
-              <p className="text-base font-medium text-[var(--text-primary)]">修改密码</p>
-              <p className="text-sm text-[var(--text-secondary)] mt-0.5">更新当前账号的登录密码</p>
+              <p className="text-base font-medium text-[var(--text-primary)]">{t('changePwdTitle')}</p>
+              <p className="text-sm text-[var(--text-secondary)] mt-0.5">{t('changePwdDesc')}</p>
             </div>
             <span className="text-[var(--text-secondary)]">›</span>
           </div>

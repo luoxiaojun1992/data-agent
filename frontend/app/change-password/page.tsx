@@ -2,11 +2,14 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import { useAuth } from '../../lib/api';
 
 export default function ChangePasswordPage() {
   const { auth, apiFetch, logout } = useAuth();
+  const t = useTranslations('pwd');
+  const ta = useTranslations('auth');
   const router = useRouter();
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -22,7 +25,7 @@ export default function ChangePasswordPage() {
     setConfirmError('');
 
     if (newPwd !== confirmPwd) {
-      setConfirmError('两次输入的密码不一致');
+      setConfirmError(t('mismatch'));
       return;
     }
 
@@ -32,14 +35,14 @@ export default function ChangePasswordPage() {
         body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
       });
       if (res.ok) {
-        setSuccess('密码修改成功，请使用新密码重新登录');
+        setSuccess(ta('pwdChanged'));
         setTimeout(() => { logout(); router.push('/login'); }, 2000);
       } else {
         const d = await res.json();
-        setError(d.error || '修改失败');
+        setError(d.error || t('changeFailed'));
       }
     } catch {
-      setError('修改失败');
+      setError(t('changeFailed'));
     }
   };
 
@@ -47,7 +50,7 @@ export default function ChangePasswordPage() {
     <AppLayout>
       <div className="animate-fade-in" data-testid="pwd-page">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">修改密码</h2>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('title')}</h2>
         </div>
 
         {/* Success toast */}
@@ -62,23 +65,23 @@ export default function ChangePasswordPage() {
         {showBanner && (
           <div data-testid="pwd-initial-banner" style={{ padding: '12px 16px', marginBottom: '20px',
             background: 'rgba(251,191,36,0.1)', borderRadius: '10px', color: '#FBBF24', fontSize: '13px' }}>
-            ⚠️ 您正在使用系统初始密码，请尽快修改
+            ⚠️ {t('initialBanner')}
           </div>
         )}
 
         <div className="glass" style={{ padding: '24px', maxWidth: '440px' }}>
           <div style={{ marginBottom: '12px' }}>
-            <label style={labelStyle}>旧密码</label>
+            <label style={labelStyle}>{t('oldPwd')}</label>
             <input data-testid="pwd-old-input" type="password" value={oldPwd}
               onChange={(e) => setOldPwd(e.target.value)} style={inputStyle} />
           </div>
           <div style={{ marginBottom: '12px' }}>
-            <label style={labelStyle}>新密码</label>
+            <label style={labelStyle}>{t('newPwd')}</label>
             <input data-testid="pwd-new-input" type="password" value={newPwd}
               onChange={(e) => setNewPwd(e.target.value)} style={inputStyle} />
           </div>
           <div style={{ marginBottom: '12px' }}>
-            <label style={labelStyle}>确认新密码</label>
+            <label style={labelStyle}>{t('confirmPwd')}</label>
             <input data-testid="pwd-confirm-input" type="password" value={confirmPwd}
               onChange={(e) => setConfirmPwd(e.target.value)} style={inputStyle} />
             {confirmError && <p data-testid="pwd-confirm-error" style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>{confirmError}</p>}
@@ -87,7 +90,7 @@ export default function ChangePasswordPage() {
           <button data-testid="pwd-change-btn" onClick={handleSubmit}
             style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
               color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
-            确认修改
+            {t('submit')}
           </button>
         </div>
       </div>

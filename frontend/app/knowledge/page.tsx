@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../providers';
 import Pagination from '../components/Pagination';
 import { primaryButtonStyle, modalOverlayStyle } from '../components/ui';
@@ -27,6 +28,7 @@ const PAGE_SIZE = 10;
 
 export default function KnowledgePage() {
   const { auth, apiFetch } = useAuth();
+  const t = useTranslations('knowledge');
   const [docs, setDocs] = useState<Doc[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -88,7 +90,7 @@ export default function KnowledgePage() {
     const res = await apiFetch('/knowledge/docs', { method: 'POST', body: fd });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      throw new Error(d.error || `上传失败 (${res.status})`);
+      throw new Error(d.error || t('uploadFailed', { status: res.status }));
     }
   };
 
@@ -103,7 +105,7 @@ export default function KnowledgePage() {
     const res = await apiFetch('/knowledge/docs', { method: 'POST', body: fd });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      throw new Error(d.error || `上传失败 (${res.status})`);
+      throw new Error(d.error || t('uploadFailed', { status: res.status }));
     }
   };
 
@@ -147,10 +149,10 @@ export default function KnowledgePage() {
             uploadedCount++;
           } else {
             hadError = true;
-            setUploadError(`Excel ${file.name} 解析结果为空`);
+            setUploadError(t('excelEmpty', { name: file.name }));
           }
         } else if (isImageFile(file.name)) {
-          const dataUrl = await fileToDataUrl(file);
+          const dataUrl = await fileToDataUrl(file, t('readFileFailed'));
           await uploadImageDoc(
             file.name.replace(/\.[^.]+$/, ''),
             file.name,
@@ -160,21 +162,21 @@ export default function KnowledgePage() {
           uploadedCount++;
         } else {
           hadError = true;
-          setUploadError(`不支持的文件类型: ${file.name}（仅支持 txt、pdf、xlsx、图片）`);
+          setUploadError(t('unsupportedType', { name: file.name }));
         }
         setUploadProgress(prev => { const p = [...prev]; p[i] = 100; return p; });
         setUploadComplete(prev => { const c = [...prev]; c[i] = true; return c; });
       } catch (e: any) {
         hadError = true;
-        setUploadError(e?.message || '网络错误');
+        setUploadError(e?.message || t('networkError'));
       }
     }
     setUploading(false);
     fetchDocs();
     if (hadError) {
-      showToast('上传未完全成功，请查看错误信息', 'error');
+      showToast(t('partialUpload'), 'error');
     } else {
-      showToast(`上传完成（${uploadedCount} 个文档）`, 'success');
+      showToast(t('uploadDone', { count: uploadedCount }), 'success');
       setShowUpload(false);
       setSelectedFiles([]);
     }
@@ -202,34 +204,34 @@ export default function KnowledgePage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || `导入失败 (${res.status})`);
+        throw new Error(d.error || t('importFailed', { status: res.status }));
       }
       const data = await res.json();
       const n = (data.doc_ids || []).length;
       const skipped = data.skipped_images || 0;
       const msg = skipped > 0
-        ? `导入完成（${n} 个文档，跳过 ${skipped} 张超限图片）`
-        : `导入完成（${n} 个文档）`;
+        ? t('importDoneSkipped', { count: n, skipped })
+        : t('importDone', { count: n });
       showToast(msg, 'success');
       setShowImportUrl(false);
       setImportUrlValue('');
       fetchDocs();
     } catch (e: any) {
-      setImportUrlError(e?.message || '网络错误');
-      showToast('导入失败，请查看错误信息', 'error');
+      setImportUrlError(e?.message || t('networkError'));
+      showToast(t('importFailedToast'), 'error');
     } finally {
       setImportingUrl(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除该文档吗？')) return;
+    if (!confirm(t('deleteConfirm'))) return;
     try {
       await apiFetch(`/knowledge/docs/${id}`, { method: 'DELETE' });
-      showToast('已删除', 'success');
+      showToast(t('deleted'), 'success');
       setDocs((prev) => prev.filter((d) => d.id !== id));
     } catch {
-      showToast('删除失败', 'error');
+      showToast(t('deleteFailed'), 'error');
     }
   };
 
@@ -240,9 +242,9 @@ export default function KnowledgePage() {
         body: JSON.stringify({ is_public: !isPublic }),
       });
       setDocs((prev) => prev.map((d) => d.id === id ? { ...d, is_public: !isPublic } : d));
-      showToast(isPublic ? '已设为私有' : '已设为共享', 'success');
+      showToast(isPublic ? t('setPrivate') : t('setPublic'), 'success');
     } catch {
-      showToast('操作失败', 'error');
+      showToast(t('opFailed'), 'error');
     }
   };
 
@@ -250,8 +252,8 @@ export default function KnowledgePage() {
     <AppLayout>
       <div className="animate-fade-in" data-testid="kb-page-header">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">知识库</h2>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">我的知识文档管理</p>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('title')}</h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">{t('desc')}</p>
         </div>
 
         {/* Toast */}
@@ -266,13 +268,13 @@ export default function KnowledgePage() {
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <button data-testid="kb-upload-btn" onClick={() => setShowUpload(true)}
             style={primaryButtonStyle}>
-            + 上传文档
+            {t('uploadDoc')}
           </button>
           <button data-testid="kb-import-url-btn" onClick={() => { setShowImportUrl(true); setImportUrlError(''); }}
             style={{ ...primaryButtonStyle, background: 'transparent', border: '1px solid var(--surface-20)', color: 'var(--text-primary)' }}>
-            🔗 导入网址
+            {t('importUrl')}
           </button>
-          <input data-testid="kb-search-input" placeholder="搜索文档..." value={search}
+          <input data-testid="kb-search-input" placeholder={t('searchPlaceholder')} value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             style={{ padding: '10px 16px', background: 'var(--surface-6)', border: '1px solid var(--surface-10)',
               borderRadius: '8px', fontSize: '14px', color: 'var(--text-primary)', outline: 'none', flex: 1, minWidth: '200px' }} />
@@ -284,13 +286,13 @@ export default function KnowledgePage() {
             onClick={(e) => { if (e.target === e.currentTarget) { setShowUpload(false); setSelectedFiles([]); } }}>
             <div className="glass" style={{ padding: '24px', maxWidth: '420px', width: '90%' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
-                上传文档
+                {t('uploadModalTitle')}
               </h3>
               <div data-testid="kb-drop-zone" style={{ padding: '40px', textAlign: 'center',
                 border: '2px dashed var(--surface-15)', borderRadius: '12px', marginBottom: '16px',
                 color: '#7A7A7A', fontSize: '14px', cursor: 'pointer' }}
                 onClick={() => fileInputRef.current?.click()}>
-                📤 拖拽文件到此处或点击选择
+                {t('dropZone')}
               </div>
               {selectedFiles.length > 0 && (
                 <div style={{ marginBottom: '16px' }}>
@@ -318,7 +320,7 @@ export default function KnowledgePage() {
               <button onClick={handleUpload} disabled={uploading || selectedFiles.length === 0}
                 style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
                   color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
-                {uploading ? '上传中...' : '确认上传'}
+                {uploading ? t('uploading') : t('confirmUpload')}
               </button>
             </div>
           </div>
@@ -330,7 +332,7 @@ export default function KnowledgePage() {
             onClick={(e) => { if (e.target === e.currentTarget && !importingUrl) { setShowImportUrl(false); setImportUrlError(''); } }}>
             <div className="glass" style={{ padding: '24px', maxWidth: '460px', width: '90%' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
-                导入网址
+                {t('importModalTitle')}
               </h3>
               <input
                 data-testid="kb-import-url-input"
@@ -352,13 +354,13 @@ export default function KnowledgePage() {
                   disabled={importingUrl}
                   style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--surface-15)',
                     borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '14px', cursor: 'pointer' }}>
-                  取消
+                  {t('cancel')}
                 </button>
                 <button data-testid="kb-import-url-submit" onClick={handleImportUrl}
                   disabled={importingUrl || importUrlValue.trim() === ''}
                   style={{ padding: '8px 20px', background: 'linear-gradient(135deg, #5c7cfa, #7c3aed)',
                     color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
-                  {importingUrl ? '导入中...' : '导入'}
+                  {importingUrl ? t('importing') : t('import')}
                 </button>
               </div>
             </div>
@@ -381,20 +383,20 @@ export default function KnowledgePage() {
               </div>
               <div style={{ flex: 1 }}>
                 <p data-testid="kb-doc-name" style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  {doc.title || doc.file_name || '未命名文档'}
+                  {doc.title || doc.file_name || t('unnamedDoc')}
                 </p>
                 <p data-testid="kb-doc-meta" style={{ fontSize: '12px', color: '#7A7A7A' }}>
-                  {(doc.size_bytes / 1024).toFixed(1)} KB · {doc.chunk_count || 0} 分片
+                  {t('meta', { size: (doc.size_bytes / 1024).toFixed(1), chunks: doc.chunk_count || 0 })}
                 </p>
               </div>
               <div>
                 <span data-testid={`kb-doc-status-${doc.id}`} data-status={doc.status}
                   style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: 500,
                     background: statusBg(doc.status), color: statusColor(doc.status) }}>
-                  {statusIcon(doc.status)} {statusLabel(doc.status, doc.progress_percent)}
+                  {statusIcon(doc.status)} {statusLabel(t, doc.status, doc.progress_percent)}
                 </span>
                 {/* Share toggle */}
-                <label data-testid={`kb-doc-share-${doc.id}`} title={doc.is_public ? '点击取消共享' : '点击共享'} style={{ cursor: 'pointer', marginLeft: '8px', display: 'inline-flex', alignItems: 'center' }}>
+                <label data-testid={`kb-doc-share-${doc.id}`} title={doc.is_public ? t('clickUnshare') : t('clickShare')} style={{ cursor: 'pointer', marginLeft: '8px', display: 'inline-flex', alignItems: 'center' }}>
                   <input type="checkbox" checked={doc.is_public} onChange={() => togglePublic(doc.id, doc.is_public)} style={{ display: 'none' }} />
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={doc.is_public ? '#34d399' : '#94a3b8'} strokeWidth="2">
                     <circle cx="18" cy="5" r="3" />
@@ -419,7 +421,7 @@ export default function KnowledgePage() {
           ))}
           {docs.length === 0 && (
             <div className="glass p-12 text-center">
-              <p className="text-sm text-[var(--text-secondary)]">暂无文档，点击「+ 上传文档」开始</p>
+              <p className="text-sm text-[var(--text-secondary)]">{t('emptyHint')}</p>
             </div>
           )}
         </div>
@@ -431,9 +433,9 @@ export default function KnowledgePage() {
   );
 }
 
-const statusLabel = (s: string, progress: number) => {
-  const m: Record<string, string> = { ready: '已索引', indexing: '索引中', uploaded: '已上传', failed: '索引失败', pending: '等待索引' };
-  const base = m[s] || s;
+const statusLabel = (t: (key: string) => string, s: string, progress: number) => {
+  const keys: Record<string, string> = { ready: 'status.ready', indexing: 'status.indexing', uploaded: 'status.uploaded', failed: 'status.failed', pending: 'status.pending' };
+  const base = keys[s] ? t(keys[s]) : s;
   if (s === 'indexing') return `${base} ${progress}%`;
   return base;
 };
@@ -451,11 +453,11 @@ const statusColor = (s: string) => {
 };
 
 // File → base64 data URL（浏览器端读取图片）。
-function fileToDataUrl(file: File): Promise<string> {
+function fileToDataUrl(file: File, errMsg: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('读取文件失败'));
+    reader.onerror = () => reject(new Error(errMsg));
     reader.readAsDataURL(file);
   });
 }

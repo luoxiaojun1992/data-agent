@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../../../../providers';
 import { useAuth } from '../../../../../../lib/api';
 import { useDebouncedSearch, SearchableOption } from '../../../../../components/SearchableSelect';
@@ -12,6 +13,7 @@ interface RBACPermission { id: string; key: string; name: string; module: string
 const PAGE_SIZE = 10;
 
 export default function RolePermissionsPage() {
+  const t = useTranslations('adminRbacPermissions');
   const { auth, apiFetch } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [perms, setPerms] = useState<RBACPermission[]>([]);
@@ -20,14 +22,14 @@ export default function RolePermissionsPage() {
   const [roleName, setRoleName] = useState('');
   const [level, setLevel] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2000); };
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 2000); };
 
   const fetchPerms = () => {
     apiFetch(`/admin/rbac/roles/${id}/permissions?page=${page}&page_size=${PAGE_SIZE}`).then(r => r.json()).then(data => {
       setPerms(data.permissions || []); setTotal(data.total || 0);
-    }).catch(() => showToast('加载失败'));
+    }).catch(() => showToast(t('loadFailed'), 'error'));
   };
 
   useEffect(() => {
@@ -40,11 +42,11 @@ export default function RolePermissionsPage() {
 
   const add = (pid: string) => {
     apiFetch(`/admin/rbac/roles/${id}/permissions`, { method: 'POST', body: JSON.stringify({ permission_id: pid }) })
-      .then(() => { showToast('已添加'); fetchPerms(); }).catch(() => showToast('添加失败'));
+      .then(() => { showToast(t('added')); fetchPerms(); }).catch(() => showToast(t('addFailed'), 'error'));
   };
   const remove = (pid: string) => {
     apiFetch(`/admin/rbac/roles/${id}/permissions/${pid}`, { method: 'DELETE' })
-      .then(() => { showToast('已移除'); fetchPerms(); }).catch(() => showToast('移除失败'));
+      .then(() => { showToast(t('removed')); fetchPerms(); }).catch(() => showToast(t('removeFailed'), 'error'));
   };
 
   const badge = (l: number) => ({
@@ -68,19 +70,19 @@ export default function RolePermissionsPage() {
   return (
     <AppLayout>
       <div style={{ maxWidth: 900, margin: '0 auto', padding: 20 }}>
-        <a href="/admin/rbac" style={{ color: '#5c7cfa', fontSize: 13 }}>← 返回 RBAC 管理</a>
+        <a href="/admin/rbac" style={{ color: '#5c7cfa', fontSize: 13 }}>{t('backToRbac')}</a>
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: '8px 0' }}>{roleName}<span style={badge(level)}>L{level}</span></h2>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>已关联 {total} 个权限</p>
-        <button data-testid="rbac-role-add-perm-btn" onClick={() => setShowAdd(true)} style={{ ...primaryButtonStyle, marginBottom: 16 }}>+ 添加权限</button>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>{t('permCount', { total })}</p>
+        <button data-testid="rbac-role-add-perm-btn" onClick={() => setShowAdd(true)} style={{ ...primaryButtonStyle, marginBottom: 16 }}>{t('addPerm')}</button>
 
         <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
-                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Key</th>
-                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>名称</th>
-                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>模块</th>
-                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>操作</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colKey')}</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colName')}</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colModule')}</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -90,7 +92,7 @@ export default function RolePermissionsPage() {
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.name}</td>
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>{p.module}</td>
                   <td style={{ padding: '10px 12px', fontSize: 13 }}>
-                    {p.type !== "builtin" && <button data-testid={`rbac-role-perm-remove-${p.id}`} onClick={() => remove(p.id)} style={{ ...btnSm, color: '#ef4444' }}>移除</button>}
+                    {p.type !== "builtin" && <button data-testid={`rbac-role-perm-remove-${p.id}`} onClick={() => remove(p.id)} style={{ ...btnSm, color: '#ef4444' }}>{t('remove')}</button>}
                   </td>
                 </tr>
               ))}
@@ -104,7 +106,7 @@ export default function RolePermissionsPage() {
         )}
 
         {toast && <div style={{ position: 'fixed', bottom: 20, right: 20, padding: '10px 20px', borderRadius: 8,
-          background: toast.includes('失败') ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast}</div>}
+          background: toast.type === 'error' ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast.msg}</div>}
       </div>
     </AppLayout>
   );
@@ -120,9 +122,10 @@ function AddPermModal({ apiFetch, roleId, onAdd, onClose }: {
   onAdd: (permId: string) => void;
   onClose: () => void;
 }) {
+  const tm = useTranslations('adminRbacPermissions');
   const fetchAvail = async (q: string, limit: number): Promise<SearchableOption[]> => {
     const res = await apiFetch(`/admin/rbac/permissions?limit=${limit}&exclude_role_id=${roleId}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
-    if (!res.ok) throw new Error('加载失败');
+    if (!res.ok) throw new Error(tm('loadFailed'));
     const data = await res.json();
     return (data.permissions || []) as SearchableOption[];
   };
@@ -136,20 +139,20 @@ function AddPermModal({ apiFetch, roleId, onAdd, onClose }: {
 
   return (
     <div style={mo} onClick={onClose}><div style={mc} onClick={e => e.stopPropagation()}>
-      <h3 style={{ marginBottom: 12 }}>添加权限</h3>
-      <input style={inp} placeholder="搜索..." value={query} onChange={e => onSearch(e.target.value)} />
+      <h3 style={{ marginBottom: 12 }}>{tm('addPermTitle')}</h3>
+      <input style={inp} placeholder={tm('searchPlaceholder')} value={query} onChange={e => onSearch(e.target.value)} />
       <div style={{ maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
-        {loading && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>加载中...</p>}
+        {loading && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{tm('loading')}</p>}
         {!loading && error && <p style={{ color: '#ef4444', fontSize: 13 }}>{error}</p>}
-        {!loading && !error && items.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>无结果</p>}
+        {!loading && !error && items.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{tm('noResult')}</p>}
         {!loading && items.map((p) => (
           <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--surface-6)' }}>
             <div><code style={{ fontSize: 12 }}>{p.key}</code><span style={{ fontSize: 13, marginLeft: 8 }}>{p.name}</span></div>
-            <button onClick={() => onAdd(p.id)} style={{ ...btnSm, color: '#5c7cfa' }}>添加</button>
+            <button onClick={() => onAdd(p.id)} style={{ ...btnSm, color: '#5c7cfa' }}>{tm('add')}</button>
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 12, textAlign: 'right' }}><button onClick={onClose} style={btnSec}>关闭</button></div>
+      <div style={{ marginTop: 12, textAlign: 'right' }}><button onClick={onClose} style={btnSec}>{tm('close')}</button></div>
     </div></div>
   );
 }

@@ -2,18 +2,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import Pagination from '../../components/Pagination';
 import { primaryButtonStyle, modalOverlayStyle } from '../../components/ui';
 
-const STATUS_LABELS: Record<string, { text: string; color: string }> = {
-  pending: { text: '待审核', color: '#f59e0b' },
-  approved: { text: '已通过', color: '#10b981' },
-  rejected: { text: '已拒绝', color: '#ef4444' },
-};
-
 export default function APICollectionsPage() {
+  const t = useTranslations('adminApiCollections');
   const { auth, apiFetch } = useAuth();
   const router = useRouter();
   const [collections, setCollections] = useState<any[]>([]);
@@ -26,6 +22,12 @@ export default function APICollectionsPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [pageSize, setPageSize] = useState(20);
+
+  const STATUS_LABELS: Record<string, { text: string; color: string }> = {
+    pending: { text: t('statusPending'), color: '#f59e0b' },
+    approved: { text: t('statusApproved'), color: '#10b981' },
+    rejected: { text: t('statusRejected'), color: '#ef4444' },
+  };
 
   const load = useCallback(async () => {
     const res = await apiFetch(`/admin/api-collections?page=${page}&page_size=${pageSize}`);
@@ -47,7 +49,7 @@ export default function APICollectionsPage() {
     const res = await apiFetch('/admin/api-collections', { method: 'POST', body: formData });
     if (!res.ok) {
       const e = await res.json();
-      setError(e.error || '上传失败');
+      setError(e.error || t('uploadFailed'));
       setUploading(false);
       return;
     }
@@ -60,7 +62,7 @@ export default function APICollectionsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定删除该 API 集合？')) return;
+    if (!confirm(t('deleteConfirm'))) return;
     await apiFetch(`/admin/api-collections/${id}`, { method: 'DELETE' });
     load();
   };
@@ -69,9 +71,9 @@ export default function APICollectionsPage() {
     <AppLayout>
       <div className="animate-fade-in">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-[var(--text-primary)]">API 管理</h2>
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('title')}</h2>
           <button onClick={() => setShowUpload(true)} style={primaryButtonStyle}>
-            + 上传 OpenAPI 文件
+            {t('uploadOpenapi')}
           </button>
         </div>
 
@@ -80,14 +82,14 @@ export default function APICollectionsPage() {
             <div className="rounded-xl p-6 w-full max-w-md"
               style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)' }}
               onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">上传 API 集合</h3>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">{t('uploadModalTitle')}</h3>
               <div className="space-y-3">
                 <div>
-                  <input placeholder="名称" value={uploadName} onChange={e => setUploadName(e.target.value)}
+                  <input placeholder={t('namePlaceholder')} value={uploadName} onChange={e => setUploadName(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm" />
                 </div>
                 <div>
-                  <input placeholder="描述" value={uploadDesc} onChange={e => setUploadDesc(e.target.value)}
+                  <input placeholder={t('descPlaceholder')} value={uploadDesc} onChange={e => setUploadDesc(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-[var(--surface-5)] border border-[var(--surface-10)] text-[var(--text-primary)] text-sm" />
                 </div>
                 <div>
@@ -97,7 +99,7 @@ export default function APICollectionsPage() {
                 {error && <p className="text-red-400 text-sm">{error}</p>}
                 <button onClick={handleUpload} disabled={uploading}
                   className="w-full py-2 bg-[#B1E2FF] text-black rounded-lg text-sm font-medium hover:opacity-80 disabled:opacity-50">
-                  {uploading ? '上传中...' : '确认上传'}
+                  {uploading ? t('uploading') : t('confirmUpload')}
                 </button>
               </div>
             </div>
@@ -108,12 +110,12 @@ export default function APICollectionsPage() {
           <table className="w-full text-sm text-[var(--text-primary)]">
             <thead>
               <tr className="border-b border-[var(--surface-10)] text-left text-[var(--text-secondary)]">
-                <th className="py-3 px-4">名称</th>
-                <th className="py-3 px-4">描述</th>
-                <th className="py-3 px-4">状态</th>
-                <th className="py-3 px-4">API 数</th>
-                <th className="py-3 px-4">上传时间</th>
-                <th className="py-3 px-4">操作</th>
+                <th className="py-3 px-4">{t('colName')}</th>
+                <th className="py-3 px-4">{t('colDescription')}</th>
+                <th className="py-3 px-4">{t('colStatus')}</th>
+                <th className="py-3 px-4">{t('colApiCount')}</th>
+                <th className="py-3 px-4">{t('colUploadedAt')}</th>
+                <th className="py-3 px-4">{t('colActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -127,12 +129,12 @@ export default function APICollectionsPage() {
                   <td className="py-3 px-4">{c.api_count}</td>
                   <td className="py-3 px-4 text-[var(--text-secondary)]">{new Date(c.created_at).toLocaleDateString()}</td>
                   <td className="py-3 px-4 space-x-2">
-                    <button onClick={() => router.push(`/admin/api-collections/${c.id}`)} className="text-[#B1E2FF] hover:underline text-xs">详情</button>
-                    <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:underline text-xs">删除</button>
+                    <button onClick={() => router.push(`/admin/api-collections/${c.id}`)} className="text-[#B1E2FF] hover:underline text-xs">{t('detail')}</button>
+                    <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:underline text-xs">{t('delete')}</button>
                   </td>
                 </tr>
               ))}
-              {collections.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[var(--text-secondary)]">暂无数据</td></tr>}
+              {collections.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[var(--text-secondary)]">{t('empty')}</td></tr>}
             </tbody>
           </table>
         </div>

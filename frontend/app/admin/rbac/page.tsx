@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import AppLayout from '../../providers';
 import { useAuth } from '../../../lib/api';
 import SearchableSelect, { SearchableOption } from '../../components/SearchableSelect';
@@ -19,6 +20,7 @@ interface RBACPermission {
 const PAGE_SIZE = 10;
 
 export default function RBACPage() {
+  const t = useTranslations('adminRbac');
   const { auth, apiFetch } = useAuth();
   const [tab, setTab] = useState<'roles' | 'permissions'>('roles');
   const [roles, setRoles] = useState<RBACRole[]>([]);
@@ -33,9 +35,9 @@ export default function RBACPage() {
   const [showAddRole, setShowAddRole] = useState(false);
   const [showAddPerm, setShowAddPerm] = useState(false);
   const [showEditRole, setShowEditRole] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2000); };
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 2000); };
 
   // 业务主角色名（system_admin/admin/user）→ RBAC 角色 ID 映射（SPEC-085 §4.4）。
   // RBAC 角色 ID 以 rbac_role_ 前缀（seed 生成的自定义 ID，非 UUID）。
@@ -59,28 +61,28 @@ export default function RBACPage() {
       if (parentID) q.set('parent_id', parentID);
       apiFetch(`/admin/rbac/roles?${q}`).then(r => r.json()).then(data => {
         setRoles(data.roles || []); setRoleTotal(data.total || 0);
-      }).catch(() => showToast('加载角色失败'));
+      }).catch(() => showToast(t('loadRolesFailed'), 'error'));
     })();
   };
 
   const fetchPerms = () => {
     apiFetch(`/admin/rbac/permissions?page=${permPage}&page_size=${PAGE_SIZE}`).then(r => r.json()).then(data => {
       setPerms(data.permissions || []); setPermTotal(data.total || 0);
-    }).catch(() => showToast('加载权限失败'));
+    }).catch(() => showToast(t('loadPermsFailed'), 'error'));
   };
 
   useEffect(() => { if (auth.hydrated && tab === 'roles') fetchRoles(); }, [tab, rolePage, parentFilter, auth.hydrated]);
   useEffect(() => { if (auth.hydrated && tab === 'permissions') fetchPerms(); }, [tab, permPage, auth.hydrated]);
 
   const deleteRole = async (id: string) => {
-    if (!confirm('确定删除？')) return;
-    try { await apiFetch(`/admin/rbac/roles/${id}`, { method: 'DELETE' }); showToast('已删除'); fetchRoles(); }
-    catch { showToast('删除失败'); }
+    if (!confirm(t('deleteConfirm'))) return;
+    try { await apiFetch(`/admin/rbac/roles/${id}`, { method: 'DELETE' }); showToast(t('deleted')); fetchRoles(); }
+    catch { showToast(t('deleteFailed'), 'error'); }
   };
   const deletePerm = async (id: string) => {
-    if (!confirm('确定删除？')) return;
-    try { await apiFetch(`/admin/rbac/permissions/${id}`, { method: 'DELETE' }); showToast('已删除'); fetchPerms(); }
-    catch { showToast('删除失败'); }
+    if (!confirm(t('deleteConfirm'))) return;
+    try { await apiFetch(`/admin/rbac/permissions/${id}`, { method: 'DELETE' }); showToast(t('deleted')); fetchPerms(); }
+    catch { showToast(t('deleteFailed'), 'error'); }
   };
 
   const clearFilter = () => { setParentFilter(''); setParentFilterName(''); setRolePage(1); };
@@ -89,26 +91,26 @@ export default function RBACPage() {
     <AppLayout>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 20 }}>
         <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 20 }}>
-          RBAC 管理{parentFilter && <span style={{ fontSize: 14, color: '#5c7cfa', marginLeft: 12 }}>— {parentFilterName} 的子角色</span>}
+          {t('title')}{parentFilter && <span style={{ fontSize: 14, color: '#5c7cfa', marginLeft: 12 }}>{t('subRoleOf', { name: parentFilterName })}</span>}
         </h1>
 
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
           <button onClick={() => setTab('roles')}
             style={{ padding: '8px 20px', background: 'transparent', border: 'none', fontSize: 15, cursor: 'pointer', fontWeight: 500,
               borderBottom: tab === 'roles' ? '2px solid #5c7cfa' : '2px solid transparent',
-              color: tab === 'roles' ? '#5c7cfa' : 'var(--text-secondary)' }}>角色管理</button>
+              color: tab === 'roles' ? '#5c7cfa' : 'var(--text-secondary)' }}>{t('rolesTab')}</button>
           <button onClick={() => setTab('permissions')}
             style={{ padding: '8px 20px', background: 'transparent', border: 'none', fontSize: 15, cursor: 'pointer', fontWeight: 500,
               borderBottom: tab === 'permissions' ? '2px solid #5c7cfa' : '2px solid transparent',
-              color: tab === 'permissions' ? '#5c7cfa' : 'var(--text-secondary)' }}>权限列表</button>
+              color: tab === 'permissions' ? '#5c7cfa' : 'var(--text-secondary)' }}>{t('permsTab')}</button>
         </div>
 
         {/* Roles Tab */}
         {tab === 'roles' && (<>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             {parentFilter && <button onClick={clearFilter} data-testid="rbac-clear-filter-btn"
-              style={btnSec}>← 返回全部</button>}
-            <button data-testid="rbac-add-role-btn" onClick={() => setShowAddRole(true)} style={primaryButtonStyle}>+ 新建角色</button>
+              style={btnSec}>{t('backToAll')}</button>}
+            <button data-testid="rbac-add-role-btn" onClick={() => setShowAddRole(true)} style={primaryButtonStyle}>{t('addRole')}</button>
           </div>
 
           {roles.map(r => (
@@ -119,23 +121,23 @@ export default function RBACPage() {
                   <strong>{r.display_name}</strong>
                   <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500,
                     background: r.level === 0 ? '#ef4444' : r.level === 1 ? '#f59e0b' : '#34d399', color: '#fff' }}>L{r.level}</span>
-                  {r.type === 'builtin' && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, background: '#fbbf24', color: '#000' }}>内置</span>}
+                  {r.type === 'builtin' && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, background: '#fbbf24', color: '#000' }}>{t('builtin')}</span>}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{r.description || r.name}</div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 12, color: 'var(--text-secondary)' }}>
-                  <span>子角色 {r.child_count}/10</span><span>权限 {r.permission_count}/10</span>
+                  <span>{t('childRoles', { count: r.child_count })}</span><span>{t('permissions', { count: r.permission_count })}</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <a href={`/admin/rbac/roles/${r.id}/permissions`} style={{ ...btnSm, color: '#5c7cfa', textDecoration: 'none' }}>管理权限</a>
+                <a href={`/admin/rbac/roles/${r.id}/permissions`} style={{ ...btnSm, color: '#5c7cfa', textDecoration: 'none' }}>{t('managePerms')}</a>
                 {r.level < 2 && <button data-testid={`rbac-role-sub-${r.id}`}
                   onClick={() => { setParentFilter(r.id); setParentFilterName(r.display_name); setRolePage(1); }}
-                  style={{ ...btnSm, color: '#a855f7' }}>子角色 ({r.child_count})</button>}
+                  style={{ ...btnSm, color: '#a855f7' }}>{t('childRolesBtn', { count: r.child_count })}</button>}
                 {r.type === 'custom' && (<>
                   <button data-testid={`rbac-role-edit-${r.id}`} onClick={() => { setSelectedRole(r); setShowEditRole(true); }}
-                    style={{ ...btnSm, color: '#f59e0b' }}>编辑</button>
+                    style={{ ...btnSm, color: '#f59e0b' }}>{t('edit')}</button>
                   <button data-testid={`rbac-role-delete-${r.id}`} onClick={() => deleteRole(r.id)}
-                    style={{ ...btnSm, color: '#ef4444' }}>删除</button>
+                    style={{ ...btnSm, color: '#ef4444' }}>{t('delete')}</button>
                 </>)}
               </div>
             </div>
@@ -145,16 +147,16 @@ export default function RBACPage() {
 
         {/* Permissions Tab */}
         {tab === 'permissions' && (<>
-          <button data-testid="rbac-add-perm-btn" onClick={() => setShowAddPerm(true)} style={primaryButtonStyle}>+ 新建权限</button>
+          <button data-testid="rbac-add-perm-btn" onClick={() => setShowAddPerm(true)} style={primaryButtonStyle}>{t('addPerm')}</button>
           <div className="glass" style={{ padding: 0, overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--surface-10)' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>名称</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>模块</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colName')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colModule')}</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Key</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>类型</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>操作</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colType')}</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,7 +170,7 @@ export default function RBACPage() {
                         background: p.type === 'builtin' ? '#fbbf24' : '#34d399', color: '#000' }}>{p.type}</span></td>
                     <td style={{ padding: '10px 12px', fontSize: 13 }}>
                       {p.type === 'custom' && <button data-testid={`rbac-perm-delete-${p.id}`} onClick={() => deletePerm(p.id)}
-                        style={{ ...btnSm, color: '#ef4444' }}>删除</button>}
+                        style={{ ...btnSm, color: '#ef4444' }}>{t('delete')}</button>}
                     </td>
                   </tr>
                 ))}
@@ -179,7 +181,7 @@ export default function RBACPage() {
         </>)}
 
         {toast && <div style={{ position: 'fixed', bottom: 20, right: 20, padding: '10px 20px', borderRadius: 8,
-          background: toast.includes('失败') ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast}</div>}
+          background: toast.type === 'error' ? '#ef4444' : '#34d399', color: '#fff', zIndex: 9999 }}>{toast.msg}</div>}
 
         {showAddPerm && <AddPermModal apiFetch={apiFetch} onClose={() => setShowAddPerm(false)} onSuccess={() => { setShowAddPerm(false); fetchPerms(); }} showToast={showToast} />}
         {showAddRole && <AddRoleModal apiFetch={apiFetch} onClose={() => setShowAddRole(false)}
@@ -201,6 +203,7 @@ const inLabel: React.CSSProperties = { display: 'block', fontSize: 13, marginBot
 const inStyle: React.CSSProperties = { ...modalInputStyle, display: 'block', marginTop: 4 };
 
 function AddRoleModal({ apiFetch, onClose, onSuccess, showToast }: any) {
+  const tm = useTranslations('adminRbac');
   const [name, setName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
@@ -208,77 +211,78 @@ function AddRoleModal({ apiFetch, onClose, onSuccess, showToast }: any) {
   const create = async () => {
     try {
       await apiFetch('/admin/rbac/roles', { method: 'POST', body: JSON.stringify({ name, display_name: displayName, description, parent_id: parentID }) });
-      showToast('角色已创建'); onSuccess();
-    } catch (e: any) { showToast(e?.message || '创建失败'); }
+      showToast(tm('roleCreated')); onSuccess();
+    } catch (e: any) { showToast(e?.message || tm('createFailed'), 'error'); }
   };
   // SPEC-074: parent candidates are searched in the DB (top-N + q).
   const fetchParents = async (q: string, limit: number): Promise<SearchableOption[]> => {
     const res = await apiFetch(`/admin/rbac/parent-candidates?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
-    if (!res.ok) throw new Error('加载失败');
+    if (!res.ok) throw new Error(tm('loadFailed'));
     const data = await res.json();
     return (data.parents || []) as SearchableOption[];
   };
   return (
     <div style={mOverlay} onClick={onClose}><div style={mContent} onClick={e => e.stopPropagation()}>
-      <h3 style={{ marginBottom: 12 }}>新建角色</h3>
-      <label style={inLabel}>名称 <input style={inStyle} value={name} onChange={e => setName(e.target.value)} placeholder="my_custom_role" /></label>
-      <label style={inLabel}>显示名 <input style={inStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="我的自定义角色" /></label>
-      <label style={inLabel}>描述 <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
-      <label style={inLabel}>父角色
+      <h3 style={{ marginBottom: 12 }}>{tm('addRoleTitle')}</h3>
+      <label style={inLabel}>{tm('nameLabel')} <input style={inStyle} value={name} onChange={e => setName(e.target.value)} placeholder="my_custom_role" /></label>
+      <label style={inLabel}>{tm('displayNameLabel')} <input style={inStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder={tm('displayNamePlaceholder')} /></label>
+      <label style={inLabel}>{tm('descriptionLabel')} <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
+      <label style={inLabel}>{tm('parentRoleLabel')}
         <SearchableSelect
           fetch={fetchParents}
           value={parentID}
           onChange={setParentID}
           labelKey="display_name"
           allowEmpty
-          emptyLabel="无（根角色）"
+          emptyLabel={tm('rootRole')}
           renderLabel={(r) => <span>{r.display_name} (L{r.level})</span>}
         />
       </label>
       <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-        <button onClick={onClose} style={btnSec}>取消</button>
-        <button data-testid="rbac-add-role-submit" onClick={create} style={btnPri}>创建</button>
+        <button onClick={onClose} style={btnSec}>{tm('cancel')}</button>
+        <button data-testid="rbac-add-role-submit" onClick={create} style={btnPri}>{tm('create')}</button>
       </div>
     </div></div>
   );
 }
 function EditRoleModal({ apiFetch, role, onClose, onSuccess, showToast }: any) {
+  const tm = useTranslations('adminRbac');
   const [displayName, setDisplayName] = useState(role.display_name);
   const [description, setDescription] = useState(role.description || '');
   const [parentID, setParentID] = useState(role.parent_id || '');
   const update = async () => {
     try {
       await apiFetch(`/admin/rbac/roles/${role.id}`, { method: 'PUT', body: JSON.stringify({ display_name: displayName, description, parent_id: parentID }) });
-      showToast('已更新'); onSuccess();
-    } catch (e: any) { showToast(e?.message || '更新失败'); }
+      showToast(tm('updated')); onSuccess();
+    } catch (e: any) { showToast(e?.message || tm('updateFailed'), 'error'); }
   };
   // SPEC-074: available parents are searched in the DB (top-N + q).
   const fetchParents = async (q: string, limit: number): Promise<SearchableOption[]> => {
     const res = await apiFetch(`/admin/rbac/roles/${role.id}/available-parents?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
-    if (!res.ok) throw new Error('加载失败');
+    if (!res.ok) throw new Error(tm('loadFailed'));
     const data = await res.json();
     return (data.parents || []) as SearchableOption[];
   };
   return (
     <div style={mOverlay} onClick={onClose}><div style={mContent} onClick={e => e.stopPropagation()}>
-      <h3 style={{ marginBottom: 12 }}>编辑 — {role.name}</h3>
-      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>层级 L{role.level}（不可更改） | {role.type}</p>
-      <label style={inLabel}>显示名 <input style={inStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} /></label>
-      <label style={inLabel}>描述 <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
-      <label style={inLabel}>父角色
+      <h3 style={{ marginBottom: 12 }}>{tm('editTitle', { name: role.name })}</h3>
+      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>{tm('levelInfo', { level: role.level, type: role.type })}</p>
+      <label style={inLabel}>{tm('displayNameLabel')} <input style={inStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} /></label>
+      <label style={inLabel}>{tm('descriptionLabel')} <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
+      <label style={inLabel}>{tm('parentRoleLabel')}
         <SearchableSelect
           fetch={fetchParents}
           value={parentID}
           onChange={setParentID}
           labelKey="display_name"
           allowEmpty
-          emptyLabel="无"
+          emptyLabel={tm('none')}
           renderLabel={(r) => <span>{r.display_name} (L{r.level})</span>}
         />
       </label>
       <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-        <button onClick={onClose} style={btnSec}>取消</button>
-        <button data-testid="rbac-edit-role-submit" onClick={update} style={btnPri}>保存</button>
+        <button onClick={onClose} style={btnSec}>{tm('cancel')}</button>
+        <button data-testid="rbac-edit-role-submit" onClick={update} style={btnPri}>{tm('save')}</button>
       </div>
     </div></div>
   );
@@ -286,30 +290,31 @@ function EditRoleModal({ apiFetch, role, onClose, onSuccess, showToast }: any) {
 
 
 function AddPermModal({ apiFetch, onClose, onSuccess, showToast }: any) {
+  const tm = useTranslations('adminRbac');
   const [key, setKey] = useState('');
   const [name, setName] = useState('');
   const [module, setModule] = useState('custom');
   const [description, setDescription] = useState('');
   const create = async () => {
-    if (!key || !name || !module) { showToast('Key、名称、模块必填'); return; }
+    if (!key || !name || !module) { showToast(tm('permRequired'), 'error'); return; }
     try {
       await apiFetch('/admin/rbac/permissions', { method: 'POST', body: JSON.stringify({ key, name, module, description }) });
-      showToast('权限已创建'); onSuccess();
-    } catch (e: any) { showToast(e?.message || '创建失败'); }
+      showToast(tm('permCreated')); onSuccess();
+    } catch (e: any) { showToast(e?.message || tm('createFailed'), 'error'); }
   };
   const mo: React.CSSProperties = { ...modalOverlayStyle, zIndex: 9999 };
   const mc: React.CSSProperties = { ...modalPanelStyle, minWidth: 450 };
   return (
     <div style={mo} onClick={onClose}>
       <div style={mc} onClick={e => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 12 }}>新建权限</h3>
-        <label style={inLabel}>Key (必填, e.g. mymodule:action) <input style={inStyle} value={key} onChange={e => setKey(e.target.value)} /></label>
-        <label style={inLabel}>名称 (必填) <input style={inStyle} value={name} onChange={e => setName(e.target.value)} /></label>
-        <label style={inLabel}>模块 (必填) <input style={inStyle} value={module} onChange={e => setModule(e.target.value)} /></label>
-        <label style={inLabel}>描述 <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
+        <h3 style={{ marginBottom: 12 }}>{tm('addPermTitle')}</h3>
+        <label style={inLabel}>{tm('keyLabel')} <input style={inStyle} value={key} onChange={e => setKey(e.target.value)} /></label>
+        <label style={inLabel}>{tm('nameRequiredLabel')} <input style={inStyle} value={name} onChange={e => setName(e.target.value)} /></label>
+        <label style={inLabel}>{tm('moduleRequiredLabel')} <input style={inStyle} value={module} onChange={e => setModule(e.target.value)} /></label>
+        <label style={inLabel}>{tm('descriptionLabel')} <input style={inStyle} value={description} onChange={e => setDescription(e.target.value)} /></label>
         <div style={{ marginTop: 12, textAlign: 'right' }}>
-          <button onClick={onClose} style={btnSec}>取消</button>{' '}
-          <button onClick={create} style={btnPri} data-testid="rbac-add-perm-submit">创建</button>
+          <button onClick={onClose} style={btnSec}>{tm('cancel')}</button>{' '}
+          <button onClick={create} style={btnPri} data-testid="rbac-add-perm-submit">{tm('create')}</button>
         </div>
       </div>
     </div>
