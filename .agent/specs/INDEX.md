@@ -117,6 +117,7 @@
 | SPEC-101 | Tool 用户批准执行开关（requires_approval DB 化，独立字段不入 config JSON） | **P15** | [spec-101-tool-approval-switch.md](spec-101-tool-approval-switch.md) | ✅ 已实现（2026-09-21 部署验证） |
 | SPEC-102 | 审计日志页面功能优化（搜索分页统一 + action 描述 mapping + 参数校验 + 可见性过滤） | **P15** | [spec-102-audit-log-page-optimization.md](spec-102-audit-log-page-optimization.md) | ✅ 已实现（2026-09-22 部署验证） |
 | SPEC-103 | 纯前端国际化（i18n 翻译 + 语言切换） | **P15** | [spec-103-frontend-i18n-language-switch.md](spec-103-frontend-i18n-language-switch.md) | ✅ 已实现（2026-09-23 实现并部署验证，commit 87c525e） |
+| SPEC-104 | Task Run 删除与会话并发治理（排他锁 + 会话过滤 + 子会话访问隔离） | **P15** | [spec-104-run-delete-session-lock.md](spec-104-run-delete-session-lock.md) | 📐 立项（设计定稿，待实现） |
 
 ## Phase 对应与依赖
 
