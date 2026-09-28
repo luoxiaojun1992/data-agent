@@ -21,9 +21,11 @@ import (
 // underlying SessionService.Renew call fails.
 func TestSessionHandler_Renew_ServiceError(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	mgr.On("Renew", "s1").Return(errStr("renew failed"))
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("PUT", "/sessions/s1")
+	c.Set("user_id", "u1")
 	c.Params = gin.Params{{Key: "id", Value: "s1"}}
 	h.Renew(c)
 	if w.Code != http.StatusInternalServerError {

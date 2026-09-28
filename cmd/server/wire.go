@@ -258,6 +258,9 @@ func initRedis(deps *serverDependencies, cfg *config.Config, logger *zap.Logger)
 	}
 	deps.redisClient = redisClient
 	deps.llmCache = llmcache.New(redisClient.Client())
+	// SPEC-104: cross-process exclusive lock (run/session). Built once here so
+	// the task service, chat service and executor can all share it.
+	deps.locker = redis.NewLocker(redisClient.Client())
 	// Embedding cache TTL reads the live system config on every Set (hot-reload).
 	// sysConfigCacheRepo is built early in initServer, before initRedis, and is
 	// nil-safe when Redis config backend is unavailable.
@@ -308,7 +311,8 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 	// hard-delete / clear chat history without depending on the full ADK type.
 	// SPEC-100: also attach the session token counter for hard-delete cascade.
 	deps.sessionManager = chat.NewManager(deps.sessionRepo, 24*time.Hour, adksession.NewHistoryStore(deps.adkSessions)).
-		WithSessionStatStore(deps.sessionStats)
+		WithSessionStatStore(deps.sessionStats).
+		WithLocker(deps.locker) // SPEC-104: session archive lock
 
 	initMemoryBackend(deps, mongoClient, compactionLLM, logger)
 
@@ -403,7 +407,8 @@ func initServices(deps *serverDependencies, mongoClient *mongoinfra.Client, logg
 			if err := deps.memoryService.AddSessionToMemory(ctx, sess); err != nil {
 				logger.Warn("memory write failed", zap.Error(err))
 			}
-		})
+		}).
+		WithLocker(deps.locker) // SPEC-104: session use-side lock
 
 	// Orchestrator coordinates session + task for async agent tasks (SPEC-058,
 	// SPEC-062: provider resolves default model for task binding).
@@ -674,6 +679,10 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 	if deps.taskService != nil {
 		deps.queueRepo = queue.QueueRepository(taskStream)
 		deps.taskService.SetQueueRepo(deps.queueRepo)
+		// SPEC-104: inject the session hard-delete dependency + run lock into
+		// the task service (both are built after initTaskService).
+		deps.taskService.SetSessionService(deps.sessionManager)
+		deps.taskService.SetLocker(deps.locker)
 	}
 	deps.taskHandler = handler.NewTaskHandler(deps.taskService, deps.taskService)
 	// SPEC-100: GetRun embeds token_tokens from session_stats.
@@ -716,7 +725,7 @@ func initTaskQueue(deps *serverDependencies, cfg *config.Config, mongoClient *mo
 		deps.notifSvc,    // completion/failure notification
 		deps.cbRegistry,  // circuit breaker around Runtime.Run
 		deps.guardSvc,    // relevance check + bounded retry
-	)
+	).WithLocker(deps.locker) // SPEC-104: run exclusive lock
 	poolSize := resolveWorkerPoolSize(deps.sysConfigCacheRepo)
 	workerPool := worker.NewPool(taskStream, redisClient.Client(), poolSize, executor, deps.taskService)
 

@@ -197,9 +197,11 @@ func TestSessionHandler_TokenUsage_Forbidden(t *testing.T) {
 
 func TestSessionHandler_Renew(t *testing.T) {
 	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1"}, nil)
 	mgr.On("Renew", "s1").Return(nil)
 	h := NewSessionHandler(mgr)
 	c, w := newSessionGin("PUT", "/sessions/s1")
+	c.Set("user_id", "u1")
 	c.Params = gin.Params{{Key: "id", Value: "s1"}}
 	h.Renew(c)
 	if w.Code != http.StatusOK {
@@ -496,4 +498,136 @@ func TestSessionHandler_ClearHistory_Forbidden(t *testing.T) {
 		t.Errorf("expected 403, got %d", w.Code)
 	}
 	mgr.AssertNotCalled(t, "ClearHistory", "s1")
+}
+
+// ── SPEC-104 D3: task/feishu session 写挡读放 ──
+
+// TestSessionHandler_Renew_TaskSessionRejected asserts a task session cannot be
+// renewed through the chat domain (404, no existence leak).
+func TestSessionHandler_Renew_TaskSessionRejected(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1", IsTask: true}, nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("PUT", "/sessions/s1")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Renew(c)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("task session renew should 404, got %d", w.Code)
+	}
+	mgr.AssertNotCalled(t, "Renew", "s1")
+}
+
+// TestSessionHandler_Delete_FeishuSessionRejected asserts a feishu session is
+// write-protected (404) and neither soft nor hard delete is invoked.
+func TestSessionHandler_Delete_FeishuSessionRejected(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1", IsFeishu: true}, nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("DELETE", "/sessions/s1")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Delete(c)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("feishu session delete should 404, got %d", w.Code)
+	}
+	mgr.AssertNotCalled(t, "Delete", "s1")
+	mgr.AssertNotCalled(t, "HardDelete", "s1")
+}
+
+// TestSessionHandler_ClearHistory_TaskSessionRejected asserts ClearHistory is
+// write-protected for task sessions.
+func TestSessionHandler_ClearHistory_TaskSessionRejected(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1", IsTask: true}, nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("DELETE", "/sessions/s1/history")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.ClearHistory(c)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("task session clear-history should 404, got %d", w.Code)
+	}
+	mgr.AssertNotCalled(t, "ClearHistory", "s1")
+}
+
+// TestSessionHandler_Restore_FeishuSessionRejected asserts Restore is
+// write-protected for feishu sessions.
+func TestSessionHandler_Restore_FeishuSessionRejected(t *testing.T) {
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1", IsFeishu: true}, nil)
+	h := NewSessionHandler(mgr)
+	c, w := newSessionGin("POST", "/sessions/s1/restore")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Restore(c)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("feishu session restore should 404, got %d", w.Code)
+	}
+	mgr.AssertNotCalled(t, "Restore", "s1")
+}
+
+// ── SPEC-104 D4: Messages business-layer existence/ownership pre-check ──
+
+// TestSessionHandler_Messages_ChildSessionNotFound asserts a sub-agent session
+// (only in the ADK layer, never in the business sessions collection) returns
+// 404 BEFORE any ADK query — isolating it from user access.
+func TestSessionHandler_Messages_ChildSessionNotFound(t *testing.T) {
+	adk := adksession.InMemoryService()
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "child-sess").Return((*domainchat.Session)(nil), errStr("not found"))
+	h := NewSessionHandler(mgr, adk)
+	c, w := newSessionGin("GET", "/sessions/child-sess/messages")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "child-sess"}}
+	h.Messages(c)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("child session should 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestSessionHandler_Messages_CrossUserForbidden asserts a cross-user session
+// read returns 403 (IDOR) via the business-layer pre-check.
+func TestSessionHandler_Messages_CrossUserForbidden(t *testing.T) {
+	adk := adksession.InMemoryService()
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "other"}, nil)
+	h := NewSessionHandler(mgr, adk)
+	c, w := newSessionGin("GET", "/sessions/s1/messages")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Messages(c)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("cross-user messages should 403, got %d", w.Code)
+	}
+}
+
+// TestSessionHandler_Messages_TaskSessionReadAllowed asserts a task session is
+// readable through Messages (读放行) — the task run detail page reads history.
+func TestSessionHandler_Messages_TaskSessionReadAllowed(t *testing.T) {
+	ctx := context.Background()
+	adk := adksession.InMemoryService()
+	created, err := adk.Create(ctx, &adksession.CreateRequest{
+		AppName: "data-agent", UserID: "u1", SessionID: "s1",
+	})
+	if err != nil {
+		t.Fatalf("create ADK session: %v", err)
+	}
+	if err := adk.AppendEvent(ctx, created.Session, &adksession.Event{
+		ID: "user-1", Author: "user", Timestamp: time.Now(),
+		LLMResponse: model.LLMResponse{Content: genai.NewContentFromText("分析营收", "user")},
+	}); err != nil {
+		t.Fatalf("append event: %v", err)
+	}
+
+	mgr := chatmocks.NewSessionService(t)
+	mgr.On("Get", "s1").Return(&domainchat.Session{ID: "s1", UserID: "u1", IsTask: true}, nil)
+	h := NewSessionHandler(mgr, adk)
+	c, w := newSessionGin("GET", "/sessions/s1/messages")
+	c.Set("user_id", "u1")
+	c.Params = gin.Params{{Key: "id", Value: "s1"}}
+	h.Messages(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("task session read should be allowed, got %d: %s", w.Code, w.Body.String())
+	}
 }

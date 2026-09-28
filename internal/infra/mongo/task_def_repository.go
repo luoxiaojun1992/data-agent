@@ -170,6 +170,12 @@ func (r *TaskRunRepository) Cancel(ctx context.Context, id string) error {
 	return err
 }
 
+// Delete physically removes a run record (SPEC-104 D1 fallback step).
+func (r *TaskRunRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
+	return err
+}
+
 // ListScheduled returns scheduled tasks: cron_expr not empty OR scheduled_at <= now.
 func (r *TaskDefRepository) ListScheduled(ctx context.Context, skip, limit int64, now time.Time) ([]*task.Task, int64, error) {
 	filter := bson.M{

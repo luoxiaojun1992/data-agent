@@ -7,7 +7,9 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
+	chatmocks "github.com/luoxiaojun1992/data-agent/internal/domain/chat/mocks"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	redismocks "github.com/luoxiaojun1992/data-agent/internal/infra/redis/mocks"
 	mockrepo "github.com/luoxiaojun1992/data-agent/internal/repository/mocks"
 )
 
@@ -420,4 +422,235 @@ func TestListTasks_SystemAdminUsesListAll(t *testing.T) {
 		t.Fatalf("got %d tasks (total=%d), want 3", len(tasks), total)
 	}
 	repo.AssertNotCalled(t, "List", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// ── DeleteRun (SPEC-104 D1/D2) ──
+
+// TestDeleteRun_Success asserts the fixed deletion order: the associated
+// session is hard-deleted FIRST, then the run record LAST.
+func TestDeleteRun_Success(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+
+	var order []string
+	sessSvc.On("HardDelete", "sess_1").Return(nil).Run(func(mock.Arguments) {
+		order = append(order, "session")
+	})
+	runRepo.On("Delete", mock.Anything, "run_1").Return(nil).Run(func(mock.Arguments) {
+		order = append(order, "run")
+	})
+
+	if err := s.DeleteRun("run_1", "u1", false); err != nil {
+		t.Fatalf("DeleteRun: %v", err)
+	}
+	if len(order) != 2 || order[0] != "session" || order[1] != "run" {
+		t.Fatalf("deletion order = %v, want [session run]", order)
+	}
+}
+
+// TestDeleteRun_NoSession verifies a run without a bound session skips the
+// cascade and still deletes the run record.
+func TestDeleteRun_NoSession(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "",
+	}, nil)
+	runRepo.On("Delete", mock.Anything, "run_1").Return(nil)
+
+	if err := s.DeleteRun("run_1", "u1", false); err != nil {
+		t.Fatalf("DeleteRun: %v", err)
+	}
+	sessSvc.AssertNotCalled(t, "HardDelete", mock.Anything)
+	runRepo.AssertCalled(t, "Delete", mock.Anything, "run_1")
+}
+
+// TestDeleteRun_SessionDeleteFailure_AbortsRun asserts that when the session
+// cascade fails, the run record is NOT deleted (retryable state preserved).
+func TestDeleteRun_SessionDeleteFailure_AbortsRun(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+	sessSvc.On("HardDelete", "sess_1").Return(fmt.Errorf("db down"))
+
+	if err := s.DeleteRun("run_1", "u1", false); err == nil {
+		t.Fatal("expected session cascade error to abort the delete")
+	}
+	runRepo.AssertNotCalled(t, "Delete", mock.Anything, "run_1")
+}
+
+// TestDeleteRun_RunDeleteFailure_Retryable asserts the run delete failure is
+// surfaced (leaving a retryable "session gone, run remains" state).
+func TestDeleteRun_RunDeleteFailure_Retryable(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+	sessSvc.On("HardDelete", "sess_1").Return(nil)
+	runRepo.On("Delete", mock.Anything, "run_1").Return(fmt.Errorf("db down"))
+
+	if err := s.DeleteRun("run_1", "u1", false); err == nil {
+		t.Fatal("expected run delete error to be surfaced")
+	}
+}
+
+// TestDeleteRun_NotFound asserts a missing run maps to ErrNotFound.
+func TestDeleteRun_NotFound(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "ghost").Return((*task.TaskRun)(nil), fmt.Errorf("not found"))
+
+	if err := s.DeleteRun("ghost", "u1", false); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+// TestDeleteRun_ForbiddenNonOwner asserts IDOR protection (no existence leak).
+func TestDeleteRun_ForbiddenNonOwner(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "owner", SessionID: "sess_1",
+	}, nil)
+
+	if err := s.DeleteRun("run_1", "attacker", false); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	runRepo.AssertNotCalled(t, "Delete", mock.Anything, "run_1")
+}
+
+// TestDeleteRun_SystemAdminExempt asserts system_admin bypasses ownership.
+func TestDeleteRun_SystemAdminExempt(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "owner", SessionID: "sess_1",
+	}, nil)
+	sessSvc.On("HardDelete", "sess_1").Return(nil)
+	runRepo.On("Delete", mock.Anything, "run_1").Return(nil)
+
+	if err := s.DeleteRun("run_1", "admin", true); err != nil {
+		t.Fatalf("system_admin should be exempt, got %v", err)
+	}
+}
+
+// TestDeleteRun_RunBusy asserts a held run lock maps to ErrRunBusy and neither
+// the session nor the run is deleted.
+func TestDeleteRun_RunBusy(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+	lock := redismocks.NewLocker(t)
+	s.SetLocker(lock)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(false, nil)
+
+	if err := s.DeleteRun("run_1", "u1", false); err != ErrRunBusy {
+		t.Fatalf("want ErrRunBusy, got %v", err)
+	}
+	sessSvc.AssertNotCalled(t, "HardDelete", mock.Anything)
+	runRepo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+	lock.AssertNotCalled(t, "Release", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestDeleteRun_SessionServiceNil_StillDeletesRun asserts a missing session
+// manager degrades gracefully: the run record is still deleted.
+func TestDeleteRun_SessionServiceNil_StillDeletesRun(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	// sessionService is left nil.
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+	runRepo.On("Delete", mock.Anything, "run_1").Return(nil)
+
+	if err := s.DeleteRun("run_1", "u1", false); err != nil {
+		t.Fatalf("DeleteRun should not abort when session service is unset: %v", err)
+	}
+	runRepo.AssertCalled(t, "Delete", mock.Anything, "run_1")
+}
+
+// TestDeleteRun_LockAcquireErrorDegrades asserts a Redis infra error degrades
+// gracefully (proceeds without the lock), mirroring the executor's degrade.
+func TestDeleteRun_LockAcquireErrorDegrades(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+	lock := redismocks.NewLocker(t)
+	s.SetLocker(lock)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(false, fmt.Errorf("redis down"))
+	sessSvc.On("HardDelete", "sess_1").Return(nil)
+	runRepo.On("Delete", mock.Anything, "run_1").Return(nil)
+
+	if err := s.DeleteRun("run_1", "u1", false); err != nil {
+		t.Fatalf("DeleteRun should degrade on lock infra error: %v", err)
+	}
+	runRepo.AssertCalled(t, "Delete", mock.Anything, "run_1")
+}
+
+// TestDeleteRun_ReleaseAfterSuccess asserts the lock is released via defer on
+// the success path.
+func TestDeleteRun_ReleaseAfterSuccess(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+	lock := redismocks.NewLocker(t)
+	s.SetLocker(lock)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(true, nil)
+	lock.On("Release", mock.Anything, "lock:run:run_1", mock.Anything).Return(nil)
+	sessSvc.On("HardDelete", "sess_1").Return(nil)
+	runRepo.On("Delete", mock.Anything, "run_1").Return(nil)
+
+	if err := s.DeleteRun("run_1", "u1", false); err != nil {
+		t.Fatalf("DeleteRun: %v", err)
+	}
+	lock.AssertCalled(t, "Release", mock.Anything, "lock:run:run_1", mock.Anything)
+}
+
+// TestDeleteRun_ReleaseError asserts a release error is logged (non-fatal) and
+// the delete still succeeds.
+func TestDeleteRun_ReleaseError(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	sessSvc := chatmocks.NewSessionService(t)
+	s.SetSessionService(sessSvc)
+	lock := redismocks.NewLocker(t)
+	s.SetLocker(lock)
+
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{
+		ID: "run_1", UserID: "u1", SessionID: "sess_1",
+	}, nil)
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(true, nil)
+	lock.On("Release", mock.Anything, "lock:run:run_1", mock.Anything).Return(fmt.Errorf("redis down on release"))
+	sessSvc.On("HardDelete", "sess_1").Return(nil)
+	runRepo.On("Delete", mock.Anything, "run_1").Return(nil)
+
+	if err := s.DeleteRun("run_1", "u1", false); err != nil {
+		t.Fatalf("release error must be non-fatal: %v", err)
+	}
+	lock.AssertCalled(t, "Release", mock.Anything, "lock:run:run_1", mock.Anything)
 }

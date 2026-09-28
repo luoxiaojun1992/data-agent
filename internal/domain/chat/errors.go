@@ -33,4 +33,8 @@ var (
 	// ErrChatTextXSS indicates the user prompt contains an XSS payload. PDF
 	// parsed text is deliberately excluded from this check (SPEC-077 §4.4).
 	ErrChatTextXSS = errors.New("message contains illegal content")
+	// ErrSessionBusy indicates a session is concurrently in use — either being
+	// archived while a chat turn holds its exclusive lock, or being reused while
+	// an archive is in progress (SPEC-104 D4). Maps to HTTP 409.
+	ErrSessionBusy = errors.New("session is busy")
 )

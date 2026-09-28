@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"net/http"
 	"strconv"
@@ -132,7 +133,13 @@ func (h *SessionHandler) TokenUsage(c *gin.Context) {
 }
 
 func (h *SessionHandler) Renew(c *gin.Context) {
-	if err := h.mgr.Renew(c.Param("id")); err != nil {
+	// SPEC-104 D3: Renew is a write-side operation — task/feishu sessions are
+	// rejected with 404 (写挡读放), plus the usual ownership check.
+	s := h.loadOwnedSession(c, true)
+	if s == nil {
+		return
+	}
+	if err := h.mgr.Renew(s.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -144,15 +151,13 @@ func (h *SessionHandler) Renew(c *gin.Context) {
 // session, its workspace, chat history and sub sessions — but never
 // artifact/memory (SPEC-090).
 func (h *SessionHandler) Delete(c *gin.Context) {
-	id := c.Param("id")
-	s, err := h.mgr.Get(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+	// SPEC-104 D3: Delete is write-side — task/feishu sessions are rejected
+	// with 404 (写挡读放), plus the usual ownership check.
+	s := h.loadOwnedSession(c, true)
+	if s == nil {
 		return
 	}
-	if !h.verifyOwnership(c, s) {
-		return
-	}
+	id := s.ID
 	if c.Query("permanent") == "true" {
 		if err := h.mgr.HardDelete(id); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -162,6 +167,10 @@ func (h *SessionHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.mgr.Delete(id); err != nil {
+		if errors.Is(err, domainchat.ErrSessionBusy) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -171,16 +180,12 @@ func (h *SessionHandler) Delete(c *gin.Context) {
 // ClearHistory wipes a session's chat history, keeping the session record and
 // its workspace (SPEC-090).
 func (h *SessionHandler) ClearHistory(c *gin.Context) {
-	id := c.Param("id")
-	s, err := h.mgr.Get(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+	// SPEC-104 D3: ClearHistory is write-side — task/feishu sessions rejected.
+	s := h.loadOwnedSession(c, true)
+	if s == nil {
 		return
 	}
-	if !h.verifyOwnership(c, s) {
-		return
-	}
-	if err := h.mgr.ClearHistory(id); err != nil {
+	if err := h.mgr.ClearHistory(s.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -188,16 +193,12 @@ func (h *SessionHandler) ClearHistory(c *gin.Context) {
 }
 
 func (h *SessionHandler) Restore(c *gin.Context) {
-	id := c.Param("id")
-	s, err := h.mgr.Get(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+	// SPEC-104 D3: Restore is write-side — task/feishu sessions rejected.
+	s := h.loadOwnedSession(c, true)
+	if s == nil {
 		return
 	}
-	if !h.verifyOwnership(c, s) {
-		return
-	}
-	if err := h.mgr.Restore(id); err != nil {
+	if err := h.mgr.Restore(s.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -217,6 +218,27 @@ func (h *SessionHandler) verifyOwnership(c *gin.Context, sess *chat.Session) boo
 		return false
 	}
 	return true
+}
+
+// loadOwnedSession loads the session by ID and verifies ownership. When
+// writeProtected is true it additionally rejects task/feishu sessions with 404
+// (SPEC-104 D3 写挡读放: the chat domain must not mutate task/feishu sessions,
+// whose lifecycle is owned by the task/IM domains). On any failure it writes
+// the HTTP error and returns nil.
+func (h *SessionHandler) loadOwnedSession(c *gin.Context, writeProtected bool) *chat.Session {
+	s, err := h.mgr.Get(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return nil
+	}
+	if !h.verifyOwnership(c, s) {
+		return nil
+	}
+	if writeProtected && (s.IsTask || s.IsFeishu) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return nil
+	}
+	return s
 }
 
 // ListDeleted returns soft-deleted (archived) sessions for the current user.
@@ -240,6 +262,24 @@ func (h *SessionHandler) Messages(c *gin.Context) {
 	}
 	userID := c.GetString("user_id")
 	sessionID := c.Param("id")
+
+	// SPEC-104 D4: business-layer existence + ownership check BEFORE querying
+	// the ADK layer. A child (sub-agent) session lives only in the ADK layer
+	// (never in the business sessions collection), so it 404s here — isolating
+	// it from user access. A cross-user session 403s (IDOR). task/feishu
+	// sessions are deliberately NOT rejected (read is allowed: the task run
+	// detail page reads its session history). Degraded (skipped) only when the
+	// manager is unset — production always wires it.
+	if h.mgr != nil {
+		s, err := h.mgr.Get(sessionID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
+		if !h.verifyOwnership(c, s) {
+			return
+		}
+	}
 
 	resp, err := h.adkSessions.Get(c.Request.Context(), &session.GetRequest{
 		AppName:   h.appName,

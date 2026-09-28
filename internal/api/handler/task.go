@@ -37,17 +37,17 @@ func (h *TaskHandler) SetSessionStatStore(store llmstats.SessionStatStore) {
 // POST /api/v1/tasks
 func (h *TaskHandler) CreateTask(c *gin.Context) {
 	var req struct {
-		Title        string                        `json:"title"`
-		Description  string                        `json:"description"`
-		Type         string                        `json:"type"`
-		Params       map[string]interface{}        `json:"params"`
-		Images       []domaintask.ImagePart        `json:"images"`
-		Pdfs         []domainchat.PdfAttachment    `json:"pdfs"`
-		Excels       []domainchat.ExcelAttachment  `json:"excels"`
-		CronExpr     string                        `json:"cron_expr"`
-		ScheduledAt  *time.Time                    `json:"scheduled_at"`
-		ScheduleMode string                        `json:"schedule_mode"`
-		ModelID      string                        `json:"model_id"`
+		Title        string                       `json:"title"`
+		Description  string                       `json:"description"`
+		Type         string                       `json:"type"`
+		Params       map[string]interface{}       `json:"params"`
+		Images       []domaintask.ImagePart       `json:"images"`
+		Pdfs         []domainchat.PdfAttachment   `json:"pdfs"`
+		Excels       []domainchat.ExcelAttachment `json:"excels"`
+		CronExpr     string                       `json:"cron_expr"`
+		ScheduledAt  *time.Time                   `json:"scheduled_at"`
+		ScheduleMode string                       `json:"schedule_mode"`
+		ModelID      string                       `json:"model_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -290,6 +290,25 @@ func (h *TaskHandler) CancelRun(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "cancelled", "run_id": runID})
+}
+
+// DeleteRun physically deletes a run and its associated session (SPEC-104 D1).
+// DELETE /api/v1/task-runs/:run_id
+func (h *TaskHandler) DeleteRun(c *gin.Context) {
+	runID := c.Param("run_id")
+	userID, isSystemAdmin := taskIdentity(c)
+	if err := h.runSvc.DeleteRun(runID, userID, isSystemAdmin); err != nil {
+		switch {
+		case errors.Is(err, task.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, task.ErrRunBusy):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted", "run_id": runID})
 }
 
 // taskIdentity extracts (userID, isSystemAdmin) from the JWT-injected context.

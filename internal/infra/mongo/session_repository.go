@@ -42,7 +42,9 @@ func (r *SessionRepository) Renew(ctx context.Context, id string, newExpiry time
 
 func (r *SessionRepository) ListByUser(ctx context.Context, userID string) ([]*repository.SessionRecord, error) {
 	opts := options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}})
-	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID, "deleted_at": bson.M{"$exists": false}}, opts)
+	filter := chatSourceFilter(userID)
+	filter["deleted_at"] = bson.M{"$exists": false}
+	cursor, err := r.coll.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +59,8 @@ func (r *SessionRepository) ListByUser(ctx context.Context, userID string) ([]*r
 // ListByUserPaged returns paginated sessions sorted by updated_at DESC.
 // q filters by title/_id (case-insensitive $regex, quote-meta escaped).
 func (r *SessionRepository) ListByUserPaged(ctx context.Context, userID string, q string, skip, limit int64) ([]*repository.SessionRecord, int64, error) {
-	filter := bson.M{"user_id": userID, "deleted_at": bson.M{"$exists": false}}
+	filter := chatSourceFilter(userID)
+	filter["deleted_at"] = bson.M{"$exists": false}
 	if q != "" {
 		qre := bson.M{"$regex": regexp.QuoteMeta(q), "$options": "i"}
 		filter["$or"] = []bson.M{
@@ -103,10 +106,9 @@ func (r *SessionRepository) ListDeleted(ctx context.Context, userID string, limi
 	opts := options.Find().
 		SetSort(bson.D{{Key: "deleted_at", Value: -1}}).
 		SetLimit(limit)
-	cursor, err := r.coll.Find(ctx, bson.M{
-		"user_id":    userID,
-		"deleted_at": bson.M{"$exists": true},
-	}, opts)
+	filter := chatSourceFilter(userID)
+	filter["deleted_at"] = bson.M{"$exists": true}
+	cursor, err := r.coll.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +118,18 @@ func (r *SessionRepository) ListDeleted(ctx context.Context, userID string, limi
 		return nil, err
 	}
 	return sessions, nil
+}
+
+// chatSourceFilter returns the base filter shared by every chat-session list
+// query: scoped to the user and excluding task/feishu sessions (SPEC-104 D3).
+// $ne:true also matches legacy documents where the omitempty field was never
+// written, so pre-existing sessions are correctly included in the chat list.
+func chatSourceFilter(userID string) bson.M {
+	return bson.M{
+		"user_id":   userID,
+		"is_task":   bson.M{"$ne": true},
+		"is_feishu": bson.M{"$ne": true},
+	}
 }
 
 // ListExpired returns active (non-archived) sessions whose expires_at is before

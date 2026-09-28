@@ -88,6 +88,7 @@ type serverDependencies struct {
 	jwtManager         *middleware.JWTManager
 	auditLogger        *middleware.AuditLogger
 	redisClient        *redis.Client
+	locker             redis.Locker // SPEC-104: cross-process exclusive lock (run/session)
 	guardSvc           *guard.Service
 	// ADK + chat wiring (populated by wire.go init functions).
 	modelCfg       *modelcfg.Provider

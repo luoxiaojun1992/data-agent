@@ -22,6 +22,7 @@ import (
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 	"github.com/luoxiaojun1992/data-agent/internal/service/notification"
 )
@@ -49,6 +50,7 @@ type AgentExecutor struct {
 	notif       notification.NotificationService // completion/failure notification
 	cbReg       *security.CircuitBreakerRegistry // protects Runtime.Run from cascading failures
 	guard       *guard.Service                   // optional relevance check + retry
+	lock        redis.Locker                     // run exclusive lock (SPEC-104 D2), nil = disabled
 }
 
 // NewAgentExecutor wires the executor with its dependencies. All are required
@@ -69,6 +71,14 @@ func NewAgentExecutor(
 		cbReg:       cbReg,
 		guard:       guardSvc,
 	}
+}
+
+// WithLocker injects the Redis distributed run lock (SPEC-104 D2). Nil-safe:
+// when unset, Execute runs without the lock (degrade). The executor acquires
+// the lock before marking the run running and releases it on every exit path.
+func (e *AgentExecutor) WithLocker(lock redis.Locker) *AgentExecutor {
+	e.lock = lock
+	return e
 }
 
 // cancellationPollInterval is the DB-poll interval used by the mid-execution
@@ -99,6 +109,16 @@ func (e *AgentExecutor) Execute(ctx context.Context, run *domaintask.TaskRun) er
 	if run.Status == domaintask.StatusCancelled {
 		return nil
 	}
+
+	// 0b. Acquire the run lock BEFORE marking running (SPEC-104 D2). While the
+	// lock is held, a concurrent DeleteRun is rejected (409). A conflict means
+	// a delete is in progress → skip execution without overwriting state.
+	unlock, locked := e.acquireRunLock(ctx, run.ID)
+	if !locked {
+		log.Printf("[executor] run %s is locked by a concurrent delete, skipping", run.ID)
+		return nil
+	}
+	defer unlock()
 
 	// 1. Mark running.
 	_ = e.runs.UpdateRunStatus(run.ID, domaintask.StatusRunning)
@@ -315,6 +335,32 @@ func (e *AgentExecutor) notifyRun(run *domaintask.TaskRun, title, body string) {
 // so the run → session → chat history link is visible.
 func (e *AgentExecutor) writeSessionID(runID, sessionID string) {
 	_ = e.runs.UpdateRunSessionID(runID, sessionID)
+}
+
+// acquireRunLock takes the run lock for the execution side (SPEC-104 D2). It
+// returns a release func and whether the lock was held (locked=false → skip
+// execution). A conflict (delete in progress) yields locked=false; a Redis
+// infra error degrades gracefully (locked=true, no lock) so Redis being down
+// never blocks execution — mirroring DeleteRun's symmetric degrade.
+func (e *AgentExecutor) acquireRunLock(ctx context.Context, runID string) (func(), bool) {
+	if e.lock == nil {
+		return func() {}, true
+	}
+	token := redis.NewLockToken()
+	key := redis.RunLockKey(runID)
+	ok, err := e.lock.Acquire(ctx, key, token, redis.DefaultLockTTL)
+	if err != nil {
+		log.Printf("[executor] run lock acquire: %v (run=%s)", err, runID)
+		return func() {}, true
+	}
+	if !ok {
+		return func() {}, false
+	}
+	return func() {
+		if rErr := e.lock.Release(context.Background(), key, token); rErr != nil {
+			log.Printf("[executor] run lock release: %v (run=%s)", rErr, runID)
+		}
+	}, true
 }
 
 // wasRunCancelled re-loads the run and reports whether it was cancelled.

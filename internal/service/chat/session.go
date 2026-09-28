@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/infra/llmstats"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/repository"
 )
 
@@ -36,10 +37,11 @@ func removeWorkspace(sessionID string) {
 
 // Manager handles session lifecycle. It implements domain/chat.SessionService.
 type Manager struct {
-	repo            repository.SessionRepository
-	ttl             time.Duration
-	historyStore    domainchat.SessionHistoryStore
+	repo             repository.SessionRepository
+	ttl              time.Duration
+	historyStore     domainchat.SessionHistoryStore
 	sessionStatStore llmstats.SessionStatStore
+	lock             redis.Locker // session archive exclusive lock (SPEC-104 D4)
 }
 
 // NewManager creates a session manager. historyStore backs HardDelete and
@@ -53,6 +55,14 @@ func NewManager(repo repository.SessionRepository, ttl time.Duration, historySto
 // Nil-safe: when unset, HardDelete simply skips the cascade.
 func (m *Manager) WithSessionStatStore(store llmstats.SessionStatStore) *Manager {
 	m.sessionStatStore = store
+	return m
+}
+
+// WithLocker injects the Redis distributed session lock used by Delete to
+// serialize archiving against an in-progress chat turn (SPEC-104 D4).
+// Nil-safe: when unset, Delete archives without the lock (degrade).
+func (m *Manager) WithLocker(lock redis.Locker) *Manager {
+	m.lock = lock
 	return m
 }
 
@@ -195,9 +205,42 @@ func (m *Manager) ListByUserPaged(userID string, q string, page, pageSize int) (
 
 // Delete archives (soft-deletes) a session: sets deleted_at, keeps the
 // workspace and chat history for a complete restore, and never auto-deletes
-// via TTL (SPEC-090).
+// via TTL (SPEC-090). SPEC-104 D4: before archiving it acquires the session
+// exclusive lock — a conflict (chat turn in progress) yields ErrSessionBusy
+// (409), and the lock is held until the archive completes so no new turn can
+// reuse the session mid-archive.
 func (m *Manager) Delete(id string) error {
+	unlock, err := m.acquireSessionLock(context.Background(), id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	return m.repo.Delete(context.Background(), id)
+}
+
+// acquireSessionLock takes the session lock for the archive (destroy) side
+// (SPEC-104 D4). A conflict returns ErrSessionBusy; a Redis infra error
+// degrades gracefully (archive proceeds unlocked, mirroring the chat turn's
+// symmetric degrade). Returns a release func (never nil) plus an error.
+func (m *Manager) acquireSessionLock(ctx context.Context, sessionID string) (func(), error) {
+	if m.lock == nil {
+		return func() {}, nil
+	}
+	token := redis.NewLockToken()
+	key := redis.SessionLockKey(sessionID)
+	ok, err := m.lock.Acquire(ctx, key, token, redis.DefaultLockTTL)
+	if err != nil {
+		log.Printf("[session] archive lock acquire: %v (session=%s)", err, sessionID)
+		return func() {}, nil
+	}
+	if !ok {
+		return nil, domainchat.ErrSessionBusy
+	}
+	return func() {
+		if rErr := m.lock.Release(ctx, key, token); rErr != nil {
+			log.Printf("[session] archive lock release: %v (session=%s)", rErr, sessionID)
+		}
+	}, nil
 }
 
 // HardDelete permanently removes a session: the sessions record, its workspace

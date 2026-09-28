@@ -30,6 +30,24 @@ func (_m *TaskRunService) CancelRun(id string, userID string, isSystemAdmin bool
 	return r0
 }
 
+// DeleteRun provides a mock function with given fields: id, userID, isSystemAdmin
+func (_m *TaskRunService) DeleteRun(id string, userID string, isSystemAdmin bool) error {
+	ret := _m.Called(id, userID, isSystemAdmin)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteRun")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string, bool) error); ok {
+		r0 = rf(id, userID, isSystemAdmin)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // GetRun provides a mock function with given fields: id, userID, isSystemAdmin
 func (_m *TaskRunService) GetRun(id string, userID string, isSystemAdmin bool) (*task.TaskRun, error) {
 	ret := _m.Called(id, userID, isSystemAdmin)

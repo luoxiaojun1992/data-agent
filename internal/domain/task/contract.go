@@ -49,4 +49,11 @@ type TaskRunService interface {
 	// exist or belongs to another user (IDOR), and ErrRunTerminal when already
 	// completed/failed/cancelled (completion boundary).
 	CancelRun(id, userID string, isSystemAdmin bool) error
+	// DeleteRun physically deletes a run and its associated session (SPEC-104
+	// D1). Deletion order is fixed: ownership check → acquire the run lock →
+	// hard-delete the associated session (idempotent) → delete the run record
+	// (fallback, retryable). Returns ErrNotFound when the run does not exist or
+	// belongs to another user (IDOR), and ErrRunBusy when the run is still
+	// running (lock held by the executor).
+	DeleteRun(id, userID string, isSystemAdmin bool) error
 }

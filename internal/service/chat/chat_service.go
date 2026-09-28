@@ -19,6 +19,7 @@ import (
 	adkruntime "github.com/luoxiaojun1992/data-agent/internal/adk/runtime"
 	domainchat "github.com/luoxiaojun1992/data-agent/internal/domain/chat"
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
+	"github.com/luoxiaojun1992/data-agent/internal/infra/redis"
 	"github.com/luoxiaojun1992/data-agent/internal/service/guard"
 )
 
@@ -37,6 +38,7 @@ type Service struct {
 	cbReg       *security.CircuitBreakerRegistry
 	guard       *guard.Service
 	memoryWrite func(ctx context.Context, sess session.Session) // optional post-run memory hook
+	lock        redis.Locker                                    // session exclusive lock (SPEC-104 D4)
 }
 
 // ensure Service satisfies the domain ChatService contract.
@@ -59,6 +61,14 @@ func NewService(registry *adkruntime.Registry, provider *modelcfg.Provider, adkS
 // and never fail the chat response.
 func (s *Service) WithMemoryWrite(hook func(ctx context.Context, sess session.Session)) *Service {
 	s.memoryWrite = hook
+	return s
+}
+
+// WithLocker injects the Redis distributed session lock used by Process/Stream
+// to serialize a chat turn against a concurrent archive (SPEC-104 D4).
+// Nil-safe: when unset, turns run without the lock (degrade).
+func (s *Service) WithLocker(lock redis.Locker) *Service {
+	s.lock = lock
 	return s
 }
 
@@ -335,6 +345,33 @@ func (s *Service) useExistingSession(req domainchat.ChatRequest, userID string) 
 	return req.SessionID, sess.ModelID, nil
 }
 
+// acquireSessionLock takes the session lock for the chat-turn (use) side
+// (SPEC-104 D4). A conflict (archive in progress) returns ErrSessionBusy; a
+// Redis infra error degrades gracefully (turn proceeds unlocked). The release
+// closure uses a fresh background context so it still fires even when the
+// request context was cancelled by a client disconnect — otherwise a stuck
+// lock would block the next turn for up to 24h.
+func (s *Service) acquireSessionLock(ctx context.Context, sessionID string) (func(), error) {
+	if s.lock == nil {
+		return func() {}, nil
+	}
+	token := redis.NewLockToken()
+	key := redis.SessionLockKey(sessionID)
+	ok, err := s.lock.Acquire(ctx, key, token, redis.DefaultLockTTL)
+	if err != nil {
+		log.Printf("[chat] session lock acquire: %v (session=%s)", err, sessionID)
+		return func() {}, nil
+	}
+	if !ok {
+		return nil, domainchat.ErrSessionBusy
+	}
+	return func() {
+		if rErr := s.lock.Release(context.Background(), key, token); rErr != nil {
+			log.Printf("[chat] session lock release: %v (session=%s)", rErr, sessionID)
+		}
+	}, nil
+}
+
 // buildState constructs the ADK session state map with identity injection.
 func buildState(userID, role, sessionID, kbID string) map[string]any {
 	state := map[string]any{
@@ -355,6 +392,13 @@ func (s *Service) Process(ctx context.Context, req domainchat.ChatRequest, userI
 	if err != nil {
 		return nil, err
 	}
+	// SPEC-104 D4: hold the session lock for the whole turn so a concurrent
+	// archive is rejected (and vice-versa).
+	unlock, err := s.acquireSessionLock(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 
 	var assistantText string
 	cb := s.cbReg.GetOrCreate("chat")
@@ -385,6 +429,14 @@ func (s *Service) Stream(ctx context.Context, req domainchat.ChatRequest, userID
 	if err != nil {
 		return err
 	}
+
+	// SPEC-104 D4: hold the session lock for the whole turn. Acquire before
+	// writing SSE headers so a 409 (session busy) is delivered as clean JSON.
+	unlock, err := s.acquireSessionLock(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

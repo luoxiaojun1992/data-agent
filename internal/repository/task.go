@@ -43,6 +43,11 @@ type TaskRunRepository interface {
 	// running (SPEC-082 §5.4). The condition excludes terminal states so a
 	// completed/failed/cancelled run can never be re-cancelled (matched=0).
 	Cancel(ctx context.Context, id string) error
+	// Delete physically removes a run record (SPEC-104 D1 fallback step). It is
+	// called LAST in the delete sequence, after the associated session has been
+	// hard-deleted, so a failure here leaves a retryable "session gone, run
+	// remains" state rather than a dangling run→session reference.
+	Delete(ctx context.Context, id string) error
 }
 
 //go:generate mockery --name QueueRepository --output ./mocks --outpkg mocks

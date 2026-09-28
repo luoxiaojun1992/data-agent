@@ -74,6 +74,8 @@ func chatErrorStatus(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, domainchat.ErrUnauthorizedSession):
 		return http.StatusUnauthorized
+	case errors.Is(err, domainchat.ErrSessionBusy):
+		return http.StatusConflict
 	case errors.Is(err, domainchat.ErrSessionCreateFailed),
 		errors.Is(err, domainchat.ErrADKSessionInitFailed):
 		return http.StatusInternalServerError

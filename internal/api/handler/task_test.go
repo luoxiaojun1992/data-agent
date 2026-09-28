@@ -628,3 +628,72 @@ func TestCreateTask_TextTooLarge(t *testing.T) {
 	}
 	svc.AssertNotCalled(t, "CreateTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
+
+// ── DeleteRun (SPEC-104 D1) ──
+
+func TestDeleteRun_Success(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
+
+	runSvc.On("DeleteRun", "run_1", "", false).Return(nil)
+
+	c, w := newGinContext("DELETE", "/task-runs/run_1", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.DeleteRun(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "deleted") {
+		t.Errorf("body should contain deleted: %s", w.Body.String())
+	}
+}
+
+func TestDeleteRun_NotFound(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
+
+	runSvc.On("DeleteRun", "run_1", "", false).Return(tasksvc.ErrNotFound)
+
+	c, w := newGinContext("DELETE", "/task-runs/run_1", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.DeleteRun(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestDeleteRun_Busy(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
+
+	runSvc.On("DeleteRun", "run_1", "", false).Return(tasksvc.ErrRunBusy)
+
+	c, w := newGinContext("DELETE", "/task-runs/run_1", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.DeleteRun(c)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d", w.Code)
+	}
+}
+
+func TestDeleteRun_InternalError(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	runSvc := mocktasksvc.NewTaskRunService(t)
+	h := NewTaskHandler(svc, runSvc)
+
+	runSvc.On("DeleteRun", "run_1", "", false).Return(fmt.Errorf("db error"))
+
+	c, w := newGinContext("DELETE", "/task-runs/run_1", "")
+	c.Params = gin.Params{{Key: "run_id", Value: "run_1"}}
+	h.DeleteRun(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+}

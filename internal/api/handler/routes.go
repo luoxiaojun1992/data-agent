@@ -315,6 +315,7 @@ func registerTaskRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *TaskH
 	taskRunRoutes := router.Group("/api/v1/task-runs")
 	taskRunRoutes.Use(jwt.AuthMiddleware(), middleware.RequirePermission(rbacSvc, model.PermAgentEdit))
 	taskRunRoutes.PUT("/:run_id/cancel", h.CancelRun)
+	taskRunRoutes.DELETE("/:run_id", h.DeleteRun)
 }
 
 func registerFeishuRoutes(router *gin.Engine, jwt *middleware.JWTManager, h *FeishuConfigHandler, rbacSvc *rbacsvc.Service) {

@@ -22,6 +22,7 @@ import (
 	"github.com/luoxiaojun1992/data-agent/internal/domain/security"
 	domaintask "github.com/luoxiaojun1992/data-agent/internal/domain/task"
 	domaintaskmocks "github.com/luoxiaojun1992/data-agent/internal/domain/task/mocks"
+	redismocks "github.com/luoxiaojun1992/data-agent/internal/infra/redis/mocks"
 	notificationmocks "github.com/luoxiaojun1992/data-agent/internal/service/notification/mocks"
 )
 
@@ -643,3 +644,106 @@ func TestFailRun_PersistsErrorAndNotifies(t *testing.T) {
 
 // ensure strings import is used (assert message helper).
 var _ = strings.Contains
+
+// ── SPEC-104 D2: run exclusive lock (acquireRunLock) ──
+
+// TestAcquireRunLock_NilLock asserts a nil locker degrades to "locked" with a
+// no-op release func (Redis optional in unit tests).
+func TestAcquireRunLock_NilLock(t *testing.T) {
+	e := &AgentExecutor{} // lock is nil
+	unlock, locked := e.acquireRunLock(context.Background(), "run_1")
+	require.True(t, locked, "nil lock must degrade to locked=true")
+	require.NotNil(t, unlock)
+	require.NotPanics(t, unlock, "release func must be a safe no-op")
+}
+
+// TestAcquireRunLock_Success asserts a successful acquire returns locked=true
+// and the release func invokes Release with the correct key.
+func TestAcquireRunLock_Success(t *testing.T) {
+	lock := redismocks.NewLocker(t)
+	e := &AgentExecutor{lock: lock}
+
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(true, nil)
+	lock.On("Release", mock.Anything, "lock:run:run_1", mock.Anything).Return(nil)
+
+	unlock, locked := e.acquireRunLock(context.Background(), "run_1")
+	require.True(t, locked)
+	require.NotNil(t, unlock)
+	unlock()
+	lock.AssertCalled(t, "Release", mock.Anything, "lock:run:run_1", mock.Anything)
+}
+
+// TestAcquireRunLock_Conflict asserts a held lock (acquire ok=false) returns
+// locked=false so Execute skips the run without overwriting state.
+func TestAcquireRunLock_Conflict(t *testing.T) {
+	lock := redismocks.NewLocker(t)
+	e := &AgentExecutor{lock: lock}
+
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(false, nil)
+
+	unlock, locked := e.acquireRunLock(context.Background(), "run_1")
+	require.False(t, locked)
+	require.NotNil(t, unlock)
+	lock.AssertNotCalled(t, "Release", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestAcquireRunLock_InfraErrorDegrades asserts a Redis infra error degrades
+// to locked=true (execution proceeds unlocked), mirroring DeleteRun.
+func TestAcquireRunLock_InfraErrorDegrades(t *testing.T) {
+	lock := redismocks.NewLocker(t)
+	e := &AgentExecutor{lock: lock}
+
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(false, fmt.Errorf("redis down"))
+
+	unlock, locked := e.acquireRunLock(context.Background(), "run_1")
+	require.True(t, locked, "infra error must degrade to locked=true")
+	require.NotNil(t, unlock)
+	lock.AssertNotCalled(t, "Release", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestAcquireRunLock_ReleaseError asserts a release error is non-fatal.
+func TestAcquireRunLock_ReleaseError(t *testing.T) {
+	lock := redismocks.NewLocker(t)
+	e := &AgentExecutor{lock: lock}
+
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(true, nil)
+	lock.On("Release", mock.Anything, "lock:run:run_1", mock.Anything).Return(fmt.Errorf("release fail"))
+
+	unlock, locked := e.acquireRunLock(context.Background(), "run_1")
+	require.True(t, locked)
+	require.NotPanics(t, unlock)
+	lock.AssertCalled(t, "Release", mock.Anything, "lock:run:run_1", mock.Anything)
+}
+
+// TestExecute_SkipsWhenLockHeld asserts Execute short-circuits (returns nil
+// without marking running) when a concurrent delete holds the run lock.
+func TestExecute_SkipsWhenLockHeld(t *testing.T) {
+	te := newTestExecutor(t, &fakeLLM{text: "ok"})
+	lock := redismocks.NewLocker(t)
+	te.exec.WithLocker(lock)
+
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(false, nil)
+
+	run := sampleRun()
+	err := te.exec.Execute(context.Background(), run)
+	require.NoError(t, err, "a held lock must skip execution without error")
+	te.runs.AssertNotCalled(t, "UpdateRunStatus", mock.Anything, mock.Anything)
+}
+
+// TestExecute_AcquiresAndReleasesLock asserts the happy path holds the lock for
+// the whole run and releases it on exit.
+func TestExecute_AcquiresAndReleasesLock(t *testing.T) {
+	te := newTestExecutor(t, &fakeLLM{text: "营收增长"})
+	lock := redismocks.NewLocker(t)
+	te.exec.WithLocker(lock)
+	te.setRunCompleted() // save_task_result fired → notify + return
+
+	lock.On("Acquire", mock.Anything, "lock:run:run_1", mock.Anything, mock.Anything).Return(true, nil)
+	lock.On("Release", mock.Anything, "lock:run:run_1", mock.Anything).Return(nil)
+	te.runs.On("UpdateRunStatus", "run_1", domaintask.StatusRunning).Return(nil)
+	te.notif.On("Send", mock.Anything, mock.Anything, "task", []string{"u1"}).Return(nil, nil)
+
+	err := te.exec.Execute(context.Background(), sampleRun())
+	require.NoError(t, err)
+	lock.AssertCalled(t, "Release", mock.Anything, "lock:run:run_1", mock.Anything)
+}
