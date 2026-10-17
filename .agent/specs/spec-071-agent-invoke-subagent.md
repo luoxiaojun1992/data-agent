@@ -199,7 +199,22 @@ ADK 的并行路径是另一套：`agent/workflowagents/parallelagent`（静态�
 - ⛔ **全程硬删除，不用软删除、不用恢复**：子 session 与主 session 的删除都不写 `deleted_at` 标记、不进恢复列表，`DeleteOne`/`DeleteMany` 直接物理删除。
   - 注意区分：chat 业务层 session（`internal/service/chat/session.go` 的 `Manager`，`repository.SessionRepository`）有软删除（`Restore`/`ListDeleted`）；但**子 agent session 只落在 ADK session 层（`adk_sessions`），不落 chat 业务层 session**，故天然无软删除。子 agent session 走 ADK session service 的 `Delete`（本就是 `DeleteOne` 硬删）。
 
-#### 4.4 其余
+#### 4.4 文件/产物落点（workspace 共享）
+
+> 补充（2026-10-17 实现回填）：本节在初版 spec 中未显式写明，是实现时定稿后回填的设计点——**子 agent 的文件/产物/artifact/memory 副作用落在父 session 的 workspace，而非子 session 自己的**。它是约束 ④（返回销毁）+ 约束 ⑤（只保留最终文本）+ 核心场景（子 agent 产出文件/PPT）的必然推论：若产物落在子 session 自己的 workspace，返回即销毁后产物成孤儿，主 agent 既看不到也存不下来。
+
+**机制（state 注入父 session_id）**：
+
+1. `subagent/tool.go` 组装 state：`{user_id, session_id: parentSessionID, role, kb_id}`——关键：`session_id` 取**父 session ID**，而非子 session 自己的 `sess_sub_<uuid>`。
+2. 经 `CreateSubSession(State=state)` 写入子 session 的 State，并经 `RunAndCollect(StateDelta=state)` 注入运行上下文。
+3. `adk/session/mongo.go` `create()` 直接 `doc.State[k] = v` 复制 req.State，**不覆盖 session_id**（子 session 自己的 ID 只写进 `doc.ID`，不进 State）。
+4. 所有文件/产物工具经 `stateString(tc, "session_id")` → `chatsvc.SessionWorkspace(sessionID)` = `os.TempDir()/data-agent-sessions/<sessionID>` 解析 workspace root；因 session_id=父 ID，故与主 agent 同一目录。
+
+**受影响工具**（副作用均锚定父 session context）：`file_write` / `file_read` / `dir_list` / `dir_create` / `file_delete` / `dir_delete`、`save_artifact`（关联父 session + 父 user）、`pptx_generator`、`memory_write`（绑父 session_id + userID）。
+
+**与「独立 session」的关系**：隔离仅发生在「对话历史」层（子 session 独立 Events/RawEvents，完成即销毁、防递归）；workspace 是**共享落点**——「干活在同一工作台，记忆是临时的、用后即焚」。
+
+#### 4.5 其余
 
 - 最终返回写回主 session（同 tool response 的形态）。
 - 待明确：子 agent session 的 compaction 是否启用（生命周期短，可能不需要）。
