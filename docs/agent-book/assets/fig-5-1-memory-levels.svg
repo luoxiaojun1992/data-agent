@@ -1,0 +1,29 @@
+<svg viewBox="0 0 680 360" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>记忆分三个抽屉</title>
+  <desc>项目记忆、个人记忆、公共记忆，边界清晰，谁能看配谁的锁</desc>
+
+  <!-- 抽屉 1 · 项目记忆 -->
+  <rect x="20" y="80" width="200" height="210" rx="14" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="120" y="112" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#0C447C">项目记忆</text>
+  <text x="120" y="142" text-anchor="middle" class="ts" font-size="12" fill="#185FA5" opacity="0.75">记什么</text>
+  <text x="120" y="164" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">项目约定、决策、经验</text>
+  <text x="120" y="196" text-anchor="middle" class="ts" font-size="12" fill="#185FA5" opacity="0.75">谁能看</text>
+  <text x="120" y="218" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">参与项目的人</text>
+
+  <!-- 抽屉 2 · 个人记忆 -->
+  <rect x="240" y="80" width="200" height="210" rx="14" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="340" y="112" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#3C3489">个人记忆</text>
+  <text x="340" y="142" text-anchor="middle" class="ts" font-size="12" fill="#534AB7" opacity="0.75">记什么</text>
+  <text x="340" y="164" text-anchor="middle" class="ts" font-size="13" fill="#534AB7">个人偏好、习惯</text>
+  <text x="340" y="196" text-anchor="middle" class="ts" font-size="12" fill="#534AB7" opacity="0.75">谁能看</text>
+  <text x="340" y="218" text-anchor="middle" class="ts" font-size="13" fill="#534AB7">只有本人</text>
+
+  <!-- 抽屉 3 · 公共记忆（知识库） -->
+  <rect x="460" y="80" width="200" height="210" rx="14" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="560" y="112" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#085041">公共记忆</text>
+  <text x="560" y="130" text-anchor="middle" class="ts" font-size="11" fill="#0F6E56">（知识库）</text>
+  <text x="560" y="164" text-anchor="middle" class="ts" font-size="12" fill="#0F6E56" opacity="0.75">记什么</text>
+  <text x="560" y="186" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">公司知识资产</text>
+  <text x="560" y="218" text-anchor="middle" class="ts" font-size="12" fill="#0F6E56" opacity="0.75">谁能看</text>
+  <text x="560" y="240" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">全公司</text>
+</svg>

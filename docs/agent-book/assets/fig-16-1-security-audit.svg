@@ -1,0 +1,35 @@
+<svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>安全审计三件事：权限、钥匙、留痕</title>
+  <desc>权限管谁能干什么，钥匙存在保险柜，留痕让干了什么有据可查</desc>
+
+  <text x="340" y="30" text-anchor="middle" class="th" font-size="15" font-weight="700" fill="#7A1F2B">安全审计 · 三件事</text>
+
+  <!-- 权限 -->
+  <rect x="20" y="52" width="200" height="180" rx="14" fill="#FBE3E6" stroke="#A52A3A" stroke-width="1.5"/>
+  <text x="120" y="86" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#7A1F2B">权限</text>
+  <text x="120" y="112" text-anchor="middle" class="ts" font-size="13" fill="#A52A3A">谁能干什么</text>
+  <line x1="60" y1="126" x2="180" y2="126" stroke="#A52A3A" stroke-width="0.5" opacity="0.4"/>
+  <text x="120" y="152" text-anchor="middle" class="ts" font-size="13" fill="#A52A3A">最小授权</text>
+  <text x="120" y="176" text-anchor="middle" class="ts" font-size="13" fill="#A52A3A">分层分级</text>
+  <text x="120" y="200" text-anchor="middle" class="ts" font-size="13" fill="#A52A3A">每一级只做份内事</text>
+
+  <!-- 钥匙 -->
+  <rect x="240" y="52" width="200" height="180" rx="14" fill="#FAEEDA" stroke="#854F0B" stroke-width="1.5"/>
+  <text x="340" y="86" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#633806">钥匙</text>
+  <text x="340" y="112" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">存在保险柜</text>
+  <line x1="280" y1="126" x2="400" y2="126" stroke="#854F0B" stroke-width="0.5" opacity="0.4"/>
+  <text x="340" y="152" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">代码只留引用</text>
+  <text x="340" y="176" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">能轮换</text>
+  <text x="340" y="200" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">能审计</text>
+
+  <!-- 留痕 -->
+  <rect x="460" y="52" width="200" height="180" rx="14" fill="#DCEBFA" stroke="#185FA5" stroke-width="1.5"/>
+  <text x="560" y="86" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#0C447C">留痕</text>
+  <text x="560" y="112" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">谁干了什么</text>
+  <line x1="500" y1="126" x2="620" y2="126" stroke="#185FA5" stroke-width="0.5" opacity="0.4"/>
+  <text x="560" y="152" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">有据可查</text>
+  <text x="560" y="176" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">可追责</text>
+  <text x="560" y="200" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">出了事追得到</text>
+
+  <text x="340" y="266" text-anchor="middle" class="ts" font-size="13" fill="#6B7280">看得见，才管得住</text>
+</svg>

@@ -1,0 +1,35 @@
+<svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>skill：模型的手和脚</title>
+  <desc>只会说的模型，加上 skill 技能包，变成能动手的 Agent</desc>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 左：模型 -->
+  <rect x="40" y="100" width="200" height="120" rx="14" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="140" y="128" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#3C3489">模型（大脑 + 嘴）</text>
+  <text x="140" y="154" text-anchor="middle" class="ts" font-size="12" fill="#534AB7">理解、组织语言、给方案</text>
+  <text x="140" y="180" text-anchor="middle" class="ts" font-size="12" fill="#A52A3A">但：查不了库、发不了邮件</text>
+
+  <!-- 中：skill -->
+  <rect x="270" y="100" width="140" height="120" rx="14" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="340" y="132" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#633806">skill</text>
+  <text x="340" y="156" text-anchor="middle" class="ts" font-size="12" fill="#854F0B">技能包</text>
+  <text x="340" y="180" text-anchor="middle" class="ts" font-size="12" fill="#854F0B">手和脚</text>
+
+  <!-- 右：能动手的 Agent -->
+  <rect x="440" y="100" width="200" height="120" rx="14" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="540" y="128" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#085041">能动手的 Agent</text>
+  <text x="540" y="154" text-anchor="middle" class="ts" font-size="12" fill="#0F6E56">查库 · 发邮件</text>
+  <text x="540" y="180" text-anchor="middle" class="ts" font-size="12" fill="#0F6E56">改文件 · 算账</text>
+
+  <!-- 箭头 -->
+  <line x1="245" y1="160" x2="264" y2="160" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="415" y1="160" x2="434" y2="160" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- + 号 -->
+  <text x="255" y="164" text-anchor="middle" font-size="18" font-weight="700" fill="#854F0B">+</text>
+</svg>

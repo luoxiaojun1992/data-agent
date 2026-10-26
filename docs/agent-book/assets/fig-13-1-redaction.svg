@@ -1,0 +1,48 @@
+<svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>输入输出两头设卡：先脱敏再进模型</title>
+  <desc>输入先脱敏打码再进模型，输出再检查一道，日志只记路不记内容</desc>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 用户输入 -->
+  <rect x="15" y="80" width="110" height="64" rx="10" fill="#F3F4F6" stroke="#6B7280" stroke-width="1"/>
+  <text x="70" y="104" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#4B5563">用户输入</text>
+  <text x="70" y="126" text-anchor="middle" class="ts" font-size="11" fill="#6B7280">可能含敏感信息</text>
+
+  <!-- 输入脱敏（卡1） -->
+  <rect x="150" y="72" width="110" height="80" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="1.5"/>
+  <text x="205" y="96" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#633806">输入脱敏</text>
+  <text x="205" y="118" text-anchor="middle" class="ts" font-size="11" fill="#854F0B">打码后再进</text>
+  <text x="205" y="136" text-anchor="middle" class="ts" font-size="11" fill="#854F0B">模型</text>
+
+  <!-- 模型 -->
+  <rect x="285" y="80" width="110" height="64" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="340" y="104" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#3C3489">模型</text>
+  <text x="340" y="126" text-anchor="middle" class="ts" font-size="11" fill="#534AB7">只见打码后的</text>
+
+  <!-- 输出检查（卡2） -->
+  <rect x="420" y="72" width="110" height="80" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="1.5"/>
+  <text x="475" y="96" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#633806">输出检查</text>
+  <text x="475" y="118" text-anchor="middle" class="ts" font-size="11" fill="#854F0B">防它把秘密</text>
+  <text x="475" y="136" text-anchor="middle" class="ts" font-size="11" fill="#854F0B">说漏出去</text>
+
+  <!-- 用户看到 -->
+  <rect x="555" y="80" width="110" height="64" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="610" y="104" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#085041">用户看到</text>
+  <text x="610" y="126" text-anchor="middle" class="ts" font-size="11" fill="#0F6E56">干净的输出</text>
+
+  <!-- 箭头 -->
+  <line x1="127" y1="112" x2="146" y2="112" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="262" y1="112" x2="281" y2="112" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="397" y1="112" x2="416" y2="112" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="532" y1="112" x2="551" y2="112" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 日志说明 -->
+  <rect x="120" y="210" width="440" height="48" rx="10" fill="#F4F7FB" stroke="#185FA5" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="340" y="230" text-anchor="middle" class="ts" font-size="13" fill="#0C447C">日志：只记「路」，不记「内容」</text>
+  <text x="340" y="248" text-anchor="middle" class="ts" font-size="11" fill="#185FA5">留痕可追责，但不制造新的泄露源</text>
+</svg>

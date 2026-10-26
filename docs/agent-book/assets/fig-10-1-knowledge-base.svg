@@ -1,0 +1,39 @@
+<svg viewBox="0 0 680 240" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>知识库：越攒越值钱的家底</title>
+  <desc>各种来源进入知识库，检索出最相关的一页，喂给 Agent</desc>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 来源 -->
+  <rect x="20" y="70" width="140" height="100" rx="12" fill="#F3F4F6" stroke="#6B7280" stroke-width="1"/>
+  <text x="90" y="100" text-anchor="middle" class="th" font-size="15" font-weight="700" fill="#4B5563">各种来源</text>
+  <text x="90" y="124" text-anchor="middle" class="ts" font-size="12" fill="#6B7280">PDF · 网页</text>
+  <text x="90" y="144" text-anchor="middle" class="ts" font-size="12" fill="#6B7280">图片 · 文字</text>
+
+  <!-- 知识库 -->
+  <rect x="190" y="70" width="140" height="100" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1.5"/>
+  <text x="260" y="100" text-anchor="middle" class="th" font-size="15" font-weight="700" fill="#085041">知识库</text>
+  <text x="260" y="124" text-anchor="middle" class="ts" font-size="12" fill="#0F6E56">（公司的家底）</text>
+  <text x="260" y="144" text-anchor="middle" class="ts" font-size="12" fill="#0F6E56">持续维护 · 反复复用</text>
+
+  <!-- 检索 -->
+  <rect x="360" y="70" width="140" height="100" rx="12" fill="#DCEBFA" stroke="#185FA5" stroke-width="1.5"/>
+  <text x="430" y="100" text-anchor="middle" class="th" font-size="15" font-weight="700" fill="#0C447C">检索</text>
+  <text x="430" y="124" text-anchor="middle" class="ts" font-size="12" fill="#185FA5">找最相关的</text>
+  <text x="430" y="144" text-anchor="middle" class="ts" font-size="12" fill="#185FA5">那一页</text>
+
+  <!-- Agent -->
+  <rect x="530" y="70" width="140" height="100" rx="12" fill="#EEEDFE" stroke="#534AB7" stroke-width="1.5"/>
+  <text x="600" y="100" text-anchor="middle" class="th" font-size="15" font-weight="700" fill="#3C3489">Agent</text>
+  <text x="600" y="124" text-anchor="middle" class="ts" font-size="12" fill="#534AB7">用上知识</text>
+  <text x="600" y="144" text-anchor="middle" class="ts" font-size="12" fill="#534AB7">回答更靠谱</text>
+
+  <!-- 箭头 -->
+  <line x1="162" y1="120" x2="186" y2="120" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="332" y1="120" x2="356" y2="120" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="502" y1="120" x2="526" y2="120" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+</svg>

@@ -1,0 +1,41 @@
+<svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>相关性过滤：只喂最要紧的</title>
+  <desc>多而杂的信息，经相关性过滤，只把最相关的喂给模型</desc>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 左：信息很多 -->
+  <text x="25" y="38" class="ts" font-size="13" font-weight="700" fill="#6B7280">信息很多（多而杂）</text>
+  <rect x="25" y="52" width="130" height="30" rx="8" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1"/>
+  <text x="90" y="72" text-anchor="middle" class="ts" font-size="12" fill="#6B7280">背景信息</text>
+  <rect x="45" y="92" width="130" height="30" rx="8" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1"/>
+  <text x="110" y="112" text-anchor="middle" class="ts" font-size="12" fill="#6B7280">无关噪音</text>
+  <rect x="20" y="132" width="165" height="34" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1.5"/>
+  <text x="102" y="154" text-anchor="middle" class="ts" font-size="12" font-weight="700" fill="#085041">当前问题（最要紧）</text>
+  <rect x="45" y="176" width="130" height="30" rx="8" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1"/>
+  <text x="110" y="196" text-anchor="middle" class="ts" font-size="12" fill="#6B7280">次要信息</text>
+  <rect x="30" y="216" width="130" height="30" rx="8" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1"/>
+  <text x="95" y="236" text-anchor="middle" class="ts" font-size="12" fill="#6B7280">旧结论</text>
+
+  <!-- 中：相关性过滤 -->
+  <rect x="240" y="100" width="180" height="100" rx="14" fill="#FAEEDA" stroke="#854F0B" stroke-width="1.5"/>
+  <text x="330" y="130" text-anchor="middle" class="th" font-size="15" font-weight="700" fill="#633806">相关性过滤</text>
+  <text x="330" y="154" text-anchor="middle" class="ts" font-size="12" fill="#854F0B">先分清什么最要紧</text>
+  <text x="330" y="176" text-anchor="middle" class="ts" font-size="12" fill="#854F0B">把无关的放一边</text>
+
+  <!-- 右：模型 -->
+  <rect x="480" y="115" width="170" height="70" rx="12" fill="#EEEDFE" stroke="#534AB7" stroke-width="1.5"/>
+  <text x="565" y="142" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#3C3489">模型</text>
+  <text x="565" y="164" text-anchor="middle" class="ts" font-size="12" fill="#534AB7">只喂最相关的</text>
+
+  <!-- 箭头 -->
+  <line x1="200" y1="150" x2="236" y2="150" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="422" y1="150" x2="476" y2="150" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 底部说明 -->
+  <text x="340" y="282" text-anchor="middle" class="ts" font-size="13" fill="#6B7280">做减法，反而是做加法——「少而准」远胜「多而杂」</text>
+</svg>

@@ -1,0 +1,35 @@
+<svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>可观测性：进度、成果、健康，都看得见</title>
+  <desc>进度（可回放轨迹）、成果（看板聚合）、健康（全局指示灯）</desc>
+
+  <text x="340" y="30" text-anchor="middle" class="th" font-size="15" font-weight="700" fill="#7A1F2B">可观测性 · 三样东西</text>
+
+  <!-- 进度 -->
+  <rect x="20" y="52" width="200" height="180" rx="14" fill="#DCEBFA" stroke="#185FA5" stroke-width="1.5"/>
+  <text x="120" y="86" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#0C447C">进度</text>
+  <text x="120" y="112" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">可回放的轨迹</text>
+  <line x1="60" y1="126" x2="180" y2="126" stroke="#185FA5" stroke-width="0.5" opacity="0.4"/>
+  <text x="120" y="152" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">它在想什么</text>
+  <text x="120" y="176" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">调了什么工具</text>
+  <text x="120" y="200" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">产出了什么</text>
+
+  <!-- 成果 -->
+  <rect x="240" y="52" width="200" height="180" rx="14" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1.5"/>
+  <text x="340" y="86" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#085041">成果</text>
+  <text x="340" y="112" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">看板聚合</text>
+  <line x1="280" y1="126" x2="400" y2="126" stroke="#0F6E56" stroke-width="0.5" opacity="0.4"/>
+  <text x="340" y="152" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">按日 / 周 / 月 / 年</text>
+  <text x="340" y="176" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">看趋势</text>
+  <text x="340" y="200" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">看成本</text>
+
+  <!-- 健康 -->
+  <rect x="460" y="52" width="200" height="180" rx="14" fill="#FAEEDA" stroke="#854F0B" stroke-width="1.5"/>
+  <text x="560" y="86" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#633806">健康</text>
+  <text x="560" y="112" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">全局指示灯</text>
+  <line x1="500" y1="126" x2="620" y2="126" stroke="#854F0B" stroke-width="0.5" opacity="0.4"/>
+  <text x="560" y="152" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">全绿 = 健康</text>
+  <text x="560" y="176" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">有红 = 出问题</text>
+  <text x="560" y="200" text-anchor="middle" class="ts" font-size="13" fill="#854F0B">一眼看死活</text>
+
+  <text x="340" y="266" text-anchor="middle" class="ts" font-size="13" fill="#6B7280">细账给排查，看板给决策，灯看死活</text>
+</svg>

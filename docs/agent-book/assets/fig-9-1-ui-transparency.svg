@@ -1,0 +1,39 @@
+<svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>把黑盒打开：流式 + 工具链 + 指示灯</title>
+  <desc>黑盒看不见过程，打开后变成流式渲染、工具调用链、状态指示灯三样透明的东西</desc>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 左：黑盒 -->
+  <text x="40" y="104" class="ts" font-size="13" font-weight="700" fill="#6B7280">黑盒（看不清）</text>
+  <rect x="40" y="112" width="150" height="120" rx="14" fill="#1F2937"/>
+  <text x="115" y="152" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#FFFFFF">黑盒</text>
+  <text x="115" y="176" text-anchor="middle" class="ts" font-size="12" fill="#9CA3AF">看不见过程</text>
+  <text x="115" y="200" text-anchor="middle" class="ts" font-size="13" fill="#9CA3AF">？ ？ ？</text>
+
+  <!-- 箭头 -->
+  <line x1="190" y1="172" x2="272" y2="172" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="231" y="158" text-anchor="middle" class="ts" font-size="12" fill="#6B7280">打开</text>
+
+  <!-- 右：三样透明的东西 -->
+  <text x="280" y="24" class="ts" font-size="13" font-weight="700" fill="#0C447C">打开后（透明）</text>
+
+  <rect x="280" y="36" width="360" height="60" rx="12" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="298" y="62" class="th" font-size="15" font-weight="700" fill="#0C447C">流式渲染</text>
+  <text x="420" y="62" class="ts" font-size="12" fill="#185FA5">边想边说，不憋大招</text>
+  <text x="298" y="82" class="ts" font-size="12" fill="#185FA5">看着字一个个跳出来，等待不焦虑</text>
+
+  <rect x="280" y="116" width="360" height="60" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="298" y="142" class="th" font-size="15" font-weight="700" fill="#085041">工具调用链可视化</text>
+  <text x="448" y="142" class="ts" font-size="12" fill="#0F6E56">干了什么一目了然</text>
+  <text x="298" y="162" class="ts" font-size="12" fill="#0F6E56">查了库 → 调了工具 → 算了数，全程看得见</text>
+
+  <rect x="280" y="196" width="360" height="60" rx="12" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="298" y="222" class="th" font-size="15" font-weight="700" fill="#633806">状态指示灯</text>
+  <text x="420" y="222" class="ts" font-size="12" fill="#854F0B">在想 / 卡住，一眼分辨</text>
+  <text x="298" y="242" class="ts" font-size="12" fill="#854F0B">绿灯在动、红灯别等</text>
+</svg>

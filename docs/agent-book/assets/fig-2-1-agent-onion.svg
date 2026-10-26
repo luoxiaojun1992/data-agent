@@ -1,0 +1,42 @@
+<svg viewBox="0 0 720 740" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>企业级 Agent 的洋葱式五层结构</title>
+  <desc>最核心是大脑（模型），从内到外包着智力、能力、协作、边界、治理五层</desc>
+
+  <!-- 第 5 层 · 治理（最外层） -->
+  <rect x="20" y="20" width="680" height="680" rx="28" fill="#FBE3E6" stroke="#A52A3A" stroke-width="1"/>
+  <text x="36" y="46" class="th" font-size="16" font-weight="700" fill="#7A1F2B">治理</text>
+  <text x="76" y="46" class="ts" font-size="14" fill="#A52A3A">系统安全与运营</text>
+  <text x="36" y="64" class="ts" font-size="11" fill="#A52A3A">安全审计 · 可观测性 · 后台管理</text>
+
+  <!-- 第 4 层 · 边界 -->
+  <rect x="80" y="80" width="560" height="560" rx="24" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="96" y="106" class="th" font-size="16" font-weight="700" fill="#633806">边界</text>
+  <text x="136" y="106" class="ts" font-size="14" fill="#854F0B">立工作纪律</text>
+  <text x="96" y="124" class="ts" font-size="11" fill="#854F0B">脱敏 · 意图识别 · 相关性检查</text>
+
+  <!-- 第 3 层 · 协作 -->
+  <rect x="140" y="140" width="440" height="440" rx="20" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="156" y="166" class="th" font-size="16" font-weight="700" fill="#0C447C">协作</text>
+  <text x="196" y="166" class="ts" font-size="14" fill="#185FA5">怎么一起干</text>
+  <text x="156" y="184" class="ts" font-size="11" fill="#185FA5">知识库共享 · 子 agent · task 调度</text>
+
+  <!-- 第 2 层 · 能力 -->
+  <rect x="200" y="200" width="320" height="320" rx="16" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="216" y="226" class="th" font-size="16" font-weight="700" fill="#085041">能力</text>
+  <text x="256" y="226" class="ts" font-size="14" fill="#0F6E56">怎么做、怎么表达</text>
+  <text x="216" y="244" class="ts" font-size="11" fill="#0F6E56">skill · API 转 MCP · 多模态 · UI</text>
+
+  <!-- 第 1 层 · 智力 -->
+  <rect x="260" y="260" width="200" height="200" rx="12" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="276" y="286" class="th" font-size="16" font-weight="700" fill="#3C3489">智力</text>
+  <text x="316" y="286" class="ts" font-size="14" fill="#534AB7">怎么想、怎么记</text>
+  <text x="276" y="304" class="ts" font-size="11" fill="#534AB7">模型分类 · 上下文 · 记忆</text>
+
+  <!-- 核心 · 大脑（模型） -->
+  <rect x="320" y="320" width="80" height="80" rx="14" fill="#FFF4E0" stroke="#B45309" stroke-width="1.5"/>
+  <text x="360" y="352" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#92400E">大脑</text>
+  <text x="360" y="372" text-anchor="middle" class="ts" font-size="12" fill="#B45309">（模型）</text>
+
+  <!-- 底部说明 -->
+  <text x="360" y="718" text-anchor="middle" class="ts" font-size="13" fill="#6B7280">从内到外：先打牢地基，再一层层往外长</text>
+</svg>

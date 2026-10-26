@@ -1,0 +1,32 @@
+<svg viewBox="0 0 680 320" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>任务队列：把慢活和快活分开</title>
+  <desc>快活同步当场回话，慢活异步进队列后台跑完再叫号</desc>
+
+  <defs>
+    <marker id="arrd" markerWidth="8" markerHeight="8" refX="3" refY="6" orient="auto">
+      <path d="M0,0 L6,0 L3,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 左：快活 -->
+  <text x="180" y="30" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#085041">快活（同步）</text>
+  <rect x="100" y="50" width="160" height="48" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="180" y="79" text-anchor="middle" class="ts" font-size="13" fill="#085041">用户问</text>
+  <line x1="180" y1="98" x2="180" y2="118" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arrd)"/>
+  <rect x="100" y="120" width="160" height="48" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="180" y="149" text-anchor="middle" class="ts" font-size="13" fill="#085041">当场回话（几秒）</text>
+
+  <!-- 右：慢活 -->
+  <text x="500" y="30" text-anchor="middle" class="th" font-size="14" font-weight="700" fill="#0C447C">慢活（异步）</text>
+  <rect x="420" y="50" width="160" height="48" rx="10" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="500" y="79" text-anchor="middle" class="ts" font-size="13" fill="#0C447C">用户提交任务</text>
+  <line x1="500" y1="98" x2="500" y2="116" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arrd)"/>
+  <rect x="420" y="116" width="160" height="48" rx="10" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="500" y="145" text-anchor="middle" class="ts" font-size="13" fill="#0C447C">任务队列（排队）</text>
+  <line x1="500" y1="164" x2="500" y2="182" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arrd)"/>
+  <rect x="420" y="182" width="160" height="48" rx="10" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="500" y="211" text-anchor="middle" class="ts" font-size="13" fill="#0C447C">后台并发跑</text>
+  <line x1="500" y1="230" x2="500" y2="248" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arrd)"/>
+  <rect x="420" y="248" width="160" height="48" rx="10" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="500" y="277" text-anchor="middle" class="ts" font-size="13" fill="#0C447C">完成 · 叫号</text>
+</svg>

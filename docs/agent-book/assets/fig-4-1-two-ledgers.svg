@@ -1,0 +1,31 @@
+<svg viewBox="0 0 680 360" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>一次对话的两本账</title>
+  <desc>同一件事，给用户看的账事无巨细，给模型看的账高度精简</desc>
+
+  <!-- 顶部来源 -->
+  <rect x="240" y="40" width="200" height="56" rx="12" fill="#F4F7FB" stroke="#185FA5" stroke-width="1"/>
+  <text x="340" y="72" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#0C447C">同一件事</text>
+
+  <!-- 分流箭头 -->
+  <path d="M 300 96 L 180 178" fill="none" stroke="#D1D5DB" stroke-width="1.5" marker-end="url(#arr)"/>
+  <path d="M 380 96 L 500 178" fill="none" stroke="#D1D5DB" stroke-width="1.5" marker-end="url(#arr)"/>
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 左：给用户看的账 -->
+  <rect x="40" y="180" width="280" height="130" rx="14" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="180" y="208" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#0C447C">给用户看的账</text>
+  <text x="180" y="228" text-anchor="middle" class="ts" font-size="12" fill="#185FA5">原始记录（raw events）</text>
+  <text x="180" y="254" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">每句话、每次工具调用，全量留痕</text>
+  <text x="180" y="276" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">可查 · 可追责</text>
+
+  <!-- 右：给模型看的账 -->
+  <rect x="360" y="180" width="280" height="130" rx="14" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="500" y="208" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#085041">给模型看的账</text>
+  <text x="500" y="228" text-anchor="middle" class="ts" font-size="12" fill="#0F6E56">压缩上下文（events）</text>
+  <text x="500" y="254" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">会议纪要，只留结论</text>
+  <text x="500" y="276" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">精简 · 省 token · 不跑偏</text>
+</svg>

@@ -1,0 +1,39 @@
+<svg viewBox="0 0 680 320" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <title>把散落的 API 收拢成一套工具协议</title>
+  <desc>五花八门的外部接口，收拢成统一工具协议后，Agent 一视同仁地调用</desc>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- 左：散落的 API -->
+  <text x="30" y="30" class="ts" font-size="13" font-weight="700" fill="#6B7280">外面的世界（乱）</text>
+  <rect x="30" y="42" width="140" height="34" rx="8" fill="#DCEBFA" stroke="#185FA5" stroke-width="1"/>
+  <text x="100" y="64" text-anchor="middle" class="ts" font-size="13" fill="#0C447C">天气 API</text>
+  <rect x="30" y="92" width="140" height="34" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="100" y="114" text-anchor="middle" class="ts" font-size="13" fill="#085041">支付 API</text>
+  <rect x="30" y="142" width="140" height="34" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="100" y="164" text-anchor="middle" class="ts" font-size="13" fill="#633806">邮件 API</text>
+  <rect x="30" y="192" width="140" height="34" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="100" y="214" text-anchor="middle" class="ts" font-size="13" fill="#3C3489">数据库</text>
+  <rect x="30" y="242" width="140" height="34" rx="8" fill="#F3F4F6" stroke="#6B7280" stroke-width="1"/>
+  <text x="100" y="264" text-anchor="middle" class="ts" font-size="13" fill="#4B5563">其他服务</text>
+
+  <!-- 中：统一工具协议 -->
+  <rect x="300" y="70" width="180" height="150" rx="14" fill="#F4F7FB" stroke="#185FA5" stroke-width="1.5"/>
+  <text x="390" y="102" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#0C447C">统一工具协议</text>
+  <text x="390" y="136" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">搜索</text>
+  <text x="390" y="156" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">↓ 调用</text>
+  <text x="390" y="176" text-anchor="middle" class="ts" font-size="13" fill="#185FA5">↓ 摘要</text>
+
+  <!-- 右：Agent -->
+  <rect x="510" y="100" width="140" height="90" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1.5"/>
+  <text x="580" y="132" text-anchor="middle" class="th" font-size="16" font-weight="700" fill="#085041">Agent</text>
+  <text x="580" y="156" text-anchor="middle" class="ts" font-size="13" fill="#0F6E56">统一调用</text>
+
+  <!-- 箭头 -->
+  <line x1="175" y1="157" x2="294" y2="157" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="485" y1="145" x2="504" y2="145" stroke="#9CA3AF" stroke-width="1.5" marker-end="url(#arr)"/>
+</svg>
