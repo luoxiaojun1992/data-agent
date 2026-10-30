@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
@@ -36,10 +37,10 @@ test.describe.serial('PROMPT — SPEC-033', () => {
   test.beforeAll(async ({ request }) => {
     // Clear any leftover mock responses from previous runs
     await clearMocks(request);
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
+    await registerUser(request, USER);
 
     // Register an admin so UI-160 can query /dashboard (global metrics).
-    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    let res = await registerUser(request, ADMIN);
     if (res.status() !== 201) {
       res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     } else {

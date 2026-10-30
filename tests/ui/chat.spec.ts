@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -21,7 +22,7 @@ async function clearMocks(request: any) {
 
 test.describe('CHAT — Complete', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: U })).status()).toBe(201);
+    expect((await registerUser(request, U)).status()).toBe(201);
   });
 
   test.afterAll(async ({ request }) => {

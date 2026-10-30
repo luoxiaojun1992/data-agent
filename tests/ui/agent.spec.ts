@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 /**
@@ -18,7 +19,7 @@ const U = { username: `e2e-agt-${uid}@test.local`, password: 'E2eTest123!', role
 
 test.describe('AGENT — Professional Workspace', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: U })).status()).toBe(201);
+    expect((await registerUser(request, U)).status()).toBe(201);
   });
 
   test.beforeEach(async ({ page }) => {

@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
@@ -16,7 +17,7 @@ const MOCK_TOKEN = 'test-admin-token';
 
 test.describe('SEC — SPEC-038', () => {
   test.beforeAll(async ({ request }) => {
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
+    await registerUser(request, USER);
   });
 
   test.afterAll(async ({ request }) => {
@@ -104,7 +105,7 @@ test.describe('SEC — SPEC-038', () => {
   test('[UI-186] Sec — 越权工具调用被拦截', async ({ page, request }) => {
     // Create a regular user
     const regularUser = { username: `e2e-sec-reg-${uid}@test.local`, password: 'RegularTest1', role: 'user' };
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: regularUser });
+    await registerUser(request, regularUser);
 
     // Login as regular user
     await page.goto('/login');

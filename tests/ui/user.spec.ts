@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -17,13 +18,11 @@ test.describe('USER MANAGEMENT — SPEC-023', () => {
   // ── Setup: register admin user via real API ──
   test.beforeAll(async ({ request }) => {
     // Register admin user
-    const regRes = await request.post(`${API_BASE}/auth/register`, {
-      data: {
+    const regRes = await registerUser(request, {
         username: ADMIN.username,
         password: ADMIN.password,
         role: ADMIN.role,
-      },
-    });
+      });
     expect(regRes.status()).toBe(201);
 
     // Login to get token for direct API calls

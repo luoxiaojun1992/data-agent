@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -6,7 +7,7 @@ const U = { username: `e2e-dash-${uid}@test.local`, password: 'E2eTest123!' };
 
 test.describe('DASHBOARD — System Overview', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: U })).status()).toBe(201);
+    expect((await registerUser(request, U)).status()).toBe(201);
   });
 
   test.beforeEach(async ({ page }) => {

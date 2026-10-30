@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 /**
@@ -20,9 +21,7 @@ const TEST_USER = {
 test.describe('AUTH - Login Page', () => {
   test.beforeAll(async ({ request }) => {
     log(`Registering test user: ${TEST_USER.username}`);
-    const res = await request.post(`${API_BASE}/auth/register`, {
-      data: TEST_USER,
-    });
+    const res = await registerUser(request, TEST_USER);
     const body = await res.json();
     log(`Register response: ${res.status()} ${JSON.stringify(body)}`);
     expect(res.status()).toBe(201);

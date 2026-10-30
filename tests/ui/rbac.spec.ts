@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -9,7 +10,7 @@ const USER  = { username: `e2e-rbac-us-${uid}@test.local`, password: 'RbacTest1!
 let tokens: Record<string, string> = {};
 
 async function registerAndLogin(request: any, user: typeof ADMIN) {
-  let res = await request.post(`${API_BASE}/auth/register`, { data: user });
+  let res = await registerUser(request, user);
   if (res.status() !== 201) { /* ok */ }
   res = await request.post(`${API_BASE}/auth/login`, {
     data: { username: user.username, password: user.password },

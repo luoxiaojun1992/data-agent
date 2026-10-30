@@ -4,6 +4,7 @@
  * Verifies real KB document lifecycle: upload → chunk → index → search hit.
  * Replaces shallow "only check visible" tests with data-state-change assertions.
  */
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -41,7 +42,7 @@ test.describe('KB INTEGRATION — SPEC-046', () => {
   const createdDocs: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    let res = await registerUser(request, ADMIN);
     if (res.status() !== 201) {
       res = await request.post(`${API_BASE}/auth/login`, {
         data: { username: ADMIN.username, password: ADMIN.password },

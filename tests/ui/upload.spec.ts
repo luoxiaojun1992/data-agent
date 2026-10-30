@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
@@ -7,7 +8,7 @@ const FIXTURE_DIR = path.resolve(__dirname, 'fixtures', 'files');
 
 test.describe('UPLOAD — SPEC-036', () => {
   test.beforeAll(async ({ request }) => {
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
+    await registerUser(request, USER);
   });
 
   test.afterAll(async ({ request }) => {

@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 /**
@@ -18,7 +19,7 @@ const USER = { username: `e2e-redact-${uid}@test.local`, password: 'RedactTest1!
 
 test.describe('CHAT — 本地脱敏 (SPEC-093)', () => {
   test.beforeAll(async ({ request }) => {
-    await request.post(`${API_BASE}/auth/register`, { data: USER });
+    await registerUser(request, USER);
   });
 
   test.beforeEach(async ({ page }) => {

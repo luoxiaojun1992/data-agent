@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -23,7 +24,7 @@ async function clearMocks(request: any) {
 
 test.describe('ERROR STATES — SPEC-041', () => {
   test.beforeAll(async ({ request }) => {
-    let res = await request.post(`${API_BASE}/auth/register`, { data: USER });
+    let res = await registerUser(request, USER);
     if (res.status() !== 201) { /* already exists */ }
     res = await request.post(`${API_BASE}/auth/login`, {
       data: { username: USER.username, password: USER.password },

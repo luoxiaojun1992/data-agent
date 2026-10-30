@@ -4,6 +4,7 @@
  * Verifies ADK memory integration: auto-write on chat, memory_search tool,
  * multi-user isolation, and long-conversation compaction.
  */
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -27,7 +28,7 @@ async function clearMocks(request: any) {
 
 test.describe('MEM0 — SPEC-046', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: U })).status()).toBe(201);
+    expect((await registerUser(request, U)).status()).toBe(201);
   });
 
   test.afterAll(async ({ request }) => {
@@ -141,7 +142,7 @@ test.describe('MEM0 — SPEC-046', () => {
     // Create User B
     const uidB = crypto.randomUUID().slice(0, 8);
     const userB = { username: `e2e-mem-b-${uidB}@test.local`, password: 'E2eTest1!' };
-    await request.post(`${API_BASE}/auth/register`, { data: userB }).catch(() => {});
+    await registerUser(request, userB).catch(() => {});
     const loginB = await request.post(`${API_BASE}/auth/login`, {
       data: { username: userB.username, password: userB.password },
     });

@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -22,7 +23,7 @@ async function clearMocks(request: any) {
 
 test.describe('HERMES — SPEC-021', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: USER })).status()).toBe(201);
+    expect((await registerUser(request, USER)).status()).toBe(201);
   });
 
   test.afterAll(async ({ request }) => {

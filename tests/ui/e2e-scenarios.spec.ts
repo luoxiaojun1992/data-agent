@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -11,7 +12,7 @@ const USER = { username: `e2e-e2e-u-${uid}@test.local`, password: 'E2eTest1!', r
 let tokens: Record<string, string> = {};
 
 async function registerAndLogin(request: any, user: any) {
-  let r = await request.post(`${API_BASE}/auth/register`, { data: user });
+  let r = await registerUser(request, user);
   r = await request.post(`${API_BASE}/auth/login`, { data: { username: user.username, password: user.password } });
   const body = await r.json();
   return body.access_token;

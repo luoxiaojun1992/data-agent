@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 /**
@@ -45,9 +46,7 @@ test.describe('INVITE — Registration Page', () => {
 test.describe('INVITE — Admin Invites Management', () => {
   test.beforeAll(async ({ request }) => {
     // Register admin user
-    const regRes = await request.post(`${API_BASE}/auth/register`, {
-      data: { username: ADMIN.username, password: ADMIN.password, role: ADMIN.role },
-    });
+    const regRes = await registerUser(request, { username: ADMIN.username, password: ADMIN.password, role: ADMIN.role });
     expect(regRes.status()).toBe(201);
 
     // Login to get token
