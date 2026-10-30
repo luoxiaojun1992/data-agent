@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -151,7 +152,7 @@ func TestMongoCounter_ConcurrentIncrNoLoss(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < perGoroutine; i++ {
-				_ = c.Incr(nil, MetricAPICalls, at, 1)
+				_ = c.Incr(context.TODO(), MetricAPICalls, at, 1)
 			}
 		}()
 	}
@@ -169,8 +170,8 @@ func TestMongoCounter_ConcurrentIncrNoLoss(t *testing.T) {
 func TestMongoCounter_SwapDrainsBuffer(t *testing.T) {
 	c := newTestCounter()
 	at := time.Date(2026, 8, 31, 13, 0, 0, 0, time.UTC)
-	_ = c.Incr(nil, MetricLLMCalls, at, 3)
-	_ = c.Incr(nil, MetricLLMCalls, at, 2)
+	_ = c.Incr(context.TODO(), MetricLLMCalls, at, 3)
+	_ = c.Incr(context.TODO(), MetricLLMCalls, at, 2)
 
 	old := c.swapBuffer()
 	key := bucketKey{Metric: MetricLLMCalls, Hour: HourBucket(at)}
@@ -189,7 +190,7 @@ func TestMongoCounter_SwapDrainsBuffer(t *testing.T) {
 func TestMongoCounter_IncrZeroDelta(t *testing.T) {
 	c := newTestCounter()
 	at := time.Date(2026, 8, 31, 13, 0, 0, 0, time.UTC)
-	_ = c.Incr(nil, MetricArtifact, at, 0)
+	_ = c.Incr(context.TODO(), MetricArtifact, at, 0)
 	c.mu.Lock()
 	n := len(c.buffer)
 	c.mu.Unlock()

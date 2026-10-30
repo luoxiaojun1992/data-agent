@@ -175,6 +175,46 @@ func TestSetScheduledEnabled_Success(t *testing.T) {
 	}
 }
 
+func TestSetScheduledEnabled_ForbiddenNonOwner(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
+
+	if err := s.SetScheduledEnabled("task_1", "attacker", false, true); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound (no existence leak), got %v", err)
+	}
+	repo.AssertNotCalled(t, "SetScheduledEnabled", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestSetScheduledEnabled_SystemAdminExempt(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "owner"}, nil)
+	repo.On("SetScheduledEnabled", mock.Anything, "task_1", true).Return(nil)
+
+	if err := s.SetScheduledEnabled("task_1", "admin", true, true); err != nil {
+		t.Fatalf("system_admin should be exempt, got %v", err)
+	}
+}
+
+func TestSetScheduledEnabled_GetError(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "ghost").Return((*task.Task)(nil), fmt.Errorf("not found"))
+
+	if err := s.SetScheduledEnabled("ghost", "u1", false, true); err == nil {
+		t.Fatal("expected error for missing task")
+	}
+	repo.AssertNotCalled(t, "SetScheduledEnabled", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestSetScheduledEnabled_RepoError(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "user1"}, nil)
+	repo.On("SetScheduledEnabled", mock.Anything, "task_1", true).Return(fmt.Errorf("db down"))
+
+	if err := s.SetScheduledEnabled("task_1", "user1", false, true); err == nil {
+		t.Fatal("expected repo error to propagate")
+	}
+}
+
 func TestListTasks_Success(t *testing.T) {
 	s, repo, _, _ := newTestService(t)
 	repo.On("List", mock.Anything, "user1", int64(0), int64(50)).Return(
@@ -653,4 +693,82 @@ func TestDeleteRun_ReleaseError(t *testing.T) {
 		t.Fatalf("release error must be non-fatal: %v", err)
 	}
 	lock.AssertCalled(t, "Release", mock.Anything, "lock:run:run_1", mock.Anything)
+}
+
+// ── repo error propagation (task-level ownership-checked methods) ──
+
+func TestGetTask_RepoError(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "ghost").Return((*task.Task)(nil), fmt.Errorf("mongo down"))
+
+	if _, err := s.GetTask("ghost", "u1", false); err == nil {
+		t.Error("expected repo error to propagate")
+	}
+}
+
+func TestDeleteTask_RepoError(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "ghost").Return((*task.Task)(nil), fmt.Errorf("mongo down"))
+
+	if err := s.DeleteTask("ghost", "u1", false); err == nil {
+		t.Error("expected repo error to propagate")
+	}
+	repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+}
+
+func TestDeleteTask_DeleteError(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "u1"}, nil)
+	repo.On("Delete", mock.Anything, "task_1").Return(fmt.Errorf("db down"))
+
+	if err := s.DeleteTask("task_1", "u1", false); err == nil {
+		t.Error("expected delete error to propagate")
+	}
+}
+
+func TestGetRun_RepoError(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "ghost").Return((*task.TaskRun)(nil), fmt.Errorf("mongo down"))
+
+	if _, err := s.GetRun("ghost", "u1", false); err == nil {
+		t.Error("expected repo error to propagate")
+	}
+}
+
+func TestListRuns_RepoError(t *testing.T) {
+	s, repo, _, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "ghost").Return((*task.Task)(nil), fmt.Errorf("mongo down"))
+
+	if _, _, err := s.ListRuns("ghost", "u1", false, "", 0, 20); err == nil {
+		t.Error("expected repo error to propagate")
+	}
+}
+
+func TestListRuns_ListError(t *testing.T) {
+	s, repo, runRepo, _ := newTestService(t)
+	repo.On("Get", mock.Anything, "task_1").Return(&task.Task{ID: "task_1", UserID: "u1"}, nil)
+	runRepo.On("List", mock.Anything, "task_1", "", int64(0), int64(20)).Return(([]*task.TaskRun)(nil), int64(0), fmt.Errorf("db down"))
+
+	if _, _, err := s.ListRuns("task_1", "u1", false, "", 0, 20); err == nil {
+		t.Error("expected list error to propagate")
+	}
+}
+
+func TestCancelRun_RepoError(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "ghost").Return((*task.TaskRun)(nil), fmt.Errorf("mongo down"))
+
+	if err := s.CancelRun("ghost", "u1", false); err == nil {
+		t.Error("expected repo error to propagate")
+	}
+}
+
+func TestCancelRun_CancelError(t *testing.T) {
+	s, _, runRepo, _ := newTestService(t)
+	runRepo.On("Get", mock.Anything, "run_1").Return(&task.TaskRun{ID: "run_1", UserID: "u1", Status: task.StatusRunning}, nil)
+	runRepo.On("Cancel", mock.Anything, "run_1").Return(fmt.Errorf("db down"))
+
+	if err := s.CancelRun("run_1", "u1", false); err == nil {
+		t.Error("expected cancel error to propagate")
+	}
 }

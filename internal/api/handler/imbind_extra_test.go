@@ -134,5 +134,73 @@ func TestIMBindHandler_Update_RepoError(t *testing.T) {
 	}
 }
 
+// ── Delete ──
+
+func TestIMBindHandler_Delete_Success(t *testing.T) {
+	repo := mockrepo.NewIMBindRepository(t)
+	repo.On("Delete", mock.Anything, "u1").Return(nil)
+	svc := im.NewBindService(repo)
+	h := NewIMBindHandler(svc)
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_id", "u1")
+	c.Request = httptest.NewRequest("DELETE", "/im/bind", nil)
+	h.Delete(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "deleted") {
+		t.Errorf("expected deleted status: %s", w.Body.String())
+	}
+}
+
+func TestIMBindHandler_Delete_RepoError(t *testing.T) {
+	repo := mockrepo.NewIMBindRepository(t)
+	repo.On("Delete", mock.Anything, "u1").Return(errStr("db down"))
+	svc := im.NewBindService(repo)
+	h := NewIMBindHandler(svc)
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_id", "u1")
+	c.Request = httptest.NewRequest("DELETE", "/im/bind", nil)
+	h.Delete(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
+// ── nil service (database unavailable) ──
+
+func TestIMBindHandler_Get_NilService(t *testing.T) {
+	h := NewIMBindHandler(nil)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/im/bind", nil)
+	h.Get(c)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", w.Code)
+	}
+}
+
+func TestIMBindHandler_Update_NilService(t *testing.T) {
+	h := NewIMBindHandler(nil)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("PUT", "/im/bind", strings.NewReader(`{"open_id":"ou_x"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h.Update(c)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", w.Code)
+	}
+}
+
 // ensure context import used.
 var _ = context.Background

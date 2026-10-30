@@ -103,6 +103,48 @@ func TestRecordIntent_PlanInjectsHiddenHint(t *testing.T) {
 	}
 }
 
+func TestRecordIntent_NilGuardNoop(t *testing.T) {
+	// guard 为 nil 时 recordIntent 必须直接返回（防御性降级，不 panic、不写事件）。
+	adkSessions := adksession.InMemoryService()
+	svc := &Service{adkSessions: adkSessions}
+	if _, err := adkSessions.Create(context.Background(), &adksession.CreateRequest{
+		AppName: "data-agent", UserID: "u1", SessionID: "s1",
+	}); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	svc.recordIntent(context.Background(), "u1", "s1", "data-agent",
+		genai.NewContentFromText("hi", "user"))
+
+	texts, _ := systemEventTexts(t, adkSessions)
+	if len(texts) != 0 {
+		t.Fatalf("nil guard must not write events, got %v", texts)
+	}
+}
+
+func TestRecordIntent_CheckErrorDegrades(t *testing.T) {
+	// CheckIntent 出错时 recordIntent 必须降级（仅记日志，不中断、不写事件）。
+	svc, adkSessions, g := newIntentService(t)
+	patches := gomonkey.NewPatches()
+	t.Cleanup(patches.Reset)
+	patches.ApplyMethodFunc(g, "CheckIntent",
+		func(ctx context.Context, content *genai.Content) (bool, bool, error) {
+			return false, false, context.Canceled
+		})
+
+	if _, err := adkSessions.Create(context.Background(), &adksession.CreateRequest{
+		AppName: "data-agent", UserID: "u1", SessionID: "s1",
+	}); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	svc.recordIntent(context.Background(), "u1", "s1", "data-agent",
+		genai.NewContentFromText("hi", "user"))
+
+	texts, _ := systemEventTexts(t, adkSessions)
+	if len(texts) != 0 {
+		t.Fatalf("check error must not write events, got %v", texts)
+	}
+}
+
 func TestRecordIntent_NoPlanOnlyIntent(t *testing.T) {
 	svc, adkSessions, g := newIntentService(t)
 	patchCheckIntent(t, g, true, false)

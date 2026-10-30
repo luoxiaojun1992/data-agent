@@ -934,6 +934,9 @@ func TestForwardSSEEvent_UsesCanonicalShape(t *testing.T) {
 }
 
 func TestIsCompactionEvent(t *testing.T) {
+	if IsCompactionEvent(nil) {
+		t.Error("nil event must not be filtered")
+	}
 	if !IsCompactionEvent(&adksession.Event{Author: "compaction"}) {
 		t.Error("author=compaction must be filtered")
 	}

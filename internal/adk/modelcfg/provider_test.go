@@ -701,17 +701,6 @@ func TestConfigHash_EmptyOnMarshal(t *testing.T) {
 	}
 }
 
-// newProviderWithRepo builds a Provider whose model repo serves no entries;
-// mutations are registered by individual tests.
-func newProviderWithRepo(t *testing.T) (*Provider, *mockrepo.ModelConfigRepository) {
-	t.Helper()
-	repo := mockrepo.NewModelConfigRepository(t)
-	defRepo := mockrepo.NewModelDefaultRepository(t)
-	repo.On("List", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), nil)
-	repo.On("Get", mock.Anything, mock.Anything).Return(nil, errNotFound)
-	return NewProvider(repo, defRepo, nil), repo
-}
-
 // newProviderWithSearchRepo builds a Provider backed by mocks whose Search is
 // NOT pre-stubbed, returning both repos so tests register Search expectations.
 func newProviderWithSearchRepo(t *testing.T) (*Provider, *mockrepo.ModelConfigRepository, *mockrepo.ModelDefaultRepository) {

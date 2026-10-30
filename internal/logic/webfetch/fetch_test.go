@@ -14,7 +14,7 @@ func TestFetch_ExtractsTitleAndText(t *testing.T) {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(`<html><head><title>Hello Page</title></head><body><h1>Heading</h1><p>First paragraph.</p><p>Second paragraph.</p><script>var x = 1;</script></body></html>`))
+		_, _ = w.Write([]byte(`<html><head><title>Hello Page</title></head><body><h1>Heading</h1><p>First paragraph.</p><p>Second paragraph.</p><script>var x = 1;</script></body></html>`))
 	}))
 	defer srv.Close()
 

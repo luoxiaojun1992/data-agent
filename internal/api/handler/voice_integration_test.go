@@ -166,14 +166,14 @@ func TestVoiceIntegration_OwnershipIsolation(t *testing.T) {
 	m := middleware.NewJWTManager("test-secret", time.Hour)
 	tokB, _ := m.GenerateToken("u2", "bob", "user")
 
-	w, body := voicePost(r, "/api/v1/voice/start", `{"lang":"zh"}`, tokA)
+	_, body := voicePost(r, "/api/v1/voice/start", `{"lang":"zh"}`, tokA)
 	var start struct {
 		RequestID string `json:"request_id"`
 	}
 	_ = json.Unmarshal(body, &start)
 
 	audio := base64.StdEncoding.EncodeToString([]byte("1234"))
-	w, body = voicePost(r, "/api/v1/voice/chunk",
+	w, body := voicePost(r, "/api/v1/voice/chunk",
 		`{"request_id":"`+start.RequestID+`","seq":0,"audio":"`+audio+`"}`, tokB)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("user B chunk: expected 404, got %d: %s", w.Code, body)
@@ -192,14 +192,14 @@ func TestVoiceIntegration_SeqOrder(t *testing.T) {
 	r, _, _ := voiceIntegrationRouter(t, true)
 	tok := voiceToken(t)
 
-	w, body := voicePost(r, "/api/v1/voice/start", `{"lang":"zh"}`, tok)
+	_, body := voicePost(r, "/api/v1/voice/start", `{"lang":"zh"}`, tok)
 	var start struct {
 		RequestID string `json:"request_id"`
 	}
 	_ = json.Unmarshal(body, &start)
 
 	audio := base64.StdEncoding.EncodeToString([]byte("1234"))
-	w, body = voicePost(r, "/api/v1/voice/chunk",
+	w, body := voicePost(r, "/api/v1/voice/chunk",
 		`{"request_id":"`+start.RequestID+`","seq":3,"audio":"`+audio+`"}`, tok)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", w.Code, body)

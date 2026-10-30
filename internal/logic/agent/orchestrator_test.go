@@ -249,6 +249,29 @@ func TestCreateAgentTask_WithProvider(t *testing.T) {
 	}
 }
 
+func TestResolveModel_NilProvider(t *testing.T) {
+	orch := &Orchestrator{provider: nil}
+	if got := orch.resolveModel(context.Background(), ""); got != "" {
+		t.Errorf("resolveModel(empty, nil provider) = %q, want empty", got)
+	}
+}
+
+func TestResolveModel_DefaultModelError(t *testing.T) {
+	repo := mockrepo.NewModelConfigRepository(t)
+	defRepo := mockrepo.NewModelDefaultRepository(t)
+	// No models + no default → DefaultModel returns an error.
+	repo.On("List", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]modelcfg.ModelEntry{}, int64(0), nil).Maybe()
+	defRepo.On("Get", mock.Anything, "chat").Return((*modelconfig.ModelDefault)(nil), assert.AnError).Maybe()
+	defRepo.On("List", mock.Anything).Return([]modelconfig.ModelDefault{}, nil).Maybe()
+	provider := modelcfg.NewProvider(repo, defRepo, nil)
+
+	orch := &Orchestrator{provider: provider}
+	if got := orch.resolveModel(context.Background(), ""); got != "" {
+		t.Errorf("resolveModel(empty, provider with no default) = %q, want empty", got)
+	}
+}
+
 // TestResolveModel_WithExplicitModel verifies that an explicit req.Model is
 // used as-is (no provider default resolution needed).
 func TestResolveModel_WithExplicitModel(t *testing.T) {
