@@ -253,6 +253,17 @@ func TestGetConfig_Unmarshals(t *testing.T) {
 	}
 }
 
+func TestGetConfig_UnmarshalError(t *testing.T) {
+	repo := &recordingRepo{getFn: func(ctx context.Context, name string) (*skill.SkillConfig, error) {
+		return &skill.SkillConfig{Name: name, ConfigJSON: `not-json`}, nil
+	}}
+	s := NewConfigService(repo)
+	var target map[string]any
+	if err := s.GetConfig(context.Background(), "x", &target); err == nil {
+		t.Error("expected unmarshal error for invalid config JSON")
+	}
+}
+
 func TestIsEnabled(t *testing.T) {
 	repo := &recordingRepo{getFn: func(ctx context.Context, name string) (*skill.SkillConfig, error) {
 		switch name {

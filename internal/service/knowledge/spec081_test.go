@@ -219,9 +219,11 @@ func TestExtFromMime(t *testing.T) {
 	cases := map[string]string{
 		"image/png":  ".png",
 		"image/jpeg": ".jpg",
+		"image/jpg":  ".jpg",
 		"image/gif":  ".gif",
 		"image/webp": ".webp",
 		"image/svg+xml": ".svg",
+		"image/bmp":  ".bmp",
 		"application/octet-stream": ".jpg",
 	}
 	for mime, want := range cases {

@@ -184,3 +184,47 @@ func TestSanitizeError_NoUserinfo_Unchanged(t *testing.T) {
 		t.Errorf("sanitizeError(%q) = %q, want unchanged", in, got)
 	}
 }
+
+func TestIndexByte(t *testing.T) {
+	cases := []struct {
+		name string
+		s    string
+		b    byte
+		want int
+	}{
+		{"found middle", "hello", 'e', 1},
+		{"first char", "abc", 'a', 0},
+		{"last char", "abc", 'c', 2},
+		{"not found", "hello", 'z', -1},
+		{"empty", "", 'a', -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := indexByte(tc.s, tc.b); got != tc.want {
+				t.Errorf("indexByte(%q, %q) = %d, want %d", tc.s, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIndexAfterScheme(t *testing.T) {
+	cases := []struct {
+		name string
+		s    string
+		want int
+	}{
+		{"http", "http://example.com", 7},
+		{"https", "https://x", 8},
+		{"no scheme", "hello", -1},
+		{"empty", "", -1},
+		{"too short", "ab", -1},
+		{"scheme at end", "://", 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := indexAfterScheme(tc.s); got != tc.want {
+				t.Errorf("indexAfterScheme(%q) = %d, want %d", tc.s, got, tc.want)
+			}
+		})
+	}
+}

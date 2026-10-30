@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -139,6 +140,23 @@ func TestNewBcryptHasher(t *testing.T) {
 	}
 	if hash == "test" {
 		t.Error("hash should not equal plaintext")
+	}
+}
+
+func TestBcryptHasher_HashTooLong(t *testing.T) {
+	// bcrypt caps passwords at 72 bytes; longer input must surface an error
+	// rather than silently truncating.
+	h := bcryptHasher{}
+	if _, err := h.Hash(strings.Repeat("a", 73)); err == nil {
+		t.Error("expected error for a password longer than 72 bytes")
+	}
+}
+
+func TestBcryptHasher_HashAtLimit(t *testing.T) {
+	// Exactly 72 bytes is the documented bcrypt ceiling and must succeed.
+	h := bcryptHasher{}
+	if _, err := h.Hash(strings.Repeat("a", 72)); err != nil {
+		t.Fatalf("expected 72-byte password to hash successfully, got %v", err)
 	}
 }
 

@@ -92,6 +92,17 @@ func TestUserHandler_Create_InvalidBody(t *testing.T) {
 	}
 }
 
+func TestUserHandler_Create_SystemAdminForbidden(t *testing.T) {
+	svc := usermocks.NewService(t)
+	h := NewUserHandler(svc)
+	c, w := newUserGin("POST", "/users", `{"username":"bob","password":"secret","role":"system_admin"}`)
+	h.Create(c)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for system_admin creation, got %d", w.Code)
+	}
+	svc.AssertNotCalled(t, "Create", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func TestUserHandler_UpdateRole(t *testing.T) {
 	svc := usermocks.NewService(t)
 	svc.On("Get", mock.Anything, "u1").Return(&model.User{ID: "u1", Role: model.RoleUser}, nil)

@@ -262,6 +262,21 @@ func TestDeleteTask_Error(t *testing.T) {
 	}
 }
 
+func TestDeleteTask_NotFound(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	svc.On("DeleteTask", "missing", "", false).Return(tasksvc.ErrNotFound)
+
+	c, w := newGinContext("DELETE", "/tasks/missing", "")
+	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
+	h.DeleteTask(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
 // ── SetEnabled (SPEC-082 §1.2) ──
 
 func TestCreateRun_TaskDisabled(t *testing.T) {
@@ -490,6 +505,23 @@ func TestDownloadArtifacts_Success(t *testing.T) {
 	contentType := w.Header().Get("Content-Type")
 	if contentType != "application/zip" {
 		t.Errorf("Content-Type should be application/zip, got: %s", contentType)
+	}
+}
+
+func TestDownloadArtifacts_NotFound(t *testing.T) {
+	svc := mocktasksvc.NewTaskService(t)
+	h := NewTaskHandler(svc, nil)
+
+	svc.On("GetTask", "missing", "user-1", false).Return((*task.Task)(nil), fmt.Errorf("not found"))
+
+	c, w := newGinContext("GET", "/tasks/missing/artifacts", "")
+	c.Params = gin.Params{{Key: "task_id", Value: "missing"}}
+	c.Set("user_id", "user-1")
+	c.Set("role", "user")
+	h.DownloadArtifacts(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

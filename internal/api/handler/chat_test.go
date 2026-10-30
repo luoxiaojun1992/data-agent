@@ -133,7 +133,13 @@ func TestChatErrorStatus(t *testing.T) {
 	}{
 		{domainchat.ErrMessagesRequired, http.StatusBadRequest},
 		{domainchat.ErrUserMessageRequired, http.StatusBadRequest},
+		{domainchat.ErrTooManyImages, http.StatusBadRequest},
+		{domainchat.ErrImageTooLarge, http.StatusBadRequest},
+		{domainchat.ErrInvalidImage, http.StatusBadRequest},
+		{domainchat.ErrChatTextTooLarge, http.StatusBadRequest},
+		{domainchat.ErrChatTextXSS, http.StatusBadRequest},
 		{domainchat.ErrUnauthorizedSession, http.StatusUnauthorized},
+		{domainchat.ErrSessionBusy, http.StatusConflict},
 		{domainchat.ErrSessionCreateFailed, http.StatusInternalServerError},
 		{domainchat.ErrADKSessionInitFailed, http.StatusInternalServerError},
 		{errors.New("unknown"), http.StatusServiceUnavailable},
