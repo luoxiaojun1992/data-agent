@@ -68,7 +68,7 @@ func TestFetch_RedirectLimit(t *testing.T) {
 func TestFetch_ContentTypeHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte("<html><body>ok</body></html>"))
+		_, _ = w.Write([]byte("<html><body>ok</body></html>"))
 	}))
 	defer srv.Close()
 

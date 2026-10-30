@@ -65,9 +65,9 @@ func TestRedact_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
 		case "/analyze":
-			w.Write([]byte(`[{"entity_type":"PHONE_NUMBER","start":0,"end":13,"score":0.9}]`))
+			_, _ = w.Write([]byte(`[{"entity_type":"PHONE_NUMBER","start":0,"end":13,"score":0.9}]`))
 		case "/anonymize":
-			w.Write([]byte(`{"text":"<PII>","items":[]}`))
+			_, _ = w.Write([]byte(`{"text":"<PII>","items":[]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -87,7 +87,7 @@ func TestRedact_Success(t *testing.T) {
 func TestRedact_NoPII(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/analyze" {
-			w.Write([]byte(`[]`))
+			_, _ = w.Write([]byte(`[]`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -140,7 +140,7 @@ func TestAnalyze_NetworkError(t *testing.T) {
 
 func TestAnalyze_DecodeError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.Write([]byte(`not-json`))
+		_, _ = w.Write([]byte(`not-json`))
 	}))
 	defer srv.Close()
 
@@ -174,7 +174,7 @@ func TestAnonymize_NetworkError(t *testing.T) {
 
 func TestAnonymize_DecodeError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.Write([]byte(`not-json`))
+		_, _ = w.Write([]byte(`not-json`))
 	}))
 	defer srv.Close()
 
