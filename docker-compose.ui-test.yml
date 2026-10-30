@@ -11,23 +11,31 @@ services:
       timeout: 3s
       retries: 10
 
-  # 预置 system_admin 账号（one-shot）：先于 data-agent 写入固定密码的 admin，
+  # 预置 system_admin 账号：先于 data-agent 写入固定密码的 admin，
   # 使 ensureSystemAdmin 跳过随机密码生成，UI E2E 由此获得稳定登录凭证。
+  # 注意：seed 完成后必须保持运行（tail -f /dev/null），否则 --exit-code-from
+  # 隐含的 --abort-on-container-exit 会在 seed 退出时提前终止整个 compose，
+  # 导致 ui-e2e 从未启动（假性成功）。用 /tmp/seed-done 文件 + healthcheck
+  # 标记完成，data-agent 以 service_healthy 作为启动条件。
   seed-admin:
     image: mongo:7.0
     entrypoint: []
     command:
-      - mongosh
-      - --quiet
-      - mongodb://mongodb:27017/data_agent
-      - --file
-      - /seed-admin.js
+      - sh
+      - -c
+      - 'mongosh --quiet mongodb://mongodb:27017/data_agent --file /seed-admin.js && touch /tmp/seed-done && tail -f /dev/null'
     volumes:
       - ./docker/seed-admin.js:/seed-admin.js:ro
     depends_on:
       mongodb:
         condition: service_healthy
     restart: "no"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/seed-done"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
 
   redis:
     image: redis:7.2-alpine
@@ -196,7 +204,7 @@ services:
       - PRESIDIO_ANONYMIZER_URL=http://presidio-anonymizer:3000
     depends_on:
       seed-admin:
-        condition: service_completed_successfully
+        condition: service_healthy
       mongodb:
         condition: service_healthy
       redis:
