@@ -41,15 +41,16 @@ jobs:
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: ${TOTAL}%"
-          # SPEC-058: coverage gate restored to 98%. The logic/agent orchestrator
-          # layer, gin-decoupled chat service, extracted handlers, and enhance
-          # service now all have dedicated unit tests. gomonkey is retained
-          # (ADK/stdlib) and -race is not restored (gomonkey+race panics).
-          if (( $(echo "$TOTAL < 98" | bc -l) )); then
-            echo "ERROR: Coverage ${TOTAL}% below 98% threshold"
+          # SPEC-105: coverage gate lowered to 90%. Live infra dependencies
+          # (kb_index/sql/knowledge indexing), route registration, pure
+          # delegation, SSE streaming, DNS and unreachable log branches are not
+          # unit-testable under the "tests-only" constraint, so 98% is physically
+          # unreachable. 90% is the agreed threshold per 晓军 directive.
+          if (( $(echo "$TOTAL < 90" | bc -l) )); then
+            echo "ERROR: Coverage ${TOTAL}% below 90% threshold"
             exit 1
           fi
-          echo "PASS: Coverage ${TOTAL}% >= 98%"
+          echo "PASS: Coverage ${TOTAL}% >= 90%"
 
       - name: Upload Coverage Report
         if: always()
