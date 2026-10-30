@@ -11,6 +11,24 @@ services:
       timeout: 3s
       retries: 10
 
+  # 预置 system_admin 账号（one-shot）：先于 data-agent 写入固定密码的 admin，
+  # 使 ensureSystemAdmin 跳过随机密码生成，UI E2E 由此获得稳定登录凭证。
+  seed-admin:
+    image: mongo:7.0
+    entrypoint: []
+    command:
+      - mongosh
+      - --quiet
+      - mongodb://mongodb:27017/data_agent
+      - --file
+      - /seed-admin.js
+    volumes:
+      - ./docker/seed-admin.js:/seed-admin.js:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+
   redis:
     image: redis:7.2-alpine
     ports:
@@ -177,6 +195,8 @@ services:
       - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:3000
       - PRESIDIO_ANONYMIZER_URL=http://presidio-anonymizer:3000
     depends_on:
+      seed-admin:
+        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
       redis:
