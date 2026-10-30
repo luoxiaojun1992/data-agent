@@ -164,7 +164,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 20
       start_period: 30s
 
   presidio-anonymizer:
@@ -173,12 +173,13 @@ services:
       - "3000"
     environment:
       - PORT=3000
+      - WORKERS=1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 20
+      start_period: 30s
 
   data-agent:
     build:
