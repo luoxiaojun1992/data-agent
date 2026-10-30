@@ -29,7 +29,7 @@ export async function registerUser(
   if (res.status() === 201) {
     const created = await res.json();
     const roleId = user.role === 'admin' ? 'rbac_role_admin' : 'rbac_role_user';
-    await request.post(`${API_BASE}/users/${created.id}/rbac-roles`, {
+    await request.post(`${API_BASE}/admin/users/${created.id}/rbac-roles`, {
       data: { role_id: roleId },
       headers,
     });
