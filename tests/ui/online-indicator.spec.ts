@@ -9,7 +9,7 @@
  * - 登录页 session-expired + error 两个 toast 纵向堆叠、互不遮挡、不与指示灯重叠
  * - 覆盖登录页 / Dashboard / Chat / admin 页指示灯存在
  *
- * 仅 mock 健康检查 API（`**/api/v1/health`）；其余请求走真实后端。
+ * 仅 mock 健康检查 API（glob 模式 `**` + `/api/v1/health`）；其余请求走真实后端。
  */
 import { test, expect, type Page } from '@playwright/test';
 
