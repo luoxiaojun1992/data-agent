@@ -79,6 +79,12 @@ test.describe('SEC — SPEC-038', () => {
       headers: { Authorization: `Bearer ${MOCK_TOKEN}`, 'Content-Type': 'application/json' },
       data: { key: msg, response: '查询结果如下：用户手机：13812345678，身份证号：320123199001011234。' },
     });
+    // intent 检测（guard.CheckIntent，SPEC-080）先于正式 run、last_msg 相同 → LPop 抢占；
+    // 再注入一份 intent JSON（LIFO 先被弹出），确保正式 run 拿到含敏感数据的响应。
+    await request.post(`${MOCKLLM_URL}/responses`, {
+      headers: { Authorization: `Bearer ${MOCK_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { key: msg, response: '{"is_task":false,"is_plan":false}' },
+    });
 
     await page.goto('/chat');
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });

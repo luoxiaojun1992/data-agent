@@ -157,7 +157,8 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
   test('[UI-209] E2E — admin 完整管理流程', async ({ page }) => {
     await pageLogin(page, ADMIN);
 
-    const pages = ['/admin/users', '/admin/tasks', '/knowledge', '/admin/audit', '/admin/api-review'];
+    // 对齐当前路由：任务页在 /agent（SPEC-082 重构），API 管理在 /admin/api-collections。
+    const pages = ['/admin/users', '/agent', '/knowledge', '/admin/audit', '/admin/api-collections'];
     for (const p of pages) {
       await page.goto(p);
       await page.waitForTimeout(1500);

@@ -10,12 +10,11 @@ const ADMIN = { username: `e2e-prompt-${uid}-admin@test.local`, password: 'Promp
 let adminToken = '';
 
 async function seedMock(request: any, key: string, response: string) {
-  // intent 检测（guard.CheckIntent，SPEC-080）先于正式 run，用相同 last_msg 调 LLM，
-  // 会 LPop 抢占注入的响应。按 LIFO 顺序注入两份：先注入正式响应（给正式 run），
-  // 再注入 intent JSON（给 intent 检测，先被 LPop 弹出）。
+  // enhance 流程（POST /chat/enhance）不经过 guard.CheckIntent，只调一次 LLM，
+  // 只需注入一份正式响应。若像 chat 流程那样注入两份（+ intent JSON），
+  // enhance 会 LPop 出最后注入的 intent JSON 而非正式响应。
   const headers = { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` };
   await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response } });
-  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response: '{"is_task":false,"is_plan":false}' } });
 }
 
 async function clearMocks(request: any) {
