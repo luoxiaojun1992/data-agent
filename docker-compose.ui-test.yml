@@ -236,10 +236,27 @@ services:
       context: frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://data-agent:8080/api/v1
+        # 对齐主 compose：相对路径 /api/v1 由 nginx 反代到 data-agent:8080。
+        # 前端运行时经 getApiHost()（SPEC-097）同源解析，走 /api/v1/api-host。
+        NEXT_PUBLIC_API_URL: /api/v1
     expose:
       - "3000"
     depends_on:
+      data-agent:
+        condition: service_healthy
+
+  # 前端 SPEC-097 运行时经 getApiHost() 走同源 /api/v1 反代访问后端；
+  # ui-test 环境必须有 nginx 提供 / -> frontend、/api/ -> data-agent 的代理，
+  # 否则登录请求会打到 Next.js 返回 404，全部需登录用例超时。
+  nginx:
+    image: nginx:alpine
+    expose:
+      - "80"
+    volumes:
+      - ./nginx/default.ui-test.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend:
+        condition: service_started
       data-agent:
         condition: service_healthy
 
@@ -249,7 +266,7 @@ services:
       dockerfile: Dockerfile.e2e
     command: ["bash", "scripts/test-ui-ci.sh"]
     environment:
-      - UI_BASE_URL=http://frontend:3000
+      - UI_BASE_URL=http://nginx:80
       - ALLURE_RESULTS_DIR=artifacts/allure-results
     volumes:
       - ./tests/ui/artifacts:/workspace/artifacts
@@ -258,6 +275,8 @@ services:
       data-agent:
         condition: service_healthy
       frontend:
+        condition: service_started
+      nginx:
         condition: service_started
 
 volumes:
