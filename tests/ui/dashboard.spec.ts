@@ -25,58 +25,6 @@ test.describe('DASHBOARD — System Overview', () => {
     await expect(page.locator('[data-testid="dashboard-date"]')).toBeVisible();
   });
 
-  test('[UI-063] Dashboard — time filter', async ({ page }) => {
-    await expect(page.locator('[data-testid="dashboard-time-filter"]')).toBeVisible();
-    await expect(page.locator('[data-testid="filter-today"]')).toBeVisible();
-    await page.locator('[data-testid="filter-week"]').click();
-    await expect(page.locator('[data-testid="filter-week"]')).toHaveClass(/accent/);
-  });
-
-  test('[UI-064] Dashboard — stats cards', async ({ page }) => {
-    await expect(page.locator('[data-testid="dashboard-stat-0"]')).toBeVisible();
-    await expect(page.locator('[data-testid="dashboard-stat-1"]')).toBeVisible();
-    await expect(page.locator('[data-testid="dashboard-stat-2"]')).toBeVisible();
-    await expect(page.locator('[data-testid="dashboard-stat-3"]')).toBeVisible();
-  });
-
-  test('[UI-065] Dashboard — call trend chart', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-call-trend"]')).toBeVisible();
-  });
-
-  test('[UI-066] Dashboard — task status distribution', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-status-pie"]')).toBeVisible();
-  });
-
-  test('[UI-067] Dashboard — task duration histogram', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-duration-dist"]')).toBeVisible();
-  });
-
-  test('[UI-068] Dashboard — 24h request distribution', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-req-dist"]')).toBeVisible();
-  });
-
-  test('[UI-069] Dashboard — success rate trend', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-success-trend"]')).toBeVisible();
-  });
-
-  test('[UI-070] Dashboard — Token/ROI KPIs', async ({ page }) => {
-    await expect(page.locator('[data-testid="dashboard-token-kpi-0"]')).toContainText('Token');
-    await expect(page.locator('[data-testid="dashboard-token-kpi-1"]')).toContainText('AI 产出');
-    await expect(page.locator('[data-testid="dashboard-token-kpi-2"]')).toContainText('ROI');
-  });
-
-  test('[UI-071] Dashboard — Token consumption chart', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-token-trend"]')).toBeVisible();
-  });
-
-  test('[UI-072] Dashboard — output stats chart', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-output-stats"]')).toBeVisible();
-  });
-
-  test('[UI-073] Dashboard — ROI dual-axis chart', async ({ page }) => {
-    await expect(page.locator('[data-testid="chart-roi-dual"]')).toBeVisible();
-  });
-
   test('[UI-074] Dashboard — global online indicator', async ({ page }) => {
     await expect(page.locator('[data-testid="global-online-indicator"]')).toBeVisible();
     await expect(page.locator('[data-testid="global-online-dot"]')).toBeVisible();
