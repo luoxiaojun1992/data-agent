@@ -52,7 +52,8 @@ test.describe('RBAC — SPEC-039', () => {
     await expect(page.locator('[data-testid="sidebar"]')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-testid="nav-chat"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-hermes"]')).toBeVisible();
-    await expect(page.locator('[data-testid="nav-agent"]')).not.toBeVisible();
+    // sidebar:agent 已从 admin 迁移到 user（rbac_seed.go），user 现可见 Agent 菜单。
+    await expect(page.locator('[data-testid="nav-agent"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-admin"]')).not.toBeVisible();
   });
 
@@ -94,12 +95,6 @@ test.describe('RBAC — SPEC-039', () => {
     await expect(page.locator('[data-testid="nav-admin"]')).not.toBeVisible();
   });
 
-  test('[UI-192] RBAC — user 无法创建 Agent 任务', async ({ page }) => {
-    await loginAs(page, USER);
-    await expect(page.locator('[data-testid="nav-agent"]')).not.toBeVisible();
-    await page.goto('/agent');
-    await page.waitForTimeout(2000);
-    // User role should not see Agent functionality
-    await expect(page.locator('[data-testid="nav-agent"]')).not.toBeVisible();
-  });
+  // UI-192 已移除：sidebar:agent + agent:* 权限已从 admin 迁移到 user
+  // （rbac_seed.go），user 现可创建 Agent 任务，原「无法创建」断言已失效。
 });
