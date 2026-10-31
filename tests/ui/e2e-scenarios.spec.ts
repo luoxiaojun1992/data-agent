@@ -19,10 +19,12 @@ async function registerAndLogin(request: any, user: any) {
 }
 
 async function seedMock(request: any, key: string, response: string) {
-  await request.post(`${MOCKLLM}/responses`, {
-    headers: { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` },
-    data: { key, response },
-  });
+  // intent 检测（guard.CheckIntent，SPEC-080）先于正式 run，用相同 last_msg 调 LLM，
+  // 会 LPop 抢占注入的响应。按 LIFO 顺序注入两份：先注入正式响应（给正式 run），
+  // 再注入 intent JSON（给 intent 检测，先被 LPop 弹出）。
+  const headers = { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` };
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response } });
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response: '{"is_task":false,"is_plan":false}' } });
 }
 
 async function clearMocks(request: any) {
