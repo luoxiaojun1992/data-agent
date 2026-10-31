@@ -118,7 +118,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
   // ═══ UI-206: KB 管理页 ═══
   test('[UI-206] E2E — 知识库管理页', async ({ page }) => {
     await pageLogin(page, ADMIN);
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForTimeout(2000);
 
     await expect(page.locator('[data-testid="nav-kb-mgmt"]')).toBeVisible({ timeout: 5000 });
@@ -155,7 +155,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
   test('[UI-209] E2E — admin 完整管理流程', async ({ page }) => {
     await pageLogin(page, ADMIN);
 
-    const pages = ['/admin/users', '/admin/tasks', '/admin/knowledge', '/admin/audit', '/admin/api-review'];
+    const pages = ['/admin/users', '/admin/tasks', '/knowledge', '/admin/audit', '/admin/api-review'];
     for (const p of pages) {
       await page.goto(p);
       await page.waitForTimeout(1500);

@@ -36,7 +36,7 @@ test.describe('UPLOAD — SPEC-036', () => {
 
   // ═══ UI-172: 文件多选 ═══
   test('[UI-172] Upload — 文件多选', async ({ page }) => {
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
     await page.waitForTimeout(1000);
 
@@ -58,7 +58,7 @@ test.describe('UPLOAD — SPEC-036', () => {
 
   // ═══ UI-174: 上传 + 进度条 ═══
   test('[UI-174] Upload — 上传进度', async ({ page }) => {
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
     await page.waitForTimeout(1000);
 
@@ -78,7 +78,7 @@ test.describe('UPLOAD — SPEC-036', () => {
 
   // ═══ UI-175: 单文件 ═══
   test('[UI-175] Upload — 单文件上传', async ({ page }) => {
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
 
     await page.locator('[data-testid="kb-upload-file-input"]').setInputFiles([
@@ -93,7 +93,7 @@ test.describe('UPLOAD — SPEC-036', () => {
 
   // ═══ UI-176: 上传不阻塞 UI ═══
   test('[UI-176] Upload — 上传不阻塞 UI', async ({ page }) => {
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
 
     await page.locator('[data-testid="kb-upload-file-input"]').setInputFiles([

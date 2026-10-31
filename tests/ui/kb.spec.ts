@@ -46,7 +46,7 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     await page.locator('[data-testid="login-password-input"]').fill(ADMIN.password);
     await page.locator('[data-testid="login-btn"]').click();
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
     await page.waitForTimeout(2000);
   });
