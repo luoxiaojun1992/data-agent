@@ -70,8 +70,8 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
   test('[UI-115] KB — 知识库管理页渲染', async ({ page }) => {
     await expect(page.locator('[data-testid="kb-page-header"]')).toBeVisible();
     await expect(page.locator('[data-testid="kb-upload-btn"]')).toBeVisible();
-    await expect(page.locator('[data-testid="kb-batch-upload-btn"]')).toBeVisible();
-    await expect(page.locator('[data-testid="kb-info-banner"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kb-import-url-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kb-search-input"]')).toBeVisible();
   });
 
   // ═══ UI-116: 文档卡片渲染 ═══
@@ -100,10 +100,11 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     await page.waitForTimeout(500);
   });
 
-  // ═══ UI-118: 批量上传文档 ═══
-  test('[UI-118] KB — 批量上传文档', async ({ page }) => {
-    await page.locator('[data-testid="kb-batch-upload-btn"]').click();
-    await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
+  // ═══ UI-118: 导入 URL 文档（原「批量上传」已改为「导入 URL」入口） ═══
+  test('[UI-118] KB — 导入 URL 文档', async ({ page }) => {
+    await page.locator('[data-testid="kb-import-url-btn"]').click();
+    await expect(page.locator('[data-testid="kb-import-url-modal"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kb-import-url-input"]')).toBeVisible();
     await page.keyboard.press('Escape');
   });
 

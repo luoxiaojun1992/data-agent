@@ -55,10 +55,9 @@ test.describe('USER MANAGEMENT — SPEC-023', () => {
     if (listRes.ok()) {
       const body = await listRes.json();
       for (const user of body.users || []) {
-        if (user.username && user.username.includes(`e2e-usr-${uid}`)) {
-          if (user.role !== 'system_admin') {
-            await request.delete(`${API_BASE}/users/${user.id}`, { headers });
-          }
+        // 本文件所有测试用户均以 `e2e-usr-*` 前缀 + uid 命名，按 uid 精确匹配本文件产生的用户。
+        if (user.username && user.username.includes(uid) && user.role !== 'system_admin') {
+          await request.delete(`${API_BASE}/users/${user.id}`, { headers }).catch(() => {});
         }
       }
     }
@@ -121,8 +120,8 @@ test.describe('USER MANAGEMENT — SPEC-023', () => {
     expect(body.users.some((u: any) => u.username === NEW_USER.username)).toBe(true);
   });
 
-  // ═══ UI-078: User — 编辑用户角色 ═══
-  test('[UI-078] User — 编辑用户角色', async ({ page, request }) => {
+  // ═══ UI-078: User — 编辑用户角色（admin 仅可管理普通用户） ═══
+  test('[UI-078] User — 编辑用户角色受 RBAC 限制', async ({ page, request }) => {
     // Ensure we have a user to edit — create one first via API
     const headers = { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' };
     const createRes = await request.post(`${API_BASE}/users`, {
@@ -149,19 +148,16 @@ test.describe('USER MANAGEMENT — SPEC-023', () => {
     await editBtn.click();
     await expect(page.locator('[data-testid="user-edit-modal"]')).toBeVisible();
 
-    // Change role to admin
+    // admin(L1) 尝试把普通用户(L2)提升为 admin(L1)：后端 RBAC 拒绝（403），
+    // 前端 handleEdit 在 !res.ok 时 setFormError 且不关闭 modal。
     await page.locator('[data-testid="user-edit-role"]').selectOption('admin');
-
-    // Save — real API call
     await page.locator('[data-testid="user-edit-submit"]').click();
+    await expect(page.locator('[data-testid="user-edit-modal"]')).toBeVisible({ timeout: 3000 });
 
-    // Modal should close
-    await expect(page.locator('[data-testid="user-edit-modal"]')).not.toBeVisible({ timeout: 5000 });
-
-    // Verify role change via API
+    // 角色保持不变（仍为 user）—— 提升被 RBAC 拦截。
     const verifyRes = await request.get(`${API_BASE}/users/${newUser.id}`, { headers });
     const verifyBody = await verifyRes.json();
-    expect(verifyBody.role).toBe('admin');
+    expect(verifyBody.role).toBe('user');
   });
 
   // ═══ UI-079: User — 启用/停用用户 ═══

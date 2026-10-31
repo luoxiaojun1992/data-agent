@@ -1,11 +1,23 @@
 /**
  * SPEC-046: KB Indexing Integration E2E (UI-204 ~ UI-209)
  *
- * Verifies real KB document lifecycle: upload → chunk → index → search hit.
- * Replaces shallow "only check visible" tests with data-state-change assertions.
+ * 验证真实 KB 文档生命周期：上传 txt → 异步索引 → ready → 检索 / 删除 / 分块。
+ *
+ * ⚠️ 与旧版（JSON create + /chunks + /status）不同，当前后端（SPEC-081/086）已重构：
+ *   - 上传：POST /knowledge/docs 仅接受 multipart "file"（txt）或 "file_base64"（image）；
+ *     不再接受 JSON body，也不存在 /chunks、/status 路由。
+ *   - 索引：由 handler 驱动的异步 pipeline（worker 消费 kb_index 任务）闭环完成
+ *     chunking（LLM）+ embedding（Ollama）+ Qdrant 写入；进度经 GET /docs/:id 的
+ *     status / chunk_count / progress_percent 暴露。
+ *   - 检索：UI 搜索框走 GET /docs?q=...（title/file_name 过滤，SPEC-075）；
+ *     GET /knowledge/search?q=... 为向量检索 API。
+ *
+ * ⚠️ 索引 chunking 的 LLM 在 CI 中为 mockllm（MOCK_DEFAULT_REPLY），其返回固定文本
+ * 会替换真实内容作为 chunk，因此「按正文关键词的向量检索命中」在本环境无法断言；
+ * 检索类用例改按 UI 真实的 title 过滤路径验证（诚实、可测、不依赖 mock 文本）。
  */
 import { registerUser } from './utils/auth';
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
 const uid = crypto.randomUUID().slice(0, 8);
@@ -13,46 +25,69 @@ const uid = crypto.randomUUID().slice(0, 8);
 const ADMIN = { username: `e2e-kbi-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
 let adminToken = '';
 
-const KB_FINANCE_CONTENT = `# 2026年Q2财务报告
+// ── Helpers ────────────────────────────────────────────────────────────
 
-## 收入概览
+// 真实上传协议：multipart "file" 携带 txt 内容（对齐前端 uploadTxtDoc）。
+async function uploadTxtDoc(
+  request: APIRequestContext,
+  token: string,
+  title: string,
+  content: string,
+) {
+  return request.post(`${API_BASE}/knowledge/docs`, {
+    headers: { Authorization: `Bearer ${token}` },
+    multipart: {
+      title,
+      file: { name: `${title}.txt`, mimeType: 'text/plain', buffer: Buffer.from(content) },
+      file_name: `${title}.txt`,
+      file_type: 'txt',
+      size_bytes: String(Buffer.byteLength(content)),
+    },
+  });
+}
 
-| 产品线 | Q2营收(万元) | 同比增长 |
-|--------|-------------|---------|
-| 企业SaaS | 4,520 | +15.2% |
-| 数据服务 | 2,840 | +22.7% |
-| 合计 | 7,360 | +17.8% |
+// 轮询 GET /docs/:id 直到 status 变为目标状态（默认 ready），超时返回 null。
+async function waitForStatus(
+  request: APIRequestContext,
+  token: string,
+  docId: string,
+  target: 'ready' | 'failed' = 'ready',
+  timeoutMs = 50000,
+): Promise<any | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await request.get(`${API_BASE}/knowledge/docs/${docId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok()) {
+      const doc = await res.json();
+      if (doc.status === target) return doc;
+      if (doc.status === 'failed') return doc; // 失败也要返回，供断言区分
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return null;
+}
 
-本季度总成本为 5,230 万元。毛利率 41.4%，净利率 18.7%。
-预计全年营收突破 2 亿元。`;
-
-const KB_SALES_CONTENT = `# 销售数据汇总
-
-## 月度销售趋势
-
-| 月份 | 销售额(万元) | 订单数 |
-|------|------------|--------|
-| 5月 | 1,560 | 412 |
-| 6月 | 1,720 | 456 |
-
-DataInsight Pro 销售额排名第一，占比 29.8%。
-华北区域贡献 46.3%，为最大市场。`;
+// 生成一个超过 4096 runes 的大文档（保证 splitBySentence 切成多段 → 多个 chunk）。
+function buildLargeDoc(): string {
+  const parts: string[] = [];
+  for (let i = 1; i <= 260; i++) {
+    parts.push(`第${i}条记录：本季度销售额为${i * 37}万元，同比增长${(i % 9) + 1}.${i % 10}%。订单数${i * 12}个，客单价${i * 500}元。`);
+  }
+  return parts.join('\n');
+}
 
 test.describe('KB INTEGRATION — SPEC-046', () => {
   const createdDocs: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    let res = await registerUser(request, ADMIN);
-    if (res.status() !== 201) {
-      res = await request.post(`${API_BASE}/auth/login`, {
-        data: { username: ADMIN.username, password: ADMIN.password },
-      });
-    } else {
-      res = await request.post(`${API_BASE}/auth/login`, {
-        data: { username: ADMIN.username, password: ADMIN.password },
-      });
-    }
-    adminToken = (await res.json()).access_token;
+    // 创建（或复用已存在的）admin 测试账号，再登录取 token。
+    await registerUser(request, ADMIN);
+    const loginRes = await request.post(`${API_BASE}/auth/login`, {
+      data: { username: ADMIN.username, password: ADMIN.password },
+    });
+    adminToken = (await loginRes.json()).access_token;
   });
 
   test.afterAll(async ({ request }) => {
@@ -81,392 +116,149 @@ test.describe('KB INTEGRATION — SPEC-046', () => {
   });
 
   // ═══ UI-204: 文档索引端到端验证 ═══
-  test('[UI-204] KB — 文档索引端到端验证', async ({ page, request }) => {
-    console.log('[UI-204] Creating doc with chunks...');
-
-    // 1. Create doc
-    const createRes = await request.post(`${API_BASE}/knowledge/docs`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: {
-        title: 'UI204-财务报告',
-        file_name: 'UI204-财务报告.md',
-        file_type: 'markdown',
-        size_bytes: KB_FINANCE_CONTENT.length,
-      },
-    });
-    expect(createRes.ok()).toBe(true);
+  test('[UI-204] KB — 文档索引端到端验证', async ({ request }) => {
+    test.setTimeout(120000);
+    const content = '# 2026年Q2财务报告\n\n企业SaaS营收4520万元，同比增长15.2%。\n数据服务营收2840万元，同比增长22.7%。';
+    const createRes = await uploadTxtDoc(request, adminToken, `UI204-财务-${uid}`, content);
+    expect(createRes.status()).toBe(201);
     const doc = await createRes.json();
     expect(doc.id).toBeTruthy();
+    expect(doc.status).toBe('uploaded'); // 上传后先落库为 uploaded
     createdDocs.push(doc.id);
-    console.log('[UI-204] Doc created:', doc.id);
 
-    // 2. Add chunks
-    const chunks = [
-      '2026年Q2财务报告：企业SaaS营收4520万元，同比增长15.2%。',
-      '数据服务营收2840万元，同比增长22.7%。',
-      '总成本5230万元，毛利率41.4%，净利率18.7%。预计全年营收突破2亿元。',
-    ];
-    const chunkRes = await request.post(`${API_BASE}/knowledge/docs/${doc.id}/chunks`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { chunks },
-    });
-    expect(chunkRes.ok()).toBe(true);
-    console.log('[UI-204] Chunks added');
-
-    // 3. Wait for indexing (poll status)
-    let indexed = false;
-    for (let i = 0; i < 15; i++) {
-      await page.waitForTimeout(2000);
-      const statusRes = await request.get(`${API_BASE}/knowledge/docs/${doc.id}/status`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
-      });
-      if (statusRes.ok()) {
-        const s = await statusRes.json();
-        console.log(`[UI-204] Status poll ${i + 1}:`, s.status, 'chunks:', s.chunk_count);
-        if (s.status === 'ready' || s.status === 'indexed') {
-          expect(s.chunk_count).toBeGreaterThanOrEqual(1);
-          indexed = true;
-          break;
-        }
-        if (s.status === 'failed') break;
-      }
-    }
-    // Note: if indexing is async and takes too long, we accept it being in 'processing'
-    // But we must verify chunks were added
-    console.log('[UI-204] Indexed:', indexed);
-
-    // 4. Verify doc appears in UI
-    await page.reload();
-    await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
-    await page.waitForTimeout(2000);
-
-    const card = page.locator(`[data-testid="kb-doc-name"]`).filter({ hasText: 'UI204-财务报告' });
-    const hasCard = await card.isVisible({ timeout: 5000 }).catch(() => false);
-    if (hasCard) {
-      console.log('[UI-204] Doc card visible in UI');
-
-      // Verify status shows indexing progress (not just "已上传")
-      const statusEl = page.locator('[data-testid^="kb-doc-status-"]').first();
-      const statusText = await statusEl.textContent().catch(() => '');
-      console.log('[UI-204] UI status:', statusText);
-      expect(statusText).toBeTruthy();
-    }
+    // 异步索引：轮询到 ready，且至少产生 1 个 chunk。
+    const ready = await waitForStatus(request, adminToken, doc.id, 'ready');
+    expect(ready, `doc ${doc.id} should reach ready`).not.toBeNull();
+    expect(ready.status).toBe('ready');
+    expect(ready.chunk_count).toBeGreaterThanOrEqual(1);
+    expect(ready.progress_percent).toBe(100);
   });
 
   // ═══ UI-205: 索引后检索命中 ═══
-  test('[UI-205] KB — 索引后检索命中', async ({ page, request }) => {
-    console.log('[UI-205] Creating indexed doc for search...');
-
-    // Create and index a doc
-    const createRes = await request.post(`${API_BASE}/knowledge/docs`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: {
-        title: 'UI205-销售数据',
-        file_name: 'UI205-销售数据.md',
-        file_type: 'markdown',
-        size_bytes: KB_SALES_CONTENT.length,
-      },
-    });
-    expect(createRes.ok()).toBe(true);
+  test('[UI-205] KB — 索引后检索命中', async ({ request }) => {
+    test.setTimeout(120000);
+    const title = `UI205-检索-${uid}`;
+    const createRes = await uploadTxtDoc(request, adminToken, title, '检索命中验证文档：本季度销售额合计 7360 万元。');
+    expect(createRes.status()).toBe(201);
     const doc = await createRes.json();
     createdDocs.push(doc.id);
 
-    const chunks = [
-      '5月销售额1560万元，订单数412。6月销售额1720万元，订单数456。',
-      'DataInsight Pro销售额排名第一，占比29.8%。华北区域贡献46.3%。',
-    ];
-    await request.post(`${API_BASE}/knowledge/docs/${doc.id}/chunks`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { chunks },
-    });
-    console.log('[UI-205] Doc + chunks created');
+    const ready = await waitForStatus(request, adminToken, doc.id, 'ready');
+    expect(ready, `doc ${doc.id} should reach ready`).not.toBeNull();
+    expect(ready.chunk_count).toBeGreaterThanOrEqual(1);
 
-    // Wait a bit for indexing
-    await page.waitForTimeout(3000);
+    // 索引完成后，文档可按标题被检索到（UI 搜索框的真实路径：GET /docs?q=）。
+    const searchRes = await request.get(
+      `${API_BASE}/knowledge/docs?q=${encodeURIComponent(title)}&page=1&page_size=20`,
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    );
+    expect(searchRes.ok()).toBe(true);
+    const body = await searchRes.json();
+    expect(Array.isArray(body.docs)).toBe(true);
+    expect(body.docs.some((d: any) => d.id === doc.id)).toBe(true);
 
-    // Real search via API
-    const searchRes = await request.post(`${API_BASE}/knowledge/search`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { query: '销售额', top_k: 5 },
-    });
-    console.log('[UI-205] Search status:', searchRes.status());
-    if (searchRes.ok()) {
-      const results = await searchRes.json();
-      const hits = results.results || results.hits || [];
-      console.log('[UI-205] Search hits:', hits.length);
-
-      // At minimum, search should return results or at least not error
-      expect(searchRes.status()).toBeLessThan(500);
-
-      // If hits found, verify our doc is included
-      if (hits.length > 0) {
-        const found = hits.some((h: any) => h.doc_id === doc.id);
-        console.log('[UI-205] Our doc found in results:', found);
-        if (found) {
-          expect(found).toBe(true);
-        }
-      }
-    }
-
-    // UI search
-    await page.reload();
-    await page.waitForSelector('[data-testid="kb-search-input"]', { timeout: 10000 });
-    await page.locator('[data-testid="kb-search-input"]').fill('销售额');
-    await page.waitForTimeout(1500);
-
-    // After search, the page should still be functional
-    const cards = page.locator('[data-testid^="kb-doc-card-"]');
-    const cardCount = await cards.count();
-    console.log('[UI-205] Cards after search:', cardCount);
-    expect(cardCount).toBeGreaterThanOrEqual(0); // May be 0 if search is exact match
+    // 向量检索 API 健全性：索引后返回 200 且 results 为数组（不为空即为命中过内容）。
+    const vecRes = await request.get(
+      `${API_BASE}/knowledge/search?q=${encodeURIComponent('销售额')}`,
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    );
+    expect(vecRes.ok()).toBe(true);
+    const vecBody = await vecRes.json();
+    expect(Array.isArray(vecBody.results)).toBe(true);
   });
 
   // ═══ UI-206: 索引进度实时更新 ═══
-  test('[UI-206] KB — 索引进度实时更新', async ({ page, request }) => {
-    console.log('[UI-206] Testing indexing progress flow...');
-
-    // Create doc
-    const createRes = await request.post(`${API_BASE}/knowledge/docs`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: {
-        title: 'UI206-进度测试',
-        file_name: 'UI206-进度测试.md',
-        file_type: 'markdown',
-        size_bytes: 500,
-      },
-    });
-    expect(createRes.ok()).toBe(true);
+  test('[UI-206] KB — 索引进度实时更新', async ({ request }) => {
+    test.setTimeout(120000);
+    const createRes = await uploadTxtDoc(request, adminToken, `UI206-进度-${uid}`, '索引进度验证数据：本季度成本 5230 万元，净利率 18.7%。');
+    expect(createRes.status()).toBe(201);
     const doc = await createRes.json();
     createdDocs.push(doc.id);
 
-    // Verify initial status via API
-    const statusRes1 = await request.get(`${API_BASE}/knowledge/docs/${doc.id}/status`, {
+    // 上传后立即读取：status 处于流水线中间态（uploaded/indexing）或已 ready，均合法。
+    const first = await request.get(`${API_BASE}/knowledge/docs/${doc.id}`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
-    console.log('[UI-206] Initial status:', statusRes1.status());
-    if (statusRes1.ok()) {
-      const s = await statusRes1.json();
-      console.log('[UI-206] Status:', s.status, 'chunks:', s.chunk_count);
-      // New doc should be in 'pending' or 'uploaded' state
-      expect(['pending', 'uploaded', 'processing']).toContain(s.status);
-    }
+    expect(first.ok()).toBe(true);
+    const firstDoc = await first.json();
+    expect(['uploaded', 'indexing', 'ready']).toContain(firstDoc.status);
 
-    // Add chunks to trigger indexing
-    await request.post(`${API_BASE}/knowledge/docs/${doc.id}/chunks`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { chunks: ['UI206测试内容：索引进度验证数据。'] },
-    });
-
-    // Verify chunks added via status
-    await page.waitForTimeout(2000);
-    const statusRes2 = await request.get(`${API_BASE}/knowledge/docs/${doc.id}/status`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    console.log('[UI-206] After chunks status:', statusRes2.status());
-    if (statusRes2.ok()) {
-      const s = await statusRes2.json();
-      console.log('[UI-206] Status after chunks:', s.status, 'count:', s.chunk_count);
-      // Should have at least 1 chunk now
-      expect(s.chunk_count).toBeGreaterThanOrEqual(1);
-    }
-
-    // UI should show updated doc
-    await page.reload();
-    await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
-    await page.waitForTimeout(2000);
-    const cards = page.locator('[data-testid^="kb-doc-card-"]');
-    expect(await cards.count()).toBeGreaterThanOrEqual(1);
+    // 最终收敛到 ready 且进度 100%。
+    const ready = await waitForStatus(request, adminToken, doc.id, 'ready');
+    expect(ready, `doc ${doc.id} should reach ready`).not.toBeNull();
+    expect(ready.progress_percent).toBe(100);
+    expect(ready.chunk_count).toBeGreaterThanOrEqual(1);
   });
 
   // ═══ UI-207: 搜索过滤结果准确 ═══
-  test('[UI-207] KB — 搜索过滤结果准确', async ({ page, request }) => {
-    console.log('[UI-207] Creating docs for filter accuracy test...');
+  test('[UI-207] KB — 搜索过滤结果准确', async ({ request }) => {
+    const financeTitle = `UI207-财务-${uid}`;
+    const salesTitle = `UI207-销售-${uid}`;
 
-    // Create two docs with different content
-    const financeRes = await request.post(`${API_BASE}/knowledge/docs`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: {
-        title: 'UI207-财务',
-        file_name: 'UI207-财务.md',
-        file_type: 'markdown',
-        size_bytes: KB_FINANCE_CONTENT.length,
-      },
-    });
-    const salesRes = await request.post(`${API_BASE}/knowledge/docs`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: {
-        title: 'UI207-销售',
-        file_name: 'UI207-销售.md',
-        file_type: 'markdown',
-        size_bytes: KB_SALES_CONTENT.length,
-      },
-    });
-    expect(financeRes.ok()).toBe(true);
-    expect(salesRes.ok()).toBe(true);
+    const financeRes = await uploadTxtDoc(request, adminToken, financeTitle, '财务数据：Q2 营收 4520 万元，毛利率 41.4%。');
+    const salesRes = await uploadTxtDoc(request, adminToken, salesTitle, '销售数据：6 月销售额 1720 万元，订单数 456。');
+    expect(financeRes.status()).toBe(201);
+    expect(salesRes.status()).toBe(201);
     const financeDoc = await financeRes.json();
     const salesDoc = await salesRes.json();
     createdDocs.push(financeDoc.id, salesDoc.id);
 
-    // Add chunks
-    await request.post(`${API_BASE}/knowledge/docs/${financeDoc.id}/chunks`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { chunks: ['Q2营收4520万元，毛利率41.4%。'] },
-    });
-    await request.post(`${API_BASE}/knowledge/docs/${salesDoc.id}/chunks`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { chunks: ['6月销售额1720万元，DataInsight Pro排名第一。'] },
-    });
-    await page.waitForTimeout(3000);
-
-    // Search "财务" should hit finance doc
-    const searchFinance = await request.post(`${API_BASE}/knowledge/search`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { query: '财务', top_k: 5 },
-    });
-    console.log('[UI-207] Search "财务":', searchFinance.status());
-    if (searchFinance.ok()) {
-      const data = await searchFinance.json();
-      const hits = data.results || data.hits || [];
-      console.log('[UI-207] "财务" hits:', hits.length);
-      // Accept either: exact match or partial match (backend may do fuzzy)
-      if (hits.length > 0) {
-        const hasFinance = hits.some((h: any) => h.doc_id === financeDoc.id);
-        console.log('[UI-207] Finance doc found:', hasFinance);
+    const headers = { Authorization: `Bearer ${adminToken}` };
+    const assertFilter = async (q: string, expectedIds: string[]) => {
+      const res = await request.get(
+        `${API_BASE}/knowledge/docs?q=${encodeURIComponent(q)}&page=1&page_size=20`,
+        { headers },
+      );
+      expect(res.ok()).toBe(true);
+      const body = await res.json();
+      const ids = (body.docs || []).map((d: any) => d.id);
+      for (const id of expectedIds) {
+        expect(ids, `query "${q}" should include doc ${id}`).toContain(id);
       }
-    }
+    };
 
-    // Search "销售" should hit sales doc
-    const searchSales = await request.post(`${API_BASE}/knowledge/search`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { query: '销售', top_k: 5 },
-    });
-    console.log('[UI-207] Search "销售":', searchSales.status());
-    if (searchSales.ok()) {
-      const data = await searchSales.json();
-      const hits = data.results || data.hits || [];
-      console.log('[UI-207] "销售" hits:', hits.length);
-    }
-
-    // UI: search and verify functional
-    await page.reload();
-    await page.waitForSelector('[data-testid="kb-search-input"]', { timeout: 10000 });
-    await page.locator('[data-testid="kb-search-input"]').fill('财务');
-    await page.waitForTimeout(1000);
-    const filteredCards = page.locator('[data-testid^="kb-doc-card-"]');
-    const filteredCount = await filteredCards.count();
-    console.log('[UI-207] UI filtered cards:', filteredCount);
-
-    await page.locator('[data-testid="kb-search-input"]').clear();
-    await page.waitForTimeout(500);
-    const allCards = page.locator('[data-testid^="kb-doc-card-"]');
-    const allCount = await allCards.count();
-    console.log('[UI-207] UI all cards:', allCount);
-    // After clearing search, we should see cards again
-    expect(allCount).toBeGreaterThanOrEqual(1);
+    // 财务 → 命中财务文档；销售 → 命中销售文档（title 过滤互不串扰）。
+    await assertFilter('财务', [financeDoc.id]);
+    await assertFilter('销售', [salesDoc.id]);
   });
 
-  // ═══ UI-208: 索引失败重试 ═══
-  test('[UI-208] KB — 索引失败重试', async ({ page, request }) => {
-    console.log('[UI-208] Testing index retry handling...');
-
-    // Create doc with intentionally minimal data
-    const createRes = await request.post(`${API_BASE}/knowledge/docs`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: {
-        title: 'UI208-重试测试',
-        file_name: 'UI208-重试测试.md',
-        file_type: 'markdown',
-        size_bytes: 100,
-      },
-    });
-    expect(createRes.ok()).toBe(true);
+  // ═══ UI-208: 索引后删除（生命周期闭环） ═══
+  test('[UI-208] KB — 索引后删除文档', async ({ request }) => {
+    test.setTimeout(120000);
+    const createRes = await uploadTxtDoc(request, adminToken, `UI208-删除-${uid}`, '用于验证索引后删除的文档内容。');
+    expect(createRes.status()).toBe(201);
     const doc = await createRes.json();
-    createdDocs.push(doc.id);
 
-    // Add an empty chunk (should not break the system)
-    const chunkRes = await request.post(`${API_BASE}/knowledge/docs/${doc.id}/chunks`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { chunks: ['UI208测试内容'] },
-    });
-    // Should accept the request
-    console.log('[UI-208] Chunk add result:', chunkRes.status());
-    expect(chunkRes.status()).toBeLessThan(500);
+    const ready = await waitForStatus(request, adminToken, doc.id, 'ready');
+    expect(ready, `doc ${doc.id} should reach ready`).not.toBeNull();
+    expect(ready.chunk_count).toBeGreaterThanOrEqual(1);
 
-    // Verify doc is accessible after operations
-    await page.reload();
-    await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
-    await page.waitForTimeout(2000);
-
-    const cards = page.locator('[data-testid^="kb-doc-card-"]');
-    expect(await cards.count()).toBeGreaterThanOrEqual(1);
-
-    // Delete should work
+    // 删除已索引文档：级联清理后 GET 返回 404。
     const delRes = await request.delete(`${API_BASE}/knowledge/docs/${doc.id}`, {
       headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
     });
-    console.log('[UI-208] Delete result:', delRes.status());
-    // Remove from cleanup list since we already deleted
-    const idx = createdDocs.indexOf(doc.id);
-    if (idx >= 0) createdDocs.splice(idx, 1);
+    expect(delRes.ok()).toBe(true);
+
+    const goneRes = await request.get(`${API_BASE}/knowledge/docs/${doc.id}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    expect(goneRes.status()).toBe(404);
   });
 
   // ═══ UI-209: 大文档分块 ═══
-  test('[UI-209] KB — 大文档分块验证', async ({ page, request }) => {
-    console.log('[UI-209] Testing large doc chunking...');
+  test('[UI-209] KB — 大文档分块验证', async ({ request }) => {
+    test.setTimeout(120000);
+    const largeContent = buildLargeDoc();
+    expect(Buffer.byteLength(largeContent)).toBeGreaterThan(4096);
 
-    // Build a large document (>3KB) with multiple sections
-    const sections = [];
-    for (let i = 1; i <= 8; i++) {
-      sections.push(`## 章节${i}\n\n这是第${i}章的内容。包含销售数据：第${i}季度销售额${i * 420}万元，订单数${i * 100}个。\n\n分析要点：\n- 增长率：${(i * 5.2).toFixed(1)}%\n- 客单价：${(35000 + i * 1000).toLocaleString()}元\n- 新客户数：${i * 25}家\n`);
-    }
-    const largeContent = sections.join('\n');
-
-    const createRes = await request.post(`${API_BASE}/knowledge/docs`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: {
-        title: 'UI209-大文档',
-        file_name: 'UI209-大文档.md',
-        file_type: 'markdown',
-        size_bytes: largeContent.length,
-      },
-    });
-    expect(createRes.ok()).toBe(true);
+    const createRes = await uploadTxtDoc(request, adminToken, `UI209-大文档-${uid}`, largeContent);
+    expect(createRes.status()).toBe(201);
     const doc = await createRes.json();
     createdDocs.push(doc.id);
 
-    // Split into chunks (simulating LLM chunking)
-    const lines = largeContent.split('\n');
-    const chunks: string[] = [];
-    let current = '';
-    for (const line of lines) {
-      if (current.length + line.length > 200 && current.length > 0) {
-        chunks.push(current.trim());
-        current = line;
-      } else {
-        current += (current ? '\n' : '') + line;
-      }
-    }
-    if (current.trim()) chunks.push(current.trim());
-
-    console.log('[UI-209] Total chunks:', chunks.length);
-
-    const chunkRes = await request.post(`${API_BASE}/knowledge/docs/${doc.id}/chunks`, {
-      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      data: { chunks },
-    });
-    console.log('[UI-209] Chunks add status:', chunkRes.status());
-    expect(chunkRes.ok()).toBe(true);
-
-    // Verify chunk count via status
-    await page.waitForTimeout(2000);
-    const statusRes = await request.get(`${API_BASE}/knowledge/docs/${doc.id}/status`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    if (statusRes.ok()) {
-      const s = await statusRes.json();
-      console.log('[UI-209] Status after chunks:', s.status, 'count:', s.chunk_count);
-      // Large doc should produce >= 3 chunks
-      expect(s.chunk_count).toBeGreaterThanOrEqual(3);
-    }
+    const ready = await waitForStatus(request, adminToken, doc.id, 'ready');
+    expect(ready, `doc ${doc.id} should reach ready`).not.toBeNull();
+    // 大文档应被切成多个 chunk（>4096 字符 → 多个 sentence 段 → 多个 chunk）。
+    expect(ready.chunk_count).toBeGreaterThanOrEqual(2);
   });
 });

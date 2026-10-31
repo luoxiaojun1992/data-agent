@@ -21,14 +21,12 @@ test.describe('AGENT — Steps & Cron', () => {
     await page.waitForSelector('[data-testid="agent-page-header"]', { timeout: 10000 });
   });
 
-  test('[UI-048] Agent — step indicator', async ({ page }) => {
-    // Create a task first so there's a row to expand
+  test('[UI-048] Agent — 创建任务后行渲染', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Step Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.waitForTimeout(2000);
-    // Check steps in task detail
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
+    await expect(page.locator('[data-testid^="agent-task-row-"]').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('[UI-054] Agent — scheduled task creation', async ({ page }) => {
@@ -37,9 +35,9 @@ test.describe('AGENT — Steps & Cron', () => {
     await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 定时任务');
     await page.locator('[data-testid="agent-task-cron-toggle"]').check();
     await expect(page.locator('[data-testid="agent-task-cron-config"]')).toBeVisible();
-    await page.locator('[data-testid="agent-task-cron-select"]').selectOption('0 8 * * *');
+    await page.getByRole('button', { name: '每天 8:00' }).click();
     await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.waitForTimeout(2000);
+    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
   });
 });
