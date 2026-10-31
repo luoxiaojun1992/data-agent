@@ -9,8 +9,9 @@
  * - 登录页 session-expired + error 两个 toast 纵向堆叠、互不遮挡、不与指示灯重叠
  * - 覆盖登录页 / Dashboard / Chat / admin 页指示灯存在
  *
- * 仅 mock 健康检查 API（`**/api/v1/health`）；其余请求走真实后端。
+ * 仅 mock 健康检查 API（glob 模式 `**` + `/api/v1/health`）；其余请求走真实后端。
  */
+import { registerUser } from './utils/auth';
 import { test, expect, type Page } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -195,7 +196,7 @@ test.describe('ONLINE INDICATOR — SPEC-079 (登录页 toast 治理)', () => {
 // ══════════════════════════════════════════════════════════════════
 test.describe('ONLINE INDICATOR — SPEC-079 (多页面存在)', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: U })).status()).toBe(201);
+    expect((await registerUser(request, U)).status()).toBe(201);
   });
 
   test.beforeEach(async ({ page }) => {

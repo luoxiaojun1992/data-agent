@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -11,17 +12,19 @@ const USER = { username: `e2e-e2e-u-${uid}@test.local`, password: 'E2eTest1!', r
 let tokens: Record<string, string> = {};
 
 async function registerAndLogin(request: any, user: any) {
-  let r = await request.post(`${API_BASE}/auth/register`, { data: user });
+  let r = await registerUser(request, user);
   r = await request.post(`${API_BASE}/auth/login`, { data: { username: user.username, password: user.password } });
   const body = await r.json();
   return body.access_token;
 }
 
 async function seedMock(request: any, key: string, response: string) {
-  await request.post(`${MOCKLLM}/responses`, {
-    headers: { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` },
-    data: { key, response },
-  });
+  // intent 检测（guard.CheckIntent，SPEC-080）先于正式 run，用相同 last_msg 调 LLM，
+  // 会 LPop 抢占注入的响应。按 LIFO 顺序注入两份：先注入正式响应（给正式 run），
+  // 再注入 intent JSON（给 intent 检测，先被 LPop 弹出）。
+  const headers = { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` };
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response } });
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response: '{"is_task":false,"is_plan":false}' } });
 }
 
 async function clearMocks(request: any) {
@@ -117,7 +120,7 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
   // ═══ UI-206: KB 管理页 ═══
   test('[UI-206] E2E — 知识库管理页', async ({ page }) => {
     await pageLogin(page, ADMIN);
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForTimeout(2000);
 
     await expect(page.locator('[data-testid="nav-kb-mgmt"]')).toBeVisible({ timeout: 5000 });
@@ -154,7 +157,8 @@ test.describe('E2E SCENARIOS — SPEC-042', () => {
   test('[UI-209] E2E — admin 完整管理流程', async ({ page }) => {
     await pageLogin(page, ADMIN);
 
-    const pages = ['/admin/users', '/admin/tasks', '/admin/knowledge', '/admin/audit', '/admin/api-review'];
+    // 对齐当前路由：任务页在 /agent（SPEC-082 重构），API 管理在 /admin/api-collections。
+    const pages = ['/admin/users', '/agent', '/knowledge', '/admin/audit', '/admin/api-collections'];
     for (const p of pages) {
       await page.goto(p);
       await page.waitForTimeout(1500);

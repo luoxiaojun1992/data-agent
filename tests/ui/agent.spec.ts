@@ -1,15 +1,16 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 /**
  * SPEC-020: AGENT E2E Tests (UI-039 ~ UI-056)
- * Only deterministic assertions. Task async state (progress/logs/artifacts)
- * is NOT tested — it depends on backend timing and would be flaky.
+ * Only deterministic assertions.
  *
- * SPEC-063: tasks now really execute via the AgentExecutor. The mock LLM uses
- * MOCK_CHUNK_DELAY_MS (5000ms in E2E docker-compose) to simulate realistic
- * LLM latency, so async tasks stay "running" long enough for UI-driven cancel
- * (UI-052/053) to be deterministic — the cancel button (shown for
- * running/pending/queued) is always visible when the detail panel opens.
+ * 前端已重构（SPEC-082/086）：
+ *  - 任务列表不再有状态筛选（筛选移到 /agent/tasks/:id 运行列表页 runs-status-filter）
+ *  - 任务详情从「行内展开」改为独立路由 /agent/tasks/:id（运行列表）与 /agent/runs/:id（运行详情）
+ *  - 「异步任务」改为「定时任务」（cron 开关 agent-task-cron-toggle）
+ *  - 「取消任务」改为「删除任务」；「取消运行」位于运行列表页 run-cancel-*
+ * 本 spec 只覆盖可确定性断言的 UI 状态与导航，不依赖后端异步 run 时序。
  */
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -18,7 +19,7 @@ const U = { username: `e2e-agt-${uid}@test.local`, password: 'E2eTest123!', role
 
 test.describe('AGENT — Professional Workspace', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: U })).status()).toBe(201);
+    expect((await registerUser(request, U)).status()).toBe(201);
   });
 
   test.beforeEach(async ({ page }) => {
@@ -46,8 +47,8 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(page.locator('[data-testid="agent-task-create-btn"]')).toBeDisabled();
   });
 
-  // ═══ UI-041: Create sync task — modal closes (deterministic) ═══
-  test('[UI-041] Agent — create sync task', async ({ page }) => {
+  // ═══ UI-041: Create task — modal closes ═══
+  test('[UI-041] Agent — create task', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 同步分析');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
@@ -55,208 +56,134 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
   });
 
-  // ═══ UI-042: Create async task — modal closes (deterministic) ═══
-  test('[UI-042] Agent — create async task', async ({ page }) => {
+  // ═══ UI-042: 定时任务开关交互（异步 → 定时 cron） ═══
+  test('[UI-042] Agent — 定时任务开关交互', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 异步分析');
-    await page.locator('[data-testid="agent-task-async-toggle"]').check();
+    await page.locator('[data-testid="agent-task-title-input"]').fill('E2E 定时分析');
+    // 默认未开启定时 → 无调度配置区
+    await expect(page.locator('[data-testid="agent-task-cron-config"]')).toHaveCount(0);
+    // 开启定时开关 → 调度配置区出现
+    await page.locator('[data-testid="agent-task-cron-toggle"]').check();
+    await expect(page.locator('[data-testid="agent-task-cron-config"]')).toBeVisible();
+    // 关闭开关 → 配置区消失
+    await page.locator('[data-testid="agent-task-cron-toggle"]').uncheck();
+    await expect(page.locator('[data-testid="agent-task-cron-config"]')).toHaveCount(0);
+  });
+
+  // ═══ UI-043: 常用模版菜单（SPEC-086，替代已移除的列表筛选） ═══
+  test('[UI-043] Agent — 常用模版菜单', async ({ page }) => {
+    await page.locator('[data-testid="agent-template-btn"]').click();
+    await expect(page.locator('[data-testid="agent-template-menu"]')).toBeVisible();
+    await page.locator('[data-testid="agent-template-daily-summary"]').click();
+    await expect(page.locator('[data-testid="agent-template-confirm"]')).toBeVisible();
+    await expect(page.locator('[data-testid="agent-template-daily-summary-title"]')).toBeVisible();
+  });
+
+  // ═══ UI-044: 任务状态 pill 渲染 ═══
+  test('[UI-044] Agent — 任务状态 pill 渲染', async ({ page }) => {
+    await page.locator('[data-testid="agent-create-task-btn"]').click();
+    await page.locator('[data-testid="agent-task-title-input"]').fill('Status Pill Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible();
+    const row = page.locator('[data-testid^="agent-task-row-"]').first();
+    await expect(row).toBeVisible({ timeout: 10000 });
+    // 新任务渲染状态 pill（task-status-<status>）
+    await expect(row.locator('[data-testid^="task-status-"]')).toBeVisible();
   });
 
-  // ═══ UI-043: Task filters rendering ═══
-  test('[UI-043] Agent — task filters', async ({ page }) => {
-    await expect(page.locator('[data-testid="agent-task-filters"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('[data-testid="agent-filter-all"]')).toBeVisible();
-    await expect(page.locator('[data-testid="agent-filter-running"]')).toBeVisible();
-    await page.locator('[data-testid="agent-filter-running"]').click();
-    await expect(page.locator('[data-testid="agent-filter-running"]')).toHaveClass(/border-\[var\(--accent\)\]/);
-  });
-
-  // ═══ UI-044: Status pill / filter buttons rendering ═══
-  test('[UI-044] Agent — status pill rendering', async ({ page }) => {
-    await expect(page.locator('[data-testid="agent-task-filters"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('[data-testid="agent-filter-all"]')).toBeVisible();
-    await expect(page.locator('[data-testid="agent-filter-pending"]')).toBeVisible();
-    await expect(page.locator('[data-testid="agent-filter-completed"]')).toBeVisible();
-  });
-
-  // ═══ UI-045: Create task → task row appears → detail expands ═══
-  test('[UI-045] Agent — task detail expand', async ({ page }) => {
+  // ═══ UI-045: 点击任务 → 导航到运行列表 ═══
+  test('[UI-045] Agent — 点击任务进入运行列表', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Detail Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    // After modal closes, task should appear in the list (loadTasks() was called)
-    await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
+    const row = page.locator('[data-testid^="agent-task-title-"]').first();
+    await expect(row).toBeVisible({ timeout: 10000 });
+    await row.click();
+    await page.waitForURL(/\/agent\/tasks\//, { timeout: 10000 });
+    await expect(page.locator('[data-testid="runs-status-filter"]')).toBeVisible();
   });
 
-  // ═══ UI-046: Page renders ═══
-  test('[UI-046] Agent — cancel button in detail', async ({ page }) => {
+  // ═══ UI-046: 页面操作按钮渲染 ═══
+  test('[UI-046] Agent — 页面操作按钮渲染', async ({ page }) => {
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="agent-create-task-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="agent-template-btn"]')).toBeVisible();
   });
 
-  // ═══ UI-047: Create task → verify progress detail ═══
-  test('[UI-047] Agent — progress bar rendering', async ({ page }) => {
+  // ═══ UI-047: 运行列表页渲染（触发运行 + 状态筛选） ═══
+  test('[UI-047] Agent — 运行列表页渲染', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('Progress Test');
+    await page.locator('[data-testid="agent-task-title-input"]').fill('Runs Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    // Task row should appear after creation
-    const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
-
-    // Detail panel should show task info
-    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
+    await page.locator('[data-testid^="agent-task-title-"]').first().click();
+    await page.waitForURL(/\/agent\/tasks\//, { timeout: 10000 });
+    // 返回 + 触发运行 + 状态筛选
+    await expect(page.locator('[data-testid="runs-back-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="runs-trigger-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="runs-status-filter"]')).toBeVisible();
+    await expect(page.locator('[data-testid="runs-filter-all"]')).toBeVisible();
+    await expect(page.locator('[data-testid="runs-filter-running"]')).toBeVisible();
+    // 新任务无 run → 空态
+    await expect(page.locator('[data-testid="runs-empty"]')).toBeVisible();
   });
 
-  // ═══ UI-048: Step indicator (agent-extras) ═══
-  // See agent-extras.spec.ts
-
-  // ═══ UI-049: Create task → verify detail expands ═══
-  test('[UI-049] Agent — execution logs section', async ({ page }) => {
+  // ═══ UI-052: 删除任务流程（原「取消任务」已改为「删除任务」） ═══
+  test('[UI-052] Agent — 删除任务', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('Logs Test');
+    await page.locator('[data-testid="agent-task-title-input"]').fill('To Delete');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    const row = page.locator('[data-testid^="agent-task-title-"]').first();
+    const row = page.locator('[data-testid^="agent-task-row-"]').first();
     await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
-
-    // Detail panel should be visible after clicking a task row
-    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('To Delete', { exact: true })).toBeVisible();
+    // 点击删除并接受 confirm 对话框
+    page.once('dialog', (d) => d.accept());
+    await row.locator('[data-testid^="agent-task-delete-"]').click();
+    // 删除后该任务标题消失
+    await expect(page.getByText('To Delete', { exact: true })).toHaveCount(0, { timeout: 10000 });
   });
 
-  // ═══ UI-050: Create task → verify artifact section ═══
-  test('[UI-050] Agent — artifact detail section', async ({ page }) => {
+  // ═══ UI-053: 触发运行 → run 记录出现（原「取消运行」改为触发运行，取消依赖时序不测） ═══
+  test('[UI-053] Agent — 触发运行', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('Artifact Test');
+    await page.locator('[data-testid="agent-task-title-input"]').fill('Run Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
-
-    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
+    await page.locator('[data-testid^="agent-task-title-"]').first().click();
+    await page.waitForURL(/\/agent\/tasks\//, { timeout: 10000 });
+    // 触发运行（mock-llm 默认响应）
+    await page.locator('[data-testid="runs-trigger-btn"]').click();
+    // run 记录出现（pending/running/completed/failed 任一状态）
+    await expect(page.locator('[data-testid^="runs-row-"]').first()).toBeVisible({ timeout: 20000 });
   });
 
-  // ═══ UI-051: Create task → verify detail panel has task info ═══
-  test('[UI-051] Agent — task detail panel', async ({ page }) => {
-    await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('Detail Test');
-    await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
-
-    // Detail panel should contain the task title
-    await expect(page.locator('[data-testid^="agent-task-detail-"]').first()).toBeVisible({ timeout: 5000 });
-  });
-
-  // ═══ UI-052: Create → expand → cancel → verify status change ═══
-  // SPEC-063: inject a delayed mock response (5s) for this task's message
-  // before creating it. The mock LLM sleeps 5s on the injected response, so
-  // the task stays "running" long enough for the UI cancel button click to be
-  // deterministic — no timing race, no flaky test, no test downgrade.
-  test('[UI-052] Agent — cancel running task', async ({ page, request }) => {
-    await request.post('http://mockllm:8082/responses', {
-      headers: { Authorization: 'Bearer test-admin-token', 'Content-Type': 'application/json' },
-      data: { key: 'To Cancel', response: 'Mock LLM: please inject test response', delay_ms: 5000 },
-    });
-    await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('To Cancel');
-    await page.locator('[data-testid="agent-task-create-btn"]').click();
-    // Modal must close after successful creation
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    // Step 1: task row appears (createTask → loadTasks → setTasks)
-    const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
-
-    // Step 2: cancel button in detail panel
-    const cancelBtn = page.locator('[data-testid^="agent-cancel-btn-"]').first();
-    await expect(cancelBtn).toBeVisible({ timeout: 5000 });
-    await cancelBtn.click();
-
-    // Step 3: status changes to cancelled (cancelTask → loadTasks)
-    // Task stays in list with "已取消" pill, cancel button gone
-    await expect(page.locator('[data-testid="task-status-cancelled"]').first()).toBeVisible({ timeout: 10000 });
-    await expect(cancelBtn).not.toBeVisible({ timeout: 5000 });
-  });
-
-  // ═══ UI-053: Create task → cancel → verify cancelled state ═══
-  test('[UI-053] Agent — cancel then retry flow', async ({ page, request }) => {
-    await request.post('http://mockllm:8082/responses', {
-      headers: { Authorization: 'Bearer test-admin-token', 'Content-Type': 'application/json' },
-      data: { key: 'Retry Flow', response: 'Mock LLM: please inject test response', delay_ms: 5000 },
-    });
-    await page.locator('[data-testid="agent-create-task-btn"]').click();
-    await page.locator('[data-testid="agent-task-title-input"]').fill('Retry Flow');
-    await page.locator('[data-testid="agent-task-create-btn"]').click();
-    await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    const row = page.locator('[data-testid^="agent-task-title-"]').first();
-    await expect(row).toBeVisible({ timeout: 10000 });
-    await row.click();
-
-    // Cancel the task
-    const cancelBtn = page.locator('[data-testid^="agent-cancel-btn-"]').first();
-    await expect(cancelBtn).toBeVisible({ timeout: 5000 });
-    await cancelBtn.click();
-
-    // Status should change to cancelled
-    await expect(page.locator('[data-testid="task-status-cancelled"]').first()).toBeVisible({ timeout: 10000 });
-  });
-
-  // ═══ UI-054: Scheduled task (agent-extras) ═══
-  // See agent-extras.spec.ts
-
-  // ═══ UI-055: Create task → verify task management renders ═══
-  test('[UI-055] Agent — task list management', async ({ page }) => {
-    // Create a task to populate the list
+  // ═══ UI-055: 任务行元信息渲染（替代已移除的列表筛选断言） ═══
+  test('[UI-055] Agent — 任务行元信息', async ({ page }) => {
     await page.locator('[data-testid="agent-create-task-btn"]').click();
     await page.locator('[data-testid="agent-task-title-input"]').fill('Management Test');
     await page.locator('[data-testid="agent-task-create-btn"]').click();
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-
-    // Task row should appear
-    const row = page.locator('[data-testid^="agent-task-title-"]').first();
+    const row = page.locator('[data-testid^="agent-task-row-"]').first();
     await expect(row).toBeVisible({ timeout: 10000 });
-
-    // Filters should still be functional
-    await expect(page.locator('[data-testid="agent-filter-all"]')).toBeVisible();
-    await expect(page.locator('[data-testid="agent-filter-completed"]')).toBeVisible();
+    // 运行次数元信息
+    await expect(row.locator('[data-testid^="agent-task-run-count-"]')).toBeVisible();
+    // 删除按钮
+    await expect(row.locator('[data-testid^="agent-task-delete-"]')).toBeVisible();
   });
 
-  // ═══ UI-056: Create multiple tasks → verify list renders ═══
-  test('[UI-056] Agent — task list pagination', async ({ page }) => {
-    // Create 6 tasks to populate the list (may trigger pagination if PAGE_SIZE < 6)
+  // ═══ UI-056: 批量创建任务 → 列表渲染 ═══
+  test('[UI-056] Agent — 批量创建任务列表渲染', async ({ page }) => {
     for (let i = 0; i < 6; i++) {
       await page.locator('[data-testid="agent-create-task-btn"]').click();
-      await page.locator('[data-testid="agent-task-title-input"]').fill(`Pagination ${i + 1}`);
+      await page.locator('[data-testid="agent-task-title-input"]').fill(`Batch ${i + 1}`);
       await page.locator('[data-testid="agent-task-create-btn"]').click();
       await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
-      // Wait briefly for loadTasks to complete
-      await page.waitForTimeout(500);
     }
-
-    // Multiple task rows should be visible
     const rows = page.locator('[data-testid^="agent-task-title-"]');
     const count = await rows.count();
-    console.log('[UI-056] Task rows after creation:', count);
     expect(count).toBeGreaterThanOrEqual(1);
-
-    // Verify task list is functional
     await expect(page.locator('[data-testid="agent-page-header"]')).toBeVisible({ timeout: 5000 });
   });
 });

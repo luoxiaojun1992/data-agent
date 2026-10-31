@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -10,11 +11,11 @@ const CLEANER = { username: `e2e-pwd-cleaner-${uid}@test.local`, password: 'Clea
 
 test.describe.serial('PASSWORD — SPEC-032', () => {
   test.beforeAll(async ({ request }) => {
-    let res = await request.post(`${API_BASE}/auth/register`, { data: CLEANER });
+    let res = await registerUser(request, CLEANER);
     expect(res.status()).toBe(201);
-    res = await request.post(`${API_BASE}/auth/register`, { data: FRESH });
+    res = await registerUser(request, FRESH);
     expect(res.status()).toBe(201);
-    res = await request.post(`${API_BASE}/auth/register`, { data: USER });
+    res = await registerUser(request, USER);
     expect(res.status()).toBe(201);
   });
 

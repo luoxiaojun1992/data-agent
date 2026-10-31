@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
@@ -9,10 +10,11 @@ const ADMIN = { username: `e2e-prompt-${uid}-admin@test.local`, password: 'Promp
 let adminToken = '';
 
 async function seedMock(request: any, key: string, response: string) {
-  await request.post(`${MOCKLLM}/responses`, {
-    headers: { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` },
-    data: { key, response },
-  });
+  // enhance 流程（POST /chat/enhance）不经过 guard.CheckIntent，只调一次 LLM，
+  // 只需注入一份正式响应。若像 chat 流程那样注入两份（+ intent JSON），
+  // enhance 会 LPop 出最后注入的 intent JSON 而非正式响应。
+  const headers = { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` };
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response } });
 }
 
 async function clearMocks(request: any) {
@@ -36,10 +38,10 @@ test.describe.serial('PROMPT — SPEC-033', () => {
   test.beforeAll(async ({ request }) => {
     // Clear any leftover mock responses from previous runs
     await clearMocks(request);
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
+    await registerUser(request, USER);
 
     // Register an admin so UI-160 can query /dashboard (global metrics).
-    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    let res = await registerUser(request, ADMIN);
     if (res.status() !== 201) {
       res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     } else {

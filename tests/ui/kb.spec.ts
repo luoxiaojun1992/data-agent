@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -24,7 +25,7 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
   const createdDocs: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    let res = await registerUser(request, ADMIN);
     if (res.status() !== 201) {
       res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     } else {
@@ -45,7 +46,7 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     await page.locator('[data-testid="login-password-input"]').fill(ADMIN.password);
     await page.locator('[data-testid="login-btn"]').click();
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 });
-    await page.goto('/admin/knowledge');
+    await page.goto('/knowledge');
     await page.waitForSelector('[data-testid="kb-page-header"]', { timeout: 10000 });
     await page.waitForTimeout(2000);
   });
@@ -69,8 +70,8 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
   test('[UI-115] KB — 知识库管理页渲染', async ({ page }) => {
     await expect(page.locator('[data-testid="kb-page-header"]')).toBeVisible();
     await expect(page.locator('[data-testid="kb-upload-btn"]')).toBeVisible();
-    await expect(page.locator('[data-testid="kb-batch-upload-btn"]')).toBeVisible();
-    await expect(page.locator('[data-testid="kb-info-banner"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kb-import-url-btn"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kb-search-input"]')).toBeVisible();
   });
 
   // ═══ UI-116: 文档卡片渲染 ═══
@@ -99,10 +100,11 @@ test.describe('KB MANAGEMENT — SPEC-028', () => {
     await page.waitForTimeout(500);
   });
 
-  // ═══ UI-118: 批量上传文档 ═══
-  test('[UI-118] KB — 批量上传文档', async ({ page }) => {
-    await page.locator('[data-testid="kb-batch-upload-btn"]').click();
-    await expect(page.locator('[data-testid="kb-upload-modal"]')).toBeVisible();
+  // ═══ UI-118: 导入 URL 文档（原「批量上传」已改为「导入 URL」入口） ═══
+  test('[UI-118] KB — 导入 URL 文档', async ({ page }) => {
+    await page.locator('[data-testid="kb-import-url-btn"]').click();
+    await expect(page.locator('[data-testid="kb-import-url-modal"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kb-import-url-input"]')).toBeVisible();
     await page.keyboard.press('Escape');
   });
 

@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -10,7 +11,7 @@ let adminToken = '';
 test.describe('MODEL-BINDING (SPEC-062) — Multi-Model Session Binding', () => {
   test.beforeAll(async ({ request }) => {
     // Register a regular user (invite flow may be disabled in CI; try direct).
-    await request.post(`${API_BASE}/auth/register`, { data: USER }).catch(() => {});
+    await registerUser(request, USER).catch(() => {});
     // Register admin via the system admin auto-create + promote if needed.
     const loginRes = await request.post(`${API_BASE}/auth/login`, {
       data: { username: '系统管理员', password: 'E2eTest123!' },
