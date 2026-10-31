@@ -48,9 +48,12 @@ const embModel = {
   updated_at: new Date(),
 };
 
-const db = db.getSiblingDB(dbName);
-const cfgColl = db.model_configs;
-const defColl = db.model_defaults;
+// 注意：不能写 `const db = db.getSiblingDB(...)` —— 那会在初始化表达式里
+// 触发 TDZ（ReferenceError: Cannot access 'db' before initialization），
+// 导致 mongosh 退出非零、seed-admin 容器退出、compose 提前 abort。
+const targetDb = db.getSiblingDB(dbName);
+const cfgColl = targetDb.model_configs;
+const defColl = targetDb.model_defaults;
 
 // 模型（按 name 幂等）
 if (cfgColl.findOne({ name: llmModel.name })) {
