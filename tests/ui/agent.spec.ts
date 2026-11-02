@@ -87,8 +87,8 @@ test.describe('AGENT — Professional Workspace', () => {
     await page.locator('[data-testid="agent-task-modal"]').waitFor({ state: 'hidden', timeout: 10000 });
     const row = page.locator('[data-testid^="agent-task-row-"]').first();
     await expect(row).toBeVisible({ timeout: 10000 });
-    // 新任务渲染状态 pill（task-status-<status>）
-    await expect(row.locator('[data-testid^="task-status-"]')).toBeVisible();
+    // SPEC-082 后任务列表不再渲染状态 pill（状态移到运行列表页）；改验行内真实元信息。
+    await expect(row.locator('[data-testid^="agent-task-run-count-"]')).toBeVisible();
   });
 
   // ═══ UI-045: 点击任务 → 导航到运行列表 ═══
@@ -125,8 +125,8 @@ test.describe('AGENT — Professional Workspace', () => {
     await expect(page.locator('[data-testid="runs-status-filter"]')).toBeVisible();
     await expect(page.locator('[data-testid="runs-filter-all"]')).toBeVisible();
     await expect(page.locator('[data-testid="runs-filter-running"]')).toBeVisible();
-    // 新任务无 run → 空态
-    await expect(page.locator('[data-testid="runs-empty"]')).toBeVisible();
+    // 新建实时任务会立即触发一次 run → 运行列表非空
+    await expect(page.locator('[data-testid="runs-list"]')).toBeVisible();
   });
 
   // ═══ UI-052: 删除任务流程（原「取消任务」已改为「删除任务」） ═══

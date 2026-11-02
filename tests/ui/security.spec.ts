@@ -97,13 +97,12 @@ test.describe('SEC — SPEC-038', () => {
     // Wait for backend → mockllm → audit → SSE stream → UI render.
     // Use toContainText (auto-retry) instead of waitForTimeout+textContent
     // to eliminate flaky failures from streaming render timing.
-    const aiMsg = page.locator('[data-testid="chat-msg-ai-1"]');
+    // 用前缀匹配定位 AI 回复（SPEC-080 intent 隐式事件会占位一个 index，不宜写死 chat-msg-ai-1）
+    const aiMsg = page.locator('[data-testid^="chat-msg-ai-"]').last();
     await expect(aiMsg).toBeVisible({ timeout: 20000 });
-    // Phone masked
-    await expect(aiMsg).toContainText('138****5678', { timeout: 15000 });
+    // 后端 Presidio 脱敏用 <PII> 占位替换（非星号掩码）
+    await expect(aiMsg).toContainText('<PII>', { timeout: 15000 });
     await expect(aiMsg).not.toContainText('13812345678');
-    // ID card masked
-    await expect(aiMsg).toContainText('320***********1234');
     await expect(aiMsg).not.toContainText('320123199001011234');
   });
 
