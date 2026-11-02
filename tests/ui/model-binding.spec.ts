@@ -12,12 +12,13 @@ test.describe('MODEL-BINDING (SPEC-062) — Multi-Model Session Binding', () => 
   test.beforeAll(async ({ request }) => {
     // Register a regular user (invite flow may be disabled in CI; try direct).
     await registerUser(request, USER).catch(() => {});
-    // Register admin via the system admin auto-create + promote if needed.
+    // Register an admin for UI-240/241（模型管理归属 admin 分组，非 system_admin）。
+    await registerUser(request, ADMIN).catch(() => {});
     const loginRes = await request.post(`${API_BASE}/auth/login`, {
-      data: { username: '系统管理员', password: 'E2eTest123!' },
+      data: { username: ADMIN.username, password: ADMIN.password },
     });
     if (loginRes.ok()) {
-      adminToken = (await loginRes.json()).token || '';
+      adminToken = (await loginRes.json()).access_token || '';
     }
   });
 
@@ -68,27 +69,23 @@ test.describe('MODEL-BINDING (SPEC-062) — Multi-Model Session Binding', () => 
       headers: { Authorization: `Bearer ${await getLoginToken(request, USER)}` },
       data: { model_id: '' },
     });
-    if (sessRes.ok()) {
-      const sid = (await sessRes.json()).session_id;
-      // Select the session in the UI (via session panel).
-      await page.locator('[data-testid="chat-session-btn"]').click();
-      await page.waitForTimeout(500);
-      const item = page.locator(`[data-testid="session-item-${sid}"]`);
-      if (await item.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await item.click();
-        // After selecting an existing session, the selector should be locked.
-        await expect(page.locator('[data-testid="model-selector-locked"]')).toBeVisible({ timeout: 5000 });
-      }
-    }
+    expect(sessRes.ok()).toBe(true);
+    const sid = (await sessRes.json()).session_id;
+    // Select the session in the UI (via session panel) → setSessionId → locked.
+    await page.locator('[data-testid="chat-session-btn"]').click();
+    const item = page.locator(`[data-testid="session-item-${sid}"]`);
+    await expect(item).toBeVisible({ timeout: 10000 });
+    await item.click();
+    // After selecting an existing session, the selector should be locked.
+    await expect(page.locator('[data-testid="model-selector-locked"]')).toBeVisible({ timeout: 5000 });
   });
 
   // ═══ UI-240: Admin 模型列表结构化展示 ═══
   test('[UI-240] Admin — 模型列表结构化展示', async ({ page }) => {
     const token = await getAdminLoginToken(page);
     if (!token) { test.skip(); return; }
-    await page.locator('[data-testid="nav-admin-models"]')?.click().catch(() => {});
-    await page.goto('/admin/models').catch(() => {});
-    await page.waitForSelector('[data-testid="admin-models-header"]', { timeout: 5000 });
+    await page.goto('/admin/models');
+    await page.waitForSelector('[data-testid="model-list-card"]', { timeout: 5000 });
 
     // The structured model list card should be visible (SPEC-062).
     await expect(page.locator('[data-testid="model-list-card"]')).toBeVisible({ timeout: 5000 });
@@ -105,7 +102,7 @@ test.describe('MODEL-BINDING (SPEC-062) — Multi-Model Session Binding', () => 
     await page.waitForSelector('[data-testid="model-list-card"]', { timeout: 5000 });
 
     // Add a model via API (deterministic; UI modal is secondary).
-    const addRes = await request.post(`${API_BASE}/models`, {
+    const addRes = await request.post(`${API_BASE}/admin/models`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       data: { name: `E2E-Test-${uid}`, type: 'llm', base_url: 'http://mockllm:8082' },
     });
@@ -119,13 +116,13 @@ test.describe('MODEL-BINDING (SPEC-062) — Multi-Model Session Binding', () => 
     await expect(page.locator('text=E2E-Test-' + uid)).toBeVisible({ timeout: 5000 });
 
     // Set as default via API.
-    const defRes = await request.patch(`${API_BASE}/models/${added.id}/default`, {
+    const defRes = await request.patch(`${API_BASE}/admin/models/${added.id}/default`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(defRes.ok()).toBe(true);
 
     // Delete the model (cleanup + verify delete works).
-    const delRes = await request.delete(`${API_BASE}/models/${added.id}`, {
+    const delRes = await request.delete(`${API_BASE}/admin/models/${added.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(delRes.ok()).toBe(true);
@@ -136,16 +133,16 @@ test.describe('MODEL-BINDING (SPEC-062) — Multi-Model Session Binding', () => 
 async function getLoginToken(request: any, creds: { username: string; password: string }): Promise<string> {
   const res = await request.post(`${API_BASE}/auth/login`, { data: creds });
   if (!res.ok()) return '';
-  return (await res.json()).token || '';
+  return (await res.json()).access_token || '';
 }
 
 async function getAdminLoginToken(page: any): Promise<string> {
-  // Login as system admin via UI.
+  // Login as the seeded admin (not the removed "系统管理员" account).
   await page.goto('/login');
-  await page.locator('[data-testid="login-email-input"]').fill('系统管理员');
-  await page.locator('[data-testid="login-password-input"]').fill('E2eTest123!');
+  await page.locator('[data-testid="login-email-input"]').fill(ADMIN.username);
+  await page.locator('[data-testid="login-password-input"]').fill(ADMIN.password);
   await page.locator('[data-testid="login-btn"]').click();
   await page.waitForURL((u: URL) => !u.pathname.includes('/login'), { timeout: 10000 }).catch(() => {});
-  // Read token from localStorage.
+  // Read token from localStorage (frontend stores access_token under key "token").
   return page.evaluate(() => localStorage.getItem('token') || '');
 }
