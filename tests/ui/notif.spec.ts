@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -8,7 +9,7 @@ let adminToken = '';
 
 test.describe('NOTIFICATION — SPEC-031', () => {
   test.beforeAll(async ({ request }) => {
-    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    let res = await registerUser(request, ADMIN);
     if (res.status() !== 201) {
       res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     } else {
@@ -99,14 +100,13 @@ test.describe('NOTIFICATION — SPEC-031', () => {
     }
   });
 
-  // ═══ UI-145: 发送站内信（点对点）═══
-  test('[UI-145] Notif — 发送站内信', async ({ page }) => {
+  // ═══ UI-145: 发送广播站内信（广播 = admin-level 权限） ═══
+  test('[UI-145] Notif — 发送广播站内信', async ({ page }) => {
     await page.locator('[data-testid="notif-bell-icon"]').click();
-    await page.waitForTimeout(500);
-    // Click + 发送
-    await page.locator('text=+ 发送').click();
-    await expect(page.locator('[data-testid="notif-send-modal"]')).toBeVisible();
-    await expect(page.locator('[data-testid="notif-send-recipient"]')).toBeVisible();
+    await expect(page.locator('[data-testid="notif-dropdown"]')).toBeVisible();
+    // 广播发送入口（notification:broadcast 权限）
+    await page.locator('[data-testid="notif-broadcast-btn"]').click();
+    await expect(page.locator('[data-testid="notif-broadcast-modal"]')).toBeVisible();
     await expect(page.locator('[data-testid="notif-send-subject"]')).toBeVisible();
     await expect(page.locator('[data-testid="notif-send-body"]')).toBeVisible();
     await expect(page.locator('[data-testid="notif-send-submit"]')).toBeVisible();
@@ -115,8 +115,7 @@ test.describe('NOTIFICATION — SPEC-031', () => {
     await page.locator('[data-testid="notif-send-subject"]').fill('测试通知');
     await page.locator('[data-testid="notif-send-body"]').fill('这是一条测试站内信');
     await page.locator('[data-testid="notif-send-submit"]').click();
-    await page.waitForTimeout(1000);
     // Modal should close after successful send
-    await expect(page.locator('[data-testid="notif-send-modal"]')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('[data-testid="notif-broadcast-modal"]')).not.toBeVisible({ timeout: 5000 });
   });
 });

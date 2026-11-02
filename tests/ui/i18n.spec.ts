@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 /**
@@ -16,15 +17,12 @@ const API_BASE = process.env.API_BASE || 'http://data-agent:8080/api/v1';
 const TEST_USER = {
   username: process.env.E2E_USERNAME || 'e2e-i18n@test.local',
   password: process.env.E2E_PASSWORD || 'E2eTest123!',
+  role: 'user',
 };
 
 test.describe('I18N — 语言切换与持久化', () => {
   test.beforeAll(async ({ request }) => {
-    // 校验预置用户可登录（SPEC-084 后自注册已禁用，测试依赖预置账号）。
-    const res = await request.post(`${API_BASE}/auth/login`, {
-      data: { username: TEST_USER.username, password: TEST_USER.password },
-    });
-    expect(res.status(), `登录失败，请预置测试用户 ${TEST_USER.username}`).toBe(200);
+    await registerUser(request, TEST_USER);
   });
 
   test.beforeEach(async ({ page }) => {

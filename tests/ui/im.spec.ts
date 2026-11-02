@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
@@ -17,7 +18,7 @@ const USER = { username: `e2e-im-${uid}@test.local`, password: 'ImTestPass1' };
 
 test.describe('IM — SPEC-034', () => {
   test.beforeAll(async ({ request }) => {
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
+    await registerUser(request, USER);
   });
 
   test.afterAll(async ({ request }) => {

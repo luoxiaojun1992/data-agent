@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
@@ -16,16 +17,10 @@ const API_BASE = 'http://data-agent:8080/api/v1';
 
 test.describe('LIST — SPEC-035', () => {
   test.beforeAll(async ({ request }) => {
-    await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    await registerUser(request, ADMIN);
     // Create >40 users for pagination testing
-    const loginRes = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
-    const token = (await loginRes.json()).access_token;
-    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     for (let i = 0; i < 30; i++) {
-      await request.post(`${API_BASE}/auth/register`, {
-        data: { username: `e2e-list-${uid}-u${i}@test.local`, password: 'Test1234', role: 'user' },
-        headers,
-      });
+      await registerUser(request, { username: `e2e-list-${uid}-u${i}@test.local`, password: 'Test1234', role: 'user' });
     }
   });
 

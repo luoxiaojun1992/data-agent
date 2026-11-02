@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 /**
@@ -45,9 +46,7 @@ test.describe('INVITE — Registration Page', () => {
 test.describe('INVITE — Admin Invites Management', () => {
   test.beforeAll(async ({ request }) => {
     // Register admin user
-    const regRes = await request.post(`${API_BASE}/auth/register`, {
-      data: { username: ADMIN.username, password: ADMIN.password, role: ADMIN.role },
-    });
+    const regRes = await registerUser(request, { username: ADMIN.username, password: ADMIN.password, role: ADMIN.role });
     expect(regRes.status()).toBe(201);
 
     // Login to get token
@@ -104,9 +103,8 @@ test.describe('INVITE — Admin Invites Management', () => {
     const roleSelect = page.locator('[data-testid="invites-role-select"]');
     await expect(roleSelect).toHaveValue('user');
 
-    // Change to admin
-    await roleSelect.selectOption('admin');
-    await expect(roleSelect).toHaveValue('admin');
+    // admin（非 system_admin）仅能生成 user 角色邀请，无 admin 选项
+    await expect(roleSelect.locator('option[value="admin"]')).toHaveCount(0);
   });
 
   // UI-202: Invite form expiry selection

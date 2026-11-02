@@ -119,6 +119,7 @@
 | SPEC-103 | 纯前端国际化（i18n 翻译 + 语言切换） | **P15** | [spec-103-frontend-i18n-language-switch.md](spec-103-frontend-i18n-language-switch.md) | ✅ 已实现（2026-09-23 实现并部署验证，commit 87c525e） |
 | SPEC-104 | Task Run 删除与会话并发治理（排他锁 + 会话过滤 + 子会话访问隔离） | **P15** | [spec-104-run-delete-session-lock.md](spec-104-run-delete-session-lock.md) | ✅ 已实现（2026-09-28 实现并部署验证，commit d119c75） |
 | SPEC-105 | CI 红灯治理专项（Lint / Go UT / UI Tests 长期失败修复） | **P15** | [spec-105-ci-red-governance.md](spec-105-ci-red-governance.md) | 📐 立项（根因已定位，待排期） |
+| SPEC-106 | 修复 recordingLLM 消费者提前 return 导致 token 计数漏记（enhance 调用不计入 llm_calls） | **P15** | [spec-106-recording-early-return-token-count.md](spec-106-recording-early-return-token-count.md) | 📐 立项（根因已定位，待排期） |
 
 ## Phase 对应与依赖
 
@@ -447,4 +448,5 @@ SPEC-006│               │
 | 13.21 | SPEC-103 | ✅ 纯前端国际化（i18n 翻译 + 语言切换） | **已实现并部署验证（2026-09-23，commit 87c525e）**；next-intl ^3.26.5（MIT）+ `lib/i18n/`（config/request/messages）40 命名空间 zh/en 字典 key 完全对齐；layout 接 NextIntlClientProvider + 防闪烁 inline script 对齐 `<html lang>`；LanguageToggle（cookie NEXT_LOCALE + localStorage 镜像 → router.refresh()，按钮固定显目标语言 EN/中文）置于主题切换后；40+ 页面硬编码中文抽离 t()（后端返回内容/代码块/testid/API 路径不翻译，D3/D5）；SSR cookie 驱动验证（zh 19 处「登录」/en 12 处 Email）；E2E 3/3 passed（默认中文/切换即时生效/cookie 持久化）；**测试基建增强**（playwright.config.ts）：PW_CHANNEL=chrome 复用系统 Chrome（本地 chromium-1228 下载不可行）+ PW_NO_PROXY=1 注入 --no-proxy-server（WorkBuddy 沙箱代理 HTTP_PROXY 劫持浏览器 API 请求致「服务离线」误报）+ API_BASE/E2E_USERNAME env 覆盖；**遗留债务**：存量 E2E 套件仍调 SPEC-084 已删除的 /auth/register（404），待专项迁移预置用户模式 |
 | 14 | SPEC-073 | 领域内聚重构 | 立项不展开，最后实施 |
 | 15 | SPEC-105 | CI 红灯治理专项 | 📐 立项（根因已定位：Lint 30 条既有问题 / Go UT 覆盖率 71.3%<98% 因 4 个 0% 包 / UI Tests online-indicator.spec.ts 缺分号；非 SPEC-104 引入）；恢复「CI 通过=可合并」基线 |
+| 16 | SPEC-106 | 修复 recordingLLM token 计数漏记 | 📐 立项（根因已定位：enhance 消费者 `enhanceViaADK` 首响应提前 return，跳过 recordingLLM fallback Record，致 enhance 调 llm_calls/token_tokens 漏记）；修复后恢复 `[UI-160]` |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |

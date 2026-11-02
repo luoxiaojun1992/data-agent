@@ -6,6 +6,7 @@
  * it as a tool call card (expand/collapse), matching the pattern used by
  * UI-027 in chat.spec.ts. No ADK ReAct multi-step dependency required.
  */
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
@@ -15,10 +16,12 @@ const uid = crypto.randomUUID().slice(0, 8);
 const U = { username: `e2e-tc-${uid}@test.local`, password: 'E2eTest1!' };
 
 async function seedMock(request: any, key: string, response: string) {
-  await request.post(`${MOCKLLM}/responses`, {
-    headers: { Authorization: `Bearer ${MOCK_ADMIN_TOKEN}` },
-    data: { key, response },
-  });
+  // intent 检测（guard.CheckIntent，SPEC-080）先于正式 run，用相同 last_msg 调 LLM，
+  // 会 LPop 抢占注入的响应。按 LIFO 顺序注入两份：先注入正式响应（给正式 run），
+  // 再注入 intent JSON（给 intent 检测，先被 LPop 弹出）。
+  const headers = { Authorization: `Bearer ${MOCK_ADMIN_TOKEN}` };
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response } });
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response: '{"is_task":false,"is_plan":false}' } });
 }
 
 async function clearMocks(request: any) {
@@ -29,7 +32,7 @@ async function clearMocks(request: any) {
 
 test.describe('TOOL CALL — SPEC-046', () => {
   test.beforeAll(async ({ request }) => {
-    expect((await request.post(`${API_BASE}/auth/register`, { data: U })).status()).toBe(201);
+    expect((await registerUser(request, U)).status()).toBe(201);
   });
 
   test.afterAll(async ({ request }) => {

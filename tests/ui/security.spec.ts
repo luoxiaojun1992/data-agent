@@ -1,3 +1,4 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
@@ -16,7 +17,7 @@ const MOCK_TOKEN = 'test-admin-token';
 
 test.describe('SEC — SPEC-038', () => {
   test.beforeAll(async ({ request }) => {
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
+    await registerUser(request, USER);
   });
 
   test.afterAll(async ({ request }) => {
@@ -78,6 +79,12 @@ test.describe('SEC — SPEC-038', () => {
       headers: { Authorization: `Bearer ${MOCK_TOKEN}`, 'Content-Type': 'application/json' },
       data: { key: msg, response: '查询结果如下：用户手机：13812345678，身份证号：320123199001011234。' },
     });
+    // intent 检测（guard.CheckIntent，SPEC-080）先于正式 run、last_msg 相同 → LPop 抢占；
+    // 再注入一份 intent JSON（LIFO 先被弹出），确保正式 run 拿到含敏感数据的响应。
+    await request.post(`${MOCKLLM_URL}/responses`, {
+      headers: { Authorization: `Bearer ${MOCK_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { key: msg, response: '{"is_task":false,"is_plan":false}' },
+    });
 
     await page.goto('/chat');
     await page.waitForSelector('[data-testid="chat-input"]', { timeout: 10000 });
@@ -90,13 +97,12 @@ test.describe('SEC — SPEC-038', () => {
     // Wait for backend → mockllm → audit → SSE stream → UI render.
     // Use toContainText (auto-retry) instead of waitForTimeout+textContent
     // to eliminate flaky failures from streaming render timing.
-    const aiMsg = page.locator('[data-testid="chat-msg-ai-1"]');
+    // 用前缀匹配定位 AI 回复（SPEC-080 intent 隐式事件会占位一个 index，不宜写死 chat-msg-ai-1）
+    const aiMsg = page.locator('[data-testid^="chat-msg-ai-"]').last();
     await expect(aiMsg).toBeVisible({ timeout: 20000 });
-    // Phone masked
-    await expect(aiMsg).toContainText('138****5678', { timeout: 15000 });
+    // 后端 Presidio 脱敏用 <PII> 占位替换（非星号掩码）
+    await expect(aiMsg).toContainText('<PII>', { timeout: 15000 });
     await expect(aiMsg).not.toContainText('13812345678');
-    // ID card masked
-    await expect(aiMsg).toContainText('320***********1234');
     await expect(aiMsg).not.toContainText('320123199001011234');
   });
 
@@ -104,7 +110,7 @@ test.describe('SEC — SPEC-038', () => {
   test('[UI-186] Sec — 越权工具调用被拦截', async ({ page, request }) => {
     // Create a regular user
     const regularUser = { username: `e2e-sec-reg-${uid}@test.local`, password: 'RegularTest1', role: 'user' };
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: regularUser });
+    await registerUser(request, regularUser);
 
     // Login as regular user
     await page.goto('/login');

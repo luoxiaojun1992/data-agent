@@ -11,23 +11,27 @@
  * 真实模型；E2E 环境意图分类走 mockllm 会降级为 chat，故不在此断言工具
  * 的真实执行链路（该链路由 Go 单测 TestCurrentTime/TestGetPlanMethod 覆盖）。
  */
+import { registerUser, adminToken as getSystemAdminToken } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const API_BASE = 'http://data-agent:8080/api/v1';
 const uid = crypto.randomUUID().slice(0, 8);
 const ADMIN = { username: `e2e-tps-${uid}@test.local`, password: 'E2eTest123!', role: 'admin' };
 let adminToken = '';
+// /admin/skills 的 skills:view 权限仅 system_admin 持有，UI-250 需用 system_admin token。
+let sysAdminToken = '';
 let sessionId = '';
 
 test.describe('TIME/PLAN SKILLS — SPEC-080', () => {
   test.beforeAll(async ({ request }) => {
-    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
+    let res = await registerUser(request, ADMIN);
     if (res.status() !== 201) {
       res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     } else {
       res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
     }
     adminToken = (await res.json()).access_token;
+    sysAdminToken = await getSystemAdminToken(request);
 
     // 创建一个 chat session，供 UI-251 hidden 过滤测试加载历史用。
     const sRes = await request.post(`${API_BASE}/sessions?type=chat`, {
@@ -51,7 +55,7 @@ test.describe('TIME/PLAN SKILLS — SPEC-080', () => {
   // ═══ UI-250: 工具三步注册验证 ═══
   test('[UI-250] TimePlan — get_current_time/get_plan_method 已注册', async ({ request }) => {
     const res = await request.get(`${API_BASE}/admin/skills`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { Authorization: `Bearer ${sysAdminToken}` },
     });
     expect(res.status()).toBe(200);
     const body = await res.json();

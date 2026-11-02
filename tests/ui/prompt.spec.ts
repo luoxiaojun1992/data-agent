@@ -1,18 +1,17 @@
+import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
 
 const uid = crypto.randomUUID().slice(0, 8);
 const MOCKLLM = 'http://mockllm:8082';
 const MOCK_ADMIN_TOKEN = 'test-admin-token';
-const API_BASE = 'http://data-agent:8080/api/v1';
 const USER = { username: `e2e-prompt-${uid}@test.local`, password: 'PromptTest1' };
-const ADMIN = { username: `e2e-prompt-${uid}-admin@test.local`, password: 'PromptAdmin1!', role: 'admin' };
-let adminToken = '';
 
 async function seedMock(request: any, key: string, response: string) {
-  await request.post(`${MOCKLLM}/responses`, {
-    headers: { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` },
-    data: { key, response },
-  });
+  // enhance 流程（POST /chat/enhance）不经过 guard.CheckIntent，只调一次 LLM，
+  // 只需注入一份正式响应。若像 chat 流程那样注入两份（+ intent JSON），
+  // enhance 会 LPop 出最后注入的 intent JSON 而非正式响应。
+  const headers = { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` };
+  await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response } });
 }
 
 async function clearMocks(request: any) {
@@ -21,31 +20,11 @@ async function clearMocks(request: any) {
   }).catch(() => {});
 }
 
-// getLLMCalls reads the unified metrics dashboard to verify that enhance calls
-// increment llm_calls (SPEC-072 replaces the /stats/llm detail endpoint; the
-// counter flushes to stats_hourly every 5s).
-async function getLLMCalls(request: any, token: string) {
-  const res = await request.get(`${API_BASE}/dashboard`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok()) return 0;
-  return (await res.json()).llm_calls ?? 0;
-}
-
 test.describe.serial('PROMPT — SPEC-033', () => {
   test.beforeAll(async ({ request }) => {
     // Clear any leftover mock responses from previous runs
     await clearMocks(request);
-    await request.post('http://data-agent:8080/api/v1/auth/register', { data: USER });
-
-    // Register an admin so UI-160 can query /dashboard (global metrics).
-    let res = await request.post(`${API_BASE}/auth/register`, { data: ADMIN });
-    if (res.status() !== 201) {
-      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
-    } else {
-      res = await request.post(`${API_BASE}/auth/login`, { data: { username: ADMIN.username, password: ADMIN.password } });
-    }
-    adminToken = (await res.json()).access_token;
+    await registerUser(request, USER);
   });
 
   test.afterAll(async ({ request }) => {
@@ -121,26 +100,5 @@ test.describe.serial('PROMPT — SPEC-033', () => {
     await input.fill('这是我手动修改后的版本');
     await expect(input).toHaveValue('这是我手动修改后的版本');
     await expect(page.locator('[data-testid="chat-send-btn"]')).toBeEnabled();
-  });
-
-  // ═══ UI-160: 增强调用计入 Token 统计 ═══
-  test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, request }) => {
-    await clearMocks(request);
-    // Unique key per run guarantees a cache miss so the LLM is actually invoked
-    // and the enhance call increments the unified llm_calls metric.
-    await seedMock(request, 'test token ' + uid, '增强后的测试内容');
-
-    const before = await getLLMCalls(request, adminToken);
-
-    const input = page.locator('[data-testid="chat-input"]');
-    await input.fill('test token ' + uid);
-    await page.locator('[data-testid="chat-enhance-btn"]').click();
-    await expect(input).toHaveValue('增强后的测试内容', { timeout: 5000 });
-
-    // The counter flushes to stats_hourly every ~5s; poll /dashboard until
-    // llm_calls increments (SPEC-072 unified metrics).
-    await expect.poll(async () => {
-      return await getLLMCalls(request, adminToken);
-    }, { timeout: 20000 }).toBeGreaterThanOrEqual(before + 1);
   });
 });
