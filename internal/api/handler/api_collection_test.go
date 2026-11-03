@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -144,5 +147,40 @@ func TestAPICollectionCreate_NoFile(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 'file required', got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAPICollectionCreate_ReadsFile(t *testing.T) {
+	h, svc := newAPICollectionHandler()
+	var gotRaw []byte
+	patches := gomonkey.ApplyMethodFunc(svc, "CreateUpload",
+		func(_ context.Context, userID, name, description string, rawSpec []byte, fileID string) (*model.APICollection, error) {
+			gotRaw = rawSpec
+			return &model.APICollection{ID: "coll1"}, nil
+		})
+	t.Cleanup(patches.Reset)
+
+	// 构造 multipart form（含 file 字段），覆盖 Create 里的 f.Read(rawSpec)
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("name", "test")
+	_ = writer.WriteField("description", "desc")
+	part, _ := writer.CreateFormFile("file", "spec.yaml")
+	_, _ = part.Write([]byte("openapi: 3.0.0"))
+	_ = writer.Close()
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api-collections", body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	c.Set("user_id", "u1")
+	h.Create(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if string(gotRaw) != "openapi: 3.0.0" {
+		t.Errorf("rawSpec = %q, want file content (f.Read 覆盖)", gotRaw)
 	}
 }
