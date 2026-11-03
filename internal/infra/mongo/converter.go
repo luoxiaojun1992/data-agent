@@ -442,14 +442,6 @@ func taskProgressToDoc(p task.TaskProgress) bson.M {
 	}
 }
 
-// Keep old task converters as minimal stubs for backward compat.
-func taskToDoc(t *task.Task) bson.M {
-	return bson.M{"_id": t.ID}
-}
-func docToTask(d bson.M) *task.Task {
-	return &task.Task{ID: getStr(d, "_id"), UserID: getStr(d, "user_id")}
-}
-
 func docToTaskProgress(d bson.M) task.TaskProgress {
 	return task.TaskProgress{
 		CurrentStep: getInt(d, "current_step"),

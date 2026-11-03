@@ -120,7 +120,7 @@ func TestCallAPI_WithBody(t *testing.T) {
 		gotContentType = r.Header.Get("Content-Type")
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 

@@ -266,7 +266,7 @@ func (s *Service) CallAPI(ctx context.Context, collectionID, path, method string
 
 	respBody, _ := io.ReadAll(resp.Body)
 	var respJSON interface{}
-	json.Unmarshal(respBody, &respJSON)
+	_ = json.Unmarshal(respBody, &respJSON)
 
 	return &APICallResult{
 		Status:  resp.StatusCode,

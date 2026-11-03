@@ -137,9 +137,9 @@ func (h *RBACHandler) ListParentCandidates(c *gin.Context) {
 // CreatePermission creates a new permission. ID is auto-generated UUID.
 func (h *RBACHandler) CreatePermission(c *gin.Context) {
 	var req struct {
-		Key         string `json:"key" json:"required"`
-		Name        string `json:"name" json:"required"`
-		Module      string `json:"module" json:"required"`
+		Key         string `json:"key"`
+		Name        string `json:"name"`
+		Module      string `json:"module"`
 		Description string `json:"description"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

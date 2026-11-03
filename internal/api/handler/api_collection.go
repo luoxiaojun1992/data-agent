@@ -58,7 +58,10 @@ func (h *APICollectionHandler) Create(c *gin.Context) {
 	defer f.Close()
 
 	rawSpec := make([]byte, file.Size)
-	f.Read(rawSpec)
+	if _, err := f.Read(rawSpec); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	coll, err := h.svc.CreateUpload(c.Request.Context(), userID, name, description, rawSpec, "")
 	if err != nil {

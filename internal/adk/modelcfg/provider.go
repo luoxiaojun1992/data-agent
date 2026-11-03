@@ -209,41 +209,6 @@ func looksLikeVaultPath(s string) bool {
 	return strings.HasPrefix(s, "data-agent/")
 }
 
-// modelsFromEnv builds a single-model list from env.
-func (p *Provider) modelsFromEnv() []ModelEntry {
-	primary := ModelEntry{
-		Name:            envOrDefault("LLM_MODEL", "mock-gpt-4o"),
-		BaseURL:         envOrDefault("LLM_BASE_URL", defaultBaseURL),
-		APIKey:          os.Getenv("LLM_API_KEY"),
-		Type:            ModelTypeLLM,
-		UseCases:        []string{"chat", "task", "enhance", "compaction"},
-		IsDefaultFor:    []string{"chat"},
-		Instruction:     DefaultInstruction,
-		Capability:      "",
-		TokenMultiplier: 1.0,
-		Temperature:     0.7,
-		MaxTokens:       4096,
-		FallbackOrder:   0,
-	}
-	entries := []ModelEntry{primary}
-	if raw := os.Getenv("LLM_FALLBACK_BASE_URLS"); raw != "" {
-		for i, u := range splitEnvList(raw) {
-			entries = append(entries, ModelEntry{
-				Name:            primary.Name,
-				BaseURL:         u,
-				APIKey:          primary.APIKey,
-				Type:            ModelTypeLLM,
-				UseCases:        primary.UseCases,
-				TokenMultiplier: 1.0,
-				Temperature:     primary.Temperature,
-				MaxTokens:       primary.MaxTokens,
-				FallbackOrder:   i + 1,
-			})
-		}
-	}
-	return entries
-}
-
 // applyEnvDefaults fills zero values from env (per-model override).
 // API key is NEVER filled from env.
 func (p *Provider) applyEnvDefaults(m *ModelEntry) {
@@ -353,17 +318,6 @@ func (p *Provider) getModel(ctx context.Context, id string) (*ModelEntry, error)
 	return entry, nil
 }
 
-// filterLLMs returns only LLM-type models from the list.
-func filterLLMs(models []ModelEntry) []ModelEntry {
-	var out []ModelEntry
-	for _, m := range models {
-		if m.Type == ModelTypeLLM {
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
 // buildBackends creates the model.LLM chain sorted by FallbackOrder. Every
 // backend is wrapped with a usage recorder (SPEC-072) so that ALL
 // GenerateContent LLM calls — chat, enhance, compaction, intent, relevance,
@@ -410,17 +364,6 @@ func (m *maxTokensLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 		req.Config = cfg
 	}
 	return m.inner.GenerateContent(ctx, req, stream)
-}
-
-// sortModelsByCost sorts candidates by token cost (ascending).
-func sortModelsByCost(entries []ModelEntry) {
-	for i := 0; i < len(entries)-1; i++ {
-		for j := i + 1; j < len(entries); j++ {
-			if entries[j].TokenMultiplier < entries[i].TokenMultiplier {
-				entries[i], entries[j] = entries[j], entries[i]
-			}
-		}
-	}
 }
 
 // DefaultInstruction returns the system prompt of the model that is default
@@ -905,38 +848,3 @@ func envOrDefault(key, def string) string {
 	return def
 }
 
-func splitEnvList(raw string) []string {
-	parts := []string{}
-	for _, s := range splitByComma(raw) {
-		s = trimSpace(s)
-		if s != "" {
-			parts = append(parts, s)
-		}
-	}
-	return parts
-}
-
-func splitByComma(s string) []string {
-	out := []string{}
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == ',' {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, s[start:])
-	return out
-}
-
-func trimSpace(s string) string {
-	i := 0
-	j := len(s) - 1
-	for i <= j && s[i] == ' ' {
-		i++
-	}
-	for j >= i && s[j] == ' ' {
-		j--
-	}
-	return s[i : j+1]
-}
