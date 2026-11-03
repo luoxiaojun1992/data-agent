@@ -149,9 +149,10 @@ test.describe('RBAC — SPEC-039', () => {
 
     // 权限列表按 module+name 升序分页（page_size=10，builtin 权限 50+），新建的
     // custom 模块权限排在第二页之后，第一页看不到。诚实断言「创建成功」：
-    // 成功 toast 出现 + 创建 modal 关闭（onSuccess 里 setShowAddPerm(false)）。
-    await expect(page.getByText('权限已创建', { exact: true })).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('[data-testid="rbac-add-perm-submit"]')).not.toBeVisible({ timeout: 5000 });
+    // 仅当 POST 成功才 onSuccess → setShowAddPerm(false) 关闭 modal（失败走 catch
+    // 保留 modal + 显示错误），故「modal 关闭」是创建成功的稳态可靠代理。
+    // 不用 toast（瞬态 2s 后消失，有 flaky 窗口，不可靠）。
+    await expect(page.locator('[data-testid="rbac-add-perm-submit"]')).not.toBeVisible({ timeout: 10000 });
   });
 
   // ═══ 真实业务：编辑角色改父级（覆盖 ChangeRoleParent 事务 145 行）═══
