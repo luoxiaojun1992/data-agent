@@ -57,6 +57,15 @@ test.describe('RBAC — SPEC-039', () => {
     await page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 10000 });
   }
 
+  // 在父角色下拉里搜索并精确选择 option（option 文本形如「系统管理员 (L0)」）。
+  async function selectParent(page: any, testid: string, searchText: string, optionText: string) {
+    await page.locator(`[data-testid="${testid}"] > button`).first().click();
+    await page.locator(`[data-testid="${testid}"] input`).fill(searchText);
+    const opt = page.locator(`[data-testid="${testid}"] button`).getByText(optionText, { exact: true });
+    await expect(opt).toBeVisible({ timeout: 10000 });
+    await opt.click();
+  }
+
   test('[UI-187] RBAC — user 可见导航项', async ({ page }) => {
     await loginAs(page, USER);
     await expect(page.locator('[data-testid="sidebar"]')).toBeVisible({ timeout: 5000 });
@@ -137,6 +146,40 @@ test.describe('RBAC — SPEC-039', () => {
 
     // 新权限行出现（行内显示 key）
     await expect(page.locator('[data-testid^="rbac-perm-"]').filter({ hasText: permKey }).first()).toBeVisible({ timeout: 10000 });
+  });
+
+  // ═══ 真实业务：编辑角色改父级（覆盖 ChangeRoleParent 事务 145 行）═══
+  test('[UI-196] RBAC — system_admin 编辑角色改父级', async ({ page }) => {
+    await loginAsSystemAdmin(page);
+    await page.goto('/admin/rbac');
+    await page.waitForSelector('[data-testid="rbac-add-role-btn"]', { timeout: 10000 });
+
+    // 1. 创建 L1 角色 B（parent = 系统管理员 L0）
+    const bDisplay = `B角色${uid}`;
+    await page.locator('[data-testid="rbac-add-role-btn"]').click();
+    await page.getByPlaceholder('my_custom_role').fill(`e2e-role-b-${uid}`);
+    await page.getByPlaceholder('我的自定义角色').fill(bDisplay);
+    await selectParent(page, 'rbac-add-role-parent', '系统管理员', '系统管理员 (L0)');
+    await page.locator('[data-testid="rbac-add-role-submit"]').click();
+    await expect(page.locator('[data-testid^="rbac-role-"]').filter({ hasText: bDisplay }).first()).toBeVisible({ timeout: 10000 });
+
+    // 2. 创建 L2 角色 C（parent = 管理员 L1）
+    const cDisplay = `C角色${uid}`;
+    await page.locator('[data-testid="rbac-add-role-btn"]').click();
+    await page.getByPlaceholder('my_custom_role').fill(`e2e-role-c-${uid}`);
+    await page.getByPlaceholder('我的自定义角色').fill(cDisplay);
+    await selectParent(page, 'rbac-add-role-parent', '管理员', '管理员 (L1)');
+    await page.locator('[data-testid="rbac-add-role-submit"]').click();
+    const cCard = page.locator('[data-testid^="rbac-role-"]').filter({ hasText: cDisplay }).first();
+    await expect(cCard).toBeVisible({ timeout: 10000 });
+
+    // 3. 编辑 C，父角色从「管理员」改到 B → 触发 ChangeRoleParent（递减旧 parent、递增新 parent child_count）
+    await cCard.locator('[data-testid^="rbac-role-edit-"]').click();
+    await selectParent(page, 'rbac-edit-role-parent', bDisplay, `${bDisplay} (L1)`);
+    await page.locator('[data-testid="rbac-edit-role-submit"]').click();
+
+    // 保存成功：编辑 modal 关闭
+    await expect(page.locator('[data-testid="rbac-edit-role-submit"]')).not.toBeVisible({ timeout: 10000 });
   });
 
   // UI-192 已移除：sidebar:agent + agent:* 权限已从 admin 迁移到 user
