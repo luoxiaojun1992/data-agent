@@ -121,12 +121,15 @@ test.describe('RBAC — SPEC-039', () => {
     await page.waitForSelector('[data-testid="rbac-add-role-btn"]', { timeout: 10000 });
 
     const roleName = `e2e-role-${uid}`;
+    const displayName = `E2E角色${uid}`;
     await page.locator('[data-testid="rbac-add-role-btn"]').click();
     await page.getByPlaceholder('my_custom_role').fill(roleName);
+    // display_name 是后端 CreateRole 必填字段，缺省返回 400
+    await page.getByPlaceholder('我的自定义角色').fill(displayName);
     await page.locator('[data-testid="rbac-add-role-submit"]').click();
 
-    // 新角色卡片出现（卡片内显示 name）
-    await expect(page.locator('[data-testid^="rbac-role-"]').filter({ hasText: roleName }).first()).toBeVisible({ timeout: 10000 });
+    // 角色卡片显示 display_name（角色列表仅 3 内置 + 新建，不分页，直接可见）
+    await expect(page.locator('[data-testid^="rbac-role-"]').filter({ hasText: displayName }).first()).toBeVisible({ timeout: 10000 });
   });
 
   // ═══ 真实业务：system_admin 创建权限（rbac:manage 权限 + CreatePermission）═══
@@ -144,8 +147,11 @@ test.describe('RBAC — SPEC-039', () => {
     await page.locator('label:has-text("名称 (必填)")').locator('input').fill('测试权限');
     await page.locator('[data-testid="rbac-add-perm-submit"]').click();
 
-    // 新权限行出现（行内显示 key）
-    await expect(page.locator('[data-testid^="rbac-perm-"]').filter({ hasText: permKey }).first()).toBeVisible({ timeout: 10000 });
+    // 权限列表按 module+name 升序分页（page_size=10，builtin 权限 50+），新建的
+    // custom 模块权限排在第二页之后，第一页看不到。诚实断言「创建成功」：
+    // 成功 toast 出现 + 创建 modal 关闭（onSuccess 里 setShowAddPerm(false)）。
+    await expect(page.getByText('权限已创建', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="rbac-add-perm-submit"]')).not.toBeVisible({ timeout: 5000 });
   });
 
   // ═══ 真实业务：编辑角色改父级（覆盖 ChangeRoleParent 事务 145 行）═══
