@@ -235,6 +235,7 @@ function AddRoleModal({ apiFetch, onClose, onSuccess, showToast }: any) {
           labelKey="display_name"
           allowEmpty
           emptyLabel={tm('rootRole')}
+          dataTestid="rbac-add-role-parent"
           renderLabel={(r) => <span>{r.display_name} (L{r.level})</span>}
         />
       </label>
@@ -277,6 +278,7 @@ function EditRoleModal({ apiFetch, role, onClose, onSuccess, showToast }: any) {
           labelKey="display_name"
           allowEmpty
           emptyLabel={tm('none')}
+          dataTestid="rbac-edit-role-parent"
           renderLabel={(r) => <span>{r.display_name} (L{r.level})</span>}
         />
       </label>

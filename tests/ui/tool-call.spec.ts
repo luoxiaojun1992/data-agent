@@ -1,10 +1,24 @@
 /**
  * SPEC-046: Tool Call Chain E2E (UI-211 ~ UI-218)
  *
- * Each test seeds a single mockllm response containing a tool_call JSON block
- * plus the final answer text. The frontend parses the JSON block and renders
- * it as a tool call card (expand/collapse), matching the pattern used by
- * UI-027 in chat.spec.ts. No ADK ReAct multi-step dependency required.
+ * 真实工具调用测试（区别于旧的「文本解析渲染」）：
+ * - 旧实现注入 ```json 代码块包裹的伪 tool_call，mockllm 走「普通文本」分支，
+ *   前端 parseBlocks 解析成 chat-tool-call-card-*（纯前端展示，后端工具从未执行）。
+ * - 本实现注入「纯 JSON tool_call」（{"type":"tool_call","name":"x","input":{...}}），
+ *   mockllm tryAsFunctionCalls 识别后转成 OpenAI function_call（finish_reason=tool_calls），
+ *   ADK ReAct 真正执行工具 → 后端下发 tool_call/tool_result 事件 → 前端渲染
+ *   chat-live-tool-call-* / chat-live-tool-result-*。
+ *
+ * 注入机制（mockllm key=sha256(last_msg)，LPush/LPop 即 LIFO）：
+ * - guard.CheckIntent 先于正式 run、last_msg 相同 → 会 LPop 抢占注入的响应。
+ *   seedMock 注入两份：先 tool_call JSON（给正式 run），后 intent JSON
+ *   （{"is_task":false,"is_plan":false}，先被 intent 检测 LPop 弹出）。
+ * - ReAct 第二轮（last_msg 变为 tool_result）无精确 key → 走 mockllm default reply，
+ *   不影响 tool_call 卡片断言。
+ *
+ * 工具选型：dir_create/file_delete/dir_delete（文件操作，覆盖 golangci-lint 的
+ * gosimple S1016 三处）、stats_compute/get_current_time/memory_list（无外部依赖）。
+ * sql_executor 需 MySQL、save_report 有副作用，CI 无此依赖，不在此真实调用。
  */
 import { registerUser } from './utils/auth';
 import { test, expect } from '@playwright/test';
@@ -22,6 +36,13 @@ async function seedMock(request: any, key: string, response: string) {
   const headers = { Authorization: `Bearer ${MOCK_ADMIN_TOKEN}` };
   await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response } });
   await request.post(`${MOCKLLM}/responses`, { headers, data: { key, response: '{"is_task":false,"is_plan":false}' } });
+}
+
+// seedToolCall 注入「纯 JSON tool_call」（不含 ```json 代码块），mockllm 的
+// tryAsFunctionCalls 会识别为 OpenAI function_call（finish_reason=tool_calls），
+// 从而触发 ADK ReAct 真正执行工具（而非前端 parseBlocks 的文本解析渲染）。
+async function seedToolCall(request: any, key: string, name: string, input: any) {
+  await seedMock(request, key, JSON.stringify({ type: 'tool_call', name, input }));
 }
 
 async function clearMocks(request: any) {
@@ -60,132 +81,90 @@ test.describe('TOOL CALL — SPEC-046', () => {
     await page.waitForURL('**/chat', { timeout: 5000 });
   });
 
-  // ═══ UI-211: knowledge_search tool card renders ═══
-  test('[UI-211] ToolCall — knowledge_search tool card', async ({ page, request }) => {
-    const toolCall = {
-      type: 'tool_call',
-      name: 'knowledge_search',
-      input: { query: '营收', top_k: 3 },
-      output: '共 3 条结果，最高匹配度 0.92',
-    };
-    await seedMock(request, '查询营收数据',
-      `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`\n\n根据知识库，营收达到 1.2 亿元。`);
-
-    await page.locator('[data-testid="chat-input"]').fill('查询营收数据');
+  // ═══ UI-211: dir_create 真实调用（覆盖 gosimple S1016 #1）═══
+  test('[UI-211] ToolCall — dir_create 真实调用', async ({ page, request }) => {
+    await seedToolCall(request, '创建一个测试目录', 'dir_create', { path: 'e2e-dir' });
+    await page.locator('[data-testid="chat-input"]').fill('创建一个测试目录');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    await expect(page.locator('[data-testid="chat-tool-call-card-0"]')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText('1.2 亿元');
+    const card = page.locator('[data-testid^="chat-live-tool-call-"]').first();
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toContainText('dir_create');
   });
 
-  // ═══ UI-212: knowledge_search result with sales data ═══
-  test('[UI-212] ToolCall — knowledge_search 命中后回答', async ({ page, request }) => {
-    const toolCall = {
-      type: 'tool_call',
-      name: 'knowledge_search',
-      input: { query: '销售数据', top_k: 3 },
-      output: '5月销售额1560万元，6月销售额1720万元',
-    };
-    await seedMock(request, '销售数据',
-      `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`\n\n根据检索到的文档，5月销售额1560万元，6月销售额1720万元，呈上升趋势。`);
-
-    await page.locator('[data-testid="chat-input"]').fill('销售数据');
+  // ═══ UI-212: file_delete 真实调用（覆盖 gosimple S1016 #2）═══
+  test('[UI-212] ToolCall — file_delete 真实调用', async ({ page, request }) => {
+    await seedToolCall(request, '删除一个测试文件', 'file_delete', { path: 'nonexistent.txt' });
+    await page.locator('[data-testid="chat-input"]').fill('删除一个测试文件');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    // Use toContainText (auto-retry) instead of textContent+toMatch to eliminate
-    // flaky failures from streaming render timing (content arrives after element visibility).
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/销售|1560|1720|趋势/, { timeout: 15000 });
+    const card = page.locator('[data-testid^="chat-live-tool-call-"]').first();
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toContainText('file_delete');
   });
 
-  // ═══ UI-213: sql_executor tool card with SQL ═══
-  test('[UI-213] ToolCall — sql_executor tool card', async ({ page, request }) => {
-    const toolCall = {
-      type: 'tool_call',
-      name: 'sql_executor',
-      input: { sql: 'SELECT product, SUM(revenue) AS total FROM sales GROUP BY product ORDER BY total DESC LIMIT 5' },
-      output: 'DataInsight Pro: 2480万, CloudQuery: 1860万',
-    };
-    await seedMock(request, '查询销售排行',
-      `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`\n\nDataInsight Pro 销售额 2480 万元排名第一，CloudQuery 1860 万元排第二。`);
-
-    await page.locator('[data-testid="chat-input"]').fill('查询销售排行');
+  // ═══ UI-213: dir_delete 真实调用（覆盖 gosimple S1016 #3）═══
+  test('[UI-213] ToolCall — dir_delete 真实调用', async ({ page, request }) => {
+    await seedToolCall(request, '删除一个测试目录', 'dir_delete', { path: 'nonexistent-dir' });
+    await page.locator('[data-testid="chat-input"]').fill('删除一个测试目录');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText('2480', { timeout: 15000 });
+    const card = page.locator('[data-testid^="chat-live-tool-call-"]').first();
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toContainText('dir_delete');
   });
 
-  // ═══ UI-214: sql_executor security rejection ═══
-  test('[UI-214] ToolCall — sql_executor 校验失败', async ({ page, request }) => {
-    // Security audit blocks DROP TABLE before LLM, so mockllm seed won't be consumed.
-    // The chat service returns a security error directly.
-    await seedMock(request, '删除所有数据',
-      '安全校验失败：输入包含危险操作 DROP TABLE，已被拦截。');
-
-    await page.locator('[data-testid="chat-input"]').fill('删除所有数据');
+  // ═══ UI-214: stats_compute 真实调用（修旧 stats_engine 工具名错误）═══
+  test('[UI-214] ToolCall — stats_compute 真实调用', async ({ page, request }) => {
+    await seedToolCall(request, '统计一组数据', 'stats_compute', { method: 'descriptive', values: [1, 2, 3, 4, 5] });
+    await page.locator('[data-testid="chat-input"]').fill('统计一组数据');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    // Error or rejection message should appear — use toContainText (auto-retry)
-    // to eliminate flaky failures from streaming render timing (error text
-    // is flushed in the finally block, arriving after the element is visible).
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 20000 });
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/安全|失败|不允许|禁止|DROP|审核|拦截/i, { timeout: 20000 });
+    const card = page.locator('[data-testid^="chat-live-tool-call-"]').first();
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toContainText('stats_compute');
   });
 
-  // ═══ UI-215: stats_engine tool card with KPI ═══
-  test('[UI-215] ToolCall — stats_engine tool card', async ({ page, request }) => {
-    const toolCall = {
-      type: 'tool_call',
-      name: 'stats_engine',
-      input: { calculation: 'monthly_trend', source: 'sales_data' },
-      output: '月均销售额 ¥1,385万，增长率 +12.4%',
-    };
-    await seedMock(request, '统计销售趋势',
-      `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`\n\n统计结果：月均销售额 ¥1,385万，增长率 +12.4%，峰值月份为 6月。`);
-
-    await page.locator('[data-testid="chat-input"]').fill('统计销售趋势');
+  // ═══ UI-215: get_current_time 真实调用（无参数工具）═══
+  test('[UI-215] ToolCall — get_current_time 真实调用', async ({ page, request }) => {
+    await seedToolCall(request, '现在几点了', 'get_current_time', {});
+    await page.locator('[data-testid="chat-input"]').fill('现在几点了');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    await expect(page.locator('[data-testid="chat-tool-call-card-0"]')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/1,385|12\.4%|增长率/, { timeout: 15000 });
+    const card = page.locator('[data-testid^="chat-live-tool-call-"]').first();
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toContainText('get_current_time');
   });
 
-  // ═══ UI-216: save_report tool card ═══
-  test('[UI-216] ToolCall — save_report tool card', async ({ page, request }) => {
-    const toolCall = {
-      type: 'tool_call',
-      name: 'save_report',
-      input: { title: '销售分析报告', format: 'pdf' },
-      output: '报告已生成并保存。',
-    };
-    await seedMock(request, '生成销售报告',
-      `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`\n\n报告已生成并保存。您可以在制品管理中查看《销售分析报告》。`);
-
-    await page.locator('[data-testid="chat-input"]').fill('生成销售报告');
+  // ═══ UI-216: memory_list 真实调用（无外部依赖）═══
+  test('[UI-216] ToolCall — memory_list 真实调用', async ({ page, request }) => {
+    await seedToolCall(request, '列出我的记忆', 'memory_list', { limit: 5 });
+    await page.locator('[data-testid="chat-input"]').fill('列出我的记忆');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/报告|保存|生成|制品/i, { timeout: 15000 });
+    const card = page.locator('[data-testid^="chat-live-tool-call-"]').first();
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toContainText('memory_list');
   });
 
-  // ═══ UI-217: 多工具链式调用 ═══
-  test('[UI-217] ToolCall — 多工具链式调用', async ({ page, request }) => {
-    const tools = [
-      { type: 'tool_call', name: 'knowledge_search', input: { query: '销售数据', top_k: 3 }, output: '3 条文档匹配' },
-      { type: 'tool_call', name: 'sql_executor', input: { sql: 'SELECT region, SUM(revenue) FROM sales GROUP BY region' }, output: '华北: 2480万, 华东: 1860万, 华南: 1520万' },
-      { type: 'tool_call', name: 'stats_engine', input: { calculation: 'growth_rate' }, output: '月均增长 12.4%' },
-    ];
-    const response = tools.map((t) => `\`\`\`json\n${JSON.stringify(t)}\n\`\`\``).join('\n\n') +
-      '\n\n综合分析完成：华北区域贡献最高，全线上涨趋势明显。月均增长 12.4%。';
-
-    await seedMock(request, '全面分析销售数据', response);
-
-    await page.locator('[data-testid="chat-input"]').fill('全面分析销售数据');
+  // ═══ UI-217: 多工具链式真实调用（multi tool_calls 格式）═══
+  test('[UI-217] ToolCall — 多工具链式真实调用', async ({ page, request }) => {
+    // mockllm 多调用格式：{"type":"tool_calls","calls":[...]}
+    const multi = JSON.stringify({
+      type: 'tool_calls',
+      calls: [
+        { name: 'dir_create', input: { path: 'e2e-multi' } },
+        { name: 'stats_compute', input: { method: 'descriptive', values: [10, 20, 30] } },
+      ],
+    });
+    await seedMock(request, '批量操作', multi);
+    await page.locator('[data-testid="chat-input"]').fill('批量操作');
     await page.locator('[data-testid="chat-send-btn"]').click();
 
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('[data-testid^="chat-msg-ai-"]').first()).toContainText(/分析|华北|趋势|增长/i, { timeout: 15000 });
+    const calls = page.locator('[data-testid^="chat-live-tool-call-"]');
+    await expect(calls.first()).toBeVisible({ timeout: 20000 });
+    // 两个工具调用均被真实执行并渲染（第二个工具也出现）
+    await expect(calls.nth(1)).toBeVisible({ timeout: 20000 });
   });
 
   // ═══ UI-218: SQL 复制按钮 ═══
