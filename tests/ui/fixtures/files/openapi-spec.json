@@ -1,0 +1,19 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "E2E Test API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/users": {
+      "get": {
+        "summary": "List users"
+      }
+    },
+    "/orders": {
+      "get": {
+        "summary": "List orders"
+      }
+    }
+  }
+}
