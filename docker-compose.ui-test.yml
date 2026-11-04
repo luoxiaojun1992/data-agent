@@ -151,6 +151,7 @@ services:
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:latest
+    restart: unless-stopped
     expose:
       - "3000"
     environment:
@@ -166,10 +167,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 60s
+      start_period: 300s
 
   presidio-anonymizer:
     image: mcr.microsoft.com/presidio-anonymizer:latest
+    restart: unless-stopped
     expose:
       - "3000"
     environment:
@@ -180,7 +182,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 60s
+      start_period: 300s
 
   data-agent:
     build:
