@@ -33,7 +33,7 @@ func SeedRBAC(ctx context.Context, db *mongo.Database) error {
 
 func seedRoles(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("rbac_roles")
-	coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+	_, _ = coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "name", Value: 1}},
 		Options: options.Index().SetUnique(true).SetName("rbac_role_name_unique"),
 	})
@@ -95,7 +95,7 @@ func seedRoles(ctx context.Context, db *mongo.Database) error {
 
 func seedPermissions(ctx context.Context, db *mongo.Database) error {
 	permColl := db.Collection("rbac_permissions")
-	permColl.Indexes().CreateOne(ctx, mongo.IndexModel{
+	_, _ = permColl.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "key", Value: 1}},
 		Options: options.Index().SetUnique(true).SetName("rbac_perm_key_unique"),
 	})
@@ -195,7 +195,7 @@ func seedPermissions(ctx context.Context, db *mongo.Database) error {
 	existingPerms.Close(ctx)
 
 	rpColl := db.Collection("rbac_role_permissions")
-	rpColl.Indexes().CreateOne(ctx, mongo.IndexModel{
+	_, _ = rpColl.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "role_id", Value: 1}, {Key: "permission_id", Value: 1}},
 		Options: options.Index().SetUnique(true).SetName("rp_role_perm_unique"),
 	})
@@ -312,7 +312,7 @@ func recountPermissionCounts(ctx context.Context, db *mongo.Database) error {
 
 func seedDefaultUserRole(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("user_rbac_roles")
-	coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+	_, _ = coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "user_id", Value: 1}, {Key: "role_id", Value: 1}},
 		Options: options.Index().SetUnique(true).SetName("ur_user_role_unique"),
 	})
@@ -338,7 +338,7 @@ func seedDefaultUserRole(ctx context.Context, db *mongo.Database) error {
 	// Also link legacy admin users (role=admin in users collection) to rbac_role_admin
 
 
-	db.Collection("users").UpdateOne(ctx,
+	_, _ = db.Collection("users").UpdateOne(ctx,
 		bson.M{"_id": defaultSystemAdminUserID},
 		bson.M{"$set": bson.M{"rbac_role_count": 1}},
 	)

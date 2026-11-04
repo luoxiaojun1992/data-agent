@@ -1469,7 +1469,7 @@ func dirCreate(deps *Deps) functiontool.Func[DirCreateArgs, DirCreateResult] {
 		if err := fsops.MkdirAll(ws, args.Path); err != nil {
 			return DirCreateResult{}, fmt.Errorf("dir_create: %w", err)
 		}
-		return DirCreateResult{Path: args.Path}, nil
+		return DirCreateResult(args), nil
 	}
 }
 
@@ -1521,7 +1521,7 @@ func fileDelete(deps *Deps) functiontool.Func[FileDeleteArgs, FileDeleteResult] 
 		if err := fsops.RemoveFile(ws, args.Path); err != nil {
 			return FileDeleteResult{}, fmt.Errorf("file_delete: %w", err)
 		}
-		return FileDeleteResult{Path: args.Path}, nil
+		return FileDeleteResult(args), nil
 	}
 }
 
@@ -1573,7 +1573,7 @@ func dirDelete(deps *Deps) functiontool.Func[DirDeleteArgs, DirDeleteResult] {
 		if err := fsops.RemoveDir(ws, args.Path); err != nil {
 			return DirDeleteResult{}, fmt.Errorf("dir_delete: %w", err)
 		}
-		return DirDeleteResult{Path: args.Path}, nil
+		return DirDeleteResult(args), nil
 	}
 }
 

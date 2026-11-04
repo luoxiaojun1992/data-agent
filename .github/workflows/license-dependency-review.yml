@@ -1,17 +1,26 @@
 name: License Dependency Review
 
-# 用 GitHub 官方 dependency-review-action 检查 PR 中新增/变更依赖的 license。
-# 红线（SPEC-081 合规）：禁止引入 GPL / AGPL / LGPL / SSPL / BUSL 等传染性 license。
+# ============================================================
+# ⚠️ 已停用（2026-11-04）
 #
-# 说明：
-# - 该 action 依赖 GitHub 的依赖图谱（go.mod / package.json / Dockerfile 等），
-#   只在 pull_request 事件下有效（需要 base/head 对比）。
-# - deny-licenses 已弃用，改用 allow-licenses 白名单 —— 未列入白名单的 license
-#   一律视为不合规（默认拒绝），比黑名单更贴合「禁传染性 license」的红线。
+# 原因：GitHub 仓库尚未开启「依赖图谱」（Dependency graph），
+# dependency-review-action 依赖图谱数据，长期报
+#   "Dependency review is not supported on this repository.
+#    Please ensure that Dependency graph is enabled"
+# 失败，导致 PR 检查红灯。
+#
+# 启用步骤：
+#   1. GitHub 仓库 Settings → Code security and analysis → Dependency graph → 启用
+#   2. 取消下方 on.pull_request 的注释，并删除 on.workflow_dispatch 一行
+#   3. 核对 allow-licenses 白名单与 SPEC-081 license 红线保持一致
+# ============================================================
 
 on:
-  pull_request:
-    branches: [main]
+  # 恢复时取消注释（依赖图谱启用后）：
+  # pull_request:
+  #   branches: [main]
+  # 停用期间仅保留手动触发，避免 PR 自动跑、长期红灯：
+  workflow_dispatch:
 
 permissions:
   contents: read

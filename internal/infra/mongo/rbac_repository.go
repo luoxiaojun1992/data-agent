@@ -79,7 +79,7 @@ func (r *RBACRepository) CreateRole(ctx context.Context, role *model.RBACRole) e
 		}
 		role.Level = parent.Level + 1
 		// increment parent's child_count
-		r.db.Collection("rbac_roles").UpdateOne(ctx,
+		_, _ = r.db.Collection("rbac_roles").UpdateOne(ctx,
 			bson.M{"_id": role.ParentID},
 			bson.M{"$inc": bson.M{"child_count": 1}},
 		)
@@ -142,10 +142,10 @@ func (r *RBACRepository) ChangeRoleParent(ctx context.Context, id, newParentID s
 
 	_, err = ses.WithTransaction(ctx, func(sc mongo.SessionContext) (interface{}, error) {
 		if oldParentID != "" {
-			r.db.Collection("rbac_roles").UpdateOne(sc, bson.M{"_id": oldParentID}, bson.M{"$inc": bson.M{"child_count": -1}})
+			_, _ = r.db.Collection("rbac_roles").UpdateOne(sc, bson.M{"_id": oldParentID}, bson.M{"$inc": bson.M{"child_count": -1}})
 		}
 		if newParentID != "" {
-			r.db.Collection("rbac_roles").UpdateOne(sc, bson.M{"_id": newParentID}, bson.M{"$inc": bson.M{"child_count": 1}})
+			_, _ = r.db.Collection("rbac_roles").UpdateOne(sc, bson.M{"_id": newParentID}, bson.M{"$inc": bson.M{"child_count": 1}})
 		}
 		_, err := r.db.Collection("rbac_roles").UpdateOne(sc,
 			bson.M{"_id": id, "type": "custom"},
@@ -336,7 +336,7 @@ func (r *RBACRepository) AddRolePermission(ctx context.Context, roleID, permissi
 		return err
 	}
 	// atomic increment
-	r.db.Collection("rbac_roles").UpdateOne(ctx,
+	_, _ = r.db.Collection("rbac_roles").UpdateOne(ctx,
 		bson.M{"_id": roleID},
 		bson.M{"$inc": bson.M{"permission_count": 1}},
 	)
@@ -354,7 +354,7 @@ func (r *RBACRepository) RemoveRolePermission(ctx context.Context, roleID, permi
 		return fmt.Errorf("association not found")
 	}
 	// atomic decrement
-	r.db.Collection("rbac_roles").UpdateOne(ctx,
+	_, _ = r.db.Collection("rbac_roles").UpdateOne(ctx,
 		bson.M{"_id": roleID},
 		bson.M{"$inc": bson.M{"permission_count": -1}},
 	)
@@ -573,7 +573,7 @@ func (r *RBACRepository) AddUserRole(ctx context.Context, userID, roleID string)
 	if _, err := r.db.Collection("user_rbac_roles").InsertOne(ctx, link); err != nil {
 		return err
 	}
-	r.db.Collection("users").UpdateOne(ctx,
+	_, _ = r.db.Collection("users").UpdateOne(ctx,
 		bson.M{"_id": userID},
 		bson.M{"$inc": bson.M{"rbac_role_count": 1}},
 	)
@@ -590,7 +590,7 @@ func (r *RBACRepository) RemoveUserRole(ctx context.Context, userID, roleID stri
 	if res.DeletedCount == 0 {
 		return fmt.Errorf("association not found")
 	}
-	r.db.Collection("users").UpdateOne(ctx,
+	_, _ = r.db.Collection("users").UpdateOne(ctx,
 		bson.M{"_id": userID},
 		bson.M{"$inc": bson.M{"rbac_role_count": -1}},
 	)

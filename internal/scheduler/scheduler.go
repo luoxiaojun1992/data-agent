@@ -229,23 +229,6 @@ func parseCronExpr(expr string) (time.Duration, error) {
 }
 
 
-// nextCronTime returns the next occurrence time for a standard 5-part cron expression.
-func nextCronTime(expr string) (time.Time, error) {
-	// Parse: minute hour day month weekday
-	parts := strings.Fields(expr)
-	if len(parts) != 5 {
-		return time.Time{}, fmt.Errorf("invalid cron: want 5 parts, got %d", len(parts))
-	}
-	minute, _ := strconv.Atoi(parts[0])
-	hour, _ := strconv.Atoi(parts[1])
-	now := time.Now()
-	candidate := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
-	if !candidate.After(now) {
-		candidate = candidate.Add(24 * time.Hour)
-	}
-	return candidate, nil
-}
-
 // nextCronDuration calculates interval until next cron occurrence (approximate).
 func nextCronDuration(expr string) (time.Duration, error) {
 	parts := strings.Fields(expr)
