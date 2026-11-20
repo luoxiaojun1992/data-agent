@@ -165,7 +165,7 @@ services:
       - ./docker/presidio/nlp.yaml:/app/nlp.yaml:ro
       - ./docker/presidio/custom_recognizers.yaml:/app/custom_recognizers.yaml:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ['CMD-SHELL', 'curl -sf --max-time 3 http://localhost:3000/health >/dev/null 2>&1 && { rm -f /tmp/presidio_fail; exit 0; } || { n=$(cat /tmp/presidio_fail 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/presidio_fail; if [ $n -ge 30 ]; then kill 1; fi; exit 1; }']
       interval: 10s
       timeout: 5s
       retries: 30
@@ -179,7 +179,7 @@ services:
     environment:
       - PORT=3000
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ['CMD-SHELL', 'curl -sf --max-time 3 http://localhost:3000/health >/dev/null 2>&1 && { rm -f /tmp/presidio_fail; exit 0; } || { n=$(cat /tmp/presidio_fail 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/presidio_fail; if [ $n -ge 30 ]; then kill 1; fi; exit 1; }']
       interval: 10s
       timeout: 5s
       retries: 30
