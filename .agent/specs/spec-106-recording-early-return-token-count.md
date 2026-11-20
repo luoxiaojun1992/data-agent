@@ -1,6 +1,6 @@
 # 修复 recordingLLM 消费者提前 return 导致 token 计数漏记（enhance 调用不计入 llm_calls）
 
-> **SPEC-106** | Status: 设计中
+> **SPEC-106** | Status: ✅ 已实现（2026-11-20，PR #87）
 
 ## 1. 目标
 
