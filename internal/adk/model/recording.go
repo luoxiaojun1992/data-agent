@@ -42,6 +42,23 @@ func (r *recordingLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 	return func(yield func(*model.LLMResponse, error) bool) {
 		var completion strings.Builder
 		recorded := false
+		// Fallback via defer: when the backend never reports usage, estimate so the
+		// call is still counted (token_tokens + llm_calls). defer guarantees the
+		// fallback runs even when the consumer stops iteration early (e.g. enhance
+		// returns after the first response), which would otherwise skip the record
+		// placed after the loop (SPEC-106).
+		defer func() {
+			if !recorded {
+				_ = r.rec.Record(ctx, llmstats.Record{
+					CallPoint:        r.callPoint,
+					PromptTokens:     estPrompt,
+					CompletionTokens: llmstats.EstimateTokens(completion.String()),
+					Multiplier:       1.0,
+					Estimated:        true,
+					SessionID:        sessionID,
+				})
+			}
+		}()
 		for resp, err := range r.inner.GenerateContent(ctx, req, stream) {
 			if resp != nil {
 				if um := resp.UsageMetadata; um != nil && !recorded {
@@ -65,18 +82,6 @@ func (r *recordingLLM) GenerateContent(ctx context.Context, req *model.LLMReques
 			if !yield(resp, err) {
 				return
 			}
-		}
-		// Fallback: the backend never reported usage → estimate so the call is
-		// still counted (token_tokens + llm_calls).
-		if !recorded {
-			_ = r.rec.Record(ctx, llmstats.Record{
-				CallPoint:        r.callPoint,
-				PromptTokens:     estPrompt,
-				CompletionTokens: llmstats.EstimateTokens(completion.String()),
-				Multiplier:       1.0,
-				Estimated:        true,
-				SessionID:        sessionID,
-			})
 		}
 	}
 }

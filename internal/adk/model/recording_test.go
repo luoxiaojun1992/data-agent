@@ -134,3 +134,36 @@ func TestNewRecordingLLM_NilRecNoop(t *testing.T) {
 		t.Fatal("nil recorder should return the inner LLM unwrapped")
 	}
 }
+
+// TestNewRecordingLLM_RecordsWhenConsumerEarlyReturns covers SPEC-106: a consumer
+// that stops iteration after the first response (like enhanceViaADK) must still
+// have its call recorded via the deferred fallback, even without UsageMetadata.
+func TestNewRecordingLLM_RecordsWhenConsumerEarlyReturns(t *testing.T) {
+	fc := &fakeCounter{}
+	rec := llmstats.NewRecorder(fc)
+	// Backend returns no usage (mockllm/Ollama). The second response would never
+	// be consumed because the consumer breaks early.
+	inner := &fakeUsageLLM{responses: []*model.LLMResponse{
+		{Content: genai.NewContentFromText("first", "model")},
+		{Content: genai.NewContentFromText("never-consumed", "model")},
+	}}
+	wrapped := NewRecordingLLM(inner, rec, "enhance")
+
+	for resp, err := range wrapped.GenerateContent(context.Background(), newTestReq(), false) {
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		_ = resp
+		break // early return after first response (mimic enhanceViaADK)
+	}
+
+	if fc.calls != 1 {
+		t.Errorf("llm_calls = %d, want 1 (deferred fallback records despite early return)", fc.calls)
+	}
+	// estPrompt = EstimateTokens("hello prompt") = (12+3)/4 = 3
+	// estCompletion = EstimateTokens("first") = (5+3)/4 = 2
+	// billed = 3 + 2 = 5
+	if fc.tokenDelta != 5 {
+		t.Errorf("token delta = %d, want 5 (estimated prompt 3 + first text 2)", fc.tokenDelta)
+	}
+}

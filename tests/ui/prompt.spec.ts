@@ -4,6 +4,7 @@ import { test, expect } from '@playwright/test';
 const uid = crypto.randomUUID().slice(0, 8);
 const MOCKLLM = 'http://mockllm:8082';
 const MOCK_ADMIN_TOKEN = 'test-admin-token';
+const API_BASE = 'http://data-agent:8080/api/v1';
 const USER = { username: `e2e-prompt-${uid}@test.local`, password: 'PromptTest1' };
 
 async function seedMock(request: any, key: string, response: string) {
@@ -18,6 +19,16 @@ async function clearMocks(request: any) {
   await request.delete(`${MOCKLLM}/responses`, {
     headers: { 'Authorization': `Bearer ${MOCK_ADMIN_TOKEN}` },
   }).catch(() => {});
+}
+
+// getLLMCalls reads the unified metrics dashboard to verify that enhance calls
+// increment llm_calls (SPEC-072: the counter flushes to stats_hourly every ~5s).
+async function getLLMCalls(request: any, token: string) {
+  const res = await request.get(`${API_BASE}/dashboard`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok()) return 0;
+  return (await res.json()).llm_calls ?? 0;
 }
 
 test.describe.serial('PROMPT — SPEC-033', () => {
@@ -100,5 +111,30 @@ test.describe.serial('PROMPT — SPEC-033', () => {
     await input.fill('这是我手动修改后的版本');
     await expect(input).toHaveValue('这是我手动修改后的版本');
     await expect(page.locator('[data-testid="chat-send-btn"]')).toBeEnabled();
+  });
+
+  // ═══ UI-160: 增强调用计入 Token 统计 ═══
+  test('[UI-160] Prompt — 增强调用计入 Token 统计', async ({ page, request }) => {
+    await clearMocks(request);
+    await seedMock(request, 'test token ' + uid, '增强后的测试内容');
+
+    // 登录获取 token 查 /dashboard（stats:view 为 user 级权限）
+    const loginRes = await request.post(`${API_BASE}/auth/login`, {
+      data: { username: USER.username, password: USER.password },
+    });
+    expect(loginRes.ok()).toBe(true);
+    const token = (await loginRes.json()).access_token;
+
+    const before = await getLLMCalls(request, token);
+
+    const input = page.locator('[data-testid="chat-input"]');
+    await input.fill('test token ' + uid);
+    await page.locator('[data-testid="chat-enhance-btn"]').click();
+    await expect(input).toHaveValue('增强后的测试内容', { timeout: 5000 });
+
+    // 计量异步 flush 到 stats_hourly（约 5s）；poll 直到 llm_calls 递增
+    await expect.poll(async () => {
+      return await getLLMCalls(request, token);
+    }, { timeout: 20000 }).toBeGreaterThanOrEqual(before + 1);
   });
 });
