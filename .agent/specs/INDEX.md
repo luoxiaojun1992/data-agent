@@ -120,6 +120,7 @@
 | SPEC-104 | Task Run 删除与会话并发治理（排他锁 + 会话过滤 + 子会话访问隔离） | **P15** | [spec-104-run-delete-session-lock.md](spec-104-run-delete-session-lock.md) | ✅ 已实现（2026-09-28 实现并部署验证，commit d119c75） |
 | SPEC-105 | CI 红灯治理专项（Lint / Go UT / UI Tests 长期失败修复） | **P15** | [spec-105-ci-red-governance.md](spec-105-ci-red-governance.md) | ✅ 已实现（PR #84 Go UT 阈值 98%→90% + PR #86 golangci-lint 31→0 + presidio pin 2.2.362 根治 + License Dependency Review 停用） |
 | SPEC-106 | 修复 recordingLLM 消费者提前 return 导致 token 计数漏记（enhance 调用不计入 llm_calls） | **P15** | [spec-106-recording-early-return-token-count.md](spec-106-recording-early-return-token-count.md) | ✅ 已实现（2026-11-20，recording.go fallback 改 defer + 恢复 UI-160，PR #87） |
+| SPEC-107 | UI 测试用 mock-redaction 替换 presidio（类似 mock-llm，消除 worker 卡 boot） | **P15** | [spec-107-mock-redaction-for-ui-test.md](spec-107-mock-redaction-for-ui-test.md) | 📐 立项（设计已深化，待排期实现） |
 
 ## Phase 对应与依赖
 
@@ -449,4 +450,5 @@ SPEC-006│               │
 | 14 | SPEC-073 | 领域内聚重构 | 设计中（2026-11-20 细化：14 领域垂直切片 + 15 阶段增量迁移，最后实施） |
 | 15 | SPEC-105 | CI 红灯治理专项 | ✅ 已实现（PR #84 Go UT 阈值 98%→90%、覆盖率 71.3%→93.1%；PR #86 golangci-lint 31→0 + presidio pin 2.2.362 根治 worker 卡 boot + License Dependency Review 停用；main 分支 4 check 全绿） |
 | 16 | SPEC-106 | 修复 recordingLLM token 计数漏记 | ✅ 已实现（recording.go fallback Record 改 defer 闭包 + 新增提前-return UT + 恢复 [UI-160]，223 passed） |
+| 17 | SPEC-107 | UI 测试 mock-redaction 替换 presidio | 📐 立项（设计已深化：mock-redaction 实现 presidio 兼容的 /analyze + /anonymize + /health，纯正则确定性脱敏，消除 gunicorn worker 卡 boot） |
 | — | SPEC-047 | UI 截图审查 | 🗑 已废弃（页面多已重做） |
