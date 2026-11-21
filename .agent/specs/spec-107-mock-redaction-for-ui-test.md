@@ -1,6 +1,6 @@
 # UI 测试用 mock-redaction 替换 presidio（类似 mock-llm）
 
-> **SPEC-107** | Status: 📐 立项（设计已深化，待排期实现）
+> **SPEC-107** | Status: ✅ 已实现（2026-11-21，PR #91）
 
 ## 1. 目标
 
