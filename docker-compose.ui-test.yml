@@ -149,40 +149,22 @@ services:
       retries: 20
       start_period: 120s
 
-  presidio-analyzer:
-    image: mcr.microsoft.com/presidio-analyzer:2.2.362
-    restart: unless-stopped
+  mockredaction:
+    build:
+      context: mockredaction
+      dockerfile: Dockerfile
+    restart: always
+    image: data-agent-mockredaction:latest
     expose:
-      - "3000"
+      - "8083"
     environment:
-      - PORT=3000
-      - WORKERS=1
-      - NLP_CONF_FILE=/app/nlp.yaml
-      - RECOGNIZER_REGISTRY_CONF_FILE=/app/custom_recognizers.yaml
-    volumes:
-      - ./docker/presidio/nlp.yaml:/app/nlp.yaml:ro
-      - ./docker/presidio/custom_recognizers.yaml:/app/custom_recognizers.yaml:ro
+      - PORT=8083
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 10s
       timeout: 5s
-      retries: 30
-      start_period: 300s
-
-  presidio-anonymizer:
-    image: mcr.microsoft.com/presidio-anonymizer:2.2.362
-    restart: unless-stopped
-    expose:
-      - "3000"
-    environment:
-      - PORT=3000
-      - WORKERS=1
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 300s
+      retries: 10
+      start_period: 5s
 
   data-agent:
     build:
@@ -204,8 +186,8 @@ services:
       - VAULT_TOKEN=dev-root-token
       - EMBEDDING_BASE_URL=http://ollama:11434/v1
       - EMBEDDING_MODEL=nomic-embed-text
-      - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:3000
-      - PRESIDIO_ANONYMIZER_URL=http://presidio-anonymizer:3000
+      - PRESIDIO_ANALYZER_URL=http://mockredaction:8083
+      - PRESIDIO_ANONYMIZER_URL=http://mockredaction:8083
     depends_on:
       seed-admin:
         condition: service_healthy
@@ -223,9 +205,7 @@ services:
         condition: service_healthy
       ollama:
         condition: service_healthy
-      presidio-analyzer:
-        condition: service_healthy
-      presidio-anonymizer:
+      mockredaction:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
